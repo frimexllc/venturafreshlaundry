@@ -376,7 +376,7 @@ async def create_customer(data: CustomerCreate, current_user: dict = Depends(get
     }
     await db.customers.insert_one(customer)
     await create_audit_log("CUSTOMER_CREATED", "customer", customer_id, current_user["id"])
-    del customer["_id"] if "_id" in customer else None
+    customer.pop("_id", None)
     return CustomerResponse(**customer)
 
 @api_router.get("/customers", response_model=List[CustomerResponse])
