@@ -554,19 +554,33 @@ async def update_order(order_id: str, data: dict, current_user: dict = Depends(g
     return OrderResponse(**order)
 
 @api_router.patch("/orders/{order_id}/status")
-async def update_order_status(order_id: str, status: str, current_user: dict = Depends(get_current_user)):
+async def update_order_status(order_id: str, status: str, notify: bool = True, current_user: dict = Depends(get_current_user)):
     valid_statuses = ["new", "processing", "ready", "out_for_delivery", "delivered", "completed", "cancelled"]
     if status not in valid_statuses:
         raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {valid_statuses}")
+    
+    # Get order and customer for notification
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
     
     result = await db.orders.update_one(
         {"id": order_id},
         {"$set": {"status": status, "updated_at": datetime.now(timezone.utc).isoformat()}}
     )
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Order not found")
     
     await create_audit_log("ORDER_STATUS_CHANGED", "order", order_id, current_user["id"], {"new_status": status})
+    
+    # Send notifications if enabled
+    if notify and NOTIFICATIONS_ENABLED and order.get("customer_id"):
+        customer = await db.customers.find_one({"id": order["customer_id"]}, {"_id": 0})
+        if customer:
+            order["status"] = status  # Update for notification
+            try:
+                await notify_order_status_changed(customer, order, status)
+            except Exception as e:
+                logger.error(f"Notification failed: {e}")
+    
     return {"message": f"Order status updated to {status}"}
 
 # ==================== QUOTES ====================
