@@ -1,0 +1,152 @@
+{
+  "project_name": "Ventura Fresh Laundry CRM",
+  "design_philosophy": {
+    "identity": "E1: The Anti-AI Designer",
+    "core_principles": [
+      "Fusion over Imitation: Mix Swiss Precision with Organic Freshness.",
+      "Emotion First: Every screen must feel 'Clean' and 'Efficient'.",
+      "Content is King: Data density without clutter.",
+      "Negative Space: Use whitespace to separate logical groups, not lines."
+    ],
+    "anti_patterns": [
+      "No generic 'Teal' (#1B93A4) for dashboards.",
+      "No 'Inter' for headings.",
+      "No center-aligned layouts for data-heavy views.",
+      "No gradients on text.",
+      "No default Shadcn 'Card' look - customize borders and shadows."
+    ]
+  },
+  "theme": {
+    "mode": "light",
+    "palette": {
+      "primary": {
+        "name": "Fresh Sky",
+        "50": "#f0f9ff",
+        "100": "#e0f2fe",
+        "500": "#0ea5e9",
+        "600": "#0284c7",
+        "900": "#0c4a6e",
+        "usage": "Primary Actions, Active States, Brand Highlights"
+      },
+      "secondary": {
+        "name": "Clean Slate",
+        "50": "#f8fafc",
+        "100": "#f1f5f9",
+        "200": "#e2e8f0",
+        "900": "#0f172a",
+        "usage": "Backgrounds, Borders, Secondary Text"
+      },
+      "accent": {
+        "name": "Soap Bubble",
+        "color": "#38bdf8",
+        "usage": "Subtle gradients, illustrations"
+      },
+      "semantic": {
+        "success": "#10b981",
+        "warning": "#f59e0b",
+        "error": "#ef4444",
+        "info": "#3b82f6"
+      }
+    },
+    "typography": {
+      "headings": {
+        "family": "Manrope, sans-serif",
+        "weights": ["600", "700", "800"],
+        "tracking": "-0.02em",
+        "usage": "Page Titles, Card Headers, Big Stats"
+      },
+      "body": {
+        "family": "Inter, sans-serif",
+        "weights": ["400", "500"],
+        "usage": "Table data, form labels, paragraphs"
+      },
+      "mono": {
+        "family": "JetBrains Mono, monospace",
+        "usage": "Order IDs, timestamps, audit logs"
+      }
+    }
+  },
+  "layout_system": {
+    "grid_strategy": "Bento Grid Mode B (High Density)",
+    "spacing": {
+      "container_padding": "p-6 md:p-8 lg:p-12",
+      "element_gap": "gap-4 md:gap-6",
+      "internal_padding": "p-6"
+    },
+    "containers": {
+      "dashboard_card": "bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow-md transition-all duration-200",
+      "main_wrapper": "min-h-screen bg-slate-50/50"
+    }
+  },
+  "components": {
+    "buttons": {
+      "primary": "bg-sky-600 hover:bg-sky-700 text-white rounded-full px-6 py-2 font-medium shadow-sm hover:shadow-md transition-all active:scale-95",
+      "secondary": "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-full px-6 py-2 font-medium transition-all",
+      "ghost": "text-slate-600 hover:text-sky-600 hover:bg-sky-50 rounded-lg px-4 py-2 transition-colors"
+    },
+    "inputs": {
+      "default": "bg-white border-slate-200 focus:border-sky-500 focus:ring-2 focus:ring-sky-100 rounded-lg h-10 transition-all",
+      "label": "text-sm font-medium text-slate-700 mb-1.5 block"
+    },
+    "cards": {
+      "stat_card": "bg-white border border-slate-100 rounded-2xl p-6 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] hover:border-sky-100 transition-colors",
+      "table_card": "bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm"
+    },
+    "status_badges": {
+      "base": "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium",
+      "pending": "bg-amber-50 text-amber-700 border border-amber-100",
+      "processing": "bg-sky-50 text-sky-700 border border-sky-100",
+      "completed": "bg-emerald-50 text-emerald-700 border border-emerald-100",
+      "cancelled": "bg-slate-100 text-slate-600 border border-slate-200"
+    }
+  },
+  "assets": {
+    "images": {
+      "login_bg": {
+        "url": "https://images.unsplash.com/photo-1632923565835-6582b54f2105",
+        "alt": "Clean Laundry Facility",
+        "usage": "Login page background with blur overlay"
+      },
+      "delivery_hero": {
+        "url": "https://images.unsplash.com/photo-1768400554801-2002b63e0591",
+        "alt": "Delivery Van",
+        "usage": "Orders page empty state or hero"
+      },
+      "services_hero": {
+        "url": "https://images.pexels.com/photos/7282428/pexels-photo-7282428.jpeg",
+        "alt": "Neat Stack of Clothes",
+        "usage": "Services/Preferences section header"
+      }
+    },
+    "icons": {
+      "library": "lucide-react",
+      "style": "Stroke width 1.5px for elegance, 2px for active states"
+    }
+  },
+  "motion": {
+    "page_transition": {
+      "initial": { "opacity": 0, "y": 10 },
+      "animate": { "opacity": 1, "y": 0 },
+      "exit": { "opacity": 0, "y": -10 },
+      "transition": { "duration": 0.3, "ease": "easeOut" }
+    },
+    "hover_effects": "hover:-translate-y-0.5 transition-transform duration-200"
+  },
+  "implementation_rules": {
+    "file_extension": ".jsx",
+    "framework": "React (JS) + Tailwind + Shadcn",
+    "styling": "Use Tailwind utility classes primarily. Avoid custom CSS unless for complex animations.",
+    "accessibility": "Ensure all text has contrast ratio > 4.5:1. Use semantic HTML.",
+    "testing": "Add data-testid to all interactive elements (buttons, inputs, links)."
+  },
+  "universal_guidelines": [
+    "Do not use 'Inter' for headings.",
+    "Do not use gradients on text.",
+    "Do not use generic center alignment.",
+    "Use 'Manrope' for headings.",
+    "Use 'Fresh Sky' (#0ea5e9) as primary color.",
+    "Use 'Bento Grid' layout for dashboard.",
+    "Use 'Sonner' for toasts.",
+    "Use 'Lucide React' for icons."
+  ]
+}
