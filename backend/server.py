@@ -480,7 +480,7 @@ async def generate_order_number():
     return f"ORD-{today}-{str(count + 1).zfill(4)}"
 
 @api_router.post("/orders", response_model=OrderResponse)
-async def create_order(data: OrderCreate, current_user: dict = Depends(get_current_user)):
+async def create_order(data: OrderCreate, notify: bool = True, current_user: dict = Depends(get_current_user)):
     customer = await db.customers.find_one({"id": data.customer_id}, {"_id": 0})
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
@@ -512,6 +512,14 @@ async def create_order(data: OrderCreate, current_user: dict = Depends(get_curre
     await db.orders.insert_one(order)
     await db.customers.update_one({"id": data.customer_id}, {"$inc": {"total_orders": 1}})
     await create_audit_log("ORDER_CREATED", "order", order_id, current_user["id"])
+    
+    # Send notifications if enabled
+    if notify and NOTIFICATIONS_ENABLED:
+        try:
+            await notify_order_created(customer, order)
+        except Exception as e:
+            logger.error(f"Notification failed: {e}")
+    
     return OrderResponse(**order)
 
 @api_router.get("/orders", response_model=List[OrderResponse])
