@@ -11,19 +11,24 @@ import {
   LogOut,
   Menu,
   X,
-  Droplets
+  Droplets,
+  CalendarDays,
+  Settings,
+  ExternalLink
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "./ui/button";
 
 const navItems = [
-  { path: "/", icon: LayoutDashboard, label: "Dashboard" },
-  { path: "/customers", icon: Users, label: "Clientes" },
-  { path: "/orders", icon: ShoppingBag, label: "Órdenes" },
-  { path: "/quotes", icon: FileText, label: "Cotizaciones B2B" },
-  { path: "/leads", icon: UserPlus, label: "Leads" },
-  { path: "/tickets", icon: HeadphonesIcon, label: "Soporte" },
-  { path: "/audit-log", icon: ClipboardList, label: "Audit Log" },
+  { path: "/admin", icon: LayoutDashboard, label: "Dashboard" },
+  { path: "/admin/customers", icon: Users, label: "Clientes" },
+  { path: "/admin/orders", icon: ShoppingBag, label: "Órdenes" },
+  { path: "/admin/calendar", icon: CalendarDays, label: "Calendario" },
+  { path: "/admin/quotes", icon: FileText, label: "Cotizaciones B2B" },
+  { path: "/admin/leads", icon: UserPlus, label: "Leads" },
+  { path: "/admin/tickets", icon: HeadphonesIcon, label: "Soporte" },
+  { path: "/admin/audit-log", icon: ClipboardList, label: "Audit Log" },
+  { path: "/admin/settings", icon: Settings, label: "Configuración" },
 ];
 
 export default function Layout() {
