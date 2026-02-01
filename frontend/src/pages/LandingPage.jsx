@@ -4,17 +4,10 @@ import axios from "axios";
 import { toast } from "sonner";
 import { 
   Phone, 
-  Mail, 
   MapPin, 
   Clock, 
   ChevronDown,
   ChevronUp,
-  Star,
-  Truck,
-  ShoppingBag,
-  Menu,
-  X,
-  ArrowRight,
   Sparkles,
   Bell,
   Leaf,
@@ -25,6 +18,8 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
+import PublicNav from "../components/PublicNav";
+import PublicFooter from "../components/PublicFooter";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
