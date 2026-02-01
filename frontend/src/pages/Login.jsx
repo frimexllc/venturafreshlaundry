@@ -29,7 +29,7 @@ export default function Login() {
         await register(name, email, password);
         toast.success("¡Cuenta creada exitosamente!");
       }
-      navigate("/");
+      navigate("/admin");
     } catch (error) {
       const message = error.response?.data?.detail || "Ocurrió un error";
       toast.error(message);
