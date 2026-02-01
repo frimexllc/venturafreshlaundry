@@ -339,6 +339,100 @@ class VenturaFreshCRMTester:
         
         return success
 
+    def test_public_endpoints(self):
+        """Test public form endpoints (no auth required)"""
+        print("\n=== PUBLIC ENDPOINTS TESTS ===")
+        
+        # Temporarily remove token for public endpoints
+        original_token = self.token
+        self.token = None
+        
+        # Test public pickup request
+        pickup_data = {
+            "name": f"Public Test User {datetime.now().strftime('%H%M%S')}",
+            "email": f"public{datetime.now().strftime('%H%M%S')}@test.com",
+            "phone": "+1234567890",
+            "address": "123 Public Test Street",
+            "pickup_date": "2024-12-25",
+            "pickup_time": "10am-12pm",
+            "service_type": "pickup_delivery",
+            "notes": "Test public pickup request",
+            "gate_code": "5678"
+        }
+        
+        success, response = self.run_test("Public pickup request", "POST", "public/pickup-request", 200, data=pickup_data)
+        if success:
+            print(f"   Order number: {response.get('order_number')}")
+            print(f"   Message: {response.get('message')}")
+        
+        # Test public contact form
+        contact_data = {
+            "name": f"Contact Test {datetime.now().strftime('%H%M%S')}",
+            "email": f"contact{datetime.now().strftime('%H%M%S')}@test.com",
+            "phone": "+1234567890",
+            "message": "This is a test contact message from the public form",
+            "subject": "Test Contact"
+        }
+        
+        success, response = self.run_test("Public contact form", "POST", "public/contact", 200, data=contact_data)
+        if success:
+            print(f"   Ticket number: {response.get('ticket_number')}")
+            print(f"   Message: {response.get('message')}")
+        
+        # Test public quote request
+        quote_data = {
+            "company_name": f"Public Test Company {datetime.now().strftime('%H%M%S')}",
+            "contact_name": "Jane Doe",
+            "email": f"quote{datetime.now().strftime('%H%M%S')}@testcompany.com",
+            "phone": "+1234567890",
+            "industry": "Restaurant",
+            "estimated_lbs": 50.0,
+            "message": "We need weekly commercial laundry service for our restaurant"
+        }
+        
+        success, response = self.run_test("Public quote request", "POST", "public/quote-request", 200, data=quote_data)
+        if success:
+            print(f"   Quote number: {response.get('quote_number')}")
+            print(f"   Message: {response.get('message')}")
+        
+        # Restore token
+        self.token = original_token
+        return success
+
+    def test_calendar_endpoints(self):
+        """Test calendar functionality"""
+        print("\n=== CALENDAR TESTS ===")
+        
+        # Test calendar orders endpoint
+        success, events = self.run_test("Get calendar orders", "GET", "calendar/orders?start_date=2024-12-01&end_date=2024-12-31", 200)
+        if success:
+            print(f"   Calendar events: {len(events)}")
+            if events:
+                print(f"   Sample event: {events[0].get('title')} on {events[0].get('date')}")
+        
+        return success
+
+    def test_settings_endpoints(self):
+        """Test settings and export functionality"""
+        print("\n=== SETTINGS TESTS ===")
+        
+        # Test notification settings
+        success, settings = self.run_test("Get notification settings", "GET", "settings/notifications", 200)
+        if success:
+            print(f"   Email enabled: {settings.get('email_enabled')}")
+            print(f"   SMS enabled: {settings.get('sms_enabled')}")
+            print(f"   Notifications available: {settings.get('notifications_available')}")
+        
+        # Test CSV exports
+        export_types = ["customers", "orders", "quotes", "leads", "tickets"]
+        
+        for export_type in export_types:
+            success, _ = self.run_test(f"Export {export_type} CSV", "GET", f"export/{export_type}", 200)
+            if success:
+                print(f"   {export_type}.csv export successful")
+        
+        return success
+
     def cleanup_test_data(self):
         """Clean up created test data"""
         print("\n=== CLEANUP ===")
