@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { Toaster } from "./components/ui/sonner";
+// Admin pages
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Customers from "./pages/Customers";
@@ -12,7 +13,16 @@ import AuditLog from "./pages/AuditLog";
 import Calendar from "./pages/Calendar";
 import Settings from "./pages/Settings";
 import Layout from "./components/Layout";
+// Public pages
 import LandingPage from "./pages/LandingPage";
+import ServicesPage from "./pages/ServicesPage";
+import AboutPage from "./pages/AboutPage";
+import ContactPage from "./pages/ContactPage";
+import StorePage from "./pages/StorePage";
+import BlogPage from "./pages/BlogPage";
+import SchedulePickup from "./pages/SchedulePickup";
+import CustomerAccount from "./pages/CustomerAccount";
+import CustomerLogin from "./pages/CustomerLogin";
 
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -32,10 +42,32 @@ const ProtectedRoute = ({ children }) => {
   return children;
 };
 
+const CustomerProtectedRoute = ({ children }) => {
+  const token = localStorage.getItem('customer_token');
+  if (!token) {
+    return <Navigate to="/account/login" replace />;
+  }
+  return children;
+};
+
 function AppRoutes() {
   return (
     <Routes>
+      {/* Public pages */}
+      <Route path="/" element={<LandingPage />} />
       <Route path="/home" element={<LandingPage />} />
+      <Route path="/services" element={<ServicesPage />} />
+      <Route path="/about" element={<AboutPage />} />
+      <Route path="/contact" element={<ContactPage />} />
+      <Route path="/store" element={<StorePage />} />
+      <Route path="/blog" element={<BlogPage />} />
+      <Route path="/schedule-pickup" element={<SchedulePickup />} />
+      
+      {/* Customer portal */}
+      <Route path="/account/login" element={<CustomerLogin />} />
+      <Route path="/account" element={<CustomerProtectedRoute><CustomerAccount /></CustomerProtectedRoute>} />
+      
+      {/* Admin */}
       <Route path="/login" element={<Login />} />
       <Route
         path="/admin"
@@ -55,8 +87,7 @@ function AppRoutes() {
         <Route path="audit-log" element={<AuditLog />} />
         <Route path="settings" element={<Settings />} />
       </Route>
-      <Route path="/" element={<Navigate to="/home" replace />} />
-      <Route path="*" element={<Navigate to="/home" replace />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }
