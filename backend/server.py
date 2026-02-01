@@ -1039,6 +1039,336 @@ async def root():
 async def health_check():
     return {"status": "healthy", "timestamp": datetime.now(timezone.utc).isoformat()}
 
+# ==================== PUBLIC FORM ENDPOINTS (No Auth Required) ====================
+
+class PublicPickupRequest(BaseModel):
+    name: str
+    email: EmailStr
+    phone: str
+    address: str
+    pickup_date: Optional[str] = None
+    pickup_time: Optional[str] = None
+    service_type: Optional[str] = "pickup_delivery"
+    notes: Optional[str] = None
+    gate_code: Optional[str] = None
+
+class PublicContactRequest(BaseModel):
+    name: str
+    email: EmailStr
+    phone: Optional[str] = None
+    message: str
+    subject: Optional[str] = "Contact Request"
+
+class PublicQuoteRequest(BaseModel):
+    company_name: str
+    contact_name: str
+    email: EmailStr
+    phone: Optional[str] = None
+    industry: Optional[str] = None
+    estimated_lbs: Optional[float] = None
+    message: Optional[str] = None
+
+@api_router.post("/public/pickup-request")
+async def public_pickup_request(data: PublicPickupRequest):
+    """Public endpoint for pickup request form - no auth required"""
+    now = datetime.now(timezone.utc).isoformat()
+    
+    # Find or create customer
+    customer = await db.customers.find_one({"email": data.email.lower()}, {"_id": 0})
+    if not customer:
+        customer_id = str(uuid.uuid4())
+        customer = {
+            "id": customer_id,
+            "name": data.name,
+            "email": data.email.lower(),
+            "phone": data.phone,
+            "address": data.address,
+            "preferred_contact": "email",
+            "notes": None,
+            "status": "active",
+            "total_orders": 0,
+            "created_at": now,
+            "updated_at": now
+        }
+        await db.customers.insert_one(customer)
+        await create_audit_log("CUSTOMER_CREATED", "customer", customer_id, None, {"source": "public_form"})
+    
+    # Create order
+    order_id = str(uuid.uuid4())
+    order_number = await generate_order_number()
+    order = {
+        "id": order_id,
+        "order_number": order_number,
+        "customer_id": customer["id"],
+        "customer_name": customer["name"],
+        "service_type": data.service_type or "pickup_delivery",
+        "pickup_date": data.pickup_date,
+        "pickup_time_window": data.pickup_time,
+        "pickup_address": data.address,
+        "delivery_address": data.address,
+        "estimated_lbs": None,
+        "actual_lbs": None,
+        "notes": data.notes,
+        "gate_code": data.gate_code,
+        "status": "new",
+        "payment_status": "unpaid",
+        "total_amount": None,
+        "created_at": now,
+        "updated_at": now
+    }
+    await db.orders.insert_one(order)
+    await db.customers.update_one({"id": customer["id"]}, {"$inc": {"total_orders": 1}})
+    await create_audit_log("ORDER_CREATED", "order", order_id, None, {"source": "public_form"})
+    
+    # Send notifications
+    if NOTIFICATIONS_ENABLED:
+        try:
+            await notify_order_created(customer, order)
+        except Exception as e:
+            logger.error(f"Notification failed: {e}")
+    
+    return {
+        "success": True,
+        "order_number": order_number,
+        "message": "¡Gracias! Tu solicitud de pickup ha sido recibida. Te contactaremos pronto."
+    }
+
+@api_router.post("/public/contact")
+async def public_contact(data: PublicContactRequest):
+    """Public endpoint for contact form - creates a support ticket"""
+    now = datetime.now(timezone.utc).isoformat()
+    
+    # Find customer if exists
+    customer = await db.customers.find_one({"email": data.email.lower()}, {"_id": 0})
+    customer_id = customer["id"] if customer else None
+    customer_name = customer["name"] if customer else data.name
+    
+    # Create support ticket
+    ticket_id = str(uuid.uuid4())
+    count = await db.tickets.count_documents({})
+    ticket_number = f"TKT-{str(count + 1).zfill(5)}"
+    
+    ticket = {
+        "id": ticket_id,
+        "ticket_number": ticket_number,
+        "customer_id": customer_id,
+        "customer_name": customer_name,
+        "subject": data.subject or "Contact Request",
+        "description": f"Nombre: {data.name}\nEmail: {data.email}\nTeléfono: {data.phone or 'N/A'}\n\nMensaje:\n{data.message}",
+        "category": "general",
+        "priority": "medium",
+        "status": "open",
+        "assigned_to": None,
+        "resolution": None,
+        "created_at": now,
+        "updated_at": now
+    }
+    await db.tickets.insert_one(ticket)
+    await create_audit_log("TICKET_CREATED", "ticket", ticket_id, None, {"source": "public_form"})
+    
+    return {
+        "success": True,
+        "ticket_number": ticket_number,
+        "message": "¡Gracias por contactarnos! Te responderemos pronto."
+    }
+
+@api_router.post("/public/quote-request")
+async def public_quote_request(data: PublicQuoteRequest):
+    """Public endpoint for B2B quote request"""
+    now = datetime.now(timezone.utc).isoformat()
+    
+    quote_id = str(uuid.uuid4())
+    today = datetime.now(timezone.utc).strftime("%Y%m%d")
+    count = await db.quotes.count_documents({"quote_number": {"$regex": f"^QT-{today}"}})
+    quote_number = f"QT-{today}-{str(count + 1).zfill(4)}"
+    
+    quote = {
+        "id": quote_id,
+        "quote_number": quote_number,
+        "company_name": data.company_name,
+        "contact_name": data.contact_name,
+        "email": data.email.lower(),
+        "phone": data.phone,
+        "industry": data.industry,
+        "estimated_lbs_per_week": data.estimated_lbs,
+        "service_needs": data.message,
+        "notes": None,
+        "status": "new",
+        "assigned_to": None,
+        "follow_up_date": None,
+        "created_at": now,
+        "updated_at": now
+    }
+    await db.quotes.insert_one(quote)
+    await create_audit_log("QUOTE_CREATED", "quote", quote_id, None, {"source": "public_form"})
+    
+    return {
+        "success": True,
+        "quote_number": quote_number,
+        "message": "¡Gracias! Hemos recibido tu solicitud de cotización comercial."
+    }
+
+# ==================== EXPORT ENDPOINTS ====================
+
+@api_router.get("/export/customers")
+async def export_customers_csv(current_user: dict = Depends(get_current_user)):
+    """Export customers to CSV"""
+    customers = await db.customers.find({}, {"_id": 0}).to_list(10000)
+    
+    output = io.StringIO()
+    if customers:
+        writer = csv.DictWriter(output, fieldnames=customers[0].keys())
+        writer.writeheader()
+        writer.writerows(customers)
+    
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=customers.csv"}
+    )
+
+@api_router.get("/export/orders")
+async def export_orders_csv(current_user: dict = Depends(get_current_user)):
+    """Export orders to CSV"""
+    orders = await db.orders.find({}, {"_id": 0}).to_list(10000)
+    
+    output = io.StringIO()
+    if orders:
+        writer = csv.DictWriter(output, fieldnames=orders[0].keys())
+        writer.writeheader()
+        writer.writerows(orders)
+    
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=orders.csv"}
+    )
+
+@api_router.get("/export/leads")
+async def export_leads_csv(current_user: dict = Depends(get_current_user)):
+    """Export leads to CSV"""
+    leads = await db.leads.find({}, {"_id": 0}).to_list(10000)
+    
+    output = io.StringIO()
+    if leads:
+        writer = csv.DictWriter(output, fieldnames=leads[0].keys())
+        writer.writeheader()
+        writer.writerows(leads)
+    
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=leads.csv"}
+    )
+
+@api_router.get("/export/quotes")
+async def export_quotes_csv(current_user: dict = Depends(get_current_user)):
+    """Export quotes to CSV"""
+    quotes = await db.quotes.find({}, {"_id": 0}).to_list(10000)
+    
+    output = io.StringIO()
+    if quotes:
+        writer = csv.DictWriter(output, fieldnames=quotes[0].keys())
+        writer.writeheader()
+        writer.writerows(quotes)
+    
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=quotes.csv"}
+    )
+
+@api_router.get("/export/tickets")
+async def export_tickets_csv(current_user: dict = Depends(get_current_user)):
+    """Export tickets to CSV"""
+    tickets = await db.tickets.find({}, {"_id": 0}).to_list(10000)
+    
+    output = io.StringIO()
+    if tickets:
+        writer = csv.DictWriter(output, fieldnames=tickets[0].keys())
+        writer.writeheader()
+        writer.writerows(tickets)
+    
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=tickets.csv"}
+    )
+
+# ==================== CALENDAR ENDPOINTS ====================
+
+@api_router.get("/calendar/orders")
+async def get_calendar_orders(
+    start_date: str = Query(..., description="Start date YYYY-MM-DD"),
+    end_date: str = Query(..., description="End date YYYY-MM-DD"),
+    current_user: dict = Depends(get_current_user)
+):
+    """Get orders for calendar view within date range"""
+    orders = await db.orders.find({
+        "pickup_date": {"$gte": start_date, "$lte": end_date}
+    }, {"_id": 0}).to_list(1000)
+    
+    # Format for calendar
+    events = []
+    for order in orders:
+        events.append({
+            "id": order["id"],
+            "title": f"{order['order_number']} - {order['customer_name']}",
+            "date": order["pickup_date"],
+            "time": order.get("pickup_time_window"),
+            "status": order["status"],
+            "service_type": order["service_type"],
+            "address": order.get("pickup_address"),
+            "customer_name": order["customer_name"],
+            "order_number": order["order_number"]
+        })
+    
+    return events
+
+# ==================== NOTIFICATION SETTINGS ====================
+
+@api_router.get("/settings/notifications")
+async def get_notification_settings(current_user: dict = Depends(get_current_user)):
+    """Get notification service status"""
+    return {
+        "email_enabled": bool(os.environ.get('RESEND_API_KEY')),
+        "sms_enabled": bool(os.environ.get('TWILIO_ACCOUNT_SID') and os.environ.get('TWILIO_AUTH_TOKEN')),
+        "notifications_available": NOTIFICATIONS_ENABLED
+    }
+
+@api_router.post("/test/email")
+async def test_email_notification(
+    to_email: EmailStr,
+    current_user: dict = Depends(get_current_user)
+):
+    """Test email notification"""
+    if not NOTIFICATIONS_ENABLED:
+        raise HTTPException(status_code=400, detail="Notifications not configured")
+    
+    result = await send_email(
+        to_email,
+        "Test - Ventura Fresh Laundry CRM",
+        "<h1>Test Email</h1><p>Este es un correo de prueba del CRM.</p>"
+    )
+    return result
+
+@api_router.post("/test/sms")
+async def test_sms_notification(
+    to_phone: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Test SMS notification"""
+    if not NOTIFICATIONS_ENABLED:
+        raise HTTPException(status_code=400, detail="Notifications not configured")
+    
+    result = await send_sms(to_phone, "Test: Este es un mensaje de prueba del CRM de Ventura Fresh Laundry.")
+    return result
+
 # Include router and middleware
 app.include_router(api_router)
 
