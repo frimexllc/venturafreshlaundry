@@ -51,7 +51,6 @@ const FAQItem = ({ question, answer }) => {
 };
 
 export default function LandingPage() {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeForm, setActiveForm] = useState("pickup");
   const [submitting, setSubmitting] = useState(false);
   
@@ -133,71 +132,11 @@ export default function LandingPage() {
 
   const scrollToSection = (id) => {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
-    setMobileMenuOpen(false);
   };
 
   return (
     <div className="min-h-screen bg-white">
-      {/* Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-sm shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-2">
-              <img 
-                src="https://images.squarespace-cdn.com/content/v1/66f3d06a2c293506cfa7d476/57cbc3f3-0394-4498-b021-3908fdc39db7/logo.png?format=100w" 
-                alt="Ventura Fresh Laundry" 
-                className="h-12 w-auto"
-                onError={(e) => {
-                  e.target.style.display = 'none';
-                }}
-              />
-              <span className="text-xl font-bold text-sky-600">Ventura Fresh Laundry</span>
-            </div>
-            
-            {/* Desktop nav */}
-            <div className="hidden md:flex items-center gap-6">
-              <button onClick={() => scrollToSection("services")} className="text-slate-600 hover:text-sky-600 font-medium transition-colors">
-                Services
-              </button>
-              <button onClick={() => scrollToSection("about")} className="text-slate-600 hover:text-sky-600 font-medium transition-colors">
-                About
-              </button>
-              <button onClick={() => scrollToSection("contact")} className="text-slate-600 hover:text-sky-600 font-medium transition-colors">
-                Contact
-              </button>
-              <Link to="/login" className="text-slate-600 hover:text-sky-600 font-medium transition-colors">
-                Account
-              </Link>
-              <Button onClick={() => scrollToSection("schedule")} className="bg-sky-500 hover:bg-sky-600 text-white rounded-full px-6">
-                SCHEDULE PICK-UP
-              </Button>
-            </div>
-
-            {/* Mobile menu button */}
-            <button 
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden p-2 text-slate-600"
-            >
-              {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-            </button>
-          </div>
-        </div>
-
-        {/* Mobile menu */}
-        {mobileMenuOpen && (
-          <div className="md:hidden bg-white border-t border-slate-100 py-4 px-4 animate-fade-in">
-            <div className="flex flex-col gap-4">
-              <button onClick={() => scrollToSection("services")} className="text-slate-600 hover:text-sky-600 font-medium text-left">Services</button>
-              <button onClick={() => scrollToSection("about")} className="text-slate-600 hover:text-sky-600 font-medium text-left">About</button>
-              <button onClick={() => scrollToSection("contact")} className="text-slate-600 hover:text-sky-600 font-medium text-left">Contact</button>
-              <Link to="/login" className="text-slate-600 hover:text-sky-600 font-medium">Account</Link>
-              <Button onClick={() => scrollToSection("schedule")} className="bg-sky-500 hover:bg-sky-600 text-white rounded-full w-full">
-                SCHEDULE PICK-UP
-              </Button>
-            </div>
-          </div>
-        )}
-      </nav>
+      <PublicNav />
 
       {/* Hero Section with Video Background */}
       <section className="relative min-h-screen flex items-center overflow-hidden">
