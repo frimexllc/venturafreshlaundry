@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="2" failures="1" skipped="0" tests="20" time="15.755" timestamp="2026-02-01T07:00:59.309122+00:00" hostname="agent-env-e4020c1b-881f-49d9-ae60-848769ac4583"><testcase classname="backend.tests.test_customer_portal.TestHealthCheck" name="test_api_health" time="0.487" /><testcase classname="backend.tests.test_customer_portal.TestHealthCheck" name="test_api_root" time="0.451" /><testcase classname="backend.tests.test_customer_portal.TestCustomerAuthentication" name="test_customer_register" time="0.585"><failure message="assert 520 == 200&#10; +  where 520 = &lt;Response [520]&gt;.status_code">backend/tests/test_customer_portal.py:48: in test_customer_register
+    assert response.status_code == 200
+E   assert 520 == 200
+E    +  where 520 = &lt;Response [520]&gt;.status_code</failure></testcase><testcase classname="backend.tests.test_customer_portal.TestCustomerAuthentication" name="test_customer_register_duplicate_email" time="1.027" /><testcase classname="backend.tests.test_customer_portal.TestCustomerAuthentication" name="test_customer_login_success" time="1.247" /><testcase classname="backend.tests.test_customer_portal.TestCustomerAuthentication" name="test_customer_login_invalid_password" time="1.553" /><testcase classname="backend.tests.test_customer_portal.TestCustomerAuthentication" name="test_customer_login_nonexistent_email" time="0.464" /><testcase classname="backend.tests.test_customer_portal.TestCustomerProfile" name="test_get_customer_profile" time="0.569"><error message="failed on setup with &quot;requests.exceptions.JSONDecodeError: Expecting value: line 1 column 1 (char 0)&quot;">/root/.venv/lib/python3.11/site-packages/requests/models.py:976: in json
+    return complexjson.loads(self.text, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/json/__init__.py:346: in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/json/decoder.py:337: in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/json/decoder.py:355: in raw_decode
+    raise JSONDecodeError("Expecting value", s, err.value) from None
+E   json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+
+During handling of the above exception, another exception occurred:
+backend/tests/test_customer_portal.py:135: in customer_token
+    return response.json()["access_token"]
+           ^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/requests/models.py:980: in json
+    raise RequestsJSONDecodeError(e.msg, e.doc, e.pos)
+E   requests.exceptions.JSONDecodeError: Expecting value: line 1 column 1 (char 0)</error></testcase><testcase classname="backend.tests.test_customer_portal.TestCustomerProfile" name="test_get_customer_orders" time="0.788"><error message="failed on setup with &quot;requests.exceptions.JSONDecodeError: Expecting value: line 1 column 1 (char 0)&quot;">/root/.venv/lib/python3.11/site-packages/requests/models.py:976: in json
+    return complexjson.loads(self.text, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/json/__init__.py:346: in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/json/decoder.py:337: in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/json/decoder.py:355: in raw_decode
+    raise JSONDecodeError("Expecting value", s, err.value) from None
+E   json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+
+During handling of the above exception, another exception occurred:
+backend/tests/test_customer_portal.py:135: in customer_token
+    return response.json()["access_token"]
+           ^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/requests/models.py:980: in json
+    raise RequestsJSONDecodeError(e.msg, e.doc, e.pos)
+E   requests.exceptions.JSONDecodeError: Expecting value: line 1 column 1 (char 0)</error></testcase><testcase classname="backend.tests.test_customer_portal.TestCustomerProfile" name="test_customer_profile_invalid_token" time="0.446" /><testcase classname="backend.tests.test_customer_portal.TestPublicPickupRequest" name="test_pickup_request_success" time="0.780" /><testcase classname="backend.tests.test_customer_portal.TestPublicPickupRequest" name="test_pickup_request_missing_required_fields" time="0.345" /><testcase classname="backend.tests.test_customer_portal.TestPublicPickupRequest" name="test_pickup_request_invalid_email" time="0.771" /><testcase classname="backend.tests.test_customer_portal.TestPublicContactForm" name="test_contact_form_success" time="0.351" /><testcase classname="backend.tests.test_customer_portal.TestPublicContactForm" name="test_contact_form_minimal_fields" time="0.760" /><testcase classname="backend.tests.test_customer_portal.TestPublicQuoteRequest" name="test_quote_request_success" time="0.373" /><testcase classname="backend.tests.test_customer_portal.TestPublicQuoteRequest" name="test_quote_request_minimal_fields" time="0.449" /><testcase classname="backend.tests.test_customer_portal.TestAdminLogin" name="test_admin_login_success" time="1.563" /><testcase classname="backend.tests.test_customer_portal.TestAdminLogin" name="test_admin_login_invalid_credentials" time="0.344" /><testcase classname="backend.tests.test_customer_portal.TestCustomerOrderIntegration" name="test_customer_sees_pickup_order" time="2.220" /></testsuite></testsuites>
