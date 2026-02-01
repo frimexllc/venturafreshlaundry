@@ -1450,7 +1450,7 @@ async def customer_register(data: CustomerRegister):
         }
         await db.customers.insert_one(customer)
         await create_audit_log("CUSTOMER_REGISTERED", "customer", customer_id, None, {"source": "portal"})
-        customer = {k: v for k, v in customer.items() if k != "password_hash"}
+        customer = {k: v for k, v in customer.items() if k not in ["password_hash", "_id"]}
     
     token = create_customer_token(customer["id"], customer["email"])
     return CustomerAuthResponse(
