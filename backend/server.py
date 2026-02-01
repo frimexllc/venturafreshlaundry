@@ -1369,6 +1369,132 @@ async def test_sms_notification(
     result = await send_sms(to_phone, "Test: Este es un mensaje de prueba del CRM de Ventura Fresh Laundry.")
     return result
 
+# ==================== CUSTOMER AUTHENTICATION ====================
+
+class CustomerRegister(BaseModel):
+    name: str
+    email: EmailStr
+    password: str
+
+class CustomerLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+class CustomerAuthResponse(BaseModel):
+    access_token: str
+    token_type: str
+    customer: dict
+
+def create_customer_token(customer_id: str, email: str) -> str:
+    payload = {
+        "sub": customer_id,
+        "email": email,
+        "type": "customer",
+        "exp": datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRATION_HOURS * 7)  # 7 days for customers
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+async def get_current_customer(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    try:
+        payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        customer_id = payload.get("sub")
+        token_type = payload.get("type")
+        if not customer_id or token_type != "customer":
+            raise HTTPException(status_code=401, detail="Invalid token")
+        customer = await db.customers.find_one({"id": customer_id}, {"_id": 0})
+        if not customer:
+            raise HTTPException(status_code=401, detail="Customer not found")
+        return customer
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+@api_router.post("/customer/auth/register", response_model=CustomerAuthResponse)
+async def customer_register(data: CustomerRegister):
+    """Register a new customer account"""
+    existing = await db.customers.find_one({"email": data.email.lower()})
+    
+    if existing:
+        # Check if customer already has a password (already registered)
+        if existing.get("password_hash"):
+            raise HTTPException(status_code=400, detail="Email already registered. Please login.")
+        
+        # Customer exists from a pickup request but hasn't registered - update with password
+        await db.customers.update_one(
+            {"email": data.email.lower()},
+            {"$set": {
+                "password_hash": hash_password(data.password),
+                "name": data.name,
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }}
+        )
+        customer = await db.customers.find_one({"email": data.email.lower()}, {"_id": 0, "password_hash": 0})
+    else:
+        # Create new customer
+        customer_id = str(uuid.uuid4())
+        now = datetime.now(timezone.utc).isoformat()
+        customer = {
+            "id": customer_id,
+            "name": data.name,
+            "email": data.email.lower(),
+            "phone": None,
+            "address": None,
+            "preferred_contact": "email",
+            "notes": None,
+            "status": "active",
+            "total_orders": 0,
+            "password_hash": hash_password(data.password),
+            "created_at": now,
+            "updated_at": now
+        }
+        await db.customers.insert_one(customer)
+        await create_audit_log("CUSTOMER_REGISTERED", "customer", customer_id, None, {"source": "portal"})
+        customer = {k: v for k, v in customer.items() if k != "password_hash"}
+    
+    token = create_customer_token(customer["id"], customer["email"])
+    return CustomerAuthResponse(
+        access_token=token,
+        token_type="bearer",
+        customer=customer
+    )
+
+@api_router.post("/customer/auth/login", response_model=CustomerAuthResponse)
+async def customer_login(data: CustomerLogin):
+    """Customer login"""
+    customer = await db.customers.find_one({"email": data.email.lower()})
+    if not customer:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    
+    if not customer.get("password_hash"):
+        raise HTTPException(status_code=401, detail="Please register an account first")
+    
+    if not verify_password(data.password, customer["password_hash"]):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    
+    customer_data = {k: v for k, v in customer.items() if k not in ["_id", "password_hash"]}
+    token = create_customer_token(customer["id"], customer["email"])
+    
+    return CustomerAuthResponse(
+        access_token=token,
+        token_type="bearer",
+        customer=customer_data
+    )
+
+@api_router.get("/customer/me")
+async def get_customer_profile(current_customer: dict = Depends(get_current_customer)):
+    """Get current customer profile"""
+    return current_customer
+
+@api_router.get("/customer/orders")
+async def get_customer_orders(current_customer: dict = Depends(get_current_customer)):
+    """Get orders for the logged-in customer"""
+    orders = await db.orders.find(
+        {"customer_id": current_customer["id"]}, 
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(100)
+    return orders
+
 # Include router and middleware
 app.include_router(api_router)
 
