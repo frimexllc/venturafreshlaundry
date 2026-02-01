@@ -471,6 +471,11 @@ def main():
         tester.test_tickets()
         tester.test_audit_log()
         
+        # New feature tests
+        tester.test_public_endpoints()
+        tester.test_calendar_endpoints()
+        tester.test_settings_endpoints()
+        
         # Cleanup
         tester.cleanup_test_data()
         
