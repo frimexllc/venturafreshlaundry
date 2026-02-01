@@ -9,7 +9,10 @@ import Quotes from "./pages/Quotes";
 import Leads from "./pages/Leads";
 import Tickets from "./pages/Tickets";
 import AuditLog from "./pages/AuditLog";
+import Calendar from "./pages/Calendar";
+import Settings from "./pages/Settings";
 import Layout from "./components/Layout";
+import LandingPage from "./pages/LandingPage";
 
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -32,9 +35,10 @@ const ProtectedRoute = ({ children }) => {
 function AppRoutes() {
   return (
     <Routes>
+      <Route path="/home" element={<LandingPage />} />
       <Route path="/login" element={<Login />} />
       <Route
-        path="/"
+        path="/admin"
         element={
           <ProtectedRoute>
             <Layout />
@@ -44,12 +48,15 @@ function AppRoutes() {
         <Route index element={<Dashboard />} />
         <Route path="customers" element={<Customers />} />
         <Route path="orders" element={<Orders />} />
+        <Route path="calendar" element={<Calendar />} />
         <Route path="quotes" element={<Quotes />} />
         <Route path="leads" element={<Leads />} />
         <Route path="tickets" element={<Tickets />} />
         <Route path="audit-log" element={<AuditLog />} />
+        <Route path="settings" element={<Settings />} />
       </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="/" element={<Navigate to="/home" replace />} />
+      <Route path="*" element={<Navigate to="/home" replace />} />
     </Routes>
   );
 }
