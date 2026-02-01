@@ -90,7 +90,7 @@ export default function Layout() {
                 <li key={item.path}>
                   <NavLink
                     to={item.path}
-                    end={item.path === "/"}
+                    end={item.path === "/admin"}
                     onClick={() => setSidebarOpen(false)}
                     className={({ isActive }) =>
                       `sidebar-link ${isActive ? "active" : ""}`
@@ -103,6 +103,17 @@ export default function Layout() {
                 </li>
               ))}
             </ul>
+            <div className="mt-4 pt-4 border-t border-slate-100">
+              <a
+                href="/home"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="sidebar-link text-sky-600"
+              >
+                <ExternalLink className="h-5 w-5" />
+                <span>Ver Landing Page</span>
+              </a>
+            </div>
           </nav>
 
           {/* User section */}
