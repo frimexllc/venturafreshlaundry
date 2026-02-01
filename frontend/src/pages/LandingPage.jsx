@@ -772,25 +772,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="bg-slate-900 text-white py-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-8">
-            <div className="text-center md:text-left">
-              <p className="text-sm text-slate-400">© 2026 Ventura Fresh Laundry. All rights reserved.</p>
-            </div>
-            <div className="flex flex-col md:flex-row items-center gap-6">
-              <span className="text-sm text-slate-400 font-medium">Quick links</span>
-              <div className="flex items-center gap-6 text-sm text-slate-400">
-                <button onClick={() => scrollToSection("services")} className="hover:text-white transition-colors">Services</button>
-                <button onClick={() => scrollToSection("about")} className="hover:text-white transition-colors">About us</button>
-                <button onClick={() => scrollToSection("contact")} className="hover:text-white transition-colors">Contact us</button>
-                <Link to="/login" className="hover:text-white transition-colors">Admin</Link>
-              </div>
-            </div>
-          </div>
-        </div>
-      </footer>
+      <PublicFooter />
     </div>
   );
 }
