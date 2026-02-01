@@ -1,0 +1,347 @@
+import { useState, useEffect } from "react";
+import axios from "axios";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
+import { toast } from "sonner";
+import { 
+  Settings as SettingsIcon, 
+  Download, 
+  Mail, 
+  MessageSquare, 
+  CheckCircle2, 
+  XCircle,
+  Send,
+  Users,
+  ShoppingBag,
+  FileText,
+  UserPlus,
+  HeadphonesIcon
+} from "lucide-react";
+
+const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+
+export default function Settings() {
+  const [notificationSettings, setNotificationSettings] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [testEmail, setTestEmail] = useState("");
+  const [testPhone, setTestPhone] = useState("");
+  const [sending, setSending] = useState(false);
+
+  useEffect(() => {
+    fetchSettings();
+  }, []);
+
+  const fetchSettings = async () => {
+    try {
+      const res = await axios.get(`${API}/settings/notifications`);
+      setNotificationSettings(res.data);
+    } catch (error) {
+      console.error("Error loading settings");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleExport = async (type) => {
+    try {
+      const res = await axios.get(`${API}/export/${type}`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `${type}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      toast.success(`${type}.csv descargado`);
+    } catch (error) {
+      toast.error(`Error exportando ${type}`);
+    }
+  };
+
+  const handleTestEmail = async () => {
+    if (!testEmail) return;
+    setSending(true);
+    try {
+      const res = await axios.post(`${API}/test/email`, null, {
+        params: { to_email: testEmail }
+      });
+      if (res.data.status === "success") {
+        toast.success("Email de prueba enviado");
+      } else {
+        toast.error(res.data.message || "Error enviando email");
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Error enviando email");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleTestSMS = async () => {
+    if (!testPhone) return;
+    setSending(true);
+    try {
+      const res = await axios.post(`${API}/test/sms`, null, {
+        params: { to_phone: testPhone }
+      });
+      if (res.data.status === "success") {
+        toast.success("SMS de prueba enviado");
+      } else {
+        toast.error(res.data.message || "Error enviando SMS");
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Error enviando SMS");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div data-testid="settings-page" className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-slate-900">Configuración</h1>
+        <p className="text-slate-500 mt-1">Notificaciones y exportación de datos</p>
+      </div>
+
+      <div className="grid lg:grid-cols-2 gap-6">
+        {/* Notifications Section */}
+        <div className="dashboard-card p-6">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="h-10 w-10 rounded-xl bg-sky-100 flex items-center justify-center">
+              <SettingsIcon className="h-5 w-5 text-sky-600" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">Notificaciones</h2>
+              <p className="text-sm text-slate-500">Estado de los servicios de notificación</p>
+            </div>
+          </div>
+
+          {loading ? (
+            <div className="animate-pulse space-y-4">
+              <div className="h-16 bg-slate-100 rounded-lg"></div>
+              <div className="h-16 bg-slate-100 rounded-lg"></div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* Email Status */}
+              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <Mail className="h-5 w-5 text-slate-600" />
+                  <div>
+                    <p className="font-medium text-slate-900">Email (Resend)</p>
+                    <p className="text-xs text-slate-500">Notificaciones por correo electrónico</p>
+                  </div>
+                </div>
+                {notificationSettings?.email_enabled ? (
+                  <div className="flex items-center gap-2 text-emerald-600">
+                    <CheckCircle2 className="h-5 w-5" />
+                    <span className="text-sm font-medium">Activo</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-slate-400">
+                    <XCircle className="h-5 w-5" />
+                    <span className="text-sm font-medium">No configurado</span>
+                  </div>
+                )}
+              </div>
+
+              {/* SMS Status */}
+              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <MessageSquare className="h-5 w-5 text-slate-600" />
+                  <div>
+                    <p className="font-medium text-slate-900">SMS (Twilio)</p>
+                    <p className="text-xs text-slate-500">Notificaciones por mensaje de texto</p>
+                  </div>
+                </div>
+                {notificationSettings?.sms_enabled ? (
+                  <div className="flex items-center gap-2 text-emerald-600">
+                    <CheckCircle2 className="h-5 w-5" />
+                    <span className="text-sm font-medium">Activo</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-slate-400">
+                    <XCircle className="h-5 w-5" />
+                    <span className="text-sm font-medium">No configurado</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Test Email */}
+              {notificationSettings?.email_enabled && (
+                <div className="pt-4 border-t border-slate-200">
+                  <Label className="text-slate-700">Probar Email</Label>
+                  <div className="flex gap-2 mt-2">
+                    <Input
+                      type="email"
+                      placeholder="email@ejemplo.com"
+                      value={testEmail}
+                      onChange={(e) => setTestEmail(e.target.value)}
+                      className="flex-1"
+                      data-testid="test-email-input"
+                    />
+                    <Button 
+                      onClick={handleTestEmail} 
+                      disabled={!testEmail || sending}
+                      className="btn-primary"
+                      data-testid="test-email-btn"
+                    >
+                      <Send className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Test SMS */}
+              {notificationSettings?.sms_enabled && (
+                <div className="pt-4 border-t border-slate-200">
+                  <Label className="text-slate-700">Probar SMS</Label>
+                  <div className="flex gap-2 mt-2">
+                    <Input
+                      type="tel"
+                      placeholder="+1234567890"
+                      value={testPhone}
+                      onChange={(e) => setTestPhone(e.target.value)}
+                      className="flex-1"
+                      data-testid="test-sms-input"
+                    />
+                    <Button 
+                      onClick={handleTestSMS} 
+                      disabled={!testPhone || sending}
+                      className="btn-primary"
+                      data-testid="test-sms-btn"
+                    >
+                      <Send className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Config Instructions */}
+              {!notificationSettings?.email_enabled && !notificationSettings?.sms_enabled && (
+                <div className="p-4 bg-amber-50 rounded-lg border border-amber-100">
+                  <p className="text-sm text-amber-800">
+                    <strong>Para activar notificaciones:</strong> Configura las variables de entorno RESEND_API_KEY y/o TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER en el archivo .env del backend.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Export Section */}
+        <div className="dashboard-card p-6">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="h-10 w-10 rounded-xl bg-emerald-100 flex items-center justify-center">
+              <Download className="h-5 w-5 text-emerald-600" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">Exportar Datos</h2>
+              <p className="text-sm text-slate-500">Descargar datos en formato CSV</p>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <Button
+              variant="outline"
+              className="w-full justify-between h-14"
+              onClick={() => handleExport("customers")}
+              data-testid="export-customers-btn"
+            >
+              <div className="flex items-center gap-3">
+                <Users className="h-5 w-5 text-slate-500" />
+                <span>Exportar Clientes</span>
+              </div>
+              <Download className="h-4 w-4 text-slate-400" />
+            </Button>
+
+            <Button
+              variant="outline"
+              className="w-full justify-between h-14"
+              onClick={() => handleExport("orders")}
+              data-testid="export-orders-btn"
+            >
+              <div className="flex items-center gap-3">
+                <ShoppingBag className="h-5 w-5 text-slate-500" />
+                <span>Exportar Órdenes</span>
+              </div>
+              <Download className="h-4 w-4 text-slate-400" />
+            </Button>
+
+            <Button
+              variant="outline"
+              className="w-full justify-between h-14"
+              onClick={() => handleExport("quotes")}
+              data-testid="export-quotes-btn"
+            >
+              <div className="flex items-center gap-3">
+                <FileText className="h-5 w-5 text-slate-500" />
+                <span>Exportar Cotizaciones</span>
+              </div>
+              <Download className="h-4 w-4 text-slate-400" />
+            </Button>
+
+            <Button
+              variant="outline"
+              className="w-full justify-between h-14"
+              onClick={() => handleExport("leads")}
+              data-testid="export-leads-btn"
+            >
+              <div className="flex items-center gap-3">
+                <UserPlus className="h-5 w-5 text-slate-500" />
+                <span>Exportar Leads</span>
+              </div>
+              <Download className="h-4 w-4 text-slate-400" />
+            </Button>
+
+            <Button
+              variant="outline"
+              className="w-full justify-between h-14"
+              onClick={() => handleExport("tickets")}
+              data-testid="export-tickets-btn"
+            >
+              <div className="flex items-center gap-3">
+                <HeadphonesIcon className="h-5 w-5 text-slate-500" />
+                <span>Exportar Tickets</span>
+              </div>
+              <Download className="h-4 w-4 text-slate-400" />
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* API Keys Info */}
+      <div className="dashboard-card p-6">
+        <h2 className="text-lg font-semibold text-slate-900 mb-4">Configuración de APIs</h2>
+        <div className="grid md:grid-cols-2 gap-6">
+          <div>
+            <h3 className="font-medium text-slate-900 mb-2">Email (Resend)</h3>
+            <p className="text-sm text-slate-600 mb-3">
+              Para habilitar notificaciones por email, necesitas una cuenta en Resend.
+            </p>
+            <ol className="text-sm text-slate-600 space-y-1 list-decimal list-inside">
+              <li>Regístrate en <a href="https://resend.com" target="_blank" rel="noopener noreferrer" className="text-sky-600 hover:underline">resend.com</a></li>
+              <li>Crea un API Key en el dashboard</li>
+              <li>Agrega RESEND_API_KEY y SENDER_EMAIL al archivo .env</li>
+              <li>Reinicia el backend</li>
+            </ol>
+          </div>
+          
+          <div>
+            <h3 className="font-medium text-slate-900 mb-2">SMS (Twilio)</h3>
+            <p className="text-sm text-slate-600 mb-3">
+              Para habilitar notificaciones por SMS, necesitas una cuenta en Twilio.
+            </p>
+            <ol className="text-sm text-slate-600 space-y-1 list-decimal list-inside">
+              <li>Regístrate en <a href="https://twilio.com" target="_blank" rel="noopener noreferrer" className="text-sky-600 hover:underline">twilio.com</a></li>
+              <li>Obtén tu Account SID, Auth Token y Phone Number</li>
+              <li>Agrega las variables al archivo .env</li>
+              <li>Reinicia el backend</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
