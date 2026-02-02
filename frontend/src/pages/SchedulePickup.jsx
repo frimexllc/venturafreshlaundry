@@ -82,7 +82,7 @@ export default function SchedulePickup() {
               onClick={() => {
                 setSubmitted(false);
                 setForm({
-                  first_name: "", last_name: "", phone: "", contact_method: "",
+                  first_name: "", last_name: "", email: "", phone: "", contact_method: "",
                   address_line1: "", address_line2: "", city: "", state: "", zip_code: "",
                   service_type: "", pickup_date: "", pickup_time: "", notes: ""
                 });
