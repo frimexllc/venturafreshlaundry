@@ -1,71 +1,113 @@
 """
 Notification Services for Ventura Fresh Laundry CRM
-Handles Email (Resend) and SMS (Twilio) notifications
+Email via SMTP (no third-party services)
+SMS via carrier email-to-SMS gateways (free)
 """
 import os
 import asyncio
 import logging
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# ==================== EMAIL SERVICE (RESEND) ====================
+# ==================== EMAIL SERVICE (SMTP) ====================
 
-RESEND_API_KEY = os.environ.get('RESEND_API_KEY')
-SENDER_EMAIL = os.environ.get('SENDER_EMAIL', 'onboarding@resend.dev')
+SMTP_HOST = os.environ.get('SMTP_HOST', 'smtp.gmail.com')
+SMTP_PORT = int(os.environ.get('SMTP_PORT', '587'))
+SMTP_USER = os.environ.get('SMTP_USER')  # Your email address
+SMTP_PASSWORD = os.environ.get('SMTP_PASSWORD')  # App password for Gmail
+SENDER_NAME = os.environ.get('SENDER_NAME', 'Ventura Fresh Laundry')
 
 async def send_email(to_email: str, subject: str, html_content: str) -> dict:
-    """Send email using Resend API"""
-    if not RESEND_API_KEY:
-        logger.warning("RESEND_API_KEY not configured, skipping email")
+    """Send email using SMTP (Gmail, Outlook, etc.)"""
+    if not SMTP_USER or not SMTP_PASSWORD:
+        logger.warning("SMTP not configured, skipping email")
         return {"status": "skipped", "message": "Email service not configured"}
     
     try:
-        import resend
-        resend.api_key = RESEND_API_KEY
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = subject
+        msg['From'] = f"{SENDER_NAME} <{SMTP_USER}>"
+        msg['To'] = to_email
         
-        params = {
-            "from": SENDER_EMAIL,
-            "to": [to_email],
-            "subject": subject,
-            "html": html_content
-        }
+        # Attach HTML content
+        html_part = MIMEText(html_content, 'html')
+        msg.attach(html_part)
         
-        email = await asyncio.to_thread(resend.Emails.send, params)
+        # Send email in thread to not block
+        def send_sync():
+            with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+                server.starttls()
+                server.login(SMTP_USER, SMTP_PASSWORD)
+                server.sendmail(SMTP_USER, to_email, msg.as_string())
+        
+        await asyncio.to_thread(send_sync)
         logger.info(f"Email sent to {to_email}")
-        return {"status": "success", "email_id": email.get("id")}
+        return {"status": "success", "message": f"Email sent to {to_email}"}
     except Exception as e:
         logger.error(f"Failed to send email: {str(e)}")
         return {"status": "error", "message": str(e)}
 
-# ==================== SMS SERVICE (TWILIO) ====================
+# ==================== SMS SERVICE (Email-to-SMS Gateways) ====================
+# Free SMS via carrier email gateways - no Twilio needed!
 
-TWILIO_ACCOUNT_SID = os.environ.get('TWILIO_ACCOUNT_SID')
-TWILIO_AUTH_TOKEN = os.environ.get('TWILIO_AUTH_TOKEN')
-TWILIO_PHONE_NUMBER = os.environ.get('TWILIO_PHONE_NUMBER')
+CARRIER_GATEWAYS = {
+    # US Carriers
+    "att": "txt.att.net",
+    "tmobile": "tmomail.net", 
+    "verizon": "vtext.com",
+    "sprint": "messaging.sprintpcs.com",
+    "boost": "sms.myboostmobile.com",
+    "cricket": "sms.cricketwireless.net",
+    "uscellular": "email.uscc.net",
+    "virgin": "vmobl.com",
+    "metro": "mymetropcs.com",
+    # Mexico Carriers
+    "telcel": "mms.telcel.com",
+    "movistar_mx": "movistar.com.mx",
+}
 
-async def send_sms(to_phone: str, message: str) -> dict:
-    """Send SMS using Twilio API"""
-    if not all([TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER]):
-        logger.warning("Twilio not configured, skipping SMS")
-        return {"status": "skipped", "message": "SMS service not configured"}
+# Default carrier for US numbers (can be overridden per customer)
+DEFAULT_CARRIER = os.environ.get('DEFAULT_SMS_CARRIER', 'att')
+
+def format_phone_for_sms(phone: str) -> str:
+    """Clean phone number to digits only"""
+    return ''.join(filter(str.isdigit, phone))[-10:]  # Last 10 digits
+
+async def send_sms(to_phone: str, message: str, carrier: str = None) -> dict:
+    """Send SMS via carrier email gateway (free, no Twilio)"""
+    if not SMTP_USER or not SMTP_PASSWORD:
+        logger.warning("SMTP not configured, skipping SMS")
+        return {"status": "skipped", "message": "SMS service not configured (needs SMTP)"}
+    
+    carrier = carrier or DEFAULT_CARRIER
+    gateway = CARRIER_GATEWAYS.get(carrier.lower())
+    
+    if not gateway:
+        logger.warning(f"Unknown carrier: {carrier}")
+        return {"status": "error", "message": f"Unknown carrier: {carrier}"}
+    
+    phone_digits = format_phone_for_sms(to_phone)
+    sms_email = f"{phone_digits}@{gateway}"
     
     try:
-        from twilio.rest import Client
-        client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+        msg = MIMEText(message)
+        msg['Subject'] = ''  # SMS doesn't need subject
+        msg['From'] = SMTP_USER
+        msg['To'] = sms_email
         
-        # Format phone number to E.164 if needed
-        if not to_phone.startswith('+'):
-            to_phone = f"+1{to_phone}"  # Default to US
+        def send_sync():
+            with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+                server.starttls()
+                server.login(SMTP_USER, SMTP_PASSWORD)
+                server.sendmail(SMTP_USER, sms_email, msg.as_string())
         
-        sms = await asyncio.to_thread(
-            client.messages.create,
-            body=message,
-            from_=TWILIO_PHONE_NUMBER,
-            to=to_phone
-        )
-        logger.info(f"SMS sent to {to_phone}")
-        return {"status": "success", "sms_sid": sms.sid}
+        await asyncio.to_thread(send_sync)
+        logger.info(f"SMS sent to {to_phone} via {carrier}")
+        return {"status": "success", "message": f"SMS sent to {to_phone}"}
     except Exception as e:
         logger.error(f"Failed to send SMS: {str(e)}")
         return {"status": "error", "message": str(e)}
@@ -88,10 +130,7 @@ def get_order_status_email(customer_name: str, order_number: str, status: str, s
     return f"""
     <!DOCTYPE html>
     <html>
-    <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    </head>
+    <head><meta charset="utf-8"></head>
     <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f8fafc;">
         <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
             <tr>
@@ -101,27 +140,23 @@ def get_order_status_email(customer_name: str, order_number: str, status: str, s
             </tr>
             <tr>
                 <td style="padding: 40px;">
-                    <h2 style="margin: 0 0 20px; color: #1e293b; font-size: 20px;">
-                        ¡Hola {customer_name}!
-                    </h2>
-                    <p style="margin: 0 0 20px; color: #475569; font-size: 16px; line-height: 1.6;">
+                    <h2 style="margin: 0 0 20px; color: #1e293b;">¡Hola {customer_name}!</h2>
+                    <p style="margin: 0 0 20px; color: #475569;">
                         Tu orden <strong>{order_number}</strong> ha sido actualizada:
                     </p>
-                    <div style="background-color: #f1f5f9; border-radius: 12px; padding: 20px; text-align: center; margin: 20px 0;">
-                        <p style="margin: 0 0 10px; color: #64748b; font-size: 14px;">Estado actual</p>
-                        <p style="margin: 0; color: {color}; font-size: 24px; font-weight: bold;">
-                            {status_label}
-                        </p>
+                    <div style="background-color: #f1f5f9; border-radius: 12px; padding: 20px; text-align: center;">
+                        <p style="margin: 0 0 10px; color: #64748b;">Estado actual</p>
+                        <p style="margin: 0; color: {color}; font-size: 24px; font-weight: bold;">{status_label}</p>
                     </div>
-                    <p style="margin: 20px 0 0; color: #475569; font-size: 14px; line-height: 1.6;">
-                        Si tienes alguna pregunta, no dudes en contactarnos al (805) 836-8872.
+                    <p style="margin: 20px 0 0; color: #475569;">
+                        Preguntas? Llámanos al (805) 836-8872
                     </p>
                 </td>
             </tr>
             <tr>
-                <td style="padding: 20px 40px; background-color: #f8fafc; border-top: 1px solid #e2e8f0;">
-                    <p style="margin: 0; color: #94a3b8; font-size: 12px; text-align: center;">
-                        © 2026 Ventura Fresh Laundry. 5722 Telephone Rd #5, Ventura, CA 93003
+                <td style="padding: 20px; background-color: #f8fafc; text-align: center;">
+                    <p style="margin: 0; color: #94a3b8; font-size: 12px;">
+                        © 2026 Ventura Fresh Laundry
                     </p>
                 </td>
             </tr>
@@ -131,18 +166,15 @@ def get_order_status_email(customer_name: str, order_number: str, status: str, s
     """
 
 def get_order_status_sms(customer_name: str, order_number: str, status_label: str) -> str:
-    """Generate order status update SMS"""
-    return f"Hola {customer_name}! Tu orden {order_number} de Ventura Fresh Laundry está ahora: {status_label}. Preguntas? (805) 836-8872"
+    """Generate order status SMS (max 160 chars)"""
+    return f"Hola {customer_name}! Orden {order_number}: {status_label}. Ventura Fresh Laundry (805)836-8872"
 
 def get_order_confirmation_email(customer_name: str, order_number: str, pickup_date: str, pickup_time: str, address: str) -> str:
     """Generate order confirmation email HTML"""
     return f"""
     <!DOCTYPE html>
     <html>
-    <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    </head>
+    <head><meta charset="utf-8"></head>
     <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f8fafc;">
         <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
             <tr>
@@ -152,42 +184,22 @@ def get_order_confirmation_email(customer_name: str, order_number: str, pickup_d
             </tr>
             <tr>
                 <td style="padding: 40px;">
-                    <h2 style="margin: 0 0 20px; color: #1e293b; font-size: 20px;">
-                        ¡Gracias {customer_name}!
-                    </h2>
-                    <p style="margin: 0 0 20px; color: #475569; font-size: 16px; line-height: 1.6;">
-                        Hemos recibido tu orden. Aquí están los detalles:
-                    </p>
-                    <div style="background-color: #f1f5f9; border-radius: 12px; padding: 20px; margin: 20px 0;">
-                        <table width="100%" cellpadding="5" cellspacing="0">
-                            <tr>
-                                <td style="color: #64748b; font-size: 14px;">Número de Orden:</td>
-                                <td style="color: #1e293b; font-size: 14px; font-weight: bold;">{order_number}</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #64748b; font-size: 14px;">Fecha de Pickup:</td>
-                                <td style="color: #1e293b; font-size: 14px; font-weight: bold;">{pickup_date or 'Por confirmar'}</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #64748b; font-size: 14px;">Horario:</td>
-                                <td style="color: #1e293b; font-size: 14px; font-weight: bold;">{pickup_time or 'Por confirmar'}</td>
-                            </tr>
-                            <tr>
-                                <td style="color: #64748b; font-size: 14px;">Dirección:</td>
-                                <td style="color: #1e293b; font-size: 14px;">{address or 'Por confirmar'}</td>
-                            </tr>
+                    <h2 style="margin: 0 0 20px; color: #1e293b;">¡Gracias {customer_name}!</h2>
+                    <p style="margin: 0 0 20px; color: #475569;">Hemos recibido tu orden:</p>
+                    <div style="background-color: #f1f5f9; border-radius: 12px; padding: 20px;">
+                        <table width="100%" cellpadding="8">
+                            <tr><td style="color: #64748b;">Orden:</td><td style="color: #1e293b; font-weight: bold;">{order_number}</td></tr>
+                            <tr><td style="color: #64748b;">Fecha:</td><td style="color: #1e293b;">{pickup_date or 'Por confirmar'}</td></tr>
+                            <tr><td style="color: #64748b;">Horario:</td><td style="color: #1e293b;">{pickup_time or 'Por confirmar'}</td></tr>
+                            <tr><td style="color: #64748b;">Dirección:</td><td style="color: #1e293b;">{address or 'Por confirmar'}</td></tr>
                         </table>
                     </div>
-                    <p style="margin: 20px 0 0; color: #475569; font-size: 14px; line-height: 1.6;">
-                        Te notificaremos cuando recojamos tu ropa y cuando esté lista para entrega.
-                    </p>
+                    <p style="margin: 20px 0 0; color: #475569;">Te notificaremos cuando recojamos tu ropa.</p>
                 </td>
             </tr>
             <tr>
-                <td style="padding: 20px 40px; background-color: #f8fafc; border-top: 1px solid #e2e8f0;">
-                    <p style="margin: 0; color: #94a3b8; font-size: 12px; text-align: center;">
-                        © 2026 Ventura Fresh Laundry. 5722 Telephone Rd #5, Ventura, CA 93003
-                    </p>
+                <td style="padding: 20px; background-color: #f8fafc; text-align: center;">
+                    <p style="margin: 0; color: #94a3b8; font-size: 12px;">© 2026 Ventura Fresh Laundry</p>
                 </td>
             </tr>
         </table>
@@ -197,8 +209,8 @@ def get_order_confirmation_email(customer_name: str, order_number: str, pickup_d
 
 def get_order_confirmation_sms(customer_name: str, order_number: str, pickup_date: str) -> str:
     """Generate order confirmation SMS"""
-    date_text = f" para el {pickup_date}" if pickup_date else ""
-    return f"Hola {customer_name}! Tu orden {order_number} ha sido recibida{date_text}. Te avisaremos cuando recojamos tu ropa. Ventura Fresh Laundry"
+    date_text = f" {pickup_date}" if pickup_date else ""
+    return f"Orden {order_number} recibida{date_text}. Ventura Fresh Laundry (805)836-8872"
 
 # ==================== NOTIFICATION DISPATCHER ====================
 
@@ -212,19 +224,14 @@ async def notify_order_created(customer: dict, order: dict):
     
     tasks = []
     
-    # Email notification
     if customer.get("email"):
         email_html = get_order_confirmation_email(customer_name, order_number, pickup_date, pickup_time, address)
-        tasks.append(send_email(
-            customer["email"],
-            f"Confirmación de Orden {order_number} - Ventura Fresh Laundry",
-            email_html
-        ))
+        tasks.append(send_email(customer["email"], f"Confirmación de Orden {order_number}", email_html))
     
-    # SMS notification
     if customer.get("phone"):
         sms_text = get_order_confirmation_sms(customer_name, order_number, pickup_date)
-        tasks.append(send_sms(customer["phone"], sms_text))
+        carrier = customer.get("carrier", DEFAULT_CARRIER)
+        tasks.append(send_sms(customer["phone"], sms_text, carrier))
     
     if tasks:
         await asyncio.gather(*tasks, return_exceptions=True)
@@ -233,8 +240,8 @@ async def notify_order_status_changed(customer: dict, order: dict, new_status: s
     """Send notifications when order status changes"""
     status_labels = {
         "new": "Nueva",
-        "processing": "Procesando",
-        "ready": "Lista para entrega",
+        "processing": "Procesando", 
+        "ready": "Lista",
         "out_for_delivery": "En camino",
         "delivered": "Entregada",
         "completed": "Completada",
@@ -247,19 +254,14 @@ async def notify_order_status_changed(customer: dict, order: dict, new_status: s
     
     tasks = []
     
-    # Email notification
     if customer.get("email"):
         email_html = get_order_status_email(customer_name, order_number, new_status, status_label)
-        tasks.append(send_email(
-            customer["email"],
-            f"Actualización de Orden {order_number} - {status_label}",
-            email_html
-        ))
+        tasks.append(send_email(customer["email"], f"Orden {order_number} - {status_label}", email_html))
     
-    # SMS notification
     if customer.get("phone"):
         sms_text = get_order_status_sms(customer_name, order_number, status_label)
-        tasks.append(send_sms(customer["phone"], sms_text))
+        carrier = customer.get("carrier", DEFAULT_CARRIER)
+        tasks.append(send_sms(customer["phone"], sms_text, carrier))
     
     if tasks:
         await asyncio.gather(*tasks, return_exceptions=True)
