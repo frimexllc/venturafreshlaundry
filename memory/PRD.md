@@ -34,7 +34,7 @@ Desarrollar un CRM para Ventura Fresh Laundry (negocio de lavandería) SIN neces
 - UI en español (parcial)
 
 ## What's Been Implemented ✅
-**Date: 2026-02-01**
+**Date: 2026-02-02**
 
 ### Backend (FastAPI)
 - ✅ JWT Authentication for Admin (login/register)
@@ -57,17 +57,13 @@ Desarrollar un CRM para Ventura Fresh Laundry (negocio de lavandería) SIN neces
   - POST /api/customer/auth/login
   - GET /api/customer/me
   - GET /api/customer/orders
-- ✅ **Export Endpoints** (CSV):
-  - GET /api/export/customers
-  - GET /api/export/orders
-  - GET /api/export/quotes
-  - GET /api/export/leads
-  - GET /api/export/tickets
-- ✅ **Calendar API**:
-  - GET /api/calendar/orders (date range filtering)
-- ✅ **Notification Service** (MOCKED - awaiting API keys):
-  - notifications.py with email/SMS templates
-  - Auto-notify hooks on order creation and status changes
+- ✅ **Export Endpoints** (CSV)
+- ✅ **Calendar API**
+- ✅ **Notification Service** (Ready - needs API keys):
+  - resend>=2.0.0 installed
+  - Email templates for order status updates
+  - SMS templates ready
+  - Add RESEND_API_KEY to .env to activate
 
 ### Frontend (React) - Admin Panel
 - ✅ Admin Login/Register pages
