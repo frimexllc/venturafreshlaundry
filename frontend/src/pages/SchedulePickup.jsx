@@ -48,6 +48,7 @@ export default function SchedulePickup() {
     try {
       const res = await axios.post(`${API}/public/pickup-request`, {
         name: `${form.first_name} ${form.last_name}`,
+        email: form.email,
         phone: form.phone,
         address: `${form.address_line1}${form.address_line2 ? ', ' + form.address_line2 : ''}, ${form.city}, ${form.state} ${form.zip_code}`,
         pickup_date: form.pickup_date,
@@ -58,7 +59,7 @@ export default function SchedulePickup() {
       toast.success(res.data.message);
       setSubmitted(true);
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Error submitting request");
+      toast.error(getErrorMessage(error));
     } finally {
       setSubmitting(false);
     }
