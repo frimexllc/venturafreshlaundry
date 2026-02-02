@@ -150,6 +150,19 @@ export default function SchedulePickup() {
               </div>
             </div>
 
+            {/* Email */}
+            <div className="mb-6">
+              <h3 className="font-semibold text-slate-900 mb-3">Email *</h3>
+              <Input 
+                type="email"
+                value={form.email}
+                onChange={(e) => setForm({...form, email: e.target.value})}
+                required
+                placeholder="your@email.com"
+                data-testid="pickup-email"
+              />
+            </div>
+
             {/* Phone */}
             <div className="mb-6">
               <h3 className="font-semibold text-slate-900 mb-3">Phone *</h3>
