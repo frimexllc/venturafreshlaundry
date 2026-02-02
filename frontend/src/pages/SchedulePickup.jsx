@@ -12,12 +12,23 @@ import PublicFooter from "../components/PublicFooter";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
+// Helper to extract error message from Pydantic validation errors
+const getErrorMessage = (error) => {
+  const detail = error.response?.data?.detail;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    return detail.map(d => d.msg || d.message || JSON.stringify(d)).join(', ');
+  }
+  return "Error submitting request";
+};
+
 export default function SchedulePickup() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [form, setForm] = useState({
     first_name: "",
     last_name: "",
+    email: "",
     phone: "",
     contact_method: "",
     address_line1: "",
