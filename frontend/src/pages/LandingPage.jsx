@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { ChevronDown, ChevronUp, Phone, MapPin, Clock, Mail } from "lucide-react";
+import { ChevronDown, ChevronUp, Phone, MapPin, Clock } from "lucide-react";
 import { Button } from "../components/ui/button";
 import PublicNav from "../components/PublicNav";
 import PublicFooter from "../components/PublicFooter";
@@ -88,10 +88,8 @@ export default function LandingPage() {
 
   return (
     <div className="min-h-screen bg-white">
-      <PublicNav />
-
-      {/* Hero Section with Video Background */}
-      <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
+      {/* Hero Section with Video Background - NO NAV, Full screen video */}
+      <section className="relative min-h-screen flex items-center overflow-hidden">
         {/* Video Background */}
         <div className="absolute inset-0 z-0">
           <video
@@ -100,39 +98,80 @@ export default function LandingPage() {
             loop
             playsInline
             className="w-full h-full object-cover"
-            poster="https://images.squarespace-cdn.com/content/v1/696c559a4b2b9b1b0febf8d7/afc754e5-400f-4091-855c-a38d60c731ed/backgound.png"
           >
-            <source src="https://customer-assets.emergentagent.com/job_crm-without-n8n/artifacts/j1fccl3e_vflvideo.mov" type="video/mp4" />
+            <source src="https://customer-assets.emergentagent.com/job_168ce4be-271c-44e1-9ae3-3f0f14f2ffa9/artifacts/4x796jzj_WhatsApp%20Video%202026-01-31%20at%2011.26.35%20PM.mp4" type="video/mp4" />
           </video>
-          <div className="absolute inset-0 bg-black/50"></div>
+          <div className="absolute inset-0 bg-black/30"></div>
         </div>
 
-        {/* Hero Content */}
-        <div className="relative z-10 text-center px-4 max-w-4xl mx-auto">
-          <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-white mb-2 leading-tight animate-fade-in" style={{ fontFamily: "'Playfair Display', serif" }}>
-            We do your laundry.
-          </h1>
-          <h2 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-white mb-4 leading-tight animate-fade-in" style={{ fontFamily: "'Playfair Display', serif" }}>
-            You enjoy your time.
-          </h2>
-          <p className="text-xl sm:text-2xl text-white/90 mb-10 animate-fade-in">
-            Fast pickup, perfectly folded.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center animate-fade-in">
-            <Link to="/schedule-pickup">
-              <Button className="bg-sky-500 hover:bg-sky-600 text-white rounded-full px-8 py-6 text-lg font-semibold shadow-lg hover:shadow-xl transition-all" data-testid="hero-schedule-btn">
-                👉 SCHEDULE PICK-UP
-              </Button>
-            </Link>
-            <Link to="/services">
-              <Button variant="outline" className="border-2 border-white text-white hover:bg-white hover:text-slate-900 rounded-full px-8 py-6 text-lg font-semibold transition-all bg-transparent">
-                👉 MORE SERVICES
-              </Button>
-            </Link>
+        {/* Navigation on top of video */}
+        <nav className="absolute top-0 left-0 right-0 z-50 py-4">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
+            {/* Logo */}
+            <div className="flex items-center gap-3">
+              <img 
+                src="https://images.squarespace-cdn.com/content/v1/696c559a4b2b9b1b0febf8d7/c88c2b19-90c7-463f-8783-56787e59427c/LOGO2-fotor-bg-remover-2026011719450.png" 
+                alt="Ventura Fresh Laundry" 
+                className="h-16 w-auto"
+              />
+            </div>
+            
+            {/* Desktop nav */}
+            <div className="hidden md:flex items-center gap-6">
+              <Link to="/services" className="text-white hover:text-sky-300 font-medium transition-colors">Services</Link>
+              <Link to="/about" className="text-white hover:text-sky-300 font-medium transition-colors">About</Link>
+              <Link to="/contact" className="text-white hover:text-sky-300 font-medium transition-colors">Contact</Link>
+              <Link to="/store" className="text-white hover:text-sky-300 font-medium transition-colors">Store</Link>
+              <Link to="/blog" className="text-white hover:text-sky-300 font-medium transition-colors">Blog</Link>
+              <Link to="/account" className="text-white hover:text-sky-300 font-medium transition-colors flex items-center gap-1">
+                Account
+              </Link>
+              <Link to="/schedule-pickup">
+                <Button className="bg-sky-500 hover:bg-sky-600 text-white rounded-full px-6">
+                  SCHEDULE PICK-UP
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </nav>
+
+        {/* Hero Content - Left aligned like the image */}
+        <div className="relative z-10 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
+          <div className="max-w-xl">
+            <h1 className="text-4xl sm:text-5xl md:text-6xl font-light text-white mb-2 leading-tight italic" style={{ fontFamily: "'Playfair Display', serif" }}>
+              We do your laundry.
+            </h1>
+            <h2 className="text-4xl sm:text-5xl md:text-6xl font-light text-white mb-2 leading-tight italic" style={{ fontFamily: "'Playfair Display', serif" }}>
+              You enjoy your time.
+            </h2>
+            <p className="text-2xl sm:text-3xl text-white mb-8 italic" style={{ fontFamily: "'Playfair Display', serif" }}>
+              Fast pickup, perfectly folded.
+            </p>
+
+            {/* Buttons */}
+            <div className="flex flex-col sm:flex-row gap-3 mb-10">
+              <Link to="/schedule-pickup">
+                <Button className="bg-sky-500 hover:bg-sky-600 text-white rounded-full px-6 py-3 text-sm font-semibold shadow-lg" data-testid="hero-schedule-btn">
+                  👉 SCHEDULE PICK-UP
+                </Button>
+              </Link>
+              <Link to="/services">
+                <Button variant="outline" className="border-2 border-white text-white hover:bg-white hover:text-slate-900 rounded-full px-6 py-3 text-sm font-semibold bg-transparent">
+                  👉 MORE SERVICES
+                </Button>
+              </Link>
+            </div>
+
+            {/* Service List */}
+            <div className="space-y-2 text-white">
+              <p className="text-lg">•Self Service</p>
+              <p className="text-lg">• Wash & Fold</p>
+              <p className="text-lg">•Pickup & Delivery</p>
+            </div>
           </div>
         </div>
 
-        {/* Scalloped Divider */}
+        {/* Wave Divider */}
         <div className="absolute bottom-0 left-0 right-0 z-10">
           <svg viewBox="0 0 1440 60" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full">
             <path d="M0,30 Q80,60 160,30 T320,30 T480,30 T640,30 T800,30 T960,30 T1120,30 T1280,30 T1440,30 L1440,60 L0,60 Z" fill="white"/>
@@ -140,6 +179,8 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* From here, use PublicNav for rest of page */}
+      
       {/* Features Section */}
       <section className="py-20 relative overflow-hidden">
         <div 
@@ -283,7 +324,6 @@ export default function LandingPage() {
           <div className="grid md:grid-cols-2 gap-16">
             {/* Left Column */}
             <div>
-              {/* Real-Time Updates */}
               <div className="mb-12">
                 <h3 className="text-3xl font-bold text-slate-900 mb-4" style={{ fontFamily: "'Playfair Display', serif" }}>
                   Real-Time Updates
@@ -293,7 +333,6 @@ export default function LandingPage() {
                 </p>
               </div>
 
-              {/* Eco-Conscious */}
               <div>
                 <h3 className="text-3xl font-bold text-slate-900 mb-4" style={{ fontFamily: "'Playfair Display', serif" }}>
                   Eco-Conscious by Design
@@ -314,14 +353,11 @@ export default function LandingPage() {
 
             {/* Right Column */}
             <div>
-              {/* Personalized */}
               <div className="mb-12">
                 <h3 className="text-3xl font-bold text-slate-900 mb-4" style={{ fontFamily: "'Playfair Display', serif" }}>
                   Personalized to Your Preferences
                 </h3>
-                <p className="text-slate-600 mb-4">
-                  Getting started is easy:
-                </p>
+                <p className="text-slate-600 mb-4">Getting started is easy:</p>
                 <ul className="text-slate-600 space-y-2">
                   <li>• Schedule by phone or text</li>
                   <li>• Set your preferences once</li>
@@ -333,7 +369,6 @@ export default function LandingPage() {
                 </p>
               </div>
 
-              {/* Simple */}
               <div>
                 <h3 className="text-3xl font-bold text-slate-900 mb-4" style={{ fontFamily: "'Playfair Display', serif" }}>
                   Simple from Start to Finish
@@ -374,7 +409,6 @@ export default function LandingPage() {
           </p>
         </div>
 
-        {/* Scalloped Divider */}
         <div className="absolute bottom-0 left-0 right-0 z-10">
           <svg viewBox="0 0 1440 60" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full">
             <path d="M0,30 Q80,60 160,30 T320,30 T480,30 T640,30 T800,30 T960,30 T1120,30 T1280,30 T1440,30 L1440,60 L0,60 Z" fill="white"/>
