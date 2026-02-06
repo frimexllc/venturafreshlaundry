@@ -1518,6 +1518,14 @@ if WEB_DIR.exists():
         if folder.is_dir() and folder.name.endswith('_files'):
             app.mount(f"/web/{folder.name}", StaticFiles(directory=folder), name=folder.name)
 
+@app.get("/web/crm-integration.js")
+async def serve_crm_js():
+    """Serve the CRM integration JavaScript"""
+    js_file = WEB_DIR / "crm-integration.js"
+    if js_file.exists():
+        return FileResponse(js_file, media_type="application/javascript")
+    raise HTTPException(status_code=404, detail="File not found")
+
 @app.get("/web/", response_class=HTMLResponse)
 @app.get("/web", response_class=HTMLResponse)
 async def serve_home():
