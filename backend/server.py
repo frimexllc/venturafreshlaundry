@@ -1507,6 +1507,74 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ==================== STATIC WEBSITE ROUTES ====================
+# Serve the HTML website files
+
+WEB_DIR = ROOT_DIR / "paginaweb"
+
+# Mount static files directories for each page's assets
+if WEB_DIR.exists():
+    for folder in WEB_DIR.iterdir():
+        if folder.is_dir() and folder.name.endswith('_files'):
+            app.mount(f"/web/{folder.name}", StaticFiles(directory=folder), name=folder.name)
+
+@app.get("/web/", response_class=HTMLResponse)
+@app.get("/web", response_class=HTMLResponse)
+async def serve_home():
+    """Serve the main landing page"""
+    html_file = WEB_DIR / "index.html"
+    if html_file.exists():
+        return HTMLResponse(content=html_file.read_text(encoding='utf-8'))
+    raise HTTPException(status_code=404, detail="Page not found")
+
+@app.get("/web/about", response_class=HTMLResponse)
+async def serve_about():
+    """Serve the about page"""
+    html_file = WEB_DIR / "about.html"
+    if html_file.exists():
+        return HTMLResponse(content=html_file.read_text(encoding='utf-8'))
+    raise HTTPException(status_code=404, detail="Page not found")
+
+@app.get("/web/services", response_class=HTMLResponse)
+async def serve_services():
+    """Serve the services page"""
+    html_file = WEB_DIR / "services.html"
+    if html_file.exists():
+        return HTMLResponse(content=html_file.read_text(encoding='utf-8'))
+    raise HTTPException(status_code=404, detail="Page not found")
+
+@app.get("/web/blog", response_class=HTMLResponse)
+async def serve_blog():
+    """Serve the blog page"""
+    html_file = WEB_DIR / "blog.html"
+    if html_file.exists():
+        return HTMLResponse(content=html_file.read_text(encoding='utf-8'))
+    raise HTTPException(status_code=404, detail="Page not found")
+
+@app.get("/web/store", response_class=HTMLResponse)
+async def serve_store():
+    """Serve the store page"""
+    html_file = WEB_DIR / "store.html"
+    if html_file.exists():
+        return HTMLResponse(content=html_file.read_text(encoding='utf-8'))
+    raise HTTPException(status_code=404, detail="Page not found")
+
+@app.get("/web/schedule", response_class=HTMLResponse)
+async def serve_schedule():
+    """Serve the schedule pickup page"""
+    html_file = WEB_DIR / "schedule.html"
+    if html_file.exists():
+        return HTMLResponse(content=html_file.read_text(encoding='utf-8'))
+    raise HTTPException(status_code=404, detail="Page not found")
+
+@app.get("/web/account", response_class=HTMLResponse)
+async def serve_account():
+    """Serve the account page"""
+    html_file = WEB_DIR / "account.html"
+    if html_file.exists():
+        return HTMLResponse(content=html_file.read_text(encoding='utf-8'))
+    raise HTTPException(status_code=404, detail="Page not found")
+
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
