@@ -1521,6 +1521,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Include n8n router
+if N8N_ENABLED and n8n_router:
+    app.include_router(n8n_router, prefix="/api")
+    logger.info("n8n integration endpoints enabled at /api/n8n/*")
+
 # ==================== STATIC WEBSITE ROUTES ====================
 # Serve the HTML website files
 
