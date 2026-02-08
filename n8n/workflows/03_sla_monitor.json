@@ -1,0 +1,115 @@
+{
+  "name": "03_SLA_Monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 */2 * * *"
+            }
+          ]
+        }
+      },
+      "id": "cron-2h",
+      "name": "Every 2 Hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$env.CRM_API_URL}}/api/n8n/reports/sla-alerts",
+        "options": {}
+      },
+      "id": "get-sla",
+      "name": "Get SLA Alerts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.past_sla_count }}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "id": "check-past-sla",
+      "name": "Has Past SLA?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [750, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const alerts = $input.first().json;\nconst tickets = alerts.past_sla || [];\n\nlet alertMsg = '⚠️ ALERTA SLA - Tickets vencidos:\\n\\n';\ntickets.forEach(t => {\n  alertMsg += `🎫 ${t.ticket_number || t.id}\\n`;\n  alertMsg += `   Prioridad: ${t.priority}\\n`;\n  alertMsg += `   Cliente: ${t.customer_name || t.customer_email}\\n`;\n  alertMsg += `   Asunto: ${t.subject}\\n\\n`;\n});\n\nreturn [{ json: { subject: `⚠️ ${tickets.length} Tickets pasados de SLA`, body: alertMsg, count: tickets.length } }];"
+      },
+      "id": "format-alert",
+      "name": "Format Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1000, 200]
+    },
+    {
+      "parameters": {},
+      "id": "no-alerts",
+      "name": "No Alerts",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1000, 400]
+    }
+  ],
+  "connections": {
+    "Every 2 Hours": {
+      "main": [
+        [
+          {
+            "node": "Get SLA Alerts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get SLA Alerts": {
+      "main": [
+        [
+          {
+            "node": "Has Past SLA?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Past SLA?": {
+      "main": [
+        [
+          {
+            "node": "Format Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Alerts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
