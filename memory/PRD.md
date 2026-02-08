@@ -34,7 +34,7 @@ Desarrollar un CRM para Ventura Fresh Laundry (negocio de lavandería) SIN neces
 - UI en español (parcial)
 
 ## What's Been Implemented ✅
-**Date: 2026-02-02**
+**Date: 2026-02-08**
 
 ### Backend (FastAPI)
 - ✅ JWT Authentication for Admin (login/register)
@@ -59,11 +59,44 @@ Desarrollar un CRM para Ventura Fresh Laundry (negocio de lavandería) SIN neces
   - GET /api/customer/orders
 - ✅ **Export Endpoints** (CSV)
 - ✅ **Calendar API**
-- ✅ **Notification Service** (Ready - needs API keys):
-  - resend>=2.0.0 installed
-  - Email templates for order status updates
-  - SMS templates ready
-  - Add RESEND_API_KEY to .env to activate
+- ✅ **Notification Service** (Ready - needs SMTP config)
+
+### n8n Integration (NEW) ✅
+- ✅ **Webhook Endpoints**:
+  - POST /api/n8n/webhook/ingest - Gatekeeper
+  - POST /api/n8n/webhook/normalize - Data normalization
+  - POST /api/n8n/webhook/route - Auto-classification
+  - POST /api/n8n/process/full - Complete pipeline (all-in-one)
+- ✅ **CRUD Endpoints for n8n**:
+  - POST /api/n8n/customers/upsert
+  - POST /api/n8n/orders/create
+  - POST /api/n8n/tickets/create (with auto-priority)
+  - POST /api/n8n/quotes/create
+  - POST /api/n8n/leads/create
+- ✅ **Reporting Endpoints**:
+  - GET /api/n8n/reports/daily-summary
+  - GET /api/n8n/reports/sla-alerts
+  - GET /api/n8n/reports/quote-followups
+- ✅ **Calendar Integration**:
+  - GET /api/n8n/calendar/events
+- ✅ **Auto-classification rules**:
+  - ORDER: pickup requests, has pickup_date
+  - QUOTE: B2B requests, has company_name, >50 lbs
+  - SUPPORT: issues, complaints, refunds
+  - LEAD: general inquiries
+- ✅ **Auto-priority for tickets**:
+  - HIGH: urgent, refund, damaged, complaint
+  - MEDIUM: issue, problem, delay
+  - LOW: general inquiries
+- ✅ **SLA tracking**:
+  - HIGH: 4 hours
+  - MEDIUM: 24 hours  
+  - LOW: 72 hours
+
+### Static Website ✅
+- ✅ HTML pages served from /web/*
+- ✅ CRM integration script (crm-integration.js)
+- ✅ Forms connected to CRM backend
 
 ### Frontend (React) - Admin Panel
 - ✅ Admin Login/Register pages
