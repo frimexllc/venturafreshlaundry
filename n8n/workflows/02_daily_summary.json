@@ -1,0 +1,122 @@
+{
+  "name": "02_Daily_Summary_Report",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 7 * * *"
+            }
+          ]
+        }
+      },
+      "id": "cron-trigger",
+      "name": "Daily 7AM Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$env.CRM_API_URL}}/api/n8n/reports/daily-summary",
+        "options": {}
+      },
+      "id": "get-summary",
+      "name": "Get Daily Summary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$env.CRM_API_URL}}/api/n8n/reports/sla-alerts",
+        "options": {}
+      },
+      "id": "get-sla-alerts",
+      "name": "Get SLA Alerts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [500, 500]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByPosition",
+        "options": {}
+      },
+      "id": "merge-data",
+      "name": "Merge Reports",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [750, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const summary = $input.first().json;\nconst sla = $input.last().json;\n\nconst emailBody = `\n📊 RESUMEN DIARIO - Ventura Fresh Laundry\nFecha: ${summary.date}\n\n📦 ÓRDENES\n- Creadas hoy: ${summary.orders.created_today}\n- Estado NEW: ${summary.orders.status_new}\n- En proceso: ${summary.orders.status_processing}\n\n🚚 PICKUPS HOY\n- Programados: ${summary.pickups.scheduled_today}\n\n🎫 TICKETS\n- Abiertos: ${summary.tickets.open_total}\n- Alta prioridad: ${summary.tickets.high_priority}\n- Pasados de SLA: ${sla.past_sla_count || 0}\n- Próximos a vencer: ${sla.approaching_sla_count || 0}\n\n💼 COTIZACIONES B2B\n- Necesitan seguimiento: ${summary.quotes.needing_followup}\n\n🎯 LEADS\n- Nuevos: ${summary.leads.new}\n`;\n\nreturn [{ json: { subject: `📊 Resumen Diario VFL - ${summary.date}`, body: emailBody, summary, sla } }];"
+      },
+      "id": "format-email",
+      "name": "Format Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1000, 400]
+    }
+  ],
+  "connections": {
+    "Daily 7AM Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Daily Summary",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get SLA Alerts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Daily Summary": {
+      "main": [
+        [
+          {
+            "node": "Merge Reports",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get SLA Alerts": {
+      "main": [
+        [
+          {
+            "node": "Merge Reports",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Reports": {
+      "main": [
+        [
+          {
+            "node": "Format Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
