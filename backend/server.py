@@ -26,6 +26,16 @@ except ImportError:
     logger = logging.getLogger(__name__)
     logger.warning("Notification services not available")
 
+# Import n8n integration
+try:
+    from n8n_integration import n8n_router, set_database as set_n8n_db
+    N8N_ENABLED = True
+except ImportError:
+    N8N_ENABLED = False
+    n8n_router = None
+    logger = logging.getLogger(__name__)
+    logger.warning("n8n integration not available")
+
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
@@ -33,6 +43,10 @@ load_dotenv(ROOT_DIR / '.env')
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
+
+# Set database for n8n integration
+if N8N_ENABLED:
+    set_n8n_db(db)
 
 # JWT Config
 JWT_SECRET = os.environ.get('JWT_SECRET', 'ventura-fresh-laundry-secret-key-2024')
