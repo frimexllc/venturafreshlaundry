@@ -292,7 +292,7 @@ async def webhook_ingest(record: IngestRecord, background_tasks: BackgroundTasks
     Webhook endpoint for new ingest records from Google Sheets/Squarespace
     This is the entry point for workflow 01_Gatekeeper
     """
-    if not db:
+    if db is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
     
     now = datetime.now(timezone.utc).isoformat()
@@ -354,7 +354,7 @@ async def webhook_normalize(ingest_id: str):
     Normalize an ingest record
     Workflow 02_Normalize
     """
-    if not db:
+    if db is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
     
     record = await db.ingest_log.find_one({"ingest_id": ingest_id})
@@ -401,7 +401,7 @@ async def webhook_route(ingest_id: str):
     Route an ingest record to the appropriate destination
     Workflow 03_Router
     """
-    if not db:
+    if db is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
     
     record = await db.ingest_log.find_one({"ingest_id": ingest_id})
@@ -451,7 +451,7 @@ async def upsert_customer(request: CustomerUpsertRequest):
     Create or update customer
     Workflow 04_Customers_Upsert
     """
-    if not db:
+    if db is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
     
     now = datetime.now(timezone.utc).isoformat()
@@ -530,7 +530,7 @@ async def create_order(request: OrderCreateRequest):
     Create a new order
     Workflow 06_Order_Create
     """
-    if not db:
+    if db is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
     
     now = datetime.now(timezone.utc)
@@ -601,7 +601,7 @@ async def create_ticket(request: TicketCreateRequest):
     Create a support ticket with auto-priority
     Workflow 09_Support_Ticket_Create
     """
-    if not db:
+    if db is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
     
     now = datetime.now(timezone.utc)
@@ -664,7 +664,7 @@ async def create_quote(request: QuoteCreateRequest):
     Create a B2B quote
     Workflow 10_B2B_Quote_Pipeline
     """
-    if not db:
+    if db is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
     
     now = datetime.now(timezone.utc)
@@ -724,7 +724,7 @@ async def create_lead(request: LeadCreateRequest):
     Create a lead
     Workflow 03_Router (for LEAD classification)
     """
-    if not db:
+    if db is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
     
     now = datetime.now(timezone.utc)
@@ -761,7 +761,7 @@ async def get_daily_summary():
     Get daily operations summary
     Workflow 12_Daily_Summary
     """
-    if not db:
+    if db is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
     
     now = datetime.now(timezone.utc)
@@ -822,7 +822,7 @@ async def get_sla_alerts():
     Get tickets approaching or past SLA
     Workflow 09_Support_Ticket_Create (SLA reminders)
     """
-    if not db:
+    if db is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
     
     now = datetime.now(timezone.utc).isoformat()
@@ -854,7 +854,7 @@ async def get_quote_followups():
     Get quotes needing follow-up
     Workflow 10_B2B_Quote_Pipeline
     """
-    if not db:
+    if db is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
     
     now = datetime.now(timezone.utc).isoformat()
@@ -884,7 +884,7 @@ async def trigger_notification(
     Trigger a notification (for n8n to call external email/SMS services)
     Workflow 08_Notifications
     """
-    if not db:
+    if db is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
     
     now = datetime.now(timezone.utc).isoformat()
@@ -930,7 +930,7 @@ async def get_calendar_events(
     Get orders for calendar integration
     Workflow 07_Calendar_Create
     """
-    if not db:
+    if db is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
     
     orders = await db.orders.find(
@@ -980,7 +980,7 @@ async def process_full_ingest(record: IngestRecord):
     
     This is a convenience endpoint that runs the full pipeline
     """
-    if not db:
+    if db is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
     
     now = datetime.now(timezone.utc)
