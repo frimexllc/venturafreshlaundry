@@ -1,0 +1,105 @@
+{
+  "name": "05_Calendar_Sync",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 6 * * *"
+            }
+          ]
+        }
+      },
+      "id": "cron-6am",
+      "name": "Daily 6AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const today = new Date();\nconst endDate = new Date();\nendDate.setDate(endDate.getDate() + 7);\n\nconst formatDate = (d) => d.toISOString().split('T')[0];\n\nreturn [{ json: { start_date: formatDate(today), end_date: formatDate(endDate) } }];"
+      },
+      "id": "calc-dates",
+      "name": "Calculate Date Range",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$env.CRM_API_URL}}/api/n8n/calendar/events",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "start_date",
+              "value": "={{ $json.start_date }}"
+            },
+            {
+              "name": "end_date",
+              "value": "={{ $json.end_date }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "get-events",
+      "name": "Get Calendar Events",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [750, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst events = data.events || [];\n\n// Group by date\nconst byDate = {};\nevents.forEach(e => {\n  if (!byDate[e.date]) byDate[e.date] = [];\n  byDate[e.date].push(e);\n});\n\nlet summary = '📅 CALENDARIO DE PICKUPS - Próximos 7 días\\n\\n';\nObject.keys(byDate).sort().forEach(date => {\n  summary += `📆 ${date}\\n`;\n  byDate[date].forEach(e => {\n    summary += `   🕐 ${e.time || 'TBD'} - ${e.title}\\n`;\n    if (e.location) summary += `      📍 ${e.location}\\n`;\n  });\n  summary += '\\n';\n});\n\nif (events.length === 0) {\n  summary += 'No hay pickups programados.\\n';\n}\n\nreturn [{ json: { subject: `📅 Calendario VFL - ${events.length} pickups próximos`, body: summary, count: events.length, events } }];"
+      },
+      "id": "format-calendar",
+      "name": "Format Calendar",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1000, 300]
+    }
+  ],
+  "connections": {
+    "Daily 6AM": {
+      "main": [
+        [
+          {
+            "node": "Calculate Date Range",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Date Range": {
+      "main": [
+        [
+          {
+            "node": "Get Calendar Events",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Calendar Events": {
+      "main": [
+        [
+          {
+            "node": "Format Calendar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
