@@ -1,0 +1,115 @@
+{
+  "name": "04_Quote_Followup",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "cron-9am-weekdays",
+      "name": "9AM Weekdays",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$env.CRM_API_URL}}/api/n8n/reports/quote-followups",
+        "options": {}
+      },
+      "id": "get-followups",
+      "name": "Get Quote Followups",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.count }}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "id": "has-followups",
+      "name": "Has Followups?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [750, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst quotes = data.quotes_needing_followup || [];\n\nlet body = '📋 COTIZACIONES PENDIENTES DE SEGUIMIENTO\\n\\n';\nquotes.forEach(q => {\n  body += `💼 ${q.quote_number || q.id}\\n`;\n  body += `   Empresa: ${q.company_name}\\n`;\n  body += `   Contacto: ${q.contact_name}\\n`;\n  body += `   Email: ${q.email}\\n`;\n  body += `   Industria: ${q.industry || 'N/A'}\\n`;\n  body += `   Lbs estimadas: ${q.estimated_lbs || 'N/A'}\\n\\n`;\n});\n\nreturn [{ json: { subject: `📋 ${quotes.length} Cotizaciones necesitan seguimiento`, body, count: quotes.length } }];"
+      },
+      "id": "format-followups",
+      "name": "Format Followups",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1000, 200]
+    },
+    {
+      "parameters": {},
+      "id": "no-followups",
+      "name": "No Followups",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1000, 400]
+    }
+  ],
+  "connections": {
+    "9AM Weekdays": {
+      "main": [
+        [
+          {
+            "node": "Get Quote Followups",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Quote Followups": {
+      "main": [
+        [
+          {
+            "node": "Has Followups?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Followups?": {
+      "main": [
+        [
+          {
+            "node": "Format Followups",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Followups",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
