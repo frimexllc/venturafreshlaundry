@@ -14,7 +14,7 @@ export N8N_USER_FOLDER=/app/n8n
 export N8N_CONFIG_FILES=/app/n8n/config.json
 
 # CRM API URL
-export CRM_API_URL="https://laundrycrm.preview.emergentagent.com"
+export CRM_API_URL="https://laundry-portal-5.preview.emergentagent.com"
 
 echo "Starting n8n on port $N8N_PORT..."
 echo "Admin URL: http://localhost:$N8N_PORT"
