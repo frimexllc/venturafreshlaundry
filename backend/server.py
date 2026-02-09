@@ -1540,6 +1540,19 @@ if N8N_ENABLED and n8n_router:
     app.include_router(n8n_router, prefix="/api")
     logger.info("n8n integration endpoints enabled at /api/n8n/*")
 
+# Include store router
+if STORE_ENABLED and store_router:
+    app.include_router(store_router, prefix="/api")
+    logger.info("Store endpoints enabled at /api/store/*")
+
+# Stripe webhook endpoint
+@app.post("/api/webhook/stripe")
+async def stripe_webhook(request: Request):
+    """Handle Stripe webhook events"""
+    if STORE_ENABLED:
+        return await handle_stripe_webhook(request)
+    raise HTTPException(status_code=503, detail="Store module not available")
+
 # ==================== STATIC WEBSITE ROUTES ====================
 # Serve the HTML website files
 
