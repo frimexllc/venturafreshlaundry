@@ -1559,6 +1559,11 @@ if STORE_ENABLED and store_router:
     app.include_router(store_router, prefix="/api")
     logger.info("Store endpoints enabled at /api/store/*")
 
+# Include blog router
+if BLOG_ENABLED and blog_router:
+    app.include_router(blog_router, prefix="/api")
+    logger.info("Blog endpoints enabled at /api/blog/*")
+
 # Stripe webhook endpoint
 @app.post("/api/webhook/stripe")
 async def stripe_webhook(request: Request):
