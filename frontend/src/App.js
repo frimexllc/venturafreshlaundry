@@ -61,6 +61,7 @@ function AppRoutes() {
       <Route path="/contact" element={<ContactPage />} />
       <Route path="/store" element={<StorePage />} />
       <Route path="/blog" element={<BlogPage />} />
+      <Route path="/blog/:slug" element={<BlogPage />} />
       <Route path="/schedule-pickup" element={<SchedulePickup />} />
       
       {/* Customer portal */}
