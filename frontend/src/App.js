@@ -87,6 +87,8 @@ function AppRoutes() {
         <Route path="quotes" element={<Quotes />} />
         <Route path="leads" element={<Leads />} />
         <Route path="tickets" element={<Tickets />} />
+        <Route path="store" element={<AdminStore />} />
+        <Route path="blog" element={<AdminBlog />} />
         <Route path="audit-log" element={<AuditLog />} />
         <Route path="settings" element={<Settings />} />
       </Route>
