@@ -46,6 +46,16 @@ except ImportError:
     logger = logging.getLogger(__name__)
     logger.warning("Store module not available")
 
+# Import blog module
+try:
+    from blog import blog_router, set_database as set_blog_db
+    BLOG_ENABLED = True
+except ImportError:
+    BLOG_ENABLED = False
+    blog_router = None
+    logger = logging.getLogger(__name__)
+    logger.warning("Blog module not available")
+
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
