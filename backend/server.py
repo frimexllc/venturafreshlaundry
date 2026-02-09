@@ -1562,6 +1562,14 @@ async def serve_about():
         return HTMLResponse(content=html_file.read_text(encoding='utf-8'))
     raise HTTPException(status_code=404, detail="Page not found")
 
+@app.get("/web/contact", response_class=HTMLResponse)
+async def serve_contact():
+    """Serve the contact page"""
+    html_file = WEB_DIR / "contact.html"
+    if html_file.exists():
+        return HTMLResponse(content=html_file.read_text(encoding='utf-8'))
+    raise HTTPException(status_code=404, detail="Page not found")
+
 @app.get("/web/services", response_class=HTMLResponse)
 async def serve_services():
     """Serve the services page"""
