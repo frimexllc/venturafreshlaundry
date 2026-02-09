@@ -1534,7 +1534,7 @@ WEB_DIR = ROOT_DIR / "paginaweb"
 # Mount static files directories for each page's assets
 if WEB_DIR.exists():
     for folder in WEB_DIR.iterdir():
-        if folder.is_dir() and folder.name.endswith('_files'):
+        if folder.is_dir() and (folder.name.endswith('_files') or folder.name.endswith('_resources')):
             app.mount(f"/web/{folder.name}", StaticFiles(directory=folder), name=folder.name)
 
 @app.get("/web/crm-integration.js")
