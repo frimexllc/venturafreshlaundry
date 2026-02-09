@@ -72,6 +72,10 @@ if N8N_ENABLED:
 if STORE_ENABLED:
     set_store_db(db)
 
+# Set database for blog module
+if BLOG_ENABLED:
+    set_blog_db(db)
+
 # JWT Config
 JWT_SECRET = os.environ.get('JWT_SECRET', 'ventura-fresh-laundry-secret-key-2024')
 JWT_ALGORITHM = "HS256"
