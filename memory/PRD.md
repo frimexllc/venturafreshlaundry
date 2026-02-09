@@ -168,15 +168,52 @@ Desarrollar un CRM para Ventura Fresh Laundry (negocio de lavandería) SIN neces
 - ✅ CSV exports
 - ✅ Notification structure (ready for API keys)
 
-### P2 (Medium Priority) - Pending
+### P2 (Medium Priority) - UPDATED
 - [ ] Email notifications activation (add RESEND_API_KEY)
 - [ ] SMS notifications activation (add Twilio keys)
 - [ ] Customer Preferences detailed view/editor in portal
-- [ ] Order payment tracking with Stripe
-- [ ] Store page e-commerce functionality
-- [ ] Blog post management in admin
+- ✅ **Store page e-commerce functionality (2026-02-09)**
+- ✅ **Blog post management in admin (2026-02-09)**
+- ✅ **Stripe payment integration (2026-02-09)**
 - [ ] Bulk actions (mass status update)
 - [ ] Search filters on all list pages
+
+### Store Module (NEW) ✅
+- ✅ **Backend** (/app/backend/store.py):
+  - Products CRUD API
+  - Shopping cart management
+  - Stripe checkout integration via emergentintegrations
+  - Store orders management
+  - Auto-seed products on first API call
+- ✅ **Public Frontend** (/store):
+  - Product listing with categories
+  - Add to cart functionality
+  - Cart sidebar with quantity controls
+  - Stripe checkout redirect
+  - Payment success/cancel handling
+- ✅ **Admin Frontend** (/admin/store):
+  - Products management (CRUD)
+  - Orders table with status updates
+  - Stock tracking
+  - Category filtering
+
+### Blog Module (NEW) ✅
+- ✅ **Backend** (/app/backend/blog.py):
+  - Blog posts CRUD API
+  - Categories management
+  - Search functionality
+  - View counting
+  - Auto-seed posts on first API call
+- ✅ **Public Frontend** (/blog):
+  - Post listing with cards
+  - Category filter
+  - Search functionality
+  - Individual post view with HTML rendering
+- ✅ **Admin Frontend** (/admin/blog):
+  - Posts management (CRUD)
+  - Publish/Unpublish toggle
+  - Categories management
+  - HTML content editor
 
 ### P3 (Nice to Have) - Future
 - [ ] Mobile app
