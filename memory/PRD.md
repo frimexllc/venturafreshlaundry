@@ -225,10 +225,17 @@ Desarrollar un CRM para Ventura Fresh Laundry (negocio de lavandería) SIN neces
 ## Next Tasks
 1. Configure Resend API key for email notifications
 2. Configure Twilio for SMS notifications
-3. Implement Store page e-commerce functionality
-4. Add blog post management in admin panel
-5. Add customer preferences management UI
+3. Add customer preferences management UI
+4. Bulk actions for orders and customers
+5. Add images to store products
+6. Implement blog featured images
 
 ## Test Credentials
 - **Admin**: admin@venturafresh.com / admin123
 - **Customer**: test@example.com / test123
+
+## Recent Changes (2026-02-09)
+- **Store Module**: Full e-commerce functionality with Stripe payments
+- **Blog Module**: Full content management system
+- **Admin Panel**: New Tienda and Blog sections in sidebar
+- **Testing**: 100% test pass rate (28/28 backend, all frontend)
