@@ -36,6 +36,16 @@ except ImportError:
     logger = logging.getLogger(__name__)
     logger.warning("n8n integration not available")
 
+# Import store module
+try:
+    from store import store_router, set_database as set_store_db, handle_stripe_webhook
+    STORE_ENABLED = True
+except ImportError:
+    STORE_ENABLED = False
+    store_router = None
+    logger = logging.getLogger(__name__)
+    logger.warning("Store module not available")
+
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
@@ -47,6 +57,10 @@ db = client[os.environ['DB_NAME']]
 # Set database for n8n integration
 if N8N_ENABLED:
     set_n8n_db(db)
+
+# Set database for store module
+if STORE_ENABLED:
+    set_store_db(db)
 
 # JWT Config
 JWT_SECRET = os.environ.get('JWT_SECRET', 'ventura-fresh-laundry-secret-key-2024')
