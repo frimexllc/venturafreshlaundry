@@ -14,7 +14,9 @@ import {
   Droplets,
   CalendarDays,
   Settings,
-  ExternalLink
+  ExternalLink,
+  Store,
+  BookOpen
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "./ui/button";
@@ -27,6 +29,8 @@ const navItems = [
   { path: "/admin/quotes", icon: FileText, label: "Cotizaciones B2B" },
   { path: "/admin/leads", icon: UserPlus, label: "Leads" },
   { path: "/admin/tickets", icon: HeadphonesIcon, label: "Soporte" },
+  { path: "/admin/store", icon: Store, label: "Tienda" },
+  { path: "/admin/blog", icon: BookOpen, label: "Blog" },
   { path: "/admin/audit-log", icon: ClipboardList, label: "Audit Log" },
   { path: "/admin/settings", icon: Settings, label: "Configuración" },
 ];
