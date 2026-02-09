@@ -1,0 +1,639 @@
+"""
+Store module - Products, Cart, and Stripe Payment Integration
+"""
+from fastapi import APIRouter, HTTPException, Request, Depends
+from pydantic import BaseModel, Field
+from typing import List, Optional, Dict
+from datetime import datetime, timezone
+import uuid
+import os
+from motor.motor_asyncio import AsyncIOMotorClient
+
+# Stripe integration
+from emergentintegrations.payments.stripe.checkout import (
+    StripeCheckout, 
+    CheckoutSessionResponse, 
+    CheckoutStatusResponse, 
+    CheckoutSessionRequest
+)
+
+store_router = APIRouter(prefix="/store", tags=["Store"])
+
+# Database reference (set by main app)
+db = None
+
+def set_database(database):
+    global db
+    db = database
+
+
+# ==================== MODELS ====================
+
+class ProductCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    price: float = Field(..., gt=0)
+    category: str
+    image_url: Optional[str] = None
+    stock: int = 0
+    is_active: bool = True
+
+class ProductResponse(BaseModel):
+    id: str
+    name: str
+    description: Optional[str] = None
+    price: float
+    category: str
+    image_url: Optional[str] = None
+    stock: int
+    is_active: bool
+    created_at: str
+    updated_at: str
+
+class CartItem(BaseModel):
+    product_id: str
+    quantity: int = Field(..., gt=0)
+
+class CartResponse(BaseModel):
+    id: str
+    customer_id: Optional[str] = None
+    session_id: str
+    items: List[Dict]
+    total: float
+    created_at: str
+    updated_at: str
+
+class CheckoutRequest(BaseModel):
+    cart_id: str
+    origin_url: str
+    customer_email: Optional[str] = None
+
+class StoreOrderResponse(BaseModel):
+    id: str
+    order_number: str
+    customer_id: Optional[str] = None
+    customer_email: Optional[str] = None
+    items: List[Dict]
+    total: float
+    payment_status: str
+    stripe_session_id: Optional[str] = None
+    shipping_address: Optional[Dict] = None
+    status: str
+    created_at: str
+    updated_at: str
+
+
+# ==================== SEED PRODUCTS ====================
+
+async def seed_products():
+    """Seed initial products if none exist"""
+    count = await db.products.count_documents({})
+    if count == 0:
+        products = [
+            {
+                "id": str(uuid.uuid4()),
+                "name": "Bolsa de Lavandería Premium",
+                "description": "Bolsa de malla resistente para transportar tu ropa",
+                "price": 12.99,
+                "category": "accesorios",
+                "image_url": None,
+                "stock": 50,
+                "is_active": True,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            },
+            {
+                "id": str(uuid.uuid4()),
+                "name": "Detergente Ecológico 1L",
+                "description": "Detergente biodegradable para pieles sensibles",
+                "price": 8.99,
+                "category": "detergentes",
+                "image_url": None,
+                "stock": 100,
+                "is_active": True,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            },
+            {
+                "id": str(uuid.uuid4()),
+                "name": "Suavizante Premium 500ml",
+                "description": "Suavizante con aroma a lavanda",
+                "price": 6.99,
+                "category": "suavizantes",
+                "image_url": None,
+                "stock": 75,
+                "is_active": True,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            },
+            {
+                "id": str(uuid.uuid4()),
+                "name": "Quitamanchas Profesional",
+                "description": "Elimina manchas difíciles de grasa y vino",
+                "price": 14.99,
+                "category": "quitamanchas",
+                "image_url": None,
+                "stock": 40,
+                "is_active": True,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            },
+            {
+                "id": str(uuid.uuid4()),
+                "name": "Pack Inicial Lavandería",
+                "description": "Incluye: bolsa, detergente y suavizante",
+                "price": 24.99,
+                "category": "packs",
+                "image_url": None,
+                "stock": 30,
+                "is_active": True,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }
+        ]
+        await db.products.insert_many(products)
+
+
+# ==================== PRODUCT ENDPOINTS ====================
+
+@store_router.get("/products", response_model=List[ProductResponse])
+async def list_products(category: Optional[str] = None, active_only: bool = True):
+    """List all products"""
+    await seed_products()
+    
+    query = {}
+    if active_only:
+        query["is_active"] = True
+    if category:
+        query["category"] = category
+    
+    products = await db.products.find(query, {"_id": 0}).to_list(100)
+    return products
+
+
+@store_router.get("/products/{product_id}", response_model=ProductResponse)
+async def get_product(product_id: str):
+    """Get a single product by ID"""
+    product = await db.products.find_one({"id": product_id}, {"_id": 0})
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    return product
+
+
+@store_router.post("/products", response_model=ProductResponse)
+async def create_product(product: ProductCreate):
+    """Create a new product (admin only)"""
+    now = datetime.now(timezone.utc).isoformat()
+    product_doc = {
+        "id": str(uuid.uuid4()),
+        **product.model_dump(),
+        "created_at": now,
+        "updated_at": now
+    }
+    await db.products.insert_one(product_doc)
+    del product_doc["_id"]
+    return product_doc
+
+
+@store_router.put("/products/{product_id}", response_model=ProductResponse)
+async def update_product(product_id: str, product: ProductCreate):
+    """Update a product (admin only)"""
+    existing = await db.products.find_one({"id": product_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Product not found")
+    
+    update_data = {
+        **product.model_dump(),
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.products.update_one({"id": product_id}, {"$set": update_data})
+    
+    updated = await db.products.find_one({"id": product_id}, {"_id": 0})
+    return updated
+
+
+@store_router.delete("/products/{product_id}")
+async def delete_product(product_id: str):
+    """Delete a product (admin only)"""
+    result = await db.products.delete_one({"id": product_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Product not found")
+    return {"message": "Product deleted successfully"}
+
+
+# ==================== CART ENDPOINTS ====================
+
+@store_router.post("/cart", response_model=CartResponse)
+async def create_cart():
+    """Create a new shopping cart"""
+    now = datetime.now(timezone.utc).isoformat()
+    cart_doc = {
+        "id": str(uuid.uuid4()),
+        "customer_id": None,
+        "session_id": str(uuid.uuid4()),
+        "items": [],
+        "total": 0.0,
+        "created_at": now,
+        "updated_at": now
+    }
+    await db.carts.insert_one(cart_doc)
+    del cart_doc["_id"]
+    return cart_doc
+
+
+@store_router.get("/cart/{cart_id}", response_model=CartResponse)
+async def get_cart(cart_id: str):
+    """Get cart by ID"""
+    cart = await db.carts.find_one({"id": cart_id}, {"_id": 0})
+    if not cart:
+        raise HTTPException(status_code=404, detail="Cart not found")
+    return cart
+
+
+@store_router.post("/cart/{cart_id}/items", response_model=CartResponse)
+async def add_to_cart(cart_id: str, item: CartItem):
+    """Add item to cart"""
+    cart = await db.carts.find_one({"id": cart_id})
+    if not cart:
+        raise HTTPException(status_code=404, detail="Cart not found")
+    
+    # Verify product exists and has stock
+    product = await db.products.find_one({"id": item.product_id}, {"_id": 0})
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    
+    if product["stock"] < item.quantity:
+        raise HTTPException(status_code=400, detail="Insufficient stock")
+    
+    # Check if product already in cart
+    items = cart.get("items", [])
+    found = False
+    for cart_item in items:
+        if cart_item["product_id"] == item.product_id:
+            cart_item["quantity"] += item.quantity
+            found = True
+            break
+    
+    if not found:
+        items.append({
+            "product_id": item.product_id,
+            "product_name": product["name"],
+            "price": product["price"],
+            "quantity": item.quantity
+        })
+    
+    # Recalculate total
+    total = sum(i["price"] * i["quantity"] for i in items)
+    
+    await db.carts.update_one(
+        {"id": cart_id},
+        {
+            "$set": {
+                "items": items,
+                "total": round(total, 2),
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }
+        }
+    )
+    
+    updated_cart = await db.carts.find_one({"id": cart_id}, {"_id": 0})
+    return updated_cart
+
+
+@store_router.put("/cart/{cart_id}/items/{product_id}", response_model=CartResponse)
+async def update_cart_item(cart_id: str, product_id: str, quantity: int):
+    """Update quantity of item in cart"""
+    cart = await db.carts.find_one({"id": cart_id})
+    if not cart:
+        raise HTTPException(status_code=404, detail="Cart not found")
+    
+    items = cart.get("items", [])
+    
+    if quantity <= 0:
+        # Remove item from cart
+        items = [i for i in items if i["product_id"] != product_id]
+    else:
+        # Update quantity
+        for item in items:
+            if item["product_id"] == product_id:
+                item["quantity"] = quantity
+                break
+    
+    total = sum(i["price"] * i["quantity"] for i in items)
+    
+    await db.carts.update_one(
+        {"id": cart_id},
+        {
+            "$set": {
+                "items": items,
+                "total": round(total, 2),
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }
+        }
+    )
+    
+    updated_cart = await db.carts.find_one({"id": cart_id}, {"_id": 0})
+    return updated_cart
+
+
+@store_router.delete("/cart/{cart_id}/items/{product_id}", response_model=CartResponse)
+async def remove_from_cart(cart_id: str, product_id: str):
+    """Remove item from cart"""
+    return await update_cart_item(cart_id, product_id, 0)
+
+
+@store_router.delete("/cart/{cart_id}")
+async def clear_cart(cart_id: str):
+    """Clear all items from cart"""
+    result = await db.carts.update_one(
+        {"id": cart_id},
+        {
+            "$set": {
+                "items": [],
+                "total": 0.0,
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }
+        }
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Cart not found")
+    return {"message": "Cart cleared successfully"}
+
+
+# ==================== CHECKOUT & PAYMENT ENDPOINTS ====================
+
+@store_router.post("/checkout")
+async def create_checkout_session(checkout: CheckoutRequest, request: Request):
+    """Create Stripe checkout session for cart"""
+    # Get cart
+    cart = await db.carts.find_one({"id": checkout.cart_id})
+    if not cart:
+        raise HTTPException(status_code=404, detail="Cart not found")
+    
+    if not cart.get("items") or len(cart["items"]) == 0:
+        raise HTTPException(status_code=400, detail="Cart is empty")
+    
+    # Get Stripe API key
+    stripe_api_key = os.environ.get("STRIPE_API_KEY")
+    if not stripe_api_key:
+        raise HTTPException(status_code=500, detail="Payment configuration error")
+    
+    # Build URLs
+    host_url = str(request.base_url).rstrip("/")
+    webhook_url = f"{host_url}/api/webhook/stripe"
+    success_url = f"{checkout.origin_url}/store?session_id={{CHECKOUT_SESSION_ID}}&status=success"
+    cancel_url = f"{checkout.origin_url}/store?status=cancelled"
+    
+    # Initialize Stripe checkout
+    stripe_checkout = StripeCheckout(api_key=stripe_api_key, webhook_url=webhook_url)
+    
+    # Create order first
+    now = datetime.now(timezone.utc).isoformat()
+    order_number = f"SO-{datetime.now().strftime('%Y%m%d')}-{str(uuid.uuid4())[:8].upper()}"
+    
+    order_doc = {
+        "id": str(uuid.uuid4()),
+        "order_number": order_number,
+        "customer_id": cart.get("customer_id"),
+        "customer_email": checkout.customer_email,
+        "items": cart["items"],
+        "total": cart["total"],
+        "payment_status": "pending",
+        "stripe_session_id": None,
+        "shipping_address": None,
+        "status": "pending",
+        "created_at": now,
+        "updated_at": now
+    }
+    
+    # Create checkout session
+    try:
+        checkout_request = CheckoutSessionRequest(
+            amount=float(cart["total"]),
+            currency="usd",
+            success_url=success_url,
+            cancel_url=cancel_url,
+            metadata={
+                "order_id": order_doc["id"],
+                "order_number": order_number,
+                "cart_id": checkout.cart_id,
+                "customer_email": checkout.customer_email or ""
+            }
+        )
+        
+        session: CheckoutSessionResponse = await stripe_checkout.create_checkout_session(checkout_request)
+        
+        # Update order with session ID
+        order_doc["stripe_session_id"] = session.session_id
+        
+        # Save order
+        await db.store_orders.insert_one(order_doc)
+        
+        # Create payment transaction record
+        payment_doc = {
+            "id": str(uuid.uuid4()),
+            "session_id": session.session_id,
+            "order_id": order_doc["id"],
+            "order_number": order_number,
+            "amount": cart["total"],
+            "currency": "usd",
+            "customer_email": checkout.customer_email,
+            "payment_status": "initiated",
+            "metadata": {
+                "cart_id": checkout.cart_id,
+                "items_count": len(cart["items"])
+            },
+            "created_at": now,
+            "updated_at": now
+        }
+        await db.payment_transactions.insert_one(payment_doc)
+        
+        return {
+            "checkout_url": session.url,
+            "session_id": session.session_id,
+            "order_id": order_doc["id"],
+            "order_number": order_number
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create checkout session: {str(e)}")
+
+
+@store_router.get("/checkout/status/{session_id}")
+async def get_checkout_status(session_id: str):
+    """Get the status of a checkout session"""
+    stripe_api_key = os.environ.get("STRIPE_API_KEY")
+    if not stripe_api_key:
+        raise HTTPException(status_code=500, detail="Payment configuration error")
+    
+    stripe_checkout = StripeCheckout(api_key=stripe_api_key, webhook_url="")
+    
+    try:
+        status: CheckoutStatusResponse = await stripe_checkout.get_checkout_status(session_id)
+        
+        # Update payment transaction
+        payment_status = "paid" if status.payment_status == "paid" else status.payment_status
+        
+        await db.payment_transactions.update_one(
+            {"session_id": session_id},
+            {
+                "$set": {
+                    "payment_status": payment_status,
+                    "updated_at": datetime.now(timezone.utc).isoformat()
+                }
+            }
+        )
+        
+        # If paid, update order status
+        if payment_status == "paid":
+            transaction = await db.payment_transactions.find_one({"session_id": session_id})
+            if transaction:
+                order_id = transaction.get("order_id")
+                if order_id:
+                    # Check if already processed
+                    order = await db.store_orders.find_one({"id": order_id})
+                    if order and order.get("payment_status") != "paid":
+                        await db.store_orders.update_one(
+                            {"id": order_id},
+                            {
+                                "$set": {
+                                    "payment_status": "paid",
+                                    "status": "confirmed",
+                                    "updated_at": datetime.now(timezone.utc).isoformat()
+                                }
+                            }
+                        )
+                        
+                        # Update product stock
+                        for item in order.get("items", []):
+                            await db.products.update_one(
+                                {"id": item["product_id"]},
+                                {"$inc": {"stock": -item["quantity"]}}
+                            )
+        
+        return {
+            "status": status.status,
+            "payment_status": payment_status,
+            "amount_total": status.amount_total / 100,  # Convert from cents
+            "currency": status.currency,
+            "metadata": status.metadata
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get checkout status: {str(e)}")
+
+
+# ==================== STORE ORDERS ENDPOINTS ====================
+
+@store_router.get("/orders", response_model=List[StoreOrderResponse])
+async def list_store_orders(status: Optional[str] = None, limit: int = 50):
+    """List store orders (admin only)"""
+    query = {}
+    if status:
+        query["status"] = status
+    
+    orders = await db.store_orders.find(query, {"_id": 0}).sort("created_at", -1).to_list(limit)
+    return orders
+
+
+@store_router.get("/orders/{order_id}", response_model=StoreOrderResponse)
+async def get_store_order(order_id: str):
+    """Get a store order by ID"""
+    order = await db.store_orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    return order
+
+
+@store_router.get("/orders/by-session/{session_id}", response_model=StoreOrderResponse)
+async def get_order_by_session(session_id: str):
+    """Get order by Stripe session ID"""
+    order = await db.store_orders.find_one({"stripe_session_id": session_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    return order
+
+
+@store_router.put("/orders/{order_id}/status")
+async def update_order_status(order_id: str, status: str):
+    """Update order status (admin only)"""
+    valid_statuses = ["pending", "confirmed", "processing", "shipped", "delivered", "cancelled"]
+    if status not in valid_statuses:
+        raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {valid_statuses}")
+    
+    result = await db.store_orders.update_one(
+        {"id": order_id},
+        {
+            "$set": {
+                "status": status,
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }
+        }
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    return {"message": f"Order status updated to {status}"}
+
+
+# ==================== WEBHOOK ENDPOINT ====================
+
+async def handle_stripe_webhook(request: Request):
+    """Handle Stripe webhook events"""
+    stripe_api_key = os.environ.get("STRIPE_API_KEY")
+    if not stripe_api_key:
+        raise HTTPException(status_code=500, detail="Payment configuration error")
+    
+    host_url = str(request.base_url).rstrip("/")
+    webhook_url = f"{host_url}/api/webhook/stripe"
+    stripe_checkout = StripeCheckout(api_key=stripe_api_key, webhook_url=webhook_url)
+    
+    try:
+        body = await request.body()
+        signature = request.headers.get("Stripe-Signature")
+        
+        webhook_response = await stripe_checkout.handle_webhook(body, signature)
+        
+        # Process webhook event
+        if webhook_response.payment_status == "paid":
+            session_id = webhook_response.session_id
+            
+            # Update payment transaction
+            await db.payment_transactions.update_one(
+                {"session_id": session_id},
+                {
+                    "$set": {
+                        "payment_status": "paid",
+                        "updated_at": datetime.now(timezone.utc).isoformat()
+                    }
+                }
+            )
+            
+            # Update order
+            order_id = webhook_response.metadata.get("order_id")
+            if order_id:
+                order = await db.store_orders.find_one({"id": order_id})
+                if order and order.get("payment_status") != "paid":
+                    await db.store_orders.update_one(
+                        {"id": order_id},
+                        {
+                            "$set": {
+                                "payment_status": "paid",
+                                "status": "confirmed",
+                                "updated_at": datetime.now(timezone.utc).isoformat()
+                            }
+                        }
+                    )
+                    
+                    # Update product stock
+                    for item in order.get("items", []):
+                        await db.products.update_one(
+                            {"id": item["product_id"]},
+                            {"$inc": {"stock": -item["quantity"]}}
+                        )
+        
+        return {"status": "ok", "event_type": webhook_response.event_type}
+        
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Webhook error: {str(e)}")
