@@ -86,6 +86,10 @@ if STORE_ENABLED:
 if BLOG_ENABLED:
     set_blog_db(db)
 
+# Set database for automation engine
+if AUTOMATION_ENABLED:
+    set_automation_db(db)
+
 # JWT Config
 JWT_SECRET = os.environ.get('JWT_SECRET', 'ventura-fresh-laundry-secret-key-2024')
 JWT_ALGORITHM = "HS256"
