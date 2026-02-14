@@ -90,6 +90,7 @@ function AppRoutes() {
         <Route path="tickets" element={<Tickets />} />
         <Route path="store" element={<AdminStore />} />
         <Route path="blog" element={<AdminBlog />} />
+        <Route path="operator" element={<OperatorDashboard />} />
         <Route path="audit-log" element={<AuditLog />} />
         <Route path="settings" element={<Settings />} />
       </Route>
