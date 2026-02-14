@@ -1,75 +1,51 @@
 {
-  "name": "01_Gatekeeper_Ingest",
+  "name": "01 - Gatekeeper (Ingest All Forms)",
   "nodes": [
     {
       "parameters": {
         "httpMethod": "POST",
-        "path": "ingest-webhook",
+        "path": "ingest",
+        "responseMode": "responseNode",
         "options": {}
       },
       "id": "webhook-trigger",
       "name": "Webhook Trigger",
       "type": "n8n-nodes-base.webhook",
-      "typeVersion": 1,
-      "position": [250, 300]
+      "typeVersion": 2,
+      "position": [200, 300],
+      "webhookId": "ingest-gatekeeper"
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "={{$env.CRM_API_URL}}/api/n8n/process/full",
+        "url": "=https://laundry-portal-5.preview.emergentagent.com/api/automation/ingest",
         "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json) }}",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "={{$json}}",
+              "value": ""
+            }
+          ]
+        },
         "options": {}
       },
-      "id": "process-full",
-      "name": "Process Full Ingest",
+      "id": "http-request",
+      "name": "Process via CRM API",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
-      "position": [500, 300]
+      "typeVersion": 4.2,
+      "position": [420, 300]
     },
     {
       "parameters": {
-        "conditions": {
-          "string": [
-            {
-              "value1": "={{ $json.status }}",
-              "value2": "duplicate"
-            }
-          ]
-        }
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
       },
-      "id": "check-duplicate",
-      "name": "Check Duplicate",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 1,
-      "position": [750, 300]
-    },
-    {
-      "parameters": {},
-      "id": "end-duplicate",
-      "name": "End (Duplicate)",
-      "type": "n8n-nodes-base.noOp",
-      "typeVersion": 1,
-      "position": [1000, 200]
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "string": [
-            {
-              "value1": "={{ $json.route_result }}",
-              "operation": "equals",
-              "value2": "ORDER"
-            }
-          ]
-        }
-      },
-      "id": "route-switch",
-      "name": "Route Switch",
-      "type": "n8n-nodes-base.switch",
-      "typeVersion": 2,
-      "position": [1000, 400]
+      "id": "respond",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [640, 300]
     }
   ],
   "connections": {
@@ -77,36 +53,18 @@
       "main": [
         [
           {
-            "node": "Process Full Ingest",
+            "node": "Process via CRM API",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Process Full Ingest": {
+    "Process via CRM API": {
       "main": [
         [
           {
-            "node": "Check Duplicate",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Check Duplicate": {
-      "main": [
-        [
-          {
-            "node": "End (Duplicate)",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Route Switch",
+            "node": "Respond to Webhook",
             "type": "main",
             "index": 0
           }
@@ -114,12 +72,10 @@
       ]
     }
   },
+  "active": false,
   "settings": {
     "executionOrder": "v1"
   },
-  "staticData": null,
   "tags": [],
-  "triggerCount": 0,
-  "updatedAt": "2026-02-08T00:00:00.000Z",
-  "versionId": "1"
+  "triggerCount": 0
 }
