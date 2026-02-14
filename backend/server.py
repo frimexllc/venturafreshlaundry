@@ -56,6 +56,16 @@ except ImportError:
     logger = logging.getLogger(__name__)
     logger.warning("Blog module not available")
 
+# Import automation engine
+try:
+    from automation_engine import automation_router, set_database as set_automation_db
+    AUTOMATION_ENABLED = True
+except ImportError:
+    AUTOMATION_ENABLED = False
+    automation_router = None
+    logger = logging.getLogger(__name__)
+    logger.warning("Automation engine not available")
+
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
