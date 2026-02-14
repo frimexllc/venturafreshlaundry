@@ -1,25 +1,24 @@
 #!/bin/bash
-# n8n Initialization Script for Ventura Fresh Laundry
+# n8n startup script for Ventura Fresh Laundry
 
+# Set environment variables
+export N8N_HOST=0.0.0.0
 export N8N_PORT=5678
 export N8N_PROTOCOL=http
-export N8N_HOST=localhost
-export WEBHOOK_URL=http://localhost:5678/
 export N8N_BASIC_AUTH_ACTIVE=true
 export N8N_BASIC_AUTH_USER=admin
-export N8N_BASIC_AUTH_PASSWORD=vfl2024admin
-export N8N_ENCRYPTION_KEY=vfl-n8n-encryption-key-2024
+export N8N_BASIC_AUTH_PASSWORD=ventura2024
 export GENERIC_TIMEZONE=America/Los_Angeles
-export N8N_USER_FOLDER=/app/n8n
-export N8N_CONFIG_FILES=/app/n8n/config.json
+export N8N_LOG_LEVEL=info
+export N8N_USER_FOLDER=/app/n8n/data
+export EXECUTIONS_DATA_SAVE_ON_ERROR=all
+export EXECUTIONS_DATA_SAVE_ON_SUCCESS=all
+export EXECUTIONS_DATA_SAVE_ON_PROGRESS=true
+export EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS=true
+export N8N_METRICS=true
 
-# CRM API URL
-export CRM_API_URL="https://laundry-portal-5.preview.emergentagent.com"
-
-echo "Starting n8n on port $N8N_PORT..."
-echo "Admin URL: http://localhost:$N8N_PORT"
-echo "Username: $N8N_BASIC_AUTH_USER"
-echo "Password: $N8N_BASIC_AUTH_PASSWORD"
+# Create data directory if not exists
+mkdir -p /app/n8n/data
 
 # Start n8n
-n8n start
+exec /usr/bin/n8n start
