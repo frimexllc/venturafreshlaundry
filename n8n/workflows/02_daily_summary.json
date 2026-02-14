@@ -1,5 +1,5 @@
 {
-  "name": "02_Daily_Summary_Report",
+  "name": "12 - Daily Summary Report (7am)",
   "nodes": [
     {
       "parameters": {
@@ -13,69 +13,49 @@
         }
       },
       "id": "cron-trigger",
-      "name": "Daily 7AM Trigger",
+      "name": "Daily at 7am",
       "type": "n8n-nodes-base.scheduleTrigger",
-      "typeVersion": 1,
-      "position": [250, 300]
+      "typeVersion": 1.2,
+      "position": [200, 300]
     },
     {
       "parameters": {
         "method": "GET",
-        "url": "={{$env.CRM_API_URL}}/api/n8n/reports/daily-summary",
+        "url": "https://laundry-portal-5.preview.emergentagent.com/api/automation/daily-summary",
         "options": {}
       },
       "id": "get-summary",
       "name": "Get Daily Summary",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
-      "position": [500, 300]
+      "typeVersion": 4.2,
+      "position": [420, 300]
     },
     {
       "parameters": {
-        "method": "GET",
-        "url": "={{$env.CRM_API_URL}}/api/n8n/reports/sla-alerts",
-        "options": {}
+        "operation": "send",
+        "subject": "=Daily Operations Summary - {{ $now.format('MMMM D, YYYY') }}",
+        "emailType": "html",
+        "message": "=<h2>Daily Operations Summary</h2>\n<p>Generated: {{ $json.generated_at }}</p>\n\n<h3>📦 Orders</h3>\n<ul>\n<li>New Today: <strong>{{ $json.orders.new_today }}</strong></li>\n<li>Pickups Today: <strong>{{ $json.orders.pickups_today }}</strong></li>\n<li>Unassigned: <strong>{{ $json.orders.unassigned }}</strong></li>\n</ul>\n\n<h3>🎫 Tickets</h3>\n<ul>\n<li>Open: <strong>{{ $json.tickets.open }}</strong></li>\n<li>High Priority: <strong>{{ $json.tickets.high_priority }}</strong></li>\n<li>SLA at Risk: <strong style='color:red'>{{ $json.tickets.sla_at_risk }}</strong></li>\n</ul>\n\n<h3>💼 B2B Quotes</h3>\n<ul>\n<li>Pending Follow-up: <strong>{{ $json.quotes.pending_followup }}</strong></li>\n</ul>\n\n<h3>📈 Leads</h3>\n<ul>\n<li>New Today: <strong>{{ $json.leads.new_today }}</strong></li>\n</ul>\n\n<p><a href='https://laundry-portal-5.preview.emergentagent.com/admin'>Open Dashboard →</a></p>",
+        "options": {
+          "appendAttribution": false
+        }
       },
-      "id": "get-sla-alerts",
-      "name": "Get SLA Alerts",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
-      "position": [500, 500]
-    },
-    {
-      "parameters": {
-        "mode": "combine",
-        "combinationMode": "mergeByPosition",
-        "options": {}
-      },
-      "id": "merge-data",
-      "name": "Merge Reports",
-      "type": "n8n-nodes-base.merge",
-      "typeVersion": 2,
-      "position": [750, 400]
-    },
-    {
-      "parameters": {
-        "jsCode": "const summary = $input.first().json;\nconst sla = $input.last().json;\n\nconst emailBody = `\n📊 RESUMEN DIARIO - Ventura Fresh Laundry\nFecha: ${summary.date}\n\n📦 ÓRDENES\n- Creadas hoy: ${summary.orders.created_today}\n- Estado NEW: ${summary.orders.status_new}\n- En proceso: ${summary.orders.status_processing}\n\n🚚 PICKUPS HOY\n- Programados: ${summary.pickups.scheduled_today}\n\n🎫 TICKETS\n- Abiertos: ${summary.tickets.open_total}\n- Alta prioridad: ${summary.tickets.high_priority}\n- Pasados de SLA: ${sla.past_sla_count || 0}\n- Próximos a vencer: ${sla.approaching_sla_count || 0}\n\n💼 COTIZACIONES B2B\n- Necesitan seguimiento: ${summary.quotes.needing_followup}\n\n🎯 LEADS\n- Nuevos: ${summary.leads.new}\n`;\n\nreturn [{ json: { subject: `📊 Resumen Diario VFL - ${summary.date}`, body: emailBody, summary, sla } }];"
-      },
-      "id": "format-email",
-      "name": "Format Email",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [1000, 400]
+      "id": "send-email",
+      "name": "Send Summary Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [640, 300],
+      "disabled": true,
+      "notesInFlow": true,
+      "notes": "Enable after configuring Gmail credentials"
     }
   ],
   "connections": {
-    "Daily 7AM Trigger": {
+    "Daily at 7am": {
       "main": [
         [
           {
             "node": "Get Daily Summary",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Get SLA Alerts",
             "type": "main",
             "index": 0
           }
@@ -86,29 +66,7 @@
       "main": [
         [
           {
-            "node": "Merge Reports",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Get SLA Alerts": {
-      "main": [
-        [
-          {
-            "node": "Merge Reports",
-            "type": "main",
-            "index": 1
-          }
-        ]
-      ]
-    },
-    "Merge Reports": {
-      "main": [
-        [
-          {
-            "node": "Format Email",
+            "node": "Send Summary Email",
             "type": "main",
             "index": 0
           }
@@ -116,7 +74,10 @@
       ]
     }
   },
+  "active": false,
   "settings": {
     "executionOrder": "v1"
-  }
+  },
+  "tags": [],
+  "triggerCount": 0
 }
