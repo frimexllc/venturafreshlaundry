@@ -1578,6 +1578,11 @@ if BLOG_ENABLED and blog_router:
     app.include_router(blog_router, prefix="/api")
     logger.info("Blog endpoints enabled at /api/blog/*")
 
+# Include automation engine router
+if AUTOMATION_ENABLED and automation_router:
+    app.include_router(automation_router, prefix="/api")
+    logger.info("Automation engine enabled at /api/automation/*")
+
 # Stripe webhook endpoint
 @app.post("/api/webhook/stripe")
 async def stripe_webhook(request: Request):
