@@ -16,13 +16,15 @@ import {
   Settings,
   ExternalLink,
   Store,
-  BookOpen
+  BookOpen,
+  Zap
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "./ui/button";
 
 const navItems = [
   { path: "/admin", icon: LayoutDashboard, label: "Dashboard" },
+  { path: "/admin/operator", icon: Zap, label: "Panel Operador", highlight: true },
   { path: "/admin/customers", icon: Users, label: "Clientes" },
   { path: "/admin/orders", icon: ShoppingBag, label: "Órdenes" },
   { path: "/admin/calendar", icon: CalendarDays, label: "Calendario" },
