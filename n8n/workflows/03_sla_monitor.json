@@ -1,74 +1,83 @@
 {
-  "name": "03_SLA_Monitor",
+  "name": "09 - SLA Monitor (Every Hour)",
   "nodes": [
     {
       "parameters": {
         "rule": {
           "interval": [
             {
-              "field": "cronExpression",
-              "expression": "0 */2 * * *"
+              "field": "hours",
+              "hoursInterval": 1
             }
           ]
         }
       },
-      "id": "cron-2h",
-      "name": "Every 2 Hours",
+      "id": "hourly-trigger",
+      "name": "Every Hour",
       "type": "n8n-nodes-base.scheduleTrigger",
-      "typeVersion": 1,
-      "position": [250, 300]
+      "typeVersion": 1.2,
+      "position": [200, 300]
     },
     {
       "parameters": {
         "method": "GET",
-        "url": "={{$env.CRM_API_URL}}/api/n8n/reports/sla-alerts",
+        "url": "https://laundry-portal-5.preview.emergentagent.com/api/automation/sla-alerts",
         "options": {}
       },
       "id": "get-sla",
       "name": "Get SLA Alerts",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
-      "position": [500, 300]
+      "typeVersion": 4.2,
+      "position": [420, 300]
     },
     {
       "parameters": {
         "conditions": {
           "number": [
             {
-              "value1": "={{ $json.past_sla_count }}",
+              "value1": "={{ $json.total_at_risk }}",
               "operation": "larger",
               "value2": 0
             }
           ]
         }
       },
-      "id": "check-past-sla",
-      "name": "Has Past SLA?",
+      "id": "check-alerts",
+      "name": "Has Alerts?",
       "type": "n8n-nodes-base.if",
-      "typeVersion": 1,
-      "position": [750, 300]
+      "typeVersion": 2,
+      "position": [640, 300]
     },
     {
       "parameters": {
-        "jsCode": "const alerts = $input.first().json;\nconst tickets = alerts.past_sla || [];\n\nlet alertMsg = '⚠️ ALERTA SLA - Tickets vencidos:\\n\\n';\ntickets.forEach(t => {\n  alertMsg += `🎫 ${t.ticket_number || t.id}\\n`;\n  alertMsg += `   Prioridad: ${t.priority}\\n`;\n  alertMsg += `   Cliente: ${t.customer_name || t.customer_email}\\n`;\n  alertMsg += `   Asunto: ${t.subject}\\n\\n`;\n});\n\nreturn [{ json: { subject: `⚠️ ${tickets.length} Tickets pasados de SLA`, body: alertMsg, count: tickets.length } }];"
+        "operation": "send",
+        "subject": "=⚠️ SLA Alert: {{ $json.total_at_risk }} tickets at risk",
+        "emailType": "html",
+        "message": "=<h2>⚠️ SLA Alert</h2>\n<p>{{ $json.total_at_risk }} ticket(s) are at risk of missing SLA</p>\n\n<h3>Past SLA ({{ $json.past_sla.length }})</h3>\n{{ $json.past_sla.map(t => '<p>• ' + t.ticket_id + ' - ' + t.subject + ' (Priority: ' + t.priority + ')</p>').join('') }}\n\n<h3>Approaching SLA ({{ $json.approaching_sla.length }})</h3>\n{{ $json.approaching_sla.map(t => '<p>• ' + t.ticket_id + ' - ' + t.subject + ' (Deadline: ' + t.sla_deadline + ')</p>').join('') }}\n\n<p><a href='https://laundry-portal-5.preview.emergentagent.com/admin/tickets'>View Tickets →</a></p>",
+        "options": {
+          "appendAttribution": false
+        }
       },
-      "id": "format-alert",
-      "name": "Format Alert",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [1000, 200]
+      "id": "send-alert",
+      "name": "Send Alert Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [860, 200],
+      "disabled": true,
+      "notesInFlow": true,
+      "notes": "Enable after configuring Gmail credentials"
     },
     {
       "parameters": {},
-      "id": "no-alerts",
-      "name": "No Alerts",
+      "id": "no-op",
+      "name": "No Action",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [1000, 400]
+      "position": [860, 400]
     }
   ],
   "connections": {
-    "Every 2 Hours": {
+    "Every Hour": {
       "main": [
         [
           {
@@ -83,25 +92,25 @@
       "main": [
         [
           {
-            "node": "Has Past SLA?",
+            "node": "Has Alerts?",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Has Past SLA?": {
+    "Has Alerts?": {
       "main": [
         [
           {
-            "node": "Format Alert",
+            "node": "Send Alert Email",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "No Alerts",
+            "node": "No Action",
             "type": "main",
             "index": 0
           }
@@ -109,7 +118,10 @@
       ]
     }
   },
+  "active": false,
   "settings": {
     "executionOrder": "v1"
-  }
+  },
+  "tags": [],
+  "triggerCount": 0
 }
