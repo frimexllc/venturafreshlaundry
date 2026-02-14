@@ -297,12 +297,8 @@ export default function SchedulePickup() {
                       <SelectValue placeholder="Select time window" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="8am-10am">8:00 AM - 10:00 AM</SelectItem>
-                      <SelectItem value="10am-12pm">10:00 AM - 12:00 PM</SelectItem>
-                      <SelectItem value="12pm-2pm">12:00 PM - 2:00 PM</SelectItem>
-                      <SelectItem value="2pm-4pm">2:00 PM - 4:00 PM</SelectItem>
-                      <SelectItem value="4pm-6pm">4:00 PM - 6:00 PM</SelectItem>
-                      <SelectItem value="6pm-8pm">6:00 PM - 8:00 PM</SelectItem>
+                      <SelectItem value="8am-12pm">8:00 AM - 12:00 PM</SelectItem>
+                      <SelectItem value="2pm-6pm">2:00 PM - 6:00 PM</SelectItem>
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-slate-500 mt-1">Pacific Time</p>
