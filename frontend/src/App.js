@@ -14,6 +14,7 @@ import Calendar from "./pages/Calendar";
 import Settings from "./pages/Settings";
 import AdminStore from "./pages/AdminStore";
 import AdminBlog from "./pages/AdminBlog";
+import OperatorDashboard from "./pages/OperatorDashboard";
 import Layout from "./components/Layout";
 // Public pages
 import LandingPage from "./pages/LandingPage";
