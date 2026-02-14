@@ -1,241 +1,152 @@
 # Ventura Fresh Laundry CRM - PRD
 
 ## Original Problem Statement
-Desarrollar un CRM para Ventura Fresh Laundry (negocio de lavandería) SIN necesidad de usar n8n ni Google Workspace. El sistema debe manejar las automatizaciones descritas originalmente para el Master File incluyendo: Gatekeeper, Router, Customer Upsert, Orders, Quotes B2B, Leads, Support Tickets, Audit Log. Además, incluye un sitio web público de 9 páginas con formularios conectados al CRM y un portal de clientes para ver historial de órdenes.
+Desarrollar un CRM para Ventura Fresh Laundry con automatización completa de workflows. El sistema procesa automáticamente todos los formularios (Squarespace, website), clasifica y enruta a las tablas correctas (Orders, Quotes, Leads, Support, Preferences), actualiza/crea clientes, y genera alertas. **El operador SOLO actualiza el estado de las órdenes - el sistema hace todo lo demás automáticamente.**
 
 ## Architecture
 - **Frontend**: React 19 + Tailwind CSS + Shadcn UI
 - **Backend**: FastAPI (Python) 
 - **Database**: MongoDB
+- **Automation**: n8n (self-hosted) + Custom Automation Engine
 - **Admin Authentication**: JWT-based custom auth
 - **Customer Authentication**: JWT-based custom auth (separate from admin)
-- **Notifications**: Resend (Email) + Twilio (SMS) - MOCKED (awaiting API keys)
+- **Payments**: Stripe (via emergentintegrations)
+- **Notifications**: SMTP Email (pendiente config)
 
 ## User Personas
-1. **Administrador/Owner**: Acceso completo al CRM, gestión de clientes, órdenes, cotizaciones B2B
-2. **Staff de Operaciones**: Gestión de órdenes y tickets de soporte
-3. **Ventas B2B**: Gestión de cotizaciones comerciales y leads
-4. **Clientes Públicos**: Acceso al sitio web público y portal de cuenta para ver órdenes
+1. **Administrador/Owner**: Acceso completo al CRM, configuración, reportes
+2. **Operador**: Solo actualiza estados de órdenes - el sistema le da toda la información
+3. **Ventas B2B**: Gestión de cotizaciones (pipeline automatizado)
+4. **Clientes Públicos**: Acceso al sitio web público y portal de cuenta
 
-## Core Requirements (Static)
-- Sistema de autenticación seguro (JWT) para admin y clientes
-- Dashboard con métricas en tiempo real
-- Gestión completa de clientes (CRUD)
-- Gestión de órdenes con workflow de estados
-- Pipeline de cotizaciones B2B
-- Sistema de leads con conversión a clientes
-- Tickets de soporte con priorización automática
-- Audit log para trazabilidad
-- Sitio web público de 9 páginas
-- Portal de clientes para ver historial de órdenes
-- Calendario visual de pickups
-- Exportación de datos a CSV
-- Notificaciones por email/SMS (pendiente API keys)
-- UI en español (parcial)
+## Automation Engine (NUEVO - 2026-02-14) ✅
+
+### Workflow Implementados:
+1. **01 Gatekeeper** - Punto de entrada único para todos los formularios
+   - Genera `ingest_id` y `dedup_key` automáticamente
+   - Detecta duplicados
+   - Normaliza datos (email, phone, name)
+   
+2. **02 Normalize** - Limpieza de datos integrada en Gatekeeper
+   - Email: lowercase, trim
+   - Phone: formato E.164 (+1XXXXXXXXXX)
+   - Validación de campos requeridos
+
+3. **03 Router** - Auto-clasificación inteligente
+   - `ORDER`: si tiene pickup_date, pickup_time, o source_form=PICKUP_REQUEST
+   - `QUOTE`: si tiene company_name, industry, o tipo comercial
+   - `SUPPORT`: si tiene issue, complaint, o palabras clave de soporte
+   - `PREFERENCES`: si tiene fabric_softener, detergent_preference
+   - `LEAD`: default para consultas generales
+
+4. **04 Customer Upsert** - Crea/actualiza cliente automáticamente
+   - Busca por email, luego por phone
+   - Genera customer_id único: CUST-000XXX
+   - Actualiza último contacto y dirección
+
+5. **05 Preferences** - Historial versionado de preferencias
+   - Cada update crea nueva versión (v1, v2, v3...)
+   - Mantiene `is_current` flag
+
+6. **06 Order Create** - Creación automática de órdenes
+   - ID formato: ORD-YYYYMMDD-XXXX
+   - Status inicial: NEW
+   - Crea evento de calendario automáticamente
+
+7. **09 Ticket Create** - Con prioridad y SLA automáticos
+   - **HIGH** (4h SLA): urgent, refund, damaged, missing, complaint
+   - **MEDIUM** (24h SLA): issue, problem, delay
+   - **LOW** (72h SLA): general inquiries
+
+8. **10 Quote Create** - Pipeline B2B
+   - Follow-up automático a 2 días
+   - Tracking de empresa, industria, volumen
+
+9. **12 Daily Summary** - Reporte diario (n8n cron 7am)
+   - Órdenes nuevas hoy
+   - Pickups programados
+   - Tickets abiertos/SLA at risk
+   - Quotes pendientes follow-up
+
+### API Endpoints de Automatización:
+- `POST /api/automation/ingest` - Procesa cualquier formulario
+- `GET /api/automation/daily-summary` - Reporte diario
+- `GET /api/automation/sla-alerts` - Tickets en riesgo de SLA
+- `GET /api/automation/operator-dashboard` - Vista para operador
+- `PUT /api/automation/orders/{id}/status` - Actualizar estado (ÚNICO action del operador)
+
+### Panel del Operador (`/admin/operator`):
+- **Solo muestra lo que necesita actuar**
+- Pickups de hoy con botón de un clic para avanzar estado
+- Órdenes listas para entrega
+- Tickets urgentes con SLA deadline
+- Auto-refresh cada 30 segundos
+
+## n8n Configuration
+- **URL**: http://localhost:5678
+- **Auth**: admin / ventura2024
+- **Workflows**: /app/n8n/workflows/
+- **Status**: RUNNING
+
+### Para conectar con Google Workspace:
+1. Crear Service Account en Google Cloud Console
+2. Habilitar APIs: Sheets, Calendar, Gmail, Drive
+3. Compartir el Master File con el service account email
+4. Configurar credenciales en n8n
 
 ## What's Been Implemented ✅
-**Date: 2026-02-08**
 
 ### Backend (FastAPI)
-- ✅ JWT Authentication for Admin (login/register)
-- ✅ JWT Authentication for Customers (login/register/orders)
+- ✅ JWT Authentication (Admin + Customer)
 - ✅ Customer Management API
 - ✅ Order Management API with status workflow
 - ✅ Quotes B2B Management API
-- ✅ Leads Management API with conversion
+- ✅ Leads Management API
 - ✅ Support Tickets API with auto-priority
-- ✅ Customer Preferences API
 - ✅ Audit Log API
 - ✅ Dashboard Stats API
-- ✅ Ingest Router (form submission classification)
-- ✅ **Public Form Endpoints** (no auth required):
-  - POST /api/public/pickup-request
-  - POST /api/public/contact
-  - POST /api/public/quote-request
-- ✅ **Customer Portal Endpoints**:
-  - POST /api/customer/auth/register
-  - POST /api/customer/auth/login
-  - GET /api/customer/me
-  - GET /api/customer/orders
-- ✅ **Export Endpoints** (CSV)
-- ✅ **Calendar API**
-- ✅ **Notification Service** (Ready - needs SMTP config)
+- ✅ **Automation Engine** (NEW)
+- ✅ **Store Module** with Stripe payments
+- ✅ **Blog Module** with categories
 
-### n8n Integration (NEW) ✅
-- ✅ **Webhook Endpoints**:
-  - POST /api/n8n/webhook/ingest - Gatekeeper
-  - POST /api/n8n/webhook/normalize - Data normalization
-  - POST /api/n8n/webhook/route - Auto-classification
-  - POST /api/n8n/process/full - Complete pipeline (all-in-one)
-- ✅ **CRUD Endpoints for n8n**:
-  - POST /api/n8n/customers/upsert
-  - POST /api/n8n/orders/create
-  - POST /api/n8n/tickets/create (with auto-priority)
-  - POST /api/n8n/quotes/create
-  - POST /api/n8n/leads/create
-- ✅ **Reporting Endpoints**:
-  - GET /api/n8n/reports/daily-summary
-  - GET /api/n8n/reports/sla-alerts
-  - GET /api/n8n/reports/quote-followups
-- ✅ **Calendar Integration**:
-  - GET /api/n8n/calendar/events
-- ✅ **Auto-classification rules**:
-  - ORDER: pickup requests, has pickup_date
-  - QUOTE: B2B requests, has company_name, >50 lbs
-  - SUPPORT: issues, complaints, refunds
-  - LEAD: general inquiries
-- ✅ **Auto-priority for tickets**:
-  - HIGH: urgent, refund, damaged, complaint
-  - MEDIUM: issue, problem, delay
-  - LOW: general inquiries
-- ✅ **SLA tracking**:
-  - HIGH: 4 hours
-  - MEDIUM: 24 hours  
-  - LOW: 72 hours
-
-### Static Website ✅
-- ✅ HTML pages served from /web/*
-- ✅ CRM integration script (crm-integration.js)
-- ✅ Forms connected to CRM backend
-
-### Frontend (React) - Admin Panel
-- ✅ Admin Login/Register pages
-- ✅ Dashboard with stats cards and activity feed
-- ✅ Customers page (list, create, edit, delete)
-- ✅ Orders page (list, create, status workflow)
-- ✅ Quotes B2B page (list, create, pipeline status)
-- ✅ Leads page (list, create, convert to customer)
-- ✅ Support Tickets page (list, create, priority)
-- ✅ Audit Log page
-- ✅ Calendar page - Visual view of pickups by date
-- ✅ Settings page - Notification status + CSV exports
-- ✅ Responsive sidebar navigation with link to Landing Page
-
-### Frontend (React) - Public Website (9 Pages)
-- ✅ Home Page (/) - Hero with video background, features, FAQ
-- ✅ Services Page (/services) - Self-service, Wash & Fold, Pickup & Delivery
-- ✅ About Page (/about) - Company story, values, location
-- ✅ Contact Page (/contact) - Contact form, info, map, FAQ
-- ✅ Store Page (/store) - Coming soon placeholder
-- ✅ Blog Page (/blog) - 6 sample blog posts
-- ✅ Schedule Pickup Page (/schedule-pickup) - Full pickup request form
-- ✅ Customer Login (/account/login) - Login/Register for customers
-- ✅ Customer Account (/account) - View order history, profile info
-- ✅ Shared PublicNav component with consistent navigation
-- ✅ Shared PublicFooter component with contact info and links
-
-### Design System
-- Fresh Sky color palette (#0ea5e9)
-- Playfair Display for headings, Inter for body
-- Consistent navigation across all public pages
-- Status badges with semantic colors
-- Calendar with colored event dots
-
-## URLs
-**Public Website:**
-- Home: / and /home
-- Services: /services
-- About: /about
-- Contact: /contact
-- Store: /store
-- Blog: /blog
-- Schedule Pickup: /schedule-pickup
-- Customer Login: /account/login
-- Customer Account: /account
-
-**Admin Panel:**
-- Admin Login: /login
-- Admin Dashboard: /admin
-- Admin Calendar: /admin/calendar
-- Admin Settings: /admin/settings
-
-## Prioritized Backlog
-
-### P0 (Critical) - DONE ✅
-- ✅ Authentication system (admin and customer)
-- ✅ Customer CRUD
-- ✅ Orders CRUD
-- ✅ Dashboard
+### Frontend (React)
+- ✅ Admin Dashboard
+- ✅ **Operator Dashboard** (NEW) - Vista simplificada para operador
+- ✅ Customers, Orders, Quotes, Leads, Tickets pages
+- ✅ Calendar view
+- ✅ Store management (products, orders)
+- ✅ Blog management (posts, categories)
 - ✅ Public website (9 pages)
 - ✅ Customer portal
 
-### P1 (High Priority) - DONE ✅
-- ✅ Quotes B2B
-- ✅ Leads management
-- ✅ Support tickets
-- ✅ Audit log
-- ✅ Calendar view
-- ✅ CSV exports
-- ✅ Notification structure (ready for API keys)
+### Static Website
+- ✅ HTML pages served from /web/*
+- ✅ CRM integration script
+- ✅ Forms connected to backend
 
-### P2 (Medium Priority) - UPDATED
-- [ ] Email notifications activation (add RESEND_API_KEY)
-- [ ] SMS notifications activation (add Twilio keys)
-- [ ] Customer Preferences detailed view/editor in portal
-- ✅ **Store page e-commerce functionality (2026-02-09)**
-- ✅ **Blog post management in admin (2026-02-09)**
-- ✅ **Stripe payment integration (2026-02-09)**
-- [ ] Bulk actions (mass status update)
-- [ ] Search filters on all list pages
-
-### Store Module (NEW) ✅
-- ✅ **Backend** (/app/backend/store.py):
-  - Products CRUD API
-  - Shopping cart management
-  - Stripe checkout integration via emergentintegrations
-  - Store orders management
-  - Auto-seed products on first API call
-- ✅ **Public Frontend** (/store):
-  - Product listing with categories
-  - Add to cart functionality
-  - Cart sidebar with quantity controls
-  - Stripe checkout redirect
-  - Payment success/cancel handling
-- ✅ **Admin Frontend** (/admin/store):
-  - Products management (CRUD)
-  - Orders table with status updates
-  - Stock tracking
-  - Category filtering
-
-### Blog Module (NEW) ✅
-- ✅ **Backend** (/app/backend/blog.py):
-  - Blog posts CRUD API
-  - Categories management
-  - Search functionality
-  - View counting
-  - Auto-seed posts on first API call
-- ✅ **Public Frontend** (/blog):
-  - Post listing with cards
-  - Category filter
-  - Search functionality
-  - Individual post view with HTML rendering
-- ✅ **Admin Frontend** (/admin/blog):
-  - Posts management (CRUD)
-  - Publish/Unpublish toggle
-  - Categories management
-  - HTML content editor
-
-### P3 (Nice to Have) - Future
-- [ ] Mobile app
-- [ ] Analytics dashboards with charts
-- [ ] Multi-location support
-- [ ] Route optimization for drivers
-- [ ] Automated reminders/follow-ups
-
-## Next Tasks
-1. Configure Resend API key for email notifications
-2. Configure Twilio for SMS notifications
-3. Add customer preferences management UI
-4. Bulk actions for orders and customers
-5. Add images to store products
-6. Implement blog featured images
+## Order Status Flow
+```
+NEW → CONFIRMED → PICKUP_SCHEDULED → PICKED_UP → PROCESSING → READY → OUT_FOR_DELIVERY → DELIVERED
+         ↓
+     CANCELLED
+```
 
 ## Test Credentials
 - **Admin**: admin@venturafresh.com / admin123
 - **Customer**: test@example.com / test123
+- **n8n**: admin / ventura2024
 
-## Recent Changes (2026-02-09)
-- **Store Module**: Full e-commerce functionality with Stripe payments
-- **Blog Module**: Full content management system
-- **Admin Panel**: New Tienda and Blog sections in sidebar
-- **Testing**: 100% test pass rate (28/28 backend, all frontend)
+## Recent Changes (2026-02-14)
+- **Automation Engine**: Full workflow automation implemented
+- **Operator Dashboard**: Simplified view for operators
+- **n8n**: Self-hosted instance running and configured
+- **Auto-routing**: Forms automatically classified and routed
+- **SLA tracking**: Automatic priority and deadline calculation
+- **Testing**: All automation endpoints tested and working
+
+## Próximos Pasos
+1. 🔴 Conectar n8n con Google Sheets (Master File)
+2. 🔴 Conectar n8n con Google Calendar
+3. 🔴 Configurar Gmail para notificaciones
+4. 🟠 Configurar SMTP para emails automáticos
+5. 🟡 Agregar WhatsApp notifications (Twilio)
