@@ -1,82 +1,72 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
-# IDE and editors
-.idea/
-.vscode/
-
-# Dependencies
-node_modules/
-/node_modules
-/.pnp
-.pnp.js
-.yarn/install-state.gz
-.yarn/*
 !.yarn/patches
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
-
-# Testing
-/coverage
-
-# Next.js
-/.next/
-/out/
-next-env.d.ts
-*.tsbuildinfo
-
-# Production builds
-/build
-dist/
-dist
-
-# Environment files (comprehensive coverage)
-
-*token.json*
-*credentials.json*
-
-# Logs and debug files
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
-dump.rdb
-
-# System files
-.DS_Store
-*.pem
-
-# Python
-__pycache__/
-*pyc*
-venv/
-.venv/
-
-# Development tools
-chainlit.md
-.chainlit
-.ipynb_checkpoints/
-.ac
-
-# Deployment
-.vercel
-
-# Data and databases
-agenthub/agents/youtube/db
-
 # Archive files and large assets
-**/*.zip
-**/*.tar.gz
+# Build caches
+# Data and databases
+# Dependencies
+# Deployment
+# Development tools
+# Environment files (comprehensive coverage)
+# IDE and editors
+# Logs and debug files
+# Mobile development
+# Next.js
+# Production builds
+# Python
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# System files
+# Testing
 **/*.tar
+**/*.tar.gz
 **/*.tgz
-*.pack
+**/*.zip
 *.deb
 *.dylib
-
-# Build caches
+*.json
+*.pack
+*.pem
+*.tsbuildinfo
+*credentials.json*
+*pyc*
+*token.json*
+.DS_Store
+.ac
 .cache/
-
-# Mobile development
+.chainlit
+.idea/
+.ipynb_checkpoints/
+.pnp.js
+.pnpm-debug.log*
+.venv/
+.vercel
+.vscode/
+.yarn/*
+.yarn/install-state.gz
+/.next/
+/.pnp
+/build
+/coverage
+/node_modules
+/out/
+__pycache__/
+agenthub/agents/youtube/db
 android-sdk/ frontend/node_modules/.cache/default-development/0.pack
+chainlit.md
+client_secret_*.json
+dist
+dist/
+dump.rdb
 frontend/node_modules/.cache/default-development/0.pack
 frontend/node_modules/.cache/default-development/12.pack
+n8n/.n8n/
+n8n/data/
+next-env.d.ts
+node_modules/
+npm-debug.log*
+venv/
+yarn-debug.log*
+yarn-error.log*
+frontend/node_modules/.cache/default-development/22.pack

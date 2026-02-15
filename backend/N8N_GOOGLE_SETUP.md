@@ -1,4 +1,4 @@
-# Guía de Configuración: n8n + Google Workspace
+git # Guía de Configuración: n8n + Google Workspace
 
 ## Paso 1: Crear Service Account en Google Cloud
 
