@@ -549,6 +549,7 @@ async def create_order(request: OrderCreateRequest):
         "customer_id": request.customer_id,
         "service_type": request.service_type,
         "status": "new",
+        "estado_actual": "new",
         "pickup_date": request.pickup_date,
         "pickup_time_window": request.pickup_time_window,
         "pickup_address": request.pickup_address,
@@ -557,6 +558,16 @@ async def create_order(request: OrderCreateRequest):
         "actual_lbs": None,
         "total_amount": None,
         "payment_status": "unpaid",
+        "tiempos": {
+            "creacion": now.isoformat(),
+            "ultimo_cambio_estado": now.isoformat(),
+            "fechas_estado": {"new": now.isoformat()}
+        },
+        "errores_validacion": [],
+        "secciones": [],
+        "importada": False,
+        "origen": request.source,
+        "qr_token": str(uuid.uuid4()),
         "special_instructions": request.special_instructions,
         "source": request.source,
         "created_at": now.isoformat(),
@@ -587,6 +598,13 @@ async def create_order(request: OrderCreateRequest):
             "source": request.source
         },
         "timestamp": now.isoformat()
+    })
+    await db.eventos_automation.insert_one({
+        "id": str(uuid.uuid4()),
+        "tipo": "ORDER_CREATED",
+        "entity_id": order_id,
+        "payload": {"order_number": order_number, "service_type": request.service_type, "source": request.source},
+        "created_at": now.isoformat()
     })
     
     return {

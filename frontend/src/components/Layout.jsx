@@ -17,16 +17,23 @@ import {
   ExternalLink,
   Store,
   BookOpen,
-  Zap
+  Zap,
+  Layers,
+  Star,
+  Bot
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "./ui/button";
+import AdminFloatingChat from "./AdminFloatingChat";
 
 const navItems = [
   { path: "/admin", icon: LayoutDashboard, label: "Dashboard" },
   { path: "/admin/operator", icon: Zap, label: "Panel Operador", highlight: true },
   { path: "/admin/customers", icon: Users, label: "Clientes" },
   { path: "/admin/orders", icon: ShoppingBag, label: "Órdenes" },
+  { path: "/admin/services", icon: Layers, label: "Servicios" },
+  { path: "/admin/memberships", icon: Star, label: "Membresías" },
+  { path: "/admin/ai", icon: Bot, label: "IA" },
   { path: "/admin/calendar", icon: CalendarDays, label: "Calendario" },
   { path: "/admin/quotes", icon: FileText, label: "Cotizaciones B2B" },
   { path: "/admin/leads", icon: UserPlus, label: "Leads" },
@@ -154,6 +161,7 @@ export default function Layout() {
           <Outlet />
         </div>
       </main>
+      {user?.role === "admin" && <AdminFloatingChat />}
     </div>
   );
 }

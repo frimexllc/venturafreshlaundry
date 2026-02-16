@@ -10,12 +10,44 @@ import os
 from motor.motor_asyncio import AsyncIOMotorClient
 
 # Stripe integration
-from emergentintegrations.payments.stripe.checkout import (
-    StripeCheckout, 
-    CheckoutSessionResponse, 
-    CheckoutStatusResponse, 
-    CheckoutSessionRequest
-)
+try:
+    from emergentintegrations.payments.stripe.checkout import (
+        StripeCheckout,
+        CheckoutSessionResponse,
+        CheckoutStatusResponse,
+        CheckoutSessionRequest,
+    )
+    STRIPE_AVAILABLE = True
+except ImportError:
+    STRIPE_AVAILABLE = False
+
+    class CheckoutSessionRequest(BaseModel):
+        amount: float
+        currency: str
+        success_url: str
+        cancel_url: str
+        metadata: Optional[Dict[str, str]] = None
+
+    class CheckoutSessionResponse(BaseModel):
+        url: str = ""
+        session_id: str = ""
+
+    class CheckoutStatusResponse(BaseModel):
+        payment_status: str = ""
+
+    class StripeCheckout:
+        def __init__(self, api_key: str, webhook_url: str):
+            self.api_key = api_key
+            self.webhook_url = webhook_url
+
+        async def create_checkout_session(self, request: CheckoutSessionRequest):
+            raise RuntimeError("Stripe integration not available")
+
+        async def get_checkout_status(self, session_id: str):
+            raise RuntimeError("Stripe integration not available")
+
+        async def handle_webhook(self, payload: bytes, signature: str):
+            raise RuntimeError("Stripe integration not available")
 
 store_router = APIRouter(prefix="/store", tags=["Store"])
 
@@ -365,6 +397,8 @@ async def clear_cart(cart_id: str):
 @store_router.post("/checkout")
 async def create_checkout_session(checkout: CheckoutRequest, request: Request):
     """Create Stripe checkout session for cart"""
+    if not STRIPE_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Stripe integration not available")
     # Get cart
     cart = await db.carts.find_one({"id": checkout.cart_id})
     if not cart:
@@ -462,6 +496,8 @@ async def create_checkout_session(checkout: CheckoutRequest, request: Request):
 @store_router.get("/checkout/status/{session_id}")
 async def get_checkout_status(session_id: str):
     """Get the status of a checkout session"""
+    if not STRIPE_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Stripe integration not available")
     stripe_api_key = os.environ.get("STRIPE_API_KEY")
     if not stripe_api_key:
         raise HTTPException(status_code=500, detail="Payment configuration error")
@@ -581,6 +617,8 @@ async def update_order_status(order_id: str, status: str):
 
 async def handle_stripe_webhook(request: Request):
     """Handle Stripe webhook events"""
+    if not STRIPE_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Stripe integration not available")
     stripe_api_key = os.environ.get("STRIPE_API_KEY")
     if not stripe_api_key:
         raise HTTPException(status_code=500, detail="Payment configuration error")

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { ChevronDown, ChevronUp, Check, Star, Clock, Shield, Truck } from "lucide-react";
@@ -36,6 +36,19 @@ const MEMBERSHIP_PLANS = [
     isPopular: false
   }
 ];
+
+const MEMBERSHIP_SECTION_DEFAULT = {
+  heading: "Flexible Plans for Every Home",
+  subheading: null,
+  special_title: "🎉 New Member Special",
+  special_text: "$10 OFF your first month on any membership. Ask when you call or text.",
+  cta_title: "Need help choosing?",
+  cta_text: "Just call, text, or email us at (805) 836-8872 and we'll recommend the perfect plan based on your weekly laundry.",
+  cta_button_label: "👉 BECOME A MEMBER",
+  cta_button_url: "/membership",
+  contact_phone: "(805) 836-8872",
+  is_active: true
+};
 
 const PER_PIECE_CATEGORIES = [
   {
@@ -139,24 +152,31 @@ const HeroSection = ({ title, subtitle, image, overlay = "bg-black/40", height =
 );
 
 // Service Card Component
-const ServiceCard = ({ title, emoji, description, features, buttonText, buttonLink, price }) => (
+const ServiceCard = ({ title, emoji, description, features = [], buttonText, buttonLink, price, category }) => (
   <div className="bg-white rounded-2xl p-8 shadow-lg border border-slate-100 hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
-    <div className="flex justify-center mb-4">
-      <span className="text-4xl">{emoji}</span>
-    </div>
+    {emoji && (
+      <div className="flex justify-center mb-4">
+        <span className="text-4xl">{emoji}</span>
+      </div>
+    )}
     <h3 className="text-2xl font-bold text-slate-900 text-center mb-4">
       {title}
     </h3>
+    {category && (
+      <p className="text-xs uppercase tracking-wider text-sky-600 text-center mb-2">{category}</p>
+    )}
     <p className="text-slate-600 text-center mb-2">{description}</p>
     {price && <p className="text-3xl font-bold text-sky-600 text-center mb-4">{price}</p>}
-    <div className="space-y-3 mb-6">
-      {features.map((feature, i) => (
-        <p key={i} className="flex items-start gap-2 text-slate-700">
-          <Check className="h-5 w-5 text-sky-500 flex-shrink-0 mt-0.5" />
-          <span dangerouslySetInnerHTML={{ __html: feature }} />
-        </p>
-      ))}
-    </div>
+    {features.length > 0 && (
+      <div className="space-y-3 mb-6">
+        {features.map((feature, i) => (
+          <p key={i} className="flex items-start gap-2 text-slate-700">
+            <Check className="h-5 w-5 text-sky-500 flex-shrink-0 mt-0.5" />
+            <span dangerouslySetInnerHTML={{ __html: feature }} />
+          </p>
+        ))}
+      </div>
+    )}
     {buttonText && buttonLink && (
       <div className="text-center">
         <Link to={buttonLink}>
@@ -180,11 +200,11 @@ const MembershipCard = ({ plan, price, image, features, isPopular }) => (
         MOST POPULAR
       </div>
     )}
-    <div className="h-48 overflow-hidden bg-gradient-to-br from-sky-50 to-white">
+    <div className="h-48 overflow-hidden bg-gradient-to-br from-sky-50 to-white flex items-center justify-center p-4">
       <img 
         src={image} 
         alt={`${plan} Membership - Ventura Fresh Laundry`}
-        className="w-full h-full object-cover transition-transform duration-500 hover:scale-110"
+        className="max-w-full max-h-full object-contain transition-transform duration-500 hover:scale-110"
         loading="lazy"
       />
     </div>
@@ -251,6 +271,9 @@ export default function ServicesPage() {
     commercial: 0,
     airbnb: 0
   });
+  const [membershipSection, setMembershipSection] = useState(MEMBERSHIP_SECTION_DEFAULT);
+  const [membershipPlans, setMembershipPlans] = useState(MEMBERSHIP_PLANS);
+  const [servicesData, setServicesData] = useState([]);
 
   const toggleAccordion = (section, index) => {
     setOpenAccordions(prev => ({
@@ -258,6 +281,89 @@ export default function ServicesPage() {
       [section]: prev[section] === index ? -1 : index
     }));
   };
+
+  useEffect(() => {
+    const loadMembership = async () => {
+      try {
+        const [sectionRes, plansRes] = await Promise.all([
+          fetch(`${process.env.REACT_APP_BACKEND_URL}/api/public/membership-section`),
+          fetch(`${process.env.REACT_APP_BACKEND_URL}/api/public/membership-plans`)
+        ]);
+        if (sectionRes.ok) {
+          const data = await sectionRes.json();
+          setMembershipSection(data);
+        }
+        if (plansRes.ok) {
+          const data = await plansRes.json();
+          const mapped = data.map((plan) => ({
+            plan: plan.name,
+            price: plan.price,
+            image: plan.image_url,
+            features: plan.features || [],
+            isPopular: plan.is_popular
+          }));
+          setMembershipPlans(mapped);
+        }
+      } catch (error) {
+        setMembershipSection(MEMBERSHIP_SECTION_DEFAULT);
+        setMembershipPlans(MEMBERSHIP_PLANS);
+      }
+    };
+    loadMembership();
+  }, []);
+
+  useEffect(() => {
+    const loadServices = async () => {
+      try {
+        const res = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/public/services`);
+        if (res.ok) {
+          const data = await res.json();
+          setServicesData(data);
+        }
+      } catch (error) {
+        setServicesData([]);
+      }
+    };
+    loadServices();
+  }, []);
+
+  const priceUnitLabels = {
+    per_lb: "por libra",
+    per_order: "por orden",
+    per_month: "por mes",
+    per_item: "por pieza"
+  };
+
+  const servicesToRender = servicesData.length > 0 ? servicesData.map((service) => ({
+    title: service.name,
+    description: service.description || "",
+    price: service.price != null ? `$${Number(service.price).toFixed(2)}${service.price_unit ? ` / ${priceUnitLabels[service.price_unit] || service.price_unit}` : ""}` : null,
+    category: service.category || null,
+    features: []
+  })) : [
+    {
+      title: "Pickup & Delivery",
+      emoji: "🚚",
+      description: "Laundry, fully automated on your schedule.",
+      features: [
+        "<strong>Member recurring service:</strong> $2.50/lb (minimum $40)",
+        "<strong>As-needed service:</strong> $2.75/lb (minimum $40)",
+        "<strong>Pickup window & preferences confirmed every time</strong>"
+      ],
+      buttonText: "SCHEDULE PICK-UP",
+      buttonLink: "/schedule-pickup"
+    },
+    {
+      title: "Wash • Dry • Fold",
+      emoji: "🧺",
+      description: "Professional care without lifting a finger.",
+      features: [
+        "<strong>$2.25 per pound</strong>",
+        "<strong>10 lb minimum order</strong> (orders under 10 lb are billed as 10 lb)",
+        "<strong>Custom folding preferences available</strong>"
+      ]
+    }
+  ];
 
   return (
     <div className="min-h-screen bg-white">
@@ -291,31 +397,9 @@ export default function ServicesPage() {
           </div>
 
           <div className="grid md:grid-cols-2 gap-8">
-            {/* Pickup & Delivery */}
-            <ServiceCard 
-              title="Pickup & Delivery"
-              emoji="🚚"
-              description="Laundry, fully automated on your schedule."
-              features={[
-                "<strong>Member recurring service:</strong> $2.50/lb (minimum $40)",
-                "<strong>As-needed service:</strong> $2.75/lb (minimum $40)",
-                "<strong>Pickup window & preferences confirmed every time</strong>"
-              ]}
-              buttonText="SCHEDULE PICK-UP"
-              buttonLink="/schedule-pickup"
-            />
-
-            {/* Wash Dry Fold */}
-            <ServiceCard 
-              title="Wash • Dry • Fold"
-              emoji="🧺"
-              description="Professional care without lifting a finger."
-              features={[
-                "<strong>$2.25 per pound</strong>",
-                "<strong>10 lb minimum order</strong> (orders under 10 lb are billed as 10 lb)",
-                "<strong>Custom folding preferences available</strong>"
-              ]}
-            />
+            {servicesToRender.map((service, index) => (
+              <ServiceCard key={index} {...service} />
+            ))}
           </div>
 
           {/* Self Service Laundry */}
@@ -364,22 +448,28 @@ export default function ServicesPage() {
           {/* Membership Header */}
           <div className="text-center mb-12">
             <span className="text-sky-600 font-semibold tracking-wider uppercase text-sm">Membership</span>
-            <h1 className="text-4xl md:text-5xl font-bold text-slate-900 mb-6" 
+            <h1 className="text-4xl md:text-5xl font-bold text-slate-900 mb-4" 
                 style={{ fontFamily: "'Playfair Display', serif" }}>
-              Flexible Plans for Every Home
+              {membershipSection.heading}
             </h1>
-            
-            <div className="bg-gradient-to-r from-amber-50 to-yellow-50 rounded-2xl p-6 max-w-2xl mx-auto border border-amber-200">
-              <h2 className="text-2xl md:text-3xl text-amber-800 mb-2">🎉 New Member Special</h2>
-              <p className="text-lg text-amber-700">
-                $10 OFF your first month on any membership. Ask when you call or text.
-              </p>
-            </div>
+            {membershipSection.subheading && (
+              <p className="text-slate-600 text-lg mb-6">{membershipSection.subheading}</p>
+            )}
+            {(membershipSection.special_title || membershipSection.special_text) && (
+              <div className="bg-gradient-to-r from-amber-50 to-yellow-50 rounded-2xl p-6 max-w-2xl mx-auto border border-amber-200">
+                {membershipSection.special_title && (
+                  <h2 className="text-2xl md:text-3xl text-amber-800 mb-2">{membershipSection.special_title}</h2>
+                )}
+                {membershipSection.special_text && (
+                  <p className="text-lg text-amber-700">{membershipSection.special_text}</p>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Membership Cards Grid */}
           <div className="grid md:grid-cols-4 gap-6 mb-12 items-stretch">
-            {MEMBERSHIP_PLANS.map((plan, index) => (
+            {membershipPlans.map((plan, index) => (
               <MembershipCard key={index} {...plan} />
             ))}
           </div>
@@ -391,20 +481,45 @@ export default function ServicesPage() {
                 <Shield className="h-6 w-6 text-sky-600" />
               </div>
             </div>
-            <h4 className="text-lg font-semibold text-slate-900 mb-2">Need help choosing?</h4>
-            <p className="text-slate-600">
-              Just <strong>call, text, or email us at</strong> <a href="tel:8058368872" className="text-sky-600 font-bold hover:underline">(805) 836-8872</a> and we'll recommend the perfect plan based on your weekly laundry.
-            </p>
+            {membershipSection.cta_title && (
+              <h4 className="text-lg font-semibold text-slate-900 mb-2">{membershipSection.cta_title}</h4>
+            )}
+            {membershipSection.cta_text && (
+              <p className="text-slate-600">
+                {membershipSection.cta_text}
+                {membershipSection.contact_phone && (
+                  <>
+                    {" "}
+                    <a href={`tel:${membershipSection.contact_phone.replace(/[^\d]/g, "")}`} className="text-sky-600 font-bold hover:underline">
+                      {membershipSection.contact_phone}
+                    </a>
+                  </>
+                )}
+              </p>
+            )}
             <div className="mt-6">
-              <a 
-                href="https://www.venturafreshlaundry.com/membership" 
-                target="_blank" 
-                rel="noopener noreferrer"
-              >
-                <Button className="bg-gradient-to-r from-sky-500 to-sky-600 hover:from-sky-600 hover:to-sky-700 text-white rounded-full px-10 py-6 text-lg font-semibold transform transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl">
-                  👉 BECOME A MEMBER
-                </Button>
-              </a>
+              {membershipSection.cta_button_label && (
+                (() => {
+                  const ctaUrl = membershipSection.cta_button_url || "/membership";
+                  const isExternal = /^https?:\/\//i.test(ctaUrl);
+                  if (isExternal) {
+                    return (
+                      <a href={ctaUrl} target="_blank" rel="noopener noreferrer">
+                        <Button className="bg-gradient-to-r from-sky-500 to-sky-600 hover:from-sky-600 hover:to-sky-700 text-white rounded-full px-10 py-6 text-lg font-semibold transform transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl">
+                          {membershipSection.cta_button_label}
+                        </Button>
+                      </a>
+                    );
+                  }
+                  return (
+                    <Link to={ctaUrl}>
+                      <Button className="bg-gradient-to-r from-sky-500 to-sky-600 hover:from-sky-600 hover:to-sky-700 text-white rounded-full px-10 py-6 text-lg font-semibold transform transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl">
+                        {membershipSection.cta_button_label}
+                      </Button>
+                    </Link>
+                  );
+                })()
+              )}
             </div>
           </div>
         </div>

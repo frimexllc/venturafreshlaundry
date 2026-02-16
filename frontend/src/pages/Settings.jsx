@@ -3,6 +3,7 @@ import axios from "axios";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import { Textarea } from "../components/ui/textarea";
 import { toast } from "sonner";
 import { 
   Settings as SettingsIcon, 
@@ -27,9 +28,22 @@ export default function Settings() {
   const [testEmail, setTestEmail] = useState("");
   const [testPhone, setTestPhone] = useState("");
   const [sending, setSending] = useState(false);
+  const [rulesText, setRulesText] = useState("");
+  const [loadingRules, setLoadingRules] = useState(true);
+  const [savingRules, setSavingRules] = useState(false);
+  const [rulesForm, setRulesForm] = useState({
+    sla_pickup_delivery: "",
+    sla_wash_fold: "",
+    sla_self_service: "",
+    notify_pickup_delivery: "out_for_delivery",
+    notify_wash_fold: "ready",
+    notify_self_service: "ready"
+  });
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   useEffect(() => {
     fetchSettings();
+    fetchRules();
   }, []);
 
   const fetchSettings = async () => {
@@ -42,6 +56,76 @@ export default function Settings() {
       setLoading(false);
     }
   };
+
+  const fetchRules = async () => {
+    try {
+      const res = await axios.get(`${API}/settings/rules`);
+      setRulesText(JSON.stringify(res.data, null, 2));
+      const sla = res.data?.sla_hours || {};
+      const transitions = res.data?.auto_transitions || {};
+      setRulesForm({
+        sla_pickup_delivery: sla.pickup_delivery ?? "",
+        sla_wash_fold: sla.wash_fold ?? "",
+        sla_self_service: sla.self_service ?? "",
+        notify_pickup_delivery: transitions.pickup_delivery?.notify_status || "out_for_delivery",
+        notify_wash_fold: transitions.wash_fold?.notify_status || "ready",
+        notify_self_service: transitions.self_service?.notify_status || "ready"
+      });
+    } catch (error) {
+      toast.error("Error cargando reglas de negocio");
+    } finally {
+      setLoadingRules(false);
+    }
+  };
+
+  const handleSaveRules = async () => {
+    let payload = {};
+    try {
+      payload = {
+        id: "order_rules_v1",
+        type: "order_rules",
+        sla_hours: {
+          pickup_delivery: Number(rulesForm.sla_pickup_delivery) || 0,
+          wash_fold: Number(rulesForm.sla_wash_fold) || 0,
+          self_service: Number(rulesForm.sla_self_service) || 0
+        },
+        auto_transitions: {
+          pickup_delivery: { notify_status: rulesForm.notify_pickup_delivery },
+          wash_fold: { notify_status: rulesForm.notify_wash_fold },
+          self_service: { notify_status: rulesForm.notify_self_service }
+        }
+      };
+      setRulesText(JSON.stringify(payload, null, 2));
+    } catch (error) {
+      toast.error("JSON inválido");
+      return;
+    }
+    setSavingRules(true);
+    try {
+      await axios.put(`${API}/settings/rules`, { rules: payload });
+      toast.success("Reglas actualizadas");
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Error guardando reglas");
+    } finally {
+      setSavingRules(false);
+    }
+  };
+
+  const applyPreset = (preset) => {
+    setRulesForm({
+      sla_pickup_delivery: preset.sla_pickup_delivery,
+      sla_wash_fold: preset.sla_wash_fold,
+      sla_self_service: preset.sla_self_service,
+      notify_pickup_delivery: preset.notify_pickup_delivery,
+      notify_wash_fold: preset.notify_wash_fold,
+      notify_self_service: preset.notify_self_service
+    });
+  };
+
+  const slaInvalid =
+    Number(rulesForm.sla_pickup_delivery) <= 0 ||
+    Number(rulesForm.sla_wash_fold) <= 0 ||
+    Number(rulesForm.sla_self_service) <= 0;
 
   const handleExport = async (type) => {
     try {
@@ -341,6 +425,127 @@ export default function Settings() {
             </ol>
           </div>
         </div>
+      </div>
+
+      <div className="dashboard-card p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">Reglas de negocio</h2>
+            <p className="text-sm text-slate-500">Editar reglas operativas del sistema</p>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setShowAdvanced((prev) => !prev)}>
+              {showAdvanced ? "Ocultar JSON" : "Mostrar JSON"}
+            </Button>
+            <Button onClick={handleSaveRules} disabled={savingRules || loadingRules || slaInvalid}>
+              {savingRules ? "Guardando..." : "Guardar"}
+            </Button>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => applyPreset({
+              sla_pickup_delivery: 48,
+              sla_wash_fold: 36,
+              sla_self_service: 24,
+              notify_pickup_delivery: "out_for_delivery",
+              notify_wash_fold: "ready",
+              notify_self_service: "ready"
+            })}
+          >
+            Preset estándar
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => applyPreset({
+              sla_pickup_delivery: 24,
+              sla_wash_fold: 18,
+              sla_self_service: 12,
+              notify_pickup_delivery: "ready",
+              notify_wash_fold: "ready",
+              notify_self_service: "ready"
+            })}
+          >
+            Preset rápido
+          </Button>
+        </div>
+        {slaInvalid && (
+          <div className="text-xs text-amber-600">SLA debe ser mayor a 0</div>
+        )}
+        <div className="grid md:grid-cols-3 gap-4">
+          <div>
+            <Label>SLA Pickup & Delivery (h)</Label>
+            <Input
+              type="number"
+              value={rulesForm.sla_pickup_delivery}
+              onChange={(e) => setRulesForm({ ...rulesForm, sla_pickup_delivery: e.target.value })}
+            />
+          </div>
+          <div>
+            <Label>SLA Wash & Fold (h)</Label>
+            <Input
+              type="number"
+              value={rulesForm.sla_wash_fold}
+              onChange={(e) => setRulesForm({ ...rulesForm, sla_wash_fold: e.target.value })}
+            />
+          </div>
+          <div>
+            <Label>SLA Self Service (h)</Label>
+            <Input
+              type="number"
+              value={rulesForm.sla_self_service}
+              onChange={(e) => setRulesForm({ ...rulesForm, sla_self_service: e.target.value })}
+            />
+          </div>
+          <div>
+            <Label>Notificación Pickup & Delivery</Label>
+            <select
+              className="w-full h-9 rounded-md border border-slate-200 px-2 text-sm"
+              value={rulesForm.notify_pickup_delivery}
+              onChange={(e) => setRulesForm({ ...rulesForm, notify_pickup_delivery: e.target.value })}
+            >
+              <option value="out_for_delivery">En camino</option>
+              <option value="ready">Lista</option>
+              <option value="delivered">Entregada</option>
+            </select>
+          </div>
+          <div>
+            <Label>Notificación Wash & Fold</Label>
+            <select
+              className="w-full h-9 rounded-md border border-slate-200 px-2 text-sm"
+              value={rulesForm.notify_wash_fold}
+              onChange={(e) => setRulesForm({ ...rulesForm, notify_wash_fold: e.target.value })}
+            >
+              <option value="ready">Lista</option>
+              <option value="out_for_delivery">En camino</option>
+              <option value="delivered">Entregada</option>
+            </select>
+          </div>
+          <div>
+            <Label>Notificación Self Service</Label>
+            <select
+              className="w-full h-9 rounded-md border border-slate-200 px-2 text-sm"
+              value={rulesForm.notify_self_service}
+              onChange={(e) => setRulesForm({ ...rulesForm, notify_self_service: e.target.value })}
+            >
+              <option value="ready">Lista</option>
+              <option value="out_for_delivery">En camino</option>
+              <option value="delivered">Entregada</option>
+            </select>
+          </div>
+        </div>
+        {showAdvanced && (
+          <Textarea
+            rows={10}
+            value={rulesText}
+            onChange={(e) => setRulesText(e.target.value)}
+            placeholder="JSON de reglas"
+            disabled={loadingRules}
+          />
+        )}
       </div>
     </div>
   );

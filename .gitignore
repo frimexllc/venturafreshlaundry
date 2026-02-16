@@ -10,6 +10,10 @@
 # Deployment
 # Development tools
 # Environment files (comprehensive coverage)
+.env
+.env.*
+backend/.env
+frontend/.env
 # IDE and editors
 # Logs and debug files
 # Mobile development

@@ -7,6 +7,7 @@ import os
 import asyncio
 import logging
 import smtplib
+import requests
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import Optional
@@ -51,9 +52,6 @@ async def send_email(to_email: str, subject: str, html_content: str) -> dict:
         logger.error(f"Failed to send email: {str(e)}")
         return {"status": "error", "message": str(e)}
 
-# ==================== SMS SERVICE (Email-to-SMS Gateways) ====================
-# Free SMS via carrier email gateways - no Twilio needed!
-
 CARRIER_GATEWAYS = {
     # US Carriers
     "att": "txt.att.net",
@@ -70,41 +68,110 @@ CARRIER_GATEWAYS = {
     "movistar_mx": "movistar.com.mx",
 }
 
-# Default carrier for US numbers (can be overridden per customer)
 DEFAULT_CARRIER = os.environ.get('DEFAULT_SMS_CARRIER', 'att')
+SMS_PROVIDER = os.environ.get('SMS_PROVIDER', 'smtp_gateway')
+TWILIO_ACCOUNT_SID = os.environ.get('TWILIO_ACCOUNT_SID')
+TWILIO_AUTH_TOKEN = os.environ.get('TWILIO_AUTH_TOKEN')
+TWILIO_PHONE_NUMBER = os.environ.get('TWILIO_PHONE_NUMBER')
+WHATSAPP_ENABLED = os.environ.get('WHATSAPP_ENABLED', 'false').lower() == 'true'
+TWILIO_WHATSAPP_NUMBER = os.environ.get('TWILIO_WHATSAPP_NUMBER')
 
 def format_phone_for_sms(phone: str) -> str:
     """Clean phone number to digits only"""
     return ''.join(filter(str.isdigit, phone))[-10:]  # Last 10 digits
 
+def normalize_phone_e164(phone: str) -> str:
+    if phone.startswith("+"):
+        return phone
+    digits = ''.join(filter(str.isdigit, phone))
+    if len(digits) == 10:
+        return f"+1{digits}"
+    return f"+{digits}"
+
+async def send_sms_via_twilio(to_phone: str, message: str) -> dict:
+    if not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN or not TWILIO_PHONE_NUMBER:
+        logger.warning("Twilio not configured, skipping SMS")
+        return {"status": "skipped", "message": "Twilio not configured"}
+    to_number = normalize_phone_e164(to_phone)
+    from_number = normalize_phone_e164(TWILIO_PHONE_NUMBER)
+
+    def send_sync():
+        return requests.post(
+            f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_ACCOUNT_SID}/Messages.json",
+            data={"To": to_number, "From": from_number, "Body": message},
+            auth=(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN),
+            timeout=30
+        )
+
+    try:
+        response = await asyncio.to_thread(send_sync)
+        if response.ok:
+            logger.info(f"SMS sent to {to_number} via Twilio")
+            return {"status": "success", "message": f"SMS sent to {to_number}"}
+        logger.error(f"Twilio SMS failed: {response.text}")
+        return {"status": "error", "message": response.text}
+    except Exception as e:
+        logger.error(f"Failed to send SMS via Twilio: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
+async def send_whatsapp_via_twilio(to_phone: str, message: str) -> dict:
+    if not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN or not TWILIO_WHATSAPP_NUMBER:
+        logger.warning("Twilio WhatsApp not configured, skipping WhatsApp")
+        return {"status": "skipped", "message": "Twilio WhatsApp not configured"}
+    to_number = f"whatsapp:{normalize_phone_e164(to_phone)}"
+    from_number = TWILIO_WHATSAPP_NUMBER
+    if not from_number.startswith("whatsapp:"):
+        from_number = f"whatsapp:{normalize_phone_e164(from_number)}"
+
+    def send_sync():
+        return requests.post(
+            f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_ACCOUNT_SID}/Messages.json",
+            data={"To": to_number, "From": from_number, "Body": message},
+            auth=(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN),
+            timeout=30
+        )
+
+    try:
+        response = await asyncio.to_thread(send_sync)
+        if response.ok:
+            logger.info(f"WhatsApp sent to {to_number} via Twilio")
+            return {"status": "success", "message": f"WhatsApp sent to {to_number}"}
+        logger.error(f"Twilio WhatsApp failed: {response.text}")
+        return {"status": "error", "message": response.text}
+    except Exception as e:
+        logger.error(f"Failed to send WhatsApp via Twilio: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
 async def send_sms(to_phone: str, message: str, carrier: str = None) -> dict:
-    """Send SMS via carrier email gateway (free, no Twilio)"""
+    if SMS_PROVIDER == "twilio":
+        return await send_sms_via_twilio(to_phone, message)
+
     if not SMTP_USER or not SMTP_PASSWORD:
         logger.warning("SMTP not configured, skipping SMS")
         return {"status": "skipped", "message": "SMS service not configured (needs SMTP)"}
-    
+
     carrier = carrier or DEFAULT_CARRIER
     gateway = CARRIER_GATEWAYS.get(carrier.lower())
-    
+
     if not gateway:
         logger.warning(f"Unknown carrier: {carrier}")
         return {"status": "error", "message": f"Unknown carrier: {carrier}"}
-    
+
     phone_digits = format_phone_for_sms(to_phone)
     sms_email = f"{phone_digits}@{gateway}"
-    
+
     try:
         msg = MIMEText(message)
-        msg['Subject'] = ''  # SMS doesn't need subject
+        msg['Subject'] = ''
         msg['From'] = SMTP_USER
         msg['To'] = sms_email
-        
+
         def send_sync():
             with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
                 server.starttls()
                 server.login(SMTP_USER, SMTP_PASSWORD)
                 server.sendmail(SMTP_USER, sms_email, msg.as_string())
-        
+
         await asyncio.to_thread(send_sync)
         logger.info(f"SMS sent to {to_phone} via {carrier}")
         return {"status": "success", "message": f"SMS sent to {to_phone}"}
@@ -232,6 +299,8 @@ async def notify_order_created(customer: dict, order: dict):
         sms_text = get_order_confirmation_sms(customer_name, order_number, pickup_date)
         carrier = customer.get("carrier", DEFAULT_CARRIER)
         tasks.append(send_sms(customer["phone"], sms_text, carrier))
+        if WHATSAPP_ENABLED:
+            tasks.append(send_whatsapp_via_twilio(customer["phone"], sms_text))
     
     if tasks:
         await asyncio.gather(*tasks, return_exceptions=True)
@@ -262,6 +331,8 @@ async def notify_order_status_changed(customer: dict, order: dict, new_status: s
         sms_text = get_order_status_sms(customer_name, order_number, status_label)
         carrier = customer.get("carrier", DEFAULT_CARRIER)
         tasks.append(send_sms(customer["phone"], sms_text, carrier))
+        if WHATSAPP_ENABLED:
+            tasks.append(send_whatsapp_via_twilio(customer["phone"], sms_text))
     
     if tasks:
         await asyncio.gather(*tasks, return_exceptions=True)

@@ -15,6 +15,13 @@ import logging
 automation_router = APIRouter(prefix="/automation", tags=["Automation Engine"])
 logger = logging.getLogger(__name__)
 
+try:
+    from notifications import notify_order_status_changed
+    NOTIFICATIONS_ENABLED = True
+except ImportError:
+    NOTIFICATIONS_ENABLED = False
+    logger.warning("Notification services not available")
+
 # Database reference
 db = None
 
@@ -49,6 +56,61 @@ class OrderStatus(str, Enum):
     OUT_FOR_DELIVERY = "OUT_FOR_DELIVERY"
     DELIVERED = "DELIVERED"
     CANCELLED = "CANCELLED"
+
+STATUS_FLOW = [
+    "NEW",
+    "CONFIRMED",
+    "PICKUP_SCHEDULED",
+    "PICKED_UP",
+    "PROCESSING",
+    "READY",
+    "OUT_FOR_DELIVERY",
+    "DELIVERED"
+]
+
+STATUS_ACTION_LABELS = {
+    "NEW": "Confirmar",
+    "CONFIRMED": "Programar Pickup",
+    "PICKUP_SCHEDULED": "Recogido",
+    "PICKED_UP": "Procesar",
+    "PROCESSING": "Listo",
+    "READY": "Salir a Entregar",
+    "OUT_FOR_DELIVERY": "Entregado"
+}
+
+def normalize_status(value: Optional[str]):
+    if not value:
+        return None
+    return value.upper()
+
+def get_next_status(value: Optional[str]):
+    if not value:
+        return None
+    value = normalize_status(value)
+    if value not in STATUS_FLOW:
+        return None
+    index = STATUS_FLOW.index(value)
+    if index < len(STATUS_FLOW) - 1:
+        return STATUS_FLOW[index + 1]
+    return None
+
+async def enrich_orders_with_customers(orders: List[Dict]):
+    customer_ids = {o.get("customer_id") for o in orders if o.get("customer_id")}
+    if not customer_ids:
+        return orders
+    customers = await db.customers.find(
+        {"$or": [{"id": {"$in": list(customer_ids)}}, {"customer_id": {"$in": list(customer_ids)}}]},
+        {"_id": 0}
+    ).to_list(2000)
+    customer_map = {c.get("id"): c for c in customers}
+    customer_map.update({c.get("customer_id"): c for c in customers if c.get("customer_id")})
+    for order in orders:
+        customer = customer_map.get(order.get("customer_id"))
+        if customer:
+            order.setdefault("customer_name", customer.get("name"))
+            order.setdefault("customer_phone", customer.get("phone"))
+            order.setdefault("delivery_address", customer.get("address"))
+    return orders
 
 
 # ==================== MODELS ====================
@@ -446,6 +508,7 @@ async def create_order(data: IngestData, customer: Dict, ingest_id: str) -> Dict
     order = {
         "id": str(uuid.uuid4()),
         "order_id": order_id,
+        "order_number": order_id,
         "customer_id": customer["customer_id"],
         "customer_name": customer.get("name", "Unknown"),
         "customer_email": customer.get("email"),
@@ -461,7 +524,18 @@ async def create_order(data: IngestData, customer: Dict, ingest_id: str) -> Dict
         "special_instructions": data.special_instructions,
         "gate_code": data.gate_code,
         "status": OrderStatus.NEW.value,
+        "estado_actual": OrderStatus.NEW.value,
         "payment_status": "UNPAID",
+        "tiempos": {
+            "creacion": now.isoformat(),
+            "ultimo_cambio_estado": now.isoformat(),
+            "fechas_estado": {OrderStatus.NEW.value: now.isoformat()}
+        },
+        "errores_validacion": [],
+        "secciones": [],
+        "importada": False,
+        "origen": "automation",
+        "qr_token": str(uuid.uuid4()),
         "created_at": now.isoformat(),
         "updated_at": now.isoformat()
     }
@@ -483,6 +557,13 @@ async def create_order(data: IngestData, customer: Dict, ingest_id: str) -> Dict
         "details": {"customer_id": customer["customer_id"], "pickup_date": data.pickup_date},
         "user": "automation",
         "timestamp": now.isoformat()
+    })
+    await db.eventos_automation.insert_one({
+        "id": str(uuid.uuid4()),
+        "tipo": "ORDER_CREATED",
+        "entity_id": order["id"],
+        "payload": {"order_number": order_id, "service_type": order["service_type"]},
+        "created_at": now.isoformat()
     })
     
     return order
@@ -837,28 +918,56 @@ async def get_operator_dashboard():
     The operator only needs to update order status.
     """
     now = datetime.now(timezone.utc)
+    today = now.strftime("%Y-%m-%d")
+    pickup_statuses = ["NEW", "CONFIRMED", "PICKUP_SCHEDULED", "PICKED_UP", "new", "confirmed", "pickup_scheduled", "picked_up"]
+    ready_statuses = ["READY", "ready"]
+    processing_statuses = ["PROCESSING", "processing"]
     
-    # Today's pickups (sorted by time)
     todays_pickups = await db.orders.find({
-        "pickup_date": now.strftime("%Y-%m-%d"),
-        "status": {"$in": ["NEW", "CONFIRMED", "PICKUP_SCHEDULED"]}
+        "pickup_date": today,
+        "status": {"$in": pickup_statuses}
     }, {"_id": 0}).sort("pickup_time", 1).to_list(50)
     
-    # Orders ready for delivery
     ready_for_delivery = await db.orders.find({
-        "status": "READY"
+        "status": {"$in": ready_statuses}
     }, {"_id": 0}).to_list(50)
     
-    # High priority tickets (need immediate attention)
     urgent_tickets = await db.tickets.find({
-        "status": "OPEN",
-        "priority": "HIGH"
+        "status": {"$in": ["OPEN", "open"]},
+        "priority": {"$in": ["HIGH", "high"]}
     }, {"_id": 0}).to_list(20)
+
+    todays_pickups = await enrich_orders_with_customers(todays_pickups)
+    ready_for_delivery = await enrich_orders_with_customers(ready_for_delivery)
+
+    def normalize_order(order: Dict):
+        status = normalize_status(order.get("status") or order.get("estado_actual"))
+        order_id = order.get("order_id") or order.get("order_number") or order.get("id")
+        pickup_time = order.get("pickup_time") or order.get("pickup_time_window")
+        delivery_address = order.get("delivery_address") or order.get("pickup_address")
+        return {
+            "order_id": order_id,
+            "order_number": order.get("order_number") or order.get("order_id"),
+            "status": status,
+            "next_status": get_next_status(status),
+            "action_label": STATUS_ACTION_LABELS.get(status),
+            "customer_name": order.get("customer_name"),
+            "customer_phone": order.get("customer_phone"),
+            "service_type": order.get("service_type"),
+            "pickup_date": order.get("pickup_date"),
+            "pickup_time": pickup_time,
+            "pickup_address": order.get("pickup_address"),
+            "delivery_address": delivery_address,
+            "gate_code": order.get("gate_code"),
+            "special_instructions": order.get("special_instructions") or order.get("notes")
+        }
+
+    todays_pickups = [normalize_order(order) for order in todays_pickups]
+    ready_for_delivery = [normalize_order(order) for order in ready_for_delivery]
     
-    # Quick stats
     stats = {
-        "pickups_remaining_today": len([o for o in todays_pickups if o["status"] != "PICKED_UP"]),
-        "orders_in_processing": await db.orders.count_documents({"status": "PROCESSING"}),
+        "pickups_remaining_today": len([o for o in todays_pickups if o.get("status") != "PICKED_UP"]),
+        "orders_in_processing": await db.orders.count_documents({"status": {"$in": processing_statuses}}),
         "orders_ready": len(ready_for_delivery),
         "urgent_tickets": len(urgent_tickets)
     }
@@ -875,37 +984,41 @@ async def get_operator_dashboard():
 # ==================== ORDER STATUS UPDATE (OPERATOR ACTION) ====================
 
 @automation_router.put("/orders/{order_id}/status")
-async def update_order_status(order_id: str, new_status: OrderStatus, notes: Optional[str] = None):
+async def update_order_status(order_id: str, new_status: str, notes: Optional[str] = None):
     """
     Update order status - THIS IS THE ONLY THING THE OPERATOR NEEDS TO DO.
     The system handles everything else automatically.
     """
     now = datetime.now(timezone.utc)
     
-    order = await db.orders.find_one({"order_id": order_id})
+    status_value = normalize_status(new_status)
+    valid_statuses = {s.value for s in OrderStatus}
+    if status_value not in valid_statuses:
+        raise HTTPException(status_code=400, detail="Invalid status")
+    order = await db.orders.find_one({"$or": [{"order_id": order_id}, {"id": order_id}, {"order_number": order_id}]})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     
     old_status = order.get("status")
     
-    # Update order
     update_data = {
-        "status": new_status.value,
-        "updated_at": now.isoformat()
+        "status": status_value,
+        "estado_actual": status_value,
+        "updated_at": now.isoformat(),
+        "tiempos.ultimo_cambio_estado": now.isoformat(),
+        f"tiempos.fechas_estado.{status_value}": now.isoformat()
     }
     
-    # Add timestamp for specific status changes
-    if new_status == OrderStatus.PICKED_UP:
+    if status_value == OrderStatus.PICKED_UP.value:
         update_data["picked_up_at"] = now.isoformat()
-    elif new_status == OrderStatus.DELIVERED:
+    elif status_value == OrderStatus.DELIVERED.value:
         update_data["delivered_at"] = now.isoformat()
     
     await db.orders.update_one(
-        {"order_id": order_id},
+        {"id": order.get("id")},
         {"$set": update_data}
     )
     
-    # Audit log
     await db.audit_log.insert_one({
         "id": str(uuid.uuid4()),
         "event_type": "ORDER_STATUS_CHANGED",
@@ -913,37 +1026,61 @@ async def update_order_status(order_id: str, new_status: OrderStatus, notes: Opt
         "entity_id": order_id,
         "details": {
             "old_status": old_status,
-            "new_status": new_status.value,
+            "new_status": status_value,
             "notes": notes
         },
         "user": "operator",
         "timestamp": now.isoformat()
     })
+    await db.eventos_automation.insert_one({
+        "id": str(uuid.uuid4()),
+        "tipo": "ORDER_STATUS_CHANGED",
+        "entity_id": order.get("id") or order_id,
+        "payload": {"status": status_value, "source": "operator"},
+        "created_at": now.isoformat()
+    })
     
-    # Update calendar event if needed
-    if new_status in [OrderStatus.PICKED_UP, OrderStatus.CANCELLED]:
+    if status_value in [OrderStatus.PICKED_UP.value, OrderStatus.CANCELLED.value]:
         await db.calendar_events.update_one(
             {"order_id": order_id},
-            {"$set": {"status": "COMPLETED" if new_status == OrderStatus.PICKED_UP else "CANCELLED"}}
+            {"$set": {"status": "COMPLETED" if status_value == OrderStatus.PICKED_UP.value else "CANCELLED"}}
         )
     
-    # Queue notification to customer
     if order.get("customer_email"):
         await db.notification_queue.insert_one({
             "id": str(uuid.uuid4()),
             "type": "EMAIL",
             "recipient": order["customer_email"],
             "subject": f"Order Update - {order_id}",
-            "template": f"order_{new_status.value.lower()}",
+            "template": f"order_{status_value.lower()}",
             "entity_type": "order",
             "entity_id": order_id,
             "status": "PENDING",
             "created_at": now.isoformat()
         })
+
+    if status_value == OrderStatus.OUT_FOR_DELIVERY.value and NOTIFICATIONS_ENABLED:
+        customer = None
+        customer_id = order.get("customer_id")
+        if customer_id:
+            customer = await db.customers.find_one(
+                {"$or": [{"id": customer_id}, {"customer_id": customer_id}]},
+                {"_id": 0}
+            )
+        if customer:
+            order_for_notify = {
+                **order,
+                "order_number": order.get("order_number") or order.get("order_id"),
+                "status": status_value.lower()
+            }
+            try:
+                await notify_order_status_changed(customer, order_for_notify, status_value.lower())
+            except Exception as e:
+                logger.error(f"Notification failed: {e}")
     
     return {
         "order_id": order_id,
         "old_status": old_status,
-        "new_status": new_status.value,
+        "new_status": status_value,
         "updated_at": now.isoformat()
     }

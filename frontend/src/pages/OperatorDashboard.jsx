@@ -26,9 +26,13 @@ export default function OperatorDashboard() {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState({});
   const [lastRefresh, setLastRefresh] = useState(new Date());
+  const [autoRefresh, setAutoRefresh] = useState(true);
 
   const loadDashboard = useCallback(async () => {
     try {
+      if (document.visibilityState !== "visible" && autoRefresh) {
+        return;
+      }
       const res = await fetch(`${API_URL}/api/automation/operator-dashboard`);
       if (res.ok) {
         const data = await res.json();
@@ -40,12 +44,15 @@ export default function OperatorDashboard() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [autoRefresh]);
 
   useEffect(() => {
     loadDashboard();
-    // Auto-refresh every 30 seconds
-    const interval = setInterval(loadDashboard, 30000);
+    const interval = setInterval(() => {
+      if (autoRefresh) {
+        loadDashboard();
+      }
+    }, 30000);
     return () => clearInterval(interval);
   }, [loadDashboard]);
 
@@ -57,7 +64,22 @@ export default function OperatorDashboard() {
       });
       if (res.ok) {
         toast.success(`Orden ${orderId} actualizada a ${newStatus}`);
-        loadDashboard();
+        setDashboard(prev => {
+          if (!prev) return prev;
+          const updateList = (list) =>
+            list.map((order) =>
+              order.order_id === orderId
+                ? { ...order, status: newStatus, next_status: getNextStatus(newStatus), action_label: null }
+                : order
+            );
+          return {
+            ...prev,
+            todays_pickups: updateList(prev.todays_pickups || []),
+            ready_for_delivery: (prev.ready_for_delivery || []).filter(
+              (order) => !(order.order_id === orderId && newStatus === "OUT_FOR_DELIVERY")
+            )
+          };
+        });
       } else {
         toast.error("Error al actualizar orden");
       }
@@ -75,6 +97,16 @@ export default function OperatorDashboard() {
       return statusOrder[currentIndex + 1];
     }
     return null;
+  };
+
+  const formatOrderId = (order) => {
+    return order.order_number || order.order_id;
+  };
+
+  const openMaps = (address) => {
+    if (!address) return;
+    const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+    window.open(url, "_blank");
   };
 
   const getStatusInfo = (status) => {
@@ -104,6 +136,9 @@ export default function OperatorDashboard() {
           <span className="text-sm text-slate-500">
             Última actualización: {lastRefresh.toLocaleTimeString()}
           </span>
+          <Button onClick={() => setAutoRefresh(!autoRefresh)} variant="outline" size="sm">
+            {autoRefresh ? "Pausar" : "Reanudar"}
+          </Button>
           <Button onClick={loadDashboard} variant="outline" size="sm" data-testid="refresh-dashboard">
             <RefreshCw className="h-4 w-4 mr-2" />
             Actualizar
@@ -179,7 +214,7 @@ export default function OperatorDashboard() {
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="font-mono font-semibold text-slate-900">{order.order_id}</span>
+                      <span className="font-mono font-semibold text-slate-900">{formatOrderId(order)}</span>
                       <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${getStatusInfo(order.status).color}`}>
                         {getStatusInfo(order.status).label}
                       </span>
@@ -197,6 +232,9 @@ export default function OperatorDashboard() {
                     <div className="flex items-start gap-1 text-sm text-slate-500">
                       <MapPin className="h-4 w-4 mt-0.5 flex-shrink-0" />
                       <span className="line-clamp-1">{order.pickup_address || "Sin dirección"}</span>
+                    </div>
+                    <div className="text-xs text-slate-500 mt-1">
+                      Servicio: {order.service_type || "-"}
                     </div>
                     {order.special_instructions && (
                       <div className="flex items-start gap-1 text-sm text-amber-600 mt-1">
@@ -217,10 +255,16 @@ export default function OperatorDashboard() {
                         Llamar
                       </a>
                     )}
-                    {getNextStatus(order.status) && (
+                    {order.pickup_address && (
+                      <Button variant="outline" size="sm" onClick={() => openMaps(order.pickup_address)}>
+                        <MapPin className="h-4 w-4 mr-2" />
+                        Mapa
+                      </Button>
+                    )}
+                    {(order.next_status || getNextStatus(order.status)) && (
                       <Button
                         size="sm"
-                        onClick={() => updateOrderStatus(order.order_id, getNextStatus(order.status))}
+                        onClick={() => updateOrderStatus(order.order_id, order.next_status || getNextStatus(order.status))}
                         disabled={updating[order.order_id]}
                         className="bg-sky-600 hover:bg-sky-700"
                         data-testid={`update-${order.order_id}`}
@@ -229,7 +273,7 @@ export default function OperatorDashboard() {
                           <RefreshCw className="h-4 w-4 animate-spin" />
                         ) : (
                           <>
-                            {getStatusInfo(getNextStatus(order.status)).label}
+                            {order.action_label || getStatusInfo(order.next_status || getNextStatus(order.status)).label}
                             <ChevronRight className="h-4 w-4 ml-1" />
                           </>
                         )}
@@ -262,28 +306,36 @@ export default function OperatorDashboard() {
               <div key={order.order_id} className="p-4 hover:bg-slate-50 transition-colors" data-testid={`delivery-${order.order_id}`}>
                 <div className="flex items-center justify-between gap-4">
                   <div>
-                    <span className="font-mono font-semibold text-slate-900">{order.order_id}</span>
-                    <span className="text-slate-600 ml-2">- {order.customer_name}</span>
+                    <span className="font-mono font-semibold text-slate-900">{formatOrderId(order)}</span>
+                    <span className="text-slate-600 ml-2">- {order.customer_name || "Cliente"}</span>
                     <div className="text-sm text-slate-500 flex items-center gap-1 mt-1">
                       <MapPin className="h-4 w-4" />
-                      {order.delivery_address}
+                      {order.delivery_address || "-"}
                     </div>
                   </div>
-                  <Button
-                    size="sm"
-                    onClick={() => updateOrderStatus(order.order_id, "OUT_FOR_DELIVERY")}
-                    disabled={updating[order.order_id]}
-                    className="bg-emerald-600 hover:bg-emerald-700"
-                  >
-                    {updating[order.order_id] ? (
-                      <RefreshCw className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <>
-                        Salir a Entregar
-                        <Truck className="h-4 w-4 ml-1" />
-                      </>
+                  <div className="flex flex-col gap-2">
+                    {order.delivery_address && (
+                      <Button variant="outline" size="sm" onClick={() => openMaps(order.delivery_address)}>
+                        <MapPin className="h-4 w-4 mr-2" />
+                        Mapa
+                      </Button>
                     )}
-                  </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => updateOrderStatus(order.order_id, order.next_status || "OUT_FOR_DELIVERY")}
+                      disabled={updating[order.order_id]}
+                      className="bg-emerald-600 hover:bg-emerald-700"
+                    >
+                      {updating[order.order_id] ? (
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <>
+                          {order.action_label || "Salir a Entregar"}
+                          <Truck className="h-4 w-4 ml-1" />
+                        </>
+                      )}
+                    </Button>
+                  </div>
                 </div>
               </div>
             ))

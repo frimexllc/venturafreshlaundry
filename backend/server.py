@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, Query, Request
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, Query, Request, UploadFile, File
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import StreamingResponse, HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -9,6 +9,7 @@ import os
 import logging
 import io
 import csv
+import json
 from pathlib import Path
 from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional, Dict, Any
@@ -16,6 +17,13 @@ import uuid
 from datetime import datetime, timezone, timedelta
 import jwt
 import bcrypt
+import requests
+import qrcode
+from qrcode.image.svg import SvgImage
+import zipfile
+
+ROOT_DIR = Path(__file__).parent
+load_dotenv(ROOT_DIR / '.env', override=True)
 
 # Import notification services
 try:
@@ -66,13 +74,11 @@ except ImportError:
     logger = logging.getLogger(__name__)
     logger.warning("Automation engine not available")
 
-ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / '.env')
-
 # MongoDB connection
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
+SKIP_SERVER_NOTIFICATIONS = os.environ.get('SKIP_SERVER_NOTIFICATIONS', 'false').lower() == 'true'
 
 # Set database for n8n integration
 if N8N_ENABLED:
@@ -133,6 +139,9 @@ class CustomerCreate(BaseModel):
     address: Optional[str] = None
     preferred_contact: Optional[str] = "email"
     notes: Optional[str] = None
+    membership_plan: Optional[str] = None
+    membership_status: Optional[str] = None
+    membership_start_date: Optional[str] = None
 
 class CustomerResponse(BaseModel):
     id: str
@@ -140,10 +149,13 @@ class CustomerResponse(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None
-    preferred_contact: str
+    preferred_contact: Optional[str] = "email"
     notes: Optional[str] = None
     status: str
     total_orders: int
+    membership_plan: Optional[str] = None
+    membership_status: Optional[str] = None
+    membership_start_date: Optional[str] = None
     created_at: str
     updated_at: str
 
@@ -180,7 +192,7 @@ class OrderCreate(BaseModel):
 
 class OrderResponse(BaseModel):
     id: str
-    order_number: str
+    order_number: Optional[str] = None
     customer_id: str
     customer_name: Optional[str] = None
     service_type: str
@@ -267,6 +279,139 @@ class TicketResponse(BaseModel):
     created_at: str
     updated_at: str
 
+class ServiceCreate(BaseModel):
+    name: str
+    category: Optional[str] = None
+    description: Optional[str] = None
+    price: Optional[float] = None
+    price_unit: Optional[str] = None
+    is_active: bool = True
+    sort_order: Optional[int] = 0
+
+class ServiceResponse(BaseModel):
+    id: str
+    name: str
+    category: Optional[str] = None
+    description: Optional[str] = None
+    price: Optional[float] = None
+    price_unit: Optional[str] = None
+    is_active: bool
+    sort_order: Optional[int] = 0
+    created_at: str
+    updated_at: str
+
+class MembershipSectionUpdate(BaseModel):
+    heading: str
+    subheading: Optional[str] = None
+    special_title: Optional[str] = None
+    special_text: Optional[str] = None
+    cta_title: Optional[str] = None
+    cta_text: Optional[str] = None
+    cta_button_label: Optional[str] = None
+    cta_button_url: Optional[str] = None
+    contact_phone: Optional[str] = None
+    is_active: bool = True
+
+class MembershipSectionResponse(BaseModel):
+    id: str
+    heading: str
+    subheading: Optional[str] = None
+    special_title: Optional[str] = None
+    special_text: Optional[str] = None
+    cta_title: Optional[str] = None
+    cta_text: Optional[str] = None
+    cta_button_label: Optional[str] = None
+    cta_button_url: Optional[str] = None
+    contact_phone: Optional[str] = None
+    is_active: bool
+    created_at: str
+    updated_at: str
+
+class MembershipPlanCreate(BaseModel):
+    name: str
+    price: str
+    image_url: Optional[str] = None
+    features: List[str]
+    is_popular: bool = False
+    is_active: bool = True
+    sort_order: Optional[int] = 0
+
+class MembershipPlanResponse(BaseModel):
+    id: str
+    name: str
+    price: str
+    image_url: Optional[str] = None
+    features: List[str]
+    is_popular: bool
+    is_active: bool
+    sort_order: Optional[int] = 0
+    created_at: str
+    updated_at: str
+
+class MembershipSignupResponse(BaseModel):
+    id: str
+    first_name: str
+    last_name: str
+    email: str
+    phone: str
+    contact_method: str
+    address_line1: str
+    address_line2: Optional[str] = None
+    city: str
+    state: str
+    zip_code: str
+    membership_plan: str
+    laundry_frequency: str
+    estimated_lbs: float
+    status: str
+    customer_id: Optional[str] = None
+    created_at: str
+    updated_at: str
+
+class MembershipSignupUpdate(BaseModel):
+    status: Optional[str] = None
+    customer_id: Optional[str] = None
+
+class MembershipCustomerUpdate(BaseModel):
+    membership_plan: Optional[str] = None
+    membership_status: Optional[str] = None
+    membership_start_date: Optional[str] = None
+
+class AdminAIRequest(BaseModel):
+    message: str
+    execute: bool = True
+
+class AdminAIInsightsRequest(BaseModel):
+    type: str
+
+class PatternScanRequest(BaseModel):
+    periodo_desde: Optional[str] = None
+    periodo_hasta: Optional[str] = None
+    scope: Optional[str] = "orders"
+    filtros: Optional[dict] = None
+
+class ProposalGenerateRequest(BaseModel):
+    patrones_ids: Optional[List[str]] = None
+    max_propuestas: Optional[int] = 10
+
+class ProposalActionRequest(BaseModel):
+    accion: str
+    modificaciones: Optional[dict] = None
+    comentarios: Optional[str] = None
+
+class ImportMappingSuggestRequest(BaseModel):
+    campos_legacy: List[str]
+
+class ImportMappingConfirmRequest(BaseModel):
+    mapping_campos: Dict[str, str]
+
+class RulesUpdateRequest(BaseModel):
+    rules: Dict[str, Any]
+
+class QrResolveRequest(BaseModel):
+    qr_token: Optional[str] = None
+    payload: Optional[str] = None
+
 class IngestCreate(BaseModel):
     source_form: str
     data: dict
@@ -320,6 +465,187 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
+
+def require_admin(current_user: dict):
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+def extract_json_payload(text: str):
+    cleaned = text.strip()
+    if "```" in cleaned:
+        start = cleaned.find("```")
+        end = cleaned.rfind("```")
+        if end > start:
+            cleaned = cleaned[start + 3:end].strip()
+            if cleaned.startswith("json"):
+                cleaned = cleaned[4:].strip()
+    return json.loads(cleaned)
+
+def call_ollama(prompt: str):
+    try:
+        response = requests.post(
+            "http://127.0.0.1:11434/api/generate",
+            json={"model": "phi4-mini", "prompt": prompt, "stream": False},
+            timeout=60
+        )
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=502, detail=f"Ollama not reachable: {exc}")
+    if not response.ok:
+        raise HTTPException(status_code=502, detail=f"Ollama error: {response.text}")
+    data = response.json()
+    return (data.get("response") or "").strip()
+
+ai_indexes_ready = False
+
+async def ensure_ai_indexes():
+    global ai_indexes_ready
+    if ai_indexes_ready:
+        return
+    await db.patrones_detectados.create_index([("fecha_deteccion", -1)])
+    await db.propuestas_ia.create_index([("estado", 1), ("fecha_generacion", -1)])
+    await db.importaciones_legacy.create_index([("origen", 1), ("fecha_importacion", -1)])
+    await db.audit_logs.create_index([("created_at", -1)])
+    ai_indexes_ready = True
+
+async def get_or_seed_business_rules():
+    rules = await db.reglas_negocio.find_one({"id": "order_rules_v1"}, {"_id": 0})
+    if rules:
+        return rules
+    now = datetime.now(timezone.utc).isoformat()
+    rules = {
+        "id": "order_rules_v1",
+        "type": "order_rules",
+        "auto_transitions": {
+            "pickup_delivery": {"notify_status": "out_for_delivery"},
+            "wash_fold": {"notify_status": "ready"},
+            "self_service": {"notify_status": "ready"}
+        },
+        "sla_hours": {
+            "pickup_delivery": 48,
+            "wash_fold": 36,
+            "self_service": 24
+        },
+        "created_at": now,
+        "updated_at": now
+    }
+    await db.reglas_negocio.insert_one(rules)
+    return rules
+
+def build_order_times(now_iso: str, status_value: str):
+    return {
+        "creacion": now_iso,
+        "ultimo_cambio_estado": now_iso,
+        "fechas_estado": {status_value: now_iso}
+    }
+
+def validate_order_payload(data: OrderCreate):
+    errors = []
+    if data.service_type == "pickup_delivery":
+        if not data.pickup_date:
+            errors.append({"codigo": "MISSING_PICKUP_DATE", "campo": "pickup_date"})
+        if not data.pickup_time_window:
+            errors.append({"codigo": "MISSING_PICKUP_TIME", "campo": "pickup_time_window"})
+        if not data.pickup_address:
+            errors.append({"codigo": "MISSING_PICKUP_ADDRESS", "campo": "pickup_address"})
+    return errors
+
+def normalize_header(value: str):
+    return value.strip().lower()
+
+def set_nested_value(target: dict, path: str, value):
+    parts = path.split(".")
+    current = target
+    for key in parts[:-1]:
+        if key not in current or not isinstance(current[key], dict):
+            current[key] = {}
+        current = current[key]
+    current[parts[-1]] = value
+
+def build_qr_svg(payload: str):
+    img = qrcode.make(payload, image_factory=SvgImage, box_size=10, border=2)
+    buffer = io.BytesIO()
+    img.save(buffer)
+    return buffer.getvalue()
+
+def build_qr_payload(order: dict):
+    return json.dumps({
+        "order_id": order.get("id"),
+        "order_number": order.get("order_number"),
+        "qr_token": order.get("qr_token")
+    })
+
+def parse_qr_payload(payload: str):
+    try:
+        data = json.loads(payload)
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        return {}
+    return {}
+
+def build_address_parts(address: Optional[str]):
+    if not address:
+        return {"full": None, "street": None, "city": None, "postal_code": None}
+    parts = [p.strip() for p in address.split(",") if p.strip()]
+    street = parts[0] if parts else address
+    city = parts[1] if len(parts) > 1 else None
+    postal_code = None
+    if len(parts) > 2:
+        postal_code = parts[-1].split()[-1]
+    return {"full": address, "street": street, "city": city, "postal_code": postal_code}
+
+def suggest_mapping(headers: List[str]):
+    mapping = {}
+    for header in headers:
+        key = normalize_header(header)
+        if key in ["issue key", "key", "id", "order_number", "order number"]:
+            mapping[header] = "order_number"
+        elif key in ["status", "estado", "state"]:
+            mapping[header] = "estado_actual"
+        elif key in ["created", "created_at", "fecha", "creation date"]:
+            mapping[header] = "tiempos.creacion"
+        elif key in ["customer", "customer_name", "name", "cliente"]:
+            mapping[header] = "customer_name"
+        elif key in ["email", "correo", "customer_email"]:
+            mapping[header] = "customer_email"
+        elif key in ["phone", "telefono", "customer_phone"]:
+            mapping[header] = "customer_phone"
+        elif key in ["service_type", "service", "tipo servicio"]:
+            mapping[header] = "service_type"
+        elif key in ["notes", "summary", "descripcion", "description"]:
+            mapping[header] = "notes"
+    return mapping
+
+async def resolve_or_create_customer_from_row(row: dict):
+    email = row.get("customer_email")
+    phone = row.get("customer_phone")
+    name = row.get("customer_name") or "Legacy"
+    query = []
+    if email:
+        query.append({"email": email.lower()})
+    if phone:
+        query.append({"phone": phone})
+    if query:
+        existing = await db.customers.find_one({"$or": query}, {"_id": 0})
+        if existing:
+            return existing["id"]
+    customer_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+    customer = {
+        "id": customer_id,
+        "name": name,
+        "email": email.lower() if email else None,
+        "phone": phone,
+        "address": None,
+        "preferred_contact": "email",
+        "notes": "Importación legacy",
+        "status": "active",
+        "total_orders": 0,
+        "created_at": now,
+        "updated_at": now
+    }
+    await db.customers.insert_one(customer)
+    return customer_id
 
 # ==================== AUDIT LOG HELPER ====================
 
@@ -440,6 +766,9 @@ async def create_customer(data: CustomerCreate, current_user: dict = Depends(get
         "notes": data.notes,
         "status": "active",
         "total_orders": 0,
+        "membership_plan": data.membership_plan,
+        "membership_status": data.membership_status,
+        "membership_start_date": data.membership_start_date,
         "created_at": now,
         "updated_at": now
     }
@@ -545,6 +874,7 @@ async def create_order(data: OrderCreate, notify: bool = True, current_user: dic
     order_id = str(uuid.uuid4())
     order_number = await generate_order_number()
     now = datetime.now(timezone.utc).isoformat()
+    errors = validate_order_payload(data)
     
     order = {
         "id": order_id,
@@ -561,17 +891,37 @@ async def create_order(data: OrderCreate, notify: bool = True, current_user: dic
         "notes": data.notes,
         "gate_code": data.gate_code,
         "status": "new",
+        "estado_actual": "new",
         "payment_status": "unpaid",
         "total_amount": None,
+        "tiempos": build_order_times(now, "new"),
+        "errores_validacion": [
+            {**error, "mensaje": error["codigo"], "timestamp": now}
+            for error in errors
+        ],
+        "secciones": [
+            {"nombre": "ingesta", "estado": "done", "inicio": now, "fin": now, "errores": []},
+            {"nombre": "procesamiento", "estado": "pending", "inicio": None, "fin": None, "errores": []}
+        ],
+        "importada": False,
+        "origen": "crm",
+        "qr_token": str(uuid.uuid4()),
         "created_at": now,
         "updated_at": now
     }
     await db.orders.insert_one(order)
     await db.customers.update_one({"id": data.customer_id}, {"$inc": {"total_orders": 1}})
+    await db.eventos_automation.insert_one({
+        "id": str(uuid.uuid4()),
+        "tipo": "ORDER_CREATED",
+        "entity_id": order_id,
+        "payload": {"order_number": order_number, "service_type": data.service_type},
+        "created_at": now
+    })
     await create_audit_log("ORDER_CREATED", "order", order_id, current_user["id"])
     
     # Send notifications if enabled
-    if notify and NOTIFICATIONS_ENABLED:
+    if notify and NOTIFICATIONS_ENABLED and not SKIP_SERVER_NOTIFICATIONS:
         try:
             await notify_order_created(customer, order)
         except Exception as e:
@@ -607,6 +957,102 @@ async def get_order(order_id: str, current_user: dict = Depends(get_current_user
         raise HTTPException(status_code=404, detail="Order not found")
     return OrderResponse(**order)
 
+@api_router.get("/orders/{order_id}/qr")
+async def get_order_qr(order_id: str, current_user: dict = Depends(get_current_user)):
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    qr_token = order.get("qr_token") or str(uuid.uuid4())
+    if not order.get("qr_token"):
+        await db.orders.update_one({"id": order_id}, {"$set": {"qr_token": qr_token}})
+    return {"order_id": order_id, "order_number": order.get("order_number"), "qr_token": qr_token}
+
+@api_router.get("/orders/{order_id}/qr.svg")
+async def get_order_qr_svg(order_id: str, current_user: dict = Depends(get_current_user)):
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    qr_token = order.get("qr_token") or str(uuid.uuid4())
+    if not order.get("qr_token"):
+        await db.orders.update_one({"id": order_id}, {"$set": {"qr_token": qr_token}})
+    payload = build_qr_payload({"id": order_id, "order_number": order.get("order_number"), "qr_token": qr_token})
+    svg_bytes = build_qr_svg(payload)
+    filename = f"order-{order.get('order_number') or order_id}.svg"
+    return StreamingResponse(io.BytesIO(svg_bytes), media_type="image/svg+xml", headers={"Content-Disposition": f"attachment; filename={filename}"})
+
+@api_router.get("/orders/qr/export")
+async def export_qr_batch(
+    start_date: str = Query(..., description="Start date YYYY-MM-DD"),
+    end_date: str = Query(..., description="End date YYYY-MM-DD"),
+    status: Optional[str] = None,
+    service_type: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    query = {"pickup_date": {"$gte": start_date, "$lte": end_date}}
+    if status:
+        query["status"] = status
+    if service_type:
+        query["service_type"] = service_type
+    orders = await db.orders.find(query, {"_id": 0}).sort("pickup_date", 1).to_list(2000)
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        for order in orders:
+            qr_token = order.get("qr_token") or str(uuid.uuid4())
+            if not order.get("qr_token"):
+                await db.orders.update_one({"id": order["id"]}, {"$set": {"qr_token": qr_token}})
+            payload = build_qr_payload({"id": order["id"], "order_number": order.get("order_number"), "qr_token": qr_token})
+            svg_bytes = build_qr_svg(payload)
+            filename = f"order-{order.get('order_number') or order['id']}.svg"
+            zip_file.writestr(filename, svg_bytes)
+    buffer.seek(0)
+    filename = f"qr-export-{start_date}-to-{end_date}.zip"
+    return StreamingResponse(buffer, media_type="application/zip", headers={"Content-Disposition": f"attachment; filename={filename}"})
+
+@api_router.post("/orders/qr/resolve")
+async def resolve_qr(data: QrResolveRequest, current_user: dict = Depends(get_current_user)):
+    payload_data = {}
+    if data.payload:
+        payload_data = parse_qr_payload(data.payload)
+    qr_token = data.qr_token or payload_data.get("qr_token")
+    order_id = payload_data.get("order_id")
+    order_number = payload_data.get("order_number")
+    if not qr_token and not order_id and not order_number:
+        raise HTTPException(status_code=400, detail="QR sin datos válidos")
+    order = None
+    if qr_token:
+        order = await db.orders.find_one({"qr_token": qr_token}, {"_id": 0})
+    if not order and order_id:
+        order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order and order_number:
+        order = await db.orders.find_one({"order_number": order_number}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Orden no encontrada")
+    if qr_token and order.get("qr_token") and order.get("qr_token") != qr_token:
+        raise HTTPException(status_code=400, detail="QR no coincide con la orden")
+    customer_name = order.get("customer_name")
+    customer = None
+    if not customer_name and order.get("customer_id"):
+        customer = await db.customers.find_one({"id": order.get("customer_id")}, {"_id": 0})
+        customer_name = customer.get("name") if customer else None
+    delivery_address = order.get("delivery_address") or order.get("pickup_address")
+    address_parts = build_address_parts(delivery_address)
+    response = {
+        "order_id": order.get("id"),
+        "order_number": order.get("order_number"),
+        "service_type": order.get("service_type"),
+        "customer_name": customer_name,
+        "address": address_parts,
+        "request_datetime": order.get("created_at"),
+        "status": order.get("status"),
+        "items": order.get("items") or order.get("services_included") or order.get("products") or [],
+        "total_amount": order.get("total_amount"),
+        "special_instructions": order.get("notes") or order.get("special_instructions"),
+        "pickup_date": order.get("pickup_date"),
+        "pickup_time_window": order.get("pickup_time_window"),
+        "payment_status": order.get("payment_status")
+    }
+    return response
+
 @api_router.put("/orders/{order_id}", response_model=OrderResponse)
 async def update_order(order_id: str, data: dict, current_user: dict = Depends(get_current_user)):
     data["updated_at"] = datetime.now(timezone.utc).isoformat()
@@ -617,6 +1063,14 @@ async def update_order(order_id: str, data: dict, current_user: dict = Depends(g
     await create_audit_log("ORDER_UPDATED", "order", order_id, current_user["id"], {"changes": list(data.keys())})
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     return OrderResponse(**order)
+
+def should_notify_order_status(order: dict, status_value: str) -> bool:
+    service_type = order.get("service_type")
+    if service_type == "pickup_delivery":
+        return status_value == "out_for_delivery"
+    if service_type in ["wash_fold", "self_service"]:
+        return status_value == "ready"
+    return status_value in ["ready", "out_for_delivery"]
 
 @api_router.patch("/orders/{order_id}/status")
 async def update_order_status(order_id: str, status: str, notify: bool = True, current_user: dict = Depends(get_current_user)):
@@ -631,13 +1085,28 @@ async def update_order_status(order_id: str, status: str, notify: bool = True, c
     
     result = await db.orders.update_one(
         {"id": order_id},
-        {"$set": {"status": status, "updated_at": datetime.now(timezone.utc).isoformat()}}
+        {
+            "$set": {
+                "status": status,
+                "estado_actual": status,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "tiempos.ultimo_cambio_estado": datetime.now(timezone.utc).isoformat(),
+                f"tiempos.fechas_estado.{status}": datetime.now(timezone.utc).isoformat()
+            }
+        }
     )
     
     await create_audit_log("ORDER_STATUS_CHANGED", "order", order_id, current_user["id"], {"new_status": status})
+    await db.eventos_automation.insert_one({
+        "id": str(uuid.uuid4()),
+        "tipo": "ORDER_STATUS_CHANGED",
+        "entity_id": order_id,
+        "payload": {"status": status},
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
     
     # Send notifications if enabled
-    if notify and NOTIFICATIONS_ENABLED and order.get("customer_id"):
+    if notify and NOTIFICATIONS_ENABLED and not SKIP_SERVER_NOTIFICATIONS and order.get("customer_id") and should_notify_order_status(order, status):
         customer = await db.customers.find_one({"id": order["customer_id"]}, {"_id": 0})
         if customer:
             order["status"] = status  # Update for notification
@@ -647,6 +1116,24 @@ async def update_order_status(order_id: str, status: str, notify: bool = True, c
                 logger.error(f"Notification failed: {e}")
     
     return {"message": f"Order status updated to {status}"}
+
+@api_router.post("/admin/orders/last-completed/notify")
+async def notify_last_completed_order(current_user: dict = Depends(get_current_user)):
+    require_admin(current_user)
+    last_order = await db.orders.find({"status": "completed"}, {"_id": 0}).sort("updated_at", -1).limit(1).to_list(1)
+    if not last_order:
+        raise HTTPException(status_code=404, detail="No completed orders found")
+    order = last_order[0]
+    customer_id = order.get("customer_id")
+    if not customer_id:
+        raise HTTPException(status_code=400, detail="Order missing customer")
+    customer = await db.customers.find_one({"id": customer_id}, {"_id": 0})
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    if NOTIFICATIONS_ENABLED and not SKIP_SERVER_NOTIFICATIONS:
+        await notify_order_status_changed(customer, order, "completed")
+    await create_audit_log("ORDER_COMPLETED_NOTIFICATION_SENT", "order", order["id"], current_user["id"])
+    return {"ok": True, "order_id": order["id"], "order_number": order.get("order_number")}
 
 # ==================== QUOTES ====================
 
@@ -879,6 +1366,1236 @@ async def update_ticket(ticket_id: str, data: dict, current_user: dict = Depends
     await create_audit_log("TICKET_UPDATED", "ticket", ticket_id, current_user["id"])
     ticket = await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
     return TicketResponse(**ticket)
+
+# ==================== SERVICES ====================
+
+@api_router.post("/services", response_model=ServiceResponse)
+async def create_service(data: ServiceCreate, current_user: dict = Depends(get_current_user)):
+    service_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+    service = {
+        "id": service_id,
+        "name": data.name,
+        "category": data.category,
+        "description": data.description,
+        "price": data.price,
+        "price_unit": data.price_unit,
+        "is_active": data.is_active,
+        "sort_order": data.sort_order or 0,
+        "created_at": now,
+        "updated_at": now
+    }
+    await db.services.insert_one(service)
+    await create_audit_log("SERVICE_CREATED", "service", service_id, current_user["id"])
+    return ServiceResponse(**service)
+
+@api_router.get("/services", response_model=List[ServiceResponse])
+async def get_services(
+    active_only: bool = True,
+    search: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    query = {}
+    if active_only:
+        query["is_active"] = True
+    if search:
+        query["$or"] = [
+            {"name": {"$regex": search, "$options": "i"}},
+            {"category": {"$regex": search, "$options": "i"}}
+        ]
+    services = await db.services.find(query, {"_id": 0}).sort([("sort_order", 1), ("created_at", -1)]).to_list(1000)
+    return [ServiceResponse(**s) for s in services]
+
+@api_router.get("/services/{service_id}", response_model=ServiceResponse)
+async def get_service(service_id: str, current_user: dict = Depends(get_current_user)):
+    service = await db.services.find_one({"id": service_id}, {"_id": 0})
+    if not service:
+        raise HTTPException(status_code=404, detail="Service not found")
+    return ServiceResponse(**service)
+
+@api_router.put("/services/{service_id}", response_model=ServiceResponse)
+async def update_service(service_id: str, data: ServiceCreate, current_user: dict = Depends(get_current_user)):
+    update_data = data.model_dump(exclude_unset=True)
+    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    update_data["sort_order"] = update_data.get("sort_order", 0) or 0
+    result = await db.services.update_one({"id": service_id}, {"$set": update_data})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Service not found")
+    await create_audit_log("SERVICE_UPDATED", "service", service_id, current_user["id"])
+    service = await db.services.find_one({"id": service_id}, {"_id": 0})
+    return ServiceResponse(**service)
+
+@api_router.delete("/services/{service_id}")
+async def delete_service(service_id: str, current_user: dict = Depends(get_current_user)):
+    result = await db.services.delete_one({"id": service_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Service not found")
+    await create_audit_log("SERVICE_DELETED", "service", service_id, current_user["id"])
+    return {"message": "Service deleted"}
+
+@api_router.get("/public/services", response_model=List[ServiceResponse])
+async def get_public_services(active_only: bool = True):
+    query = {}
+    if active_only:
+        query["is_active"] = True
+    services = await db.services.find(query, {"_id": 0}).sort([("sort_order", 1), ("created_at", -1)]).to_list(1000)
+    return [ServiceResponse(**s) for s in services]
+
+@api_router.get("/services/membership-section", response_model=MembershipSectionResponse)
+async def get_membership_section(current_user: dict = Depends(get_current_user)):
+    section = await db.membership_section.find_one({"id": "default"}, {"_id": 0})
+    if not section:
+        section = {
+            "id": "default",
+            "heading": "Flexible Plans for Every Home",
+            "subheading": None,
+            "special_title": "🎉 New Member Special",
+            "special_text": "$10 OFF your first month on any membership. Ask when you call or text.",
+            "cta_title": "Need help choosing?",
+            "cta_text": "Just call, text, or email us at (805) 836-8872 and we'll recommend the perfect plan based on your weekly laundry.",
+            "cta_button_label": "👉 BECOME A MEMBER",
+            "cta_button_url": "/membership",
+            "contact_phone": "(805) 836-8872",
+            "is_active": True,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }
+        await db.membership_section.insert_one(section)
+    return MembershipSectionResponse(**section)
+
+@api_router.put("/services/membership-section", response_model=MembershipSectionResponse)
+async def update_membership_section(data: MembershipSectionUpdate, current_user: dict = Depends(get_current_user)):
+    now = datetime.now(timezone.utc).isoformat()
+    update_data = data.model_dump(exclude_unset=True)
+    update_data["updated_at"] = now
+    await db.membership_section.update_one(
+        {"id": "default"},
+        {"$set": update_data, "$setOnInsert": {"id": "default", "created_at": now}},
+        upsert=True
+    )
+    section = await db.membership_section.find_one({"id": "default"}, {"_id": 0})
+    await create_audit_log("MEMBERSHIP_SECTION_UPDATED", "membership_section", "default", current_user["id"])
+    return MembershipSectionResponse(**section)
+
+@api_router.post("/services/membership-plans", response_model=MembershipPlanResponse)
+async def create_membership_plan(data: MembershipPlanCreate, current_user: dict = Depends(get_current_user)):
+    plan_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+    plan = {
+        "id": plan_id,
+        "name": data.name,
+        "price": data.price,
+        "image_url": data.image_url,
+        "features": data.features,
+        "is_popular": data.is_popular,
+        "is_active": data.is_active,
+        "sort_order": data.sort_order or 0,
+        "created_at": now,
+        "updated_at": now
+    }
+    await db.membership_plans.insert_one(plan)
+    await create_audit_log("MEMBERSHIP_PLAN_CREATED", "membership_plan", plan_id, current_user["id"])
+    return MembershipPlanResponse(**plan)
+
+@api_router.get("/services/membership-plans", response_model=List[MembershipPlanResponse])
+async def get_membership_plans(
+    active_only: bool = True,
+    current_user: dict = Depends(get_current_user)
+):
+    query = {}
+    if active_only:
+        query["is_active"] = True
+    plans = await db.membership_plans.find(query, {"_id": 0}).sort([("sort_order", 1), ("created_at", -1)]).to_list(200)
+    if len(plans) == 0:
+        now = datetime.now(timezone.utc).isoformat()
+        seed = [
+            {
+                "id": str(uuid.uuid4()),
+                "name": "MOST POPULAR",
+                "price": "$139 / month",
+                "image_url": "https://images.squarespace-cdn.com/content/v1/696c559a4b2b9b1b0febf8d7/4a2815a1-54c1-45fb-8320-244dce8b83c8/MOST+POPULAR.png",
+                "features": ["Up to 60 lb/ month", "Basic Preferences saved (folding notes)", "Best value for most families"],
+                "is_popular": True,
+                "is_active": True,
+                "sort_order": 1,
+                "created_at": now,
+                "updated_at": now
+            },
+            {
+                "id": str(uuid.uuid4()),
+                "name": "FAMILY PLUS",
+                "price": "$199 / month",
+                "image_url": "https://images.squarespace-cdn.com/content/v1/696c559a4b2b9b1b0febf8d7/f262a5b8-0043-4977-9d32-d6b343be3e70/FAMILY+PLUS.png",
+                "features": ["Up to 90 lb/ month", "Priority scheduling", "Great for larger households or rentals"],
+                "is_popular": False,
+                "is_active": True,
+                "sort_order": 2,
+                "created_at": now,
+                "updated_at": now
+            },
+            {
+                "id": str(uuid.uuid4()),
+                "name": "ELITE CONCIERGE",
+                "price": "$299 / month",
+                "image_url": "https://images.squarespace-cdn.com/content/v1/696c559a4b2b9b1b0febf8d7/13a4c501-7792-4f72-bf5c-072f95b5f995/ELITE+CONCIERGE.png",
+                "features": ["Up to 120 lb/ month", "Priority turnaround (when possible)", "Premium packaging", "Saved preferences", "1 emergency pickup included"],
+                "is_popular": False,
+                "is_active": True,
+                "sort_order": 3,
+                "created_at": now,
+                "updated_at": now
+            }
+        ]
+        await db.membership_plans.insert_many(seed)
+        plans = seed
+    return [MembershipPlanResponse(**p) for p in plans]
+
+@api_router.put("/services/membership-plans/{plan_id}", response_model=MembershipPlanResponse)
+async def update_membership_plan(plan_id: str, data: MembershipPlanCreate, current_user: dict = Depends(get_current_user)):
+    update_data = data.model_dump(exclude_unset=True)
+    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    update_data["sort_order"] = update_data.get("sort_order", 0) or 0
+    result = await db.membership_plans.update_one({"id": plan_id}, {"$set": update_data})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    await create_audit_log("MEMBERSHIP_PLAN_UPDATED", "membership_plan", plan_id, current_user["id"])
+    plan = await db.membership_plans.find_one({"id": plan_id}, {"_id": 0})
+    return MembershipPlanResponse(**plan)
+
+@api_router.delete("/services/membership-plans/{plan_id}")
+async def delete_membership_plan(plan_id: str, current_user: dict = Depends(get_current_user)):
+    result = await db.membership_plans.delete_one({"id": plan_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    await create_audit_log("MEMBERSHIP_PLAN_DELETED", "membership_plan", plan_id, current_user["id"])
+    return {"message": "Plan deleted"}
+
+@api_router.get("/memberships/section", response_model=MembershipSectionResponse)
+async def get_membership_section_admin(current_user: dict = Depends(get_current_user)):
+    section = await db.membership_section.find_one({"id": "default"}, {"_id": 0})
+    if not section:
+        section = {
+            "id": "default",
+            "heading": "Flexible Plans for Every Home",
+            "subheading": None,
+            "special_title": "🎉 New Member Special",
+            "special_text": "$10 OFF your first month on any membership. Ask when you call or text.",
+            "cta_title": "Need help choosing?",
+            "cta_text": "Just call, text, or email us at (805) 836-8872 and we'll recommend the perfect plan based on your weekly laundry.",
+            "cta_button_label": "👉 BECOME A MEMBER",
+            "cta_button_url": "/membership",
+            "contact_phone": "(805) 836-8872",
+            "is_active": True,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }
+        await db.membership_section.insert_one(section)
+    return MembershipSectionResponse(**section)
+
+@api_router.put("/memberships/section", response_model=MembershipSectionResponse)
+async def update_membership_section_admin(data: MembershipSectionUpdate, current_user: dict = Depends(get_current_user)):
+    now = datetime.now(timezone.utc).isoformat()
+    update_data = data.model_dump(exclude_unset=True)
+    update_data["updated_at"] = now
+    await db.membership_section.update_one(
+        {"id": "default"},
+        {"$set": update_data, "$setOnInsert": {"id": "default", "created_at": now}},
+        upsert=True
+    )
+    section = await db.membership_section.find_one({"id": "default"}, {"_id": 0})
+    await create_audit_log("MEMBERSHIP_SECTION_UPDATED", "membership_section", "default", current_user["id"])
+    return MembershipSectionResponse(**section)
+
+@api_router.post("/memberships/plans", response_model=MembershipPlanResponse)
+async def create_membership_plan_admin(data: MembershipPlanCreate, current_user: dict = Depends(get_current_user)):
+    plan_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+    plan = {
+        "id": plan_id,
+        "name": data.name,
+        "price": data.price,
+        "image_url": data.image_url,
+        "features": data.features,
+        "is_popular": data.is_popular,
+        "is_active": data.is_active,
+        "sort_order": data.sort_order or 0,
+        "created_at": now,
+        "updated_at": now
+    }
+    await db.membership_plans.insert_one(plan)
+    await create_audit_log("MEMBERSHIP_PLAN_CREATED", "membership_plan", plan_id, current_user["id"])
+    return MembershipPlanResponse(**plan)
+
+@api_router.get("/memberships/plans", response_model=List[MembershipPlanResponse])
+async def get_membership_plans_admin(
+    active_only: bool = True,
+    current_user: dict = Depends(get_current_user)
+):
+    query = {}
+    if active_only:
+        query["is_active"] = True
+    plans = await db.membership_plans.find(query, {"_id": 0}).sort([("sort_order", 1), ("created_at", -1)]).to_list(200)
+    if len(plans) == 0:
+        now = datetime.now(timezone.utc).isoformat()
+        seed = [
+            {
+                "id": str(uuid.uuid4()),
+                "name": "MOST POPULAR",
+                "price": "$139 / month",
+                "image_url": "https://images.squarespace-cdn.com/content/v1/696c559a4b2b9b1b0febf8d7/4a2815a1-54c1-45fb-8320-244dce8b83c8/MOST+POPULAR.png",
+                "features": ["Up to 60 lb/ month", "Basic Preferences saved (folding notes)", "Best value for most families"],
+                "is_popular": True,
+                "is_active": True,
+                "sort_order": 1,
+                "created_at": now,
+                "updated_at": now
+            },
+            {
+                "id": str(uuid.uuid4()),
+                "name": "FAMILY PLUS",
+                "price": "$199 / month",
+                "image_url": "https://images.squarespace-cdn.com/content/v1/696c559a4b2b9b1b0febf8d7/f262a5b8-0043-4977-9d32-d6b343be3e70/FAMILY+PLUS.png",
+                "features": ["Up to 90 lb/ month", "Priority scheduling", "Great for larger households or rentals"],
+                "is_popular": False,
+                "is_active": True,
+                "sort_order": 2,
+                "created_at": now,
+                "updated_at": now
+            },
+            {
+                "id": str(uuid.uuid4()),
+                "name": "ELITE CONCIERGE",
+                "price": "$299 / month",
+                "image_url": "https://images.squarespace-cdn.com/content/v1/696c559a4b2b9b1b0febf8d7/13a4c501-7792-4f72-bf5c-072f95b5f995/ELITE+CONCIERGE.png",
+                "features": ["Up to 120 lb/ month", "Priority turnaround (when possible)", "Premium packaging", "Saved preferences", "1 emergency pickup included"],
+                "is_popular": False,
+                "is_active": True,
+                "sort_order": 3,
+                "created_at": now,
+                "updated_at": now
+            }
+        ]
+        await db.membership_plans.insert_many(seed)
+        plans = seed
+    return [MembershipPlanResponse(**p) for p in plans]
+
+@api_router.put("/memberships/plans/{plan_id}", response_model=MembershipPlanResponse)
+async def update_membership_plan_admin(plan_id: str, data: MembershipPlanCreate, current_user: dict = Depends(get_current_user)):
+    update_data = data.model_dump(exclude_unset=True)
+    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    update_data["sort_order"] = update_data.get("sort_order", 0) or 0
+    result = await db.membership_plans.update_one({"id": plan_id}, {"$set": update_data})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    await create_audit_log("MEMBERSHIP_PLAN_UPDATED", "membership_plan", plan_id, current_user["id"])
+    plan = await db.membership_plans.find_one({"id": plan_id}, {"_id": 0})
+    return MembershipPlanResponse(**plan)
+
+@api_router.delete("/memberships/plans/{plan_id}")
+async def delete_membership_plan_admin(plan_id: str, current_user: dict = Depends(get_current_user)):
+    result = await db.membership_plans.delete_one({"id": plan_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    await create_audit_log("MEMBERSHIP_PLAN_DELETED", "membership_plan", plan_id, current_user["id"])
+    return {"message": "Plan deleted"}
+
+@api_router.get("/memberships/signups", response_model=List[MembershipSignupResponse])
+async def get_membership_signups(
+    status: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    require_admin(current_user)
+    query = {}
+    if status:
+        query["status"] = status
+    signups = await db.membership_signups.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    return [MembershipSignupResponse(**s) for s in signups]
+
+@api_router.put("/memberships/signups/{signup_id}", response_model=MembershipSignupResponse)
+async def update_membership_signup(signup_id: str, data: MembershipSignupUpdate, current_user: dict = Depends(get_current_user)):
+    require_admin(current_user)
+    update_data = data.model_dump(exclude_unset=True)
+    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    result = await db.membership_signups.update_one({"id": signup_id}, {"$set": update_data})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Signup not found")
+    await create_audit_log("MEMBERSHIP_SIGNUP_UPDATED", "membership_signup", signup_id, current_user["id"])
+    signup = await db.membership_signups.find_one({"id": signup_id}, {"_id": 0})
+    return MembershipSignupResponse(**signup)
+
+@api_router.post("/memberships/signups/{signup_id}/convert", response_model=CustomerResponse)
+async def convert_membership_signup(signup_id: str, current_user: dict = Depends(get_current_user)):
+    require_admin(current_user)
+    signup = await db.membership_signups.find_one({"id": signup_id}, {"_id": 0})
+    if not signup:
+        raise HTTPException(status_code=404, detail="Signup not found")
+    now = datetime.now(timezone.utc).isoformat()
+    customer = await db.customers.find_one({"email": signup["email"]}, {"_id": 0})
+    if customer:
+        update_data = {
+            "membership_plan": signup["membership_plan"],
+            "membership_status": "active",
+            "membership_start_date": now,
+            "updated_at": now
+        }
+        await db.customers.update_one({"id": customer["id"]}, {"$set": update_data})
+        customer = await db.customers.find_one({"id": customer["id"]}, {"_id": 0})
+    else:
+        customer_id = str(uuid.uuid4())
+        customer = {
+            "id": customer_id,
+            "name": f"{signup['first_name']} {signup['last_name']}",
+            "email": signup["email"].lower(),
+            "phone": signup["phone"],
+            "address": f"{signup['address_line1']}{', ' + signup['address_line2'] if signup.get('address_line2') else ''}, {signup['city']}, {signup['state']} {signup['zip_code']}",
+            "preferred_contact": signup["contact_method"],
+            "notes": None,
+            "status": "active",
+            "total_orders": 0,
+            "membership_plan": signup["membership_plan"],
+            "membership_status": "active",
+            "membership_start_date": now,
+            "created_at": now,
+            "updated_at": now
+        }
+        await db.customers.insert_one(customer)
+        await create_audit_log("CUSTOMER_CREATED", "customer", customer_id, current_user["id"])
+    await db.membership_signups.update_one(
+        {"id": signup_id},
+        {"$set": {"status": "converted", "customer_id": customer["id"], "updated_at": now}}
+    )
+    await create_audit_log("MEMBERSHIP_SIGNUP_CONVERTED", "membership_signup", signup_id, current_user["id"], {"customer_id": customer["id"]})
+    return CustomerResponse(**customer)
+
+@api_router.get("/memberships/customers", response_model=List[CustomerResponse])
+async def get_membership_customers(
+    search: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    require_admin(current_user)
+    query: Dict[str, Any] = {"membership_plan": {"$ne": None}}
+    if search:
+        query["$or"] = [
+            {"name": {"$regex": search, "$options": "i"}},
+            {"email": {"$regex": search, "$options": "i"}},
+            {"phone": {"$regex": search, "$options": "i"}}
+        ]
+    customers = await db.customers.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    return [CustomerResponse(**c) for c in customers]
+
+@api_router.put("/memberships/customers/{customer_id}", response_model=CustomerResponse)
+async def update_membership_customer(customer_id: str, data: MembershipCustomerUpdate, current_user: dict = Depends(get_current_user)):
+    require_admin(current_user)
+    update_data = data.model_dump(exclude_unset=True)
+    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    result = await db.customers.update_one({"id": customer_id}, {"$set": update_data})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    await create_audit_log("CUSTOMER_MEMBERSHIP_UPDATED", "customer", customer_id, current_user["id"])
+    customer = await db.customers.find_one({"id": customer_id}, {"_id": 0})
+    return CustomerResponse(**customer)
+
+@api_router.post("/admin/ai")
+async def admin_ai(data: AdminAIRequest, current_user: dict = Depends(get_current_user)):
+    require_admin(current_user)
+    system_prompt = (
+        "You are a local admin assistant for Ventura Fresh Laundry CRM. "
+        "Return ONLY valid JSON with keys: reply (string) and actions (array). "
+        "Actions must be objects with type and payload. Allowed types: "
+        "update_order_status, update_ticket_status, update_quote_status, update_lead_status, "
+        "update_membership_signup_status, update_customer_membership. "
+        "For update_order_status payload: order_id, status. "
+        "For update_ticket_status payload: ticket_id, status. "
+        "For update_quote_status payload: quote_id, status. "
+        "For update_lead_status payload: lead_id, status. "
+        "For update_membership_signup_status payload: signup_id, status. "
+        "For update_customer_membership payload: customer_id, membership_plan, membership_status, membership_start_date. "
+        "If no action is needed, return actions: []."
+    )
+    prompt = f"{system_prompt}\nUser: {data.message}\nJSON:"
+    model_response = call_ollama(prompt)
+    try:
+        payload = extract_json_payload(model_response)
+    except Exception:
+        return {"reply": model_response, "actions": [], "results": []}
+    reply = payload.get("reply", "")
+    actions = payload.get("actions", []) if isinstance(payload.get("actions", []), list) else []
+    results = []
+    if data.execute:
+        for action in actions:
+            action_type = action.get("type")
+            action_payload = action.get("payload", {})
+            if action_type == "update_order_status":
+                order_id = action_payload.get("order_id")
+                status_value = action_payload.get("status")
+                valid_statuses = ["new", "processing", "ready", "out_for_delivery", "delivered", "completed", "cancelled"]
+                if not order_id or status_value not in valid_statuses:
+                    results.append({"type": action_type, "ok": False, "error": "Invalid order status or id"})
+                    continue
+                now_iso = datetime.now(timezone.utc).isoformat()
+                result = await db.orders.update_one(
+                    {"id": order_id},
+                    {
+                        "$set": {
+                            "status": status_value,
+                            "estado_actual": status_value,
+                            "updated_at": now_iso,
+                            "tiempos.ultimo_cambio_estado": now_iso,
+                            f"tiempos.fechas_estado.{status_value}": now_iso
+                        }
+                    }
+                )
+                if result.matched_count == 0:
+                    results.append({"type": action_type, "ok": False, "error": "Order not found"})
+                    continue
+                await create_audit_log("ORDER_UPDATED", "order", order_id, current_user["id"], {"status": status_value, "source": "ai"})
+                await db.eventos_automation.insert_one({
+                    "id": str(uuid.uuid4()),
+                    "tipo": "ORDER_STATUS_CHANGED",
+                    "entity_id": order_id,
+                    "payload": {"status": status_value, "source": "ai"},
+                    "created_at": now_iso
+                })
+                if NOTIFICATIONS_ENABLED:
+                    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+                    if order and order.get("customer_id") and should_notify_order_status(order, status_value):
+                        customer = await db.customers.find_one({"id": order["customer_id"]}, {"_id": 0})
+                        if customer:
+                            try:
+                                await notify_order_status_changed(customer, order, status_value)
+                            except Exception as e:
+                                logger.error(f"Notification failed: {e}")
+                results.append({"type": action_type, "ok": True, "order_id": order_id, "status": status_value})
+            elif action_type == "update_ticket_status":
+                ticket_id = action_payload.get("ticket_id")
+                status_value = action_payload.get("status")
+                if not ticket_id or not status_value:
+                    results.append({"type": action_type, "ok": False, "error": "Invalid ticket status or id"})
+                    continue
+                result = await db.tickets.update_one({"id": ticket_id}, {"$set": {"status": status_value, "updated_at": datetime.now(timezone.utc).isoformat()}})
+                if result.matched_count == 0:
+                    results.append({"type": action_type, "ok": False, "error": "Ticket not found"})
+                    continue
+                await create_audit_log("TICKET_UPDATED", "ticket", ticket_id, current_user["id"], {"status": status_value, "source": "ai"})
+                results.append({"type": action_type, "ok": True, "ticket_id": ticket_id, "status": status_value})
+            elif action_type == "update_quote_status":
+                quote_id = action_payload.get("quote_id")
+                status_value = action_payload.get("status")
+                if not quote_id or not status_value:
+                    results.append({"type": action_type, "ok": False, "error": "Invalid quote status or id"})
+                    continue
+                result = await db.quotes.update_one({"id": quote_id}, {"$set": {"status": status_value, "updated_at": datetime.now(timezone.utc).isoformat()}})
+                if result.matched_count == 0:
+                    results.append({"type": action_type, "ok": False, "error": "Quote not found"})
+                    continue
+                await create_audit_log("QUOTE_UPDATED", "quote", quote_id, current_user["id"], {"status": status_value, "source": "ai"})
+                results.append({"type": action_type, "ok": True, "quote_id": quote_id, "status": status_value})
+            elif action_type == "update_lead_status":
+                lead_id = action_payload.get("lead_id")
+                status_value = action_payload.get("status")
+                if not lead_id or not status_value:
+                    results.append({"type": action_type, "ok": False, "error": "Invalid lead status or id"})
+                    continue
+                result = await db.leads.update_one({"id": lead_id}, {"$set": {"status": status_value, "updated_at": datetime.now(timezone.utc).isoformat()}})
+                if result.matched_count == 0:
+                    results.append({"type": action_type, "ok": False, "error": "Lead not found"})
+                    continue
+                await create_audit_log("LEAD_UPDATED", "lead", lead_id, current_user["id"], {"status": status_value, "source": "ai"})
+                results.append({"type": action_type, "ok": True, "lead_id": lead_id, "status": status_value})
+            elif action_type == "update_membership_signup_status":
+                signup_id = action_payload.get("signup_id")
+                status_value = action_payload.get("status")
+                if not signup_id or not status_value:
+                    results.append({"type": action_type, "ok": False, "error": "Invalid signup status or id"})
+                    continue
+                result = await db.membership_signups.update_one({"id": signup_id}, {"$set": {"status": status_value, "updated_at": datetime.now(timezone.utc).isoformat()}})
+                if result.matched_count == 0:
+                    results.append({"type": action_type, "ok": False, "error": "Signup not found"})
+                    continue
+                await create_audit_log("MEMBERSHIP_SIGNUP_UPDATED", "membership_signup", signup_id, current_user["id"], {"status": status_value, "source": "ai"})
+                results.append({"type": action_type, "ok": True, "signup_id": signup_id, "status": status_value})
+            elif action_type == "update_customer_membership":
+                customer_id = action_payload.get("customer_id")
+                if not customer_id:
+                    results.append({"type": action_type, "ok": False, "error": "Invalid customer id"})
+                    continue
+                update_data = {k: v for k, v in action_payload.items() if k in ["membership_plan", "membership_status", "membership_start_date"] and v is not None}
+                if not update_data:
+                    results.append({"type": action_type, "ok": False, "error": "No membership fields provided"})
+                    continue
+                update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+                result = await db.customers.update_one({"id": customer_id}, {"$set": update_data})
+                if result.matched_count == 0:
+                    results.append({"type": action_type, "ok": False, "error": "Customer not found"})
+                    continue
+                await create_audit_log("CUSTOMER_MEMBERSHIP_UPDATED", "customer", customer_id, current_user["id"], {"source": "ai"})
+                results.append({"type": action_type, "ok": True, "customer_id": customer_id})
+            else:
+                results.append({"type": action_type, "ok": False, "error": "Unsupported action"})
+    return {"reply": reply, "actions": actions, "results": results}
+
+@api_router.post("/admin/ai/insights")
+async def admin_ai_insights(data: AdminAIInsightsRequest, current_user: dict = Depends(get_current_user)):
+    require_admin(current_user)
+    now = datetime.now(timezone.utc)
+    today = now.strftime("%Y-%m-%d")
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+
+    orders_by_status = {}
+    for status_value in ["new", "processing", "ready", "out_for_delivery", "delivered", "completed", "cancelled"]:
+        orders_by_status[status_value] = await db.orders.count_documents({"status": status_value})
+
+    orders_today = await db.orders.count_documents({"created_at": {"$regex": f"^{today}"}})
+    tickets_open = await db.tickets.count_documents({"status": {"$in": ["open", "in_progress"]}})
+    quotes_new = await db.quotes.count_documents({"status": "new"})
+    leads_new = await db.leads.count_documents({"status": "new"})
+    signups_new = await db.membership_signups.count_documents({"status": "new"})
+
+    pipeline = [
+        {"$match": {"created_at": {"$gte": month_start}, "payment_status": "paid"}},
+        {"$group": {"_id": None, "total": {"$sum": "$total_amount"}}}
+    ]
+    revenue_result = await db.orders.aggregate(pipeline).to_list(1)
+    revenue = revenue_result[0]["total"] if revenue_result else 0
+
+    latest_orders = await db.orders.find({}, {"_id": 0}).sort("created_at", -1).limit(5).to_list(5)
+
+    snapshot = {
+        "generated_at": now.isoformat(),
+        "orders_today": orders_today,
+        "orders_by_status": orders_by_status,
+        "tickets_open": tickets_open,
+        "quotes_new": quotes_new,
+        "leads_new": leads_new,
+        "membership_signups_new": signups_new,
+        "revenue_this_month": revenue or 0,
+        "latest_orders": [
+            {
+                "order_number": o.get("order_number"),
+                "status": o.get("status"),
+                "created_at": o.get("created_at"),
+                "customer_name": o.get("customer_name")
+            }
+            for o in latest_orders
+        ]
+    }
+
+    if data.type == "summary":
+        prompt = (
+            "Genera un resumen ejecutivo breve en español, en 4-6 líneas, "
+            "con prioridades operativas usando este snapshot JSON:\n"
+            f"{json.dumps(snapshot, ensure_ascii=False)}"
+        )
+    elif data.type == "risks":
+        prompt = (
+            "Analiza riesgos operativos y financieros en español con este snapshot JSON. "
+            "Devuelve 5 bullets claros con riesgo y recomendación breve:\n"
+            f"{json.dumps(snapshot, ensure_ascii=False)}"
+        )
+    elif data.type == "forecast":
+        prompt = (
+            "Genera una predicción corta en español sobre carga de trabajo y tendencias "
+            "para la próxima semana usando este snapshot JSON. "
+            "Incluye 3-5 bullets accionables:\n"
+            f"{json.dumps(snapshot, ensure_ascii=False)}"
+        )
+    else:
+        raise HTTPException(status_code=400, detail="Tipo de análisis inválido")
+
+    reply = call_ollama(prompt)
+    return {"reply": reply, "snapshot": snapshot}
+
+@api_router.post("/ai/patrones/scan")
+async def scan_patterns(data: PatternScanRequest, current_user: dict = Depends(get_current_user)):
+    require_admin(current_user)
+    await ensure_ai_indexes()
+    now = datetime.now(timezone.utc)
+    periodo_desde = data.periodo_desde or (now - timedelta(days=7)).isoformat()
+    periodo_hasta = data.periodo_hasta or now.isoformat()
+    filtros = data.filtros or {}
+    base_match = {"created_at": {"$gte": periodo_desde, "$lte": periodo_hasta}}
+    if "service_type" in filtros:
+        base_match["service_type"] = {"$in": filtros["service_type"]}
+    patterns = []
+    processing_pipeline = [
+        {"$match": base_match},
+        {
+            "$project": {
+                "service_type": 1,
+                "processing_ts": {"$dateFromString": {"dateString": "$tiempos.fechas_estado.processing"}},
+                "ready_ts": {"$dateFromString": {"dateString": "$tiempos.fechas_estado.ready"}}
+            }
+        },
+        {"$match": {"processing_ts": {"$ne": None}, "ready_ts": {"$ne": None}}},
+        {
+            "$project": {
+                "service_type": 1,
+                "duration_hours": {
+                    "$divide": [{"$subtract": ["$ready_ts", "$processing_ts"]}, 1000 * 60 * 60]
+                }
+            }
+        },
+        {
+            "$group": {
+                "_id": "$service_type",
+                "avg_hours": {"$avg": "$duration_hours"},
+                "max_hours": {"$max": "$duration_hours"},
+                "count": {"$sum": 1}
+            }
+        }
+    ]
+    processing_stats = await db.orders.aggregate(processing_pipeline).to_list(50)
+    for stat in processing_stats:
+        patterns.append({
+            "id": str(uuid.uuid4()),
+            "tipo": "cuello_botella",
+            "detalle": {
+                "estado": "processing",
+                "service_type": stat["_id"],
+                "avg_hours": stat["avg_hours"],
+                "max_hours": stat["max_hours"]
+            },
+            "query_base": base_match,
+            "periodo": {"desde": periodo_desde, "hasta": periodo_hasta},
+            "fecha_deteccion": now.isoformat(),
+            "impacto_estimado": {"ordenes_afectadas": stat["count"]}
+        })
+    errors_pipeline = [
+        {"$match": base_match},
+        {"$unwind": "$errores_validacion"},
+        {
+            "$group": {
+                "_id": "$errores_validacion.codigo",
+                "count": {"$sum": 1}
+            }
+        },
+        {"$sort": {"count": -1}},
+        {"$limit": 10}
+    ]
+    errors_stats = await db.orders.aggregate(errors_pipeline).to_list(10)
+    for stat in errors_stats:
+        patterns.append({
+            "id": str(uuid.uuid4()),
+            "tipo": "error_recurrente",
+            "detalle": {"codigo": stat["_id"], "count": stat["count"]},
+            "query_base": base_match,
+            "periodo": {"desde": periodo_desde, "hasta": periodo_hasta},
+            "fecha_deteccion": now.isoformat(),
+            "impacto_estimado": {"ordenes_afectadas": stat["count"]}
+        })
+    stale_threshold = (now - timedelta(hours=48)).isoformat()
+    stale_match = {**base_match, "status": {"$in": ["processing", "ready", "out_for_delivery"]}, "created_at": {"$lte": stale_threshold}}
+    stale_pipeline = [
+        {"$match": stale_match},
+        {"$group": {"_id": "$status", "count": {"$sum": 1}}}
+    ]
+    stale_stats = await db.orders.aggregate(stale_pipeline).to_list(10)
+    for stat in stale_stats:
+        patterns.append({
+            "id": str(uuid.uuid4()),
+            "tipo": "desviacion",
+            "detalle": {"estado": stat["_id"], "threshold_hours": 48},
+            "query_base": stale_match,
+            "periodo": {"desde": periodo_desde, "hasta": periodo_hasta},
+            "fecha_deteccion": now.isoformat(),
+            "impacto_estimado": {"ordenes_afectadas": stat["count"]}
+        })
+    if patterns:
+        await db.patrones_detectados.insert_many(patterns)
+    return {"ok": True, "patrones_creados": len(patterns)}
+
+@api_router.post("/ai/propuestas/generar")
+async def generate_proposals(data: ProposalGenerateRequest, current_user: dict = Depends(get_current_user)):
+    require_admin(current_user)
+    await ensure_ai_indexes()
+    await get_or_seed_business_rules()
+    query = {}
+    if data.patrones_ids:
+        query["id"] = {"$in": data.patrones_ids}
+    patrones = await db.patrones_detectados.find(query, {"_id": 0}).sort("fecha_deteccion", -1).to_list(50)
+    if not patrones:
+        return {"ok": True, "propuestas_creadas": 0, "detalle": "Sin patrones"}
+    prompt = (
+        "Eres un asistente de optimización. Devuelve JSON con clave propuestas (array). "
+        "Cada propuesta: tipo, descripcion, impacto_estimado, accion_sugerida, nivel_riesgo, datos_respaldo.\n"
+        f"patrones={json.dumps(patrones, ensure_ascii=False)}"
+    )
+    raw = call_ollama(prompt)
+    propuestas = []
+    try:
+        payload = extract_json_payload(raw)
+        propuestas = payload.get("propuestas", [])
+    except Exception:
+        propuestas = []
+    if not propuestas:
+        for pattern in patrones[: data.max_propuestas or 10]:
+            tipo = "ajuste_regla" if pattern["tipo"] == "cuello_botella" else "nueva_validacion"
+            propuestas.append({
+                "tipo": tipo,
+                "descripcion": f"Propuesta automática basada en patrón {pattern['tipo']}",
+                "impacto_estimado": pattern.get("impacto_estimado", {}),
+                "accion_sugerida": {"type": tipo, "payload": {"pattern_id": pattern["id"]}},
+                "nivel_riesgo": "medio",
+                "datos_respaldo": {"pattern_id": pattern["id"]}
+            })
+    now = datetime.now(timezone.utc).isoformat()
+    docs = []
+    for propuesta in propuestas[: data.max_propuestas or 10]:
+        docs.append({
+            "id": str(uuid.uuid4()),
+            "tipo": propuesta.get("tipo"),
+            "descripcion": propuesta.get("descripcion", ""),
+            "estado": "pendiente",
+            "impacto_estimado": propuesta.get("impacto_estimado", {}),
+            "accion_sugerida": propuesta.get("accion_sugerida", {}),
+            "nivel_riesgo": propuesta.get("nivel_riesgo", "medio"),
+            "datos_respaldo": propuesta.get("datos_respaldo", {}),
+            "fecha_generacion": now,
+            "fuente": "analizador_automatico_v1"
+        })
+    if docs:
+        await db.propuestas_ia.insert_many(docs)
+    return {"ok": True, "propuestas_creadas": len(docs)}
+
+@api_router.get("/ai/propuestas")
+async def list_proposals(estado: Optional[str] = None, current_user: dict = Depends(get_current_user)):
+    require_admin(current_user)
+    await ensure_ai_indexes()
+    query = {}
+    if estado:
+        query["estado"] = estado
+    propuestas = await db.propuestas_ia.find(query, {"_id": 0}).sort("fecha_generacion", -1).to_list(200)
+    return propuestas
+
+@api_router.get("/ai/propuestas/{propuesta_id}")
+async def get_proposal(propuesta_id: str, current_user: dict = Depends(get_current_user)):
+    require_admin(current_user)
+    propuesta = await db.propuestas_ia.find_one({"id": propuesta_id}, {"_id": 0})
+    if not propuesta:
+        raise HTTPException(status_code=404, detail="Propuesta no encontrada")
+    return propuesta
+
+@api_router.get("/ai/propuestas/{propuesta_id}/simulacion")
+async def get_proposal_simulation(
+    propuesta_id: str,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    service_type: Optional[str] = None,
+    status: Optional[str] = None,
+    real_before_days: Optional[int] = 14,
+    real_after_days: Optional[int] = 7,
+    current_user: dict = Depends(get_current_user)
+):
+    require_admin(current_user)
+    propuesta = await db.propuestas_ia.find_one({"id": propuesta_id}, {"_id": 0})
+    if not propuesta:
+        raise HTTPException(status_code=404, detail="Propuesta no encontrada")
+    now = datetime.now(timezone.utc)
+    periodo_desde = start_date or (now - timedelta(days=7)).isoformat()
+    periodo_hasta = end_date or now.isoformat()
+    match = {"created_at": {"$gte": periodo_desde, "$lte": periodo_hasta}}
+    inferred_service = propuesta.get("accion_sugerida", {}).get("payload", {}).get("service_type")
+    service_type = service_type or inferred_service
+    if service_type:
+        match["service_type"] = service_type
+    if status:
+        match["status"] = status
+    processing_pipeline = [
+        {"$match": match},
+        {
+            "$project": {
+                "processing_ts": {"$dateFromString": {"dateString": "$tiempos.fechas_estado.processing"}},
+                "ready_ts": {"$dateFromString": {"dateString": "$tiempos.fechas_estado.ready"}}
+            }
+        },
+        {"$match": {"processing_ts": {"$ne": None}, "ready_ts": {"$ne": None}}},
+        {
+            "$project": {
+                "duration_hours": {
+                    "$divide": [{"$subtract": ["$ready_ts", "$processing_ts"]}, 1000 * 60 * 60]
+                }
+            }
+        },
+        {"$group": {"_id": None, "avg_hours": {"$avg": "$duration_hours"}}}
+    ]
+    processing_stats = await db.orders.aggregate(processing_pipeline).to_list(1)
+    avg_processing_hours = processing_stats[0]["avg_hours"] if processing_stats else 0
+    errors_pipeline = [
+        {"$match": match},
+        {"$unwind": "$errores_validacion"},
+        {"$group": {"_id": None, "count": {"$sum": 1}}}
+    ]
+    errors_stats = await db.orders.aggregate(errors_pipeline).to_list(1)
+    errors_count = errors_stats[0]["count"] if errors_stats else 0
+    orders_count = await db.orders.count_documents(match)
+    before = {
+        "ordenes": orders_count,
+        "avg_processing_horas": round(avg_processing_hours, 2) if avg_processing_hours else 0,
+        "errores_validacion": errors_count
+    }
+    after = dict(before)
+    impacto = propuesta.get("impacto_estimado", {})
+    tiempo_pct = impacto.get("tiempo_ahorrado_porcentaje")
+    errores_pct = impacto.get("errores_reducidos_porcentaje")
+    if isinstance(tiempo_pct, (int, float)):
+        after["avg_processing_horas"] = round(before["avg_processing_horas"] * (1 - tiempo_pct / 100), 2)
+    if isinstance(errores_pct, (int, float)):
+        after["errores_validacion"] = max(0, round(before["errores_validacion"] * (1 - errores_pct / 100)))
+    service_pipeline = [
+        {"$match": match},
+        {"$group": {"_id": "$service_type", "count": {"$sum": 1}}}
+    ]
+    service_stats = await db.orders.aggregate(service_pipeline).to_list(20)
+    status_pipeline = [
+        {"$match": match},
+        {"$group": {"_id": "$status", "count": {"$sum": 1}}}
+    ]
+    status_stats = await db.orders.aggregate(status_pipeline).to_list(20)
+    real_before_start = (now - timedelta(days=real_before_days or 14)).isoformat()
+    real_before_end = (now - timedelta(days=real_after_days or 7)).isoformat()
+    real_after_start = (now - timedelta(days=real_after_days or 7)).isoformat()
+    real_after_end = now.isoformat()
+    real_before_match = {"created_at": {"$gte": real_before_start, "$lte": real_before_end}}
+    real_after_match = {"created_at": {"$gte": real_after_start, "$lte": real_after_end}}
+    if service_type:
+        real_before_match["service_type"] = service_type
+        real_after_match["service_type"] = service_type
+    if status:
+        real_before_match["status"] = status
+        real_after_match["status"] = status
+    real_before_stats = await db.orders.aggregate([
+        {"$match": real_before_match},
+        {"$unwind": {"path": "$errores_validacion", "preserveNullAndEmptyArrays": True}},
+        {
+            "$group": {
+                "_id": None,
+                "errores": {"$sum": {"$cond": [{"$ifNull": ["$errores_validacion", False]}, 1, 0]}},
+                "ordenes": {"$addToSet": "$id"}
+            }
+        }
+    ]).to_list(1)
+    real_after_stats = await db.orders.aggregate([
+        {"$match": real_after_match},
+        {"$unwind": {"path": "$errores_validacion", "preserveNullAndEmptyArrays": True}},
+        {
+            "$group": {
+                "_id": None,
+                "errores": {"$sum": {"$cond": [{"$ifNull": ["$errores_validacion", False]}, 1, 0]}},
+                "ordenes": {"$addToSet": "$id"}
+            }
+        }
+    ]).to_list(1)
+    real_before = real_before_stats[0] if real_before_stats else {"errores": 0, "ordenes": []}
+    real_after = real_after_stats[0] if real_after_stats else {"errores": 0, "ordenes": []}
+    impacto_real = {
+        "errores_before": real_before["errores"],
+        "errores_after": real_after["errores"],
+        "ordenes_before": len(real_before["ordenes"]),
+        "ordenes_after": len(real_after["ordenes"])
+    }
+    return {
+        "before": before,
+        "after": after,
+        "impacto_estimado": impacto,
+        "impacto_real": impacto_real,
+        "por_servicio": service_stats,
+        "por_estado": status_stats,
+        "periodo": {"desde": periodo_desde, "hasta": periodo_hasta},
+        "filtros": {"service_type": service_type, "status": status}
+    }
+
+@api_router.post("/ai/propuestas/{propuesta_id}/accion")
+async def act_on_proposal(propuesta_id: str, data: ProposalActionRequest, current_user: dict = Depends(get_current_user)):
+    require_admin(current_user)
+    propuesta = await db.propuestas_ia.find_one({"id": propuesta_id}, {"_id": 0})
+    if not propuesta:
+        raise HTTPException(status_code=404, detail="Propuesta no encontrada")
+    accion = data.accion
+    if accion not in ["aceptar", "rechazar", "modificar", "posponer"]:
+        raise HTTPException(status_code=400, detail="Acción inválida")
+    now = datetime.now(timezone.utc).isoformat()
+    estado = "pendiente"
+    if accion == "aceptar":
+        estado = "aceptada"
+    if accion == "rechazar":
+        estado = "rechazada"
+    if accion == "modificar":
+        estado = "modificada"
+    if accion == "posponer":
+        estado = "pospuesta"
+    await db.propuestas_ia.update_one(
+        {"id": propuesta_id},
+        {"$set": {"estado": estado, "feedback": {"ultima_decision": estado, "fecha_decision": now, "usuario_id": current_user["id"], "comentarios": data.comentarios}}}
+    )
+    feedback = {
+        "id": str(uuid.uuid4()),
+        "propuesta_id": propuesta_id,
+        "accion_tomada": estado,
+        "modificaciones": data.modificaciones,
+        "motivo": data.comentarios,
+        "usuario_id": current_user["id"],
+        "timestamp": now
+    }
+    await db.feedback_ia.insert_one(feedback)
+    action_payload = data.modificaciones.get("accion_sugerida") if data.modificaciones else None
+    action_payload = action_payload or propuesta.get("accion_sugerida")
+    if accion in ["aceptar", "modificar"] and action_payload:
+        action_type = action_payload.get("type") or action_payload.get("tipo")
+        payload = action_payload.get("payload", {})
+        if action_type == "ajuste_regla":
+            await db.reglas_negocio.update_one({"id": "order_rules_v1"}, {"$set": {"updated_at": now, **payload}}, upsert=True)
+        if action_type == "nueva_validacion":
+            await db.reglas_negocio.update_one({"id": "order_rules_v1"}, {"$addToSet": {"validaciones": payload}, "$set": {"updated_at": now}}, upsert=True)
+        if action_type == "optimizacion_notificacion":
+            await db.reglas_negocio.update_one({"id": "order_rules_v1"}, {"$set": {"updated_at": now, "auto_transitions": payload}}, upsert=True)
+        if action_type == "plan_recuperacion":
+            acciones = payload.get("acciones", [])
+            for item in acciones:
+                order_id = item.get("order_id")
+                status_value = item.get("status")
+                if not order_id or not status_value:
+                    continue
+                await db.orders.update_one(
+                    {"id": order_id},
+                    {
+                        "$set": {
+                            "status": status_value,
+                            "estado_actual": status_value,
+                            "updated_at": now,
+                            "tiempos.ultimo_cambio_estado": now,
+                            f"tiempos.fechas_estado.{status_value}": now
+                        }
+                    }
+                )
+    await create_audit_log("AI_PROPOSAL_ACTION", "propuesta_ia", propuesta_id, current_user["id"], {"accion": estado})
+    return {"ok": True, "estado": estado}
+
+@api_router.post("/admin/import")
+async def create_import(origen: str = Query("csv"), file: UploadFile = File(...), current_user: dict = Depends(get_current_user)):
+    require_admin(current_user)
+    await ensure_ai_indexes()
+    filename = file.filename or ""
+    content = await file.read()
+    rows = []
+    headers = []
+    if filename.lower().endswith(".csv") or origen == "csv":
+        text = content.decode("utf-8", errors="ignore")
+        reader = csv.DictReader(io.StringIO(text))
+        headers = reader.fieldnames or []
+        for idx, row in enumerate(reader):
+            if idx >= 500:
+                break
+            rows.append(row)
+    elif filename.lower().endswith(".xlsx") or origen == "excel":
+        try:
+            import openpyxl
+        except Exception:
+            raise HTTPException(status_code=400, detail="Excel no soportado sin openpyxl")
+        workbook = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
+        sheet = workbook.active
+        headers = [str(cell.value or "").strip() for cell in next(sheet.iter_rows(min_row=1, max_row=1))]
+        for idx, row_cells in enumerate(sheet.iter_rows(min_row=2), start=0):
+            if idx >= 500:
+                break
+            row = {}
+            for col_idx, cell in enumerate(row_cells):
+                key = headers[col_idx] if col_idx < len(headers) else f"col_{col_idx}"
+                row[key] = cell.value
+            rows.append(row)
+    else:
+        raise HTTPException(status_code=400, detail="Formato no soportado")
+    import_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "id": import_id,
+        "origen": origen,
+        "estado": "subido",
+        "raw_headers": headers,
+        "raw_sample": rows[:5],
+        "raw_rows": rows,
+        "fecha_importacion": now,
+        "usuario_id": current_user["id"]
+    }
+    await db.importaciones_legacy.insert_one(doc)
+    return {"import_id": import_id, "campos_detectados": headers, "sample": rows[:5]}
+
+@api_router.post("/admin/import/{import_id}/mapping/suggest")
+async def suggest_import_mapping(import_id: str, data: ImportMappingSuggestRequest, current_user: dict = Depends(get_current_user)):
+    require_admin(current_user)
+    import_doc = await db.importaciones_legacy.find_one({"id": import_id}, {"_id": 0})
+    if not import_doc:
+        raise HTTPException(status_code=404, detail="Importación no encontrada")
+    mapping = suggest_mapping(data.campos_legacy)
+    prompt = (
+        "Devuelve JSON con clave sugerencias (objeto) para mapear campos legacy a ordenes. "
+        f"campos={json.dumps(data.campos_legacy, ensure_ascii=False)}"
+    )
+    try:
+        raw = call_ollama(prompt)
+        payload = extract_json_payload(raw)
+        ai_mapping = payload.get("sugerencias")
+        if isinstance(ai_mapping, dict):
+            mapping = {**mapping, **ai_mapping}
+    except Exception:
+        pass
+    await db.importaciones_legacy.update_one({"id": import_id}, {"$set": {"mapping_sugerido": mapping}})
+    return {"sugerencias": mapping}
+
+@api_router.post("/admin/import/{import_id}/mapping/confirm")
+async def confirm_import_mapping(import_id: str, data: ImportMappingConfirmRequest, current_user: dict = Depends(get_current_user)):
+    require_admin(current_user)
+    import_doc = await db.importaciones_legacy.find_one({"id": import_id}, {"_id": 0})
+    if not import_doc:
+        raise HTTPException(status_code=404, detail="Importación no encontrada")
+    rows = import_doc.get("raw_rows", [])
+    mapping = data.mapping_campos
+    now = datetime.now(timezone.utc).isoformat()
+    created_orders = []
+    for row in rows:
+        mapped = {}
+        for legacy_key, target_path in mapping.items():
+            if legacy_key in row and target_path:
+                set_nested_value(mapped, target_path, row[legacy_key])
+        status_value = mapped.get("estado_actual") or mapped.get("status") or "new"
+        order_id = str(uuid.uuid4())
+        order_number = mapped.get("order_number") or await generate_order_number()
+        customer_id = await resolve_or_create_customer_from_row(mapped)
+        order = {
+            "id": order_id,
+            "order_number": order_number,
+            "customer_id": customer_id,
+            "customer_name": mapped.get("customer_name"),
+            "service_type": mapped.get("service_type") or "pickup_delivery",
+            "pickup_date": mapped.get("formulario", {}).get("pickup_date"),
+            "pickup_time_window": mapped.get("formulario", {}).get("pickup_time_window"),
+            "pickup_address": mapped.get("formulario", {}).get("pickup_address"),
+            "delivery_address": mapped.get("formulario", {}).get("delivery_address"),
+            "estimated_lbs": mapped.get("formulario", {}).get("estimated_lbs"),
+            "notes": mapped.get("notes"),
+            "gate_code": mapped.get("formulario", {}).get("gate_code"),
+            "status": status_value,
+            "estado_actual": status_value,
+            "payment_status": "unpaid",
+            "total_amount": None,
+            "tiempos": build_order_times(mapped.get("tiempos", {}).get("creacion") or now, status_value),
+            "errores_validacion": [],
+            "secciones": [],
+            "importada": True,
+            "origen": "import_legacy",
+            "qr_token": str(uuid.uuid4()),
+            "created_at": mapped.get("tiempos", {}).get("creacion") or now,
+            "updated_at": now
+        }
+        await db.orders.insert_one(order)
+        created_orders.append(order_id)
+    await db.importaciones_legacy.update_one(
+        {"id": import_id},
+        {"$set": {"estado": "procesado", "mapping_campos": mapping, "ordenes_creadas_ids": created_orders}}
+    )
+    return {"ok": True, "ordenes_creadas": len(created_orders)}
+
+@api_router.post("/admin/import/{import_id}/plan-recuperacion")
+async def import_recovery_plan(import_id: str, current_user: dict = Depends(get_current_user)):
+    require_admin(current_user)
+    import_doc = await db.importaciones_legacy.find_one({"id": import_id}, {"_id": 0})
+    if not import_doc:
+        raise HTTPException(status_code=404, detail="Importación no encontrada")
+    order_ids = import_doc.get("ordenes_creadas_ids", [])
+    if not order_ids:
+        raise HTTPException(status_code=400, detail="No hay órdenes importadas")
+    now = datetime.now(timezone.utc).isoformat()
+    stale_orders = await db.orders.find(
+        {"id": {"$in": order_ids}, "status": {"$nin": ["completed", "cancelled"]}},
+        {"_id": 0}
+    ).to_list(200)
+    acciones = [{"order_id": o["id"], "status": "processing"} for o in stale_orders[:50]]
+    propuesta = {
+        "id": str(uuid.uuid4()),
+        "tipo": "plan_recuperacion",
+        "descripcion": "Plan de recuperación generado desde importación legacy",
+        "estado": "pendiente",
+        "impacto_estimado": {"ordenes_afectadas": len(stale_orders)},
+        "accion_sugerida": {"type": "plan_recuperacion", "payload": {"acciones": acciones}},
+        "nivel_riesgo": "medio",
+        "datos_respaldo": {"import_id": import_id},
+        "fecha_generacion": now,
+        "fuente": "importaciones_legacy"
+    }
+    await db.propuestas_ia.insert_one(propuesta)
+    await db.importaciones_legacy.update_one({"id": import_id}, {"$set": {"plan_recuperacion_propuesta_id": propuesta["id"]}})
+    return {"ok": True, "propuesta_id": propuesta["id"]}
+
+@api_router.get("/public/membership-section", response_model=MembershipSectionResponse)
+async def get_public_membership_section():
+    section = await db.membership_section.find_one({"id": "default"}, {"_id": 0})
+    if not section:
+        section = {
+            "id": "default",
+            "heading": "Flexible Plans for Every Home",
+            "subheading": None,
+            "special_title": "🎉 New Member Special",
+            "special_text": "$10 OFF your first month on any membership. Ask when you call or text.",
+            "cta_title": "Need help choosing?",
+            "cta_text": "Just call, text, or email us at (805) 836-8872 and we'll recommend the perfect plan based on your weekly laundry.",
+            "cta_button_label": "👉 BECOME A MEMBER",
+            "cta_button_url": "/membership",
+            "contact_phone": "(805) 836-8872",
+            "is_active": True,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }
+        await db.membership_section.insert_one(section)
+    return MembershipSectionResponse(**section)
+
+@api_router.get("/public/membership-plans", response_model=List[MembershipPlanResponse])
+async def get_public_membership_plans(active_only: bool = True):
+    query = {}
+    if active_only:
+        query["is_active"] = True
+    plans = await db.membership_plans.find(query, {"_id": 0}).sort([("sort_order", 1), ("created_at", -1)]).to_list(200)
+    if len(plans) == 0:
+        now = datetime.now(timezone.utc).isoformat()
+        seed = [
+            {
+                "id": str(uuid.uuid4()),
+                "name": "MOST POPULAR",
+                "price": "$139 / month",
+                "image_url": "https://images.squarespace-cdn.com/content/v1/696c559a4b2b9b1b0febf8d7/4a2815a1-54c1-45fb-8320-244dce8b83c8/MOST+POPULAR.png",
+                "features": ["Up to 60 lb/ month", "Basic Preferences saved (folding notes)", "Best value for most families"],
+                "is_popular": True,
+                "is_active": True,
+                "sort_order": 1,
+                "created_at": now,
+                "updated_at": now
+            },
+            {
+                "id": str(uuid.uuid4()),
+                "name": "FAMILY PLUS",
+                "price": "$199 / month",
+                "image_url": "https://images.squarespace-cdn.com/content/v1/696c559a4b2b9b1b0febf8d7/f262a5b8-0043-4977-9d32-d6b343be3e70/FAMILY+PLUS.png",
+                "features": ["Up to 90 lb/ month", "Priority scheduling", "Great for larger households or rentals"],
+                "is_popular": False,
+                "is_active": True,
+                "sort_order": 2,
+                "created_at": now,
+                "updated_at": now
+            },
+            {
+                "id": str(uuid.uuid4()),
+                "name": "ELITE CONCIERGE",
+                "price": "$299 / month",
+                "image_url": "https://images.squarespace-cdn.com/content/v1/696c559a4b2b9b1b0febf8d7/13a4c501-7792-4f72-bf5c-072f95b5f995/ELITE+CONCIERGE.png",
+                "features": ["Up to 120 lb/ month", "Priority turnaround (when possible)", "Premium packaging", "Saved preferences", "1 emergency pickup included"],
+                "is_popular": False,
+                "is_active": True,
+                "sort_order": 3,
+                "created_at": now,
+                "updated_at": now
+            }
+        ]
+        await db.membership_plans.insert_many(seed)
+        plans = seed
+    return [MembershipPlanResponse(**p) for p in plans]
 
 # ==================== INGEST & ROUTING ====================
 
@@ -1125,6 +2842,21 @@ class PublicQuoteRequest(BaseModel):
     estimated_lbs: Optional[float] = None
     message: Optional[str] = None
 
+class PublicMembershipSignup(BaseModel):
+    first_name: str
+    last_name: str
+    email: EmailStr
+    phone: str
+    contact_method: str
+    address_line1: str
+    address_line2: Optional[str] = None
+    city: str
+    state: str
+    zip_code: str
+    membership_plan: str
+    laundry_frequency: str
+    estimated_lbs: float
+
 @api_router.post("/public/pickup-request")
 async def public_pickup_request(data: PublicPickupRequest):
     """Public endpoint for pickup request form - no auth required"""
@@ -1265,6 +2997,37 @@ async def public_quote_request(data: PublicQuoteRequest):
         "message": "¡Gracias! Hemos recibido tu solicitud de cotización comercial."
     }
 
+@api_router.post("/public/membership-signup")
+async def public_membership_signup(data: PublicMembershipSignup):
+    now = datetime.now(timezone.utc).isoformat()
+    signup_id = str(uuid.uuid4())
+    signup = {
+        "id": signup_id,
+        "first_name": data.first_name,
+        "last_name": data.last_name,
+        "email": data.email.lower(),
+        "phone": data.phone,
+        "contact_method": data.contact_method,
+        "address_line1": data.address_line1,
+        "address_line2": data.address_line2,
+        "city": data.city,
+        "state": data.state,
+        "zip_code": data.zip_code,
+        "membership_plan": data.membership_plan,
+        "laundry_frequency": data.laundry_frequency,
+        "estimated_lbs": data.estimated_lbs,
+        "status": "new",
+        "customer_id": None,
+        "created_at": now,
+        "updated_at": now
+    }
+    await db.membership_signups.insert_one(signup)
+    await create_audit_log("MEMBERSHIP_SIGNUP_CREATED", "membership_signup", signup_id, None, {"source": "public_form"})
+    return {
+        "success": True,
+        "message": "¡Gracias! Tu solicitud de membresía fue recibida. Te contactaremos para confirmar tu plan."
+    }
+
 # ==================== EXPORT ENDPOINTS ====================
 
 @api_router.get("/export/customers")
@@ -1292,7 +3055,29 @@ async def export_orders_csv(current_user: dict = Depends(get_current_user)):
     
     output = io.StringIO()
     if orders:
-        writer = csv.DictWriter(output, fieldnames=orders[0].keys())
+        base_fields = [
+            "id",
+            "order_number",
+            "customer_id",
+            "customer_name",
+            "service_type",
+            "pickup_date",
+            "pickup_time_window",
+            "pickup_address",
+            "delivery_address",
+            "estimated_lbs",
+            "notes",
+            "gate_code",
+            "status",
+            "payment_status",
+            "total_amount",
+            "created_at",
+            "updated_at"
+        ]
+        fieldnames = [field for field in base_fields if any(field in o for o in orders)]
+        extra_fields = sorted({key for o in orders for key in o.keys()} - set(fieldnames))
+        fieldnames.extend(extra_fields)
+        writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(orders)
     
@@ -1397,6 +3182,23 @@ async def get_notification_settings(current_user: dict = Depends(get_current_use
         "sms_enabled": bool(os.environ.get('TWILIO_ACCOUNT_SID') and os.environ.get('TWILIO_AUTH_TOKEN')),
         "notifications_available": NOTIFICATIONS_ENABLED
     }
+
+@api_router.get("/settings/rules")
+async def get_business_rules(current_user: dict = Depends(get_current_user)):
+    require_admin(current_user)
+    rules = await get_or_seed_business_rules()
+    return rules
+
+@api_router.put("/settings/rules")
+async def update_business_rules(data: RulesUpdateRequest, current_user: dict = Depends(get_current_user)):
+    require_admin(current_user)
+    rules = data.rules or {}
+    now = datetime.now(timezone.utc).isoformat()
+    rules["updated_at"] = now
+    rules.setdefault("id", "order_rules_v1")
+    await db.reglas_negocio.update_one({"id": rules["id"]}, {"$set": rules}, upsert=True)
+    await create_audit_log("RULES_UPDATED", "reglas_negocio", rules["id"], current_user["id"])
+    return rules
 
 @api_router.post("/test/email")
 async def test_email_notification(

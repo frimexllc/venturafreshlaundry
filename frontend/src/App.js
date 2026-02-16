@@ -14,6 +14,9 @@ import Calendar from "./pages/Calendar";
 import Settings from "./pages/Settings";
 import AdminStore from "./pages/AdminStore";
 import AdminBlog from "./pages/AdminBlog";
+import AdminServices from "./pages/AdminServices";
+import AdminMemberships from "./pages/AdminMemberships";
+import AdminAi from "./pages/AdminAi";
 import OperatorDashboard from "./pages/OperatorDashboard";
 import Layout from "./components/Layout";
 // Public pages
@@ -24,6 +27,7 @@ import ContactPage from "./pages/ContactPage";
 import StorePage from "./pages/StorePage";
 import BlogPage from "./pages/BlogPage";
 import SchedulePickup from "./pages/SchedulePickup";
+import MembershipPage from "./pages/MembershipPage";
 import CustomerAccount from "./pages/CustomerAccount";
 import CustomerLogin from "./pages/CustomerLogin";
 
@@ -66,6 +70,7 @@ function AppRoutes() {
       <Route path="/blog" element={<BlogPage />} />
       <Route path="/blog/:slug" element={<BlogPage />} />
       <Route path="/schedule-pickup" element={<SchedulePickup />} />
+      <Route path="/membership" element={<MembershipPage />} />
       
       {/* Customer portal */}
       <Route path="/account/login" element={<CustomerLogin />} />
@@ -88,6 +93,9 @@ function AppRoutes() {
         <Route path="quotes" element={<Quotes />} />
         <Route path="leads" element={<Leads />} />
         <Route path="tickets" element={<Tickets />} />
+        <Route path="services" element={<AdminServices />} />
+        <Route path="memberships" element={<AdminMemberships />} />
+        <Route path="ai" element={<AdminAi />} />
         <Route path="store" element={<AdminStore />} />
         <Route path="blog" element={<AdminBlog />} />
         <Route path="operator" element={<OperatorDashboard />} />

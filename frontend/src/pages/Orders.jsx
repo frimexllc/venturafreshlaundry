@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Textarea } from "../components/ui/textarea";
 import { toast } from "sonner";
-import { Plus, Search, Calendar, Truck, MoreHorizontal, Eye, CheckCircle } from "lucide-react";
+import { Plus, Search, Calendar, Truck, MoreHorizontal, Eye, CheckCircle, Download } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "../components/ui/dropdown-menu";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -49,6 +49,11 @@ export default function Orders() {
   const [form, setForm] = useState(emptyForm);
   const [submitting, setSubmitting] = useState(false);
   const [viewOrder, setViewOrder] = useState(null);
+  const [qrStartDate, setQrStartDate] = useState("");
+  const [qrEndDate, setQrEndDate] = useState("");
+  const [exportingQr, setExportingQr] = useState(false);
+  const [qrStatusFilter, setQrStatusFilter] = useState("");
+  const [qrServiceFilter, setQrServiceFilter] = useState("");
 
   useEffect(() => {
     fetchOrders();
@@ -104,6 +109,55 @@ export default function Orders() {
       fetchOrders();
     } catch (error) {
       toast.error("Error actualizando estado");
+    }
+  };
+
+  const handleDownloadQr = async (order) => {
+    try {
+      const res = await axios.get(`${API}/orders/${order.id}/qr.svg`, { responseType: "blob" });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `${order.order_number || order.id}.svg`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      toast.success("QR descargado");
+    } catch (error) {
+      toast.error("Error descargando QR");
+    }
+  };
+
+  const handleExportQrBatch = async () => {
+    if (!qrStartDate || !qrEndDate) {
+      toast.error("Selecciona un rango de fechas");
+      return;
+    }
+    setExportingQr(true);
+    try {
+      const params = new URLSearchParams({
+        start_date: qrStartDate,
+        end_date: qrEndDate
+      });
+      if (qrStatusFilter) {
+        params.append("status", qrStatusFilter);
+      }
+      if (qrServiceFilter) {
+        params.append("service_type", qrServiceFilter);
+      }
+      const res = await axios.get(`${API}/orders/qr/export?${params.toString()}`, { responseType: "blob" });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `qr-export-${qrStartDate}-to-${qrEndDate}.zip`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      toast.success("QRs descargados");
+    } catch (error) {
+      toast.error("Error exportando QRs");
+    } finally {
+      setExportingQr(false);
     }
   };
 
@@ -267,6 +321,50 @@ export default function Orders() {
         ))}
       </div>
 
+      <div className="flex flex-col lg:flex-row gap-3 items-start lg:items-end">
+        <div>
+          <Label>Inicio</Label>
+          <Input type="date" value={qrStartDate} onChange={(e) => setQrStartDate(e.target.value)} />
+        </div>
+        <div>
+          <Label>Fin</Label>
+          <Input type="date" value={qrEndDate} onChange={(e) => setQrEndDate(e.target.value)} />
+        </div>
+        <div>
+          <Label>Estado</Label>
+          <select
+            className="h-9 rounded-md border border-slate-200 px-2 text-sm"
+            value={qrStatusFilter}
+            onChange={(e) => setQrStatusFilter(e.target.value)}
+          >
+            <option value="">Todos</option>
+            <option value="new">Nueva</option>
+            <option value="processing">Procesando</option>
+            <option value="ready">Lista</option>
+            <option value="out_for_delivery">En camino</option>
+            <option value="completed">Completada</option>
+            <option value="cancelled">Cancelada</option>
+          </select>
+        </div>
+        <div>
+          <Label>Servicio</Label>
+          <select
+            className="h-9 rounded-md border border-slate-200 px-2 text-sm"
+            value={qrServiceFilter}
+            onChange={(e) => setQrServiceFilter(e.target.value)}
+          >
+            <option value="">Todos</option>
+            <option value="pickup_delivery">Pickup & Delivery</option>
+            <option value="wash_fold">Wash & Fold</option>
+            <option value="self_service">Self Service</option>
+          </select>
+        </div>
+        <Button variant="outline" onClick={handleExportQrBatch} disabled={exportingQr}>
+          <Download className="h-4 w-4 mr-2" />
+          {exportingQr ? "Exportando..." : "Exportar QRs"}
+        </Button>
+      </div>
+
       {/* Order Detail Dialog */}
       <Dialog open={!!viewOrder} onOpenChange={() => setViewOrder(null)}>
         <DialogContent className="sm:max-w-lg">
@@ -320,6 +418,12 @@ export default function Orders() {
                   <p className="text-sm text-slate-500">Total</p>
                   <p className="font-medium">{viewOrder.total_amount ? `$${viewOrder.total_amount}` : "-"}</p>
                 </div>
+              </div>
+              <div className="flex justify-end">
+                <Button variant="outline" size="sm" onClick={() => handleDownloadQr(viewOrder)}>
+                  <Download className="h-4 w-4 mr-2" />
+                  Descargar QR
+                </Button>
               </div>
             </div>
           )}
@@ -396,6 +500,10 @@ export default function Orders() {
                           <DropdownMenuItem onClick={() => setViewOrder(order)}>
                             <Eye className="h-4 w-4 mr-2" />
                             Ver detalles
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleDownloadQr(order)}>
+                            <Download className="h-4 w-4 mr-2" />
+                            Descargar QR
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           {order.status === "new" && (

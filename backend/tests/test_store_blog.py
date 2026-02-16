@@ -7,7 +7,7 @@ import requests
 import os
 import uuid
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://laundry-portal-5.preview.emergentagent.com')
+BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'http://localhost:8000')
 
 # ==================== FIXTURES ====================
 
@@ -318,7 +318,7 @@ class TestStoreCheckout:
         
         response = api_client.post(f"{BASE_URL}/api/store/checkout", json={
             "cart_id": cart_id,
-            "origin_url": "https://laundry-portal-5.preview.emergentagent.com"
+            "origin_url": "http://localhost:8000"
         })
         assert response.status_code == 400
         assert "empty" in response.json()["detail"].lower()
@@ -341,7 +341,7 @@ class TestStoreCheckout:
         # Attempt checkout
         response = api_client.post(f"{BASE_URL}/api/store/checkout", json={
             "cart_id": cart_id,
-            "origin_url": "https://laundry-portal-5.preview.emergentagent.com"
+            "origin_url": "http://localhost:8000"
         })
         
         # Should return checkout URL or error if Stripe not configured

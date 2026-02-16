@@ -119,8 +119,7 @@ export default function LandingPage() {
   const images = {
     logo: "https://images.squarespace-cdn.com/content/v1/696c559a4b2b9b1b0febf8d7/c88c2b19-90c7-463f-8783-56787e59427c/LOGO2-fotor-bg-remover-2026011719450.png",
     background: "https://images.squarespace-cdn.com/content/v1/696c559a4b2b9b1b0febf8d7/8f9faf72-9068-4289-8f90-869a9b1b00d2/backgound.png",
-    delivery: "https://images.squarespace-cdn.com/content/v1/696c559a4b2b9b1b0febf8d7/3952928a-343a-44b5-ad18-6aa57be0b4eb/ventura_fresh_laundry_part_1.png",
-    video: "https://customer-assets.emergentagent.com/job_168ce4be-271c-44e1-9ae3-3f0f14f2ffa9/artifacts/4x796jzj_WhatsApp%20Video%202026-01-31%20at%2011.26.35%20PM.mp4"
+    delivery: "https://images.squarespace-cdn.com/content/v1/696c559a4b2b9b1b0febf8d7/3952928a-343a-44b5-ad18-6aa57be0b4eb/ventura_fresh_laundry_part_1.png"
   };
 
   return (
@@ -129,15 +128,10 @@ export default function LandingPage() {
       <section className="relative min-h-screen flex items-center overflow-hidden">
         {/* Video Background con efecto de overlay como en Squarespace */}
         <div className="absolute inset-0 z-0">
-          <video
-            autoPlay
-            muted
-            loop
-            playsInline
-            className="w-full h-full object-cover scale-110"
-          >
-            <source src={images.video} type="video/mp4" />
-          </video>
+          <div
+            className="absolute inset-0 bg-cover bg-center scale-110"
+            style={{ backgroundImage: `url(${images.background})` }}
+          ></div>
           <div className="absolute inset-0 bg-gradient-to-r from-black/40 via-black/20 to-transparent"></div>
         </div>
 
