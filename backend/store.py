@@ -715,7 +715,7 @@ async def create_membership_checkout(checkout: MembershipCheckoutRequest, reques
     price_str = plan.get("price", "$0")
     try:
         price = float(price_str.replace("$", "").replace(",", "").split("/")[0].strip())
-    except:
+    except (ValueError, AttributeError):
         raise HTTPException(status_code=500, detail="Invalid plan price configuration")
     
     if price <= 0:
