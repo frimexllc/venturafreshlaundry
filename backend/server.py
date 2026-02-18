@@ -367,23 +367,31 @@ class MembershipPlanResponse(BaseModel):
 
 class MembershipSignupResponse(BaseModel):
     id: str
-    first_name: str
-    last_name: str
-    email: str
-    phone: str
-    contact_method: str
-    address_line1: str
+    first_name: Optional[str] = ""
+    last_name: Optional[str] = ""
+    email: Optional[str] = ""
+    phone: Optional[str] = ""
+    contact_method: Optional[str] = ""
+    address_line1: Optional[str] = ""
     address_line2: Optional[str] = None
-    city: str
-    state: str
-    zip_code: str
-    membership_plan: str
-    laundry_frequency: str
-    estimated_lbs: float
-    status: str
+    city: Optional[str] = ""
+    state: Optional[str] = ""
+    zip_code: Optional[str] = ""
+    membership_plan: Optional[str] = ""
+    plan_name: Optional[str] = None
+    plan_id: Optional[str] = None
+    laundry_frequency: Optional[str] = ""
+    estimated_lbs: Optional[float] = 0
+    amount: Optional[float] = None
+    payment_status: Optional[str] = None
+    status: str = "pending"
     customer_id: Optional[str] = None
-    created_at: str
-    updated_at: str
+    customer_name: Optional[str] = None
+    customer_email: Optional[str] = None
+    customer_phone: Optional[str] = None
+    stripe_session_id: Optional[str] = None
+    created_at: Optional[str] = ""
+    updated_at: Optional[str] = ""
 
 class MembershipSignupUpdate(BaseModel):
     status: Optional[str] = None
