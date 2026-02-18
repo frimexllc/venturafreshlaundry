@@ -210,9 +210,9 @@ class OrderCreate(BaseModel):
 class OrderResponse(BaseModel):
     id: str
     order_number: Optional[str] = None
-    customer_id: str
+    customer_id: Optional[str] = None
     customer_name: Optional[str] = None
-    service_type: str
+    service_type: Optional[str] = "general"
     pickup_date: Optional[str] = None
     pickup_time_window: Optional[str] = None
     pickup_address: Optional[str] = None
@@ -221,11 +221,11 @@ class OrderResponse(BaseModel):
     actual_lbs: Optional[float] = None
     notes: Optional[str] = None
     gate_code: Optional[str] = None
-    status: str
-    payment_status: str
+    status: str = "new"
+    payment_status: Optional[str] = "pending"
     total_amount: Optional[float] = None
-    created_at: str
-    updated_at: str
+    created_at: Optional[str] = ""
+    updated_at: Optional[str] = ""
 
 class QuoteCreate(BaseModel):
     company_name: str
