@@ -276,19 +276,76 @@ export default function MembershipPage() {
         </div>
       </section>
 
+      {/* Membership Plans Cards */}
+      <section className="py-10">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <h2 className="text-2xl font-bold text-slate-900 text-center mb-8">Choose Your Plan</h2>
+          <div className="grid md:grid-cols-3 gap-6 mb-10">
+            {plans.map((plan) => (
+              <div 
+                key={plan.id}
+                className={`relative bg-white rounded-2xl border-2 transition-all cursor-pointer ${
+                  selectedPlan?.id === plan.id 
+                    ? 'border-sky-500 shadow-lg shadow-sky-100' 
+                    : 'border-slate-200 hover:border-sky-300'
+                }`}
+                onClick={() => handlePlanSelect(plan.id)}
+              >
+                {plan.is_popular && (
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+                    <span className="bg-sky-500 text-white text-xs font-semibold px-3 py-1 rounded-full">
+                      MOST POPULAR
+                    </span>
+                  </div>
+                )}
+                <div className="p-6">
+                  {plan.image_url && (
+                    <img 
+                      src={plan.image_url} 
+                      alt={plan.name} 
+                      className="w-full h-32 object-contain mb-4"
+                    />
+                  )}
+                  <h3 className="text-xl font-bold text-slate-900 mb-2">{plan.name}</h3>
+                  <p className="text-3xl font-bold text-sky-600 mb-4">{plan.price}</p>
+                  <ul className="space-y-2 mb-6">
+                    {plan.features?.map((feature, idx) => (
+                      <li key={idx} className="flex items-start gap-2 text-sm text-slate-600">
+                        <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
+                        <span>{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className={`w-full h-1 rounded-full ${
+                    selectedPlan?.id === plan.id ? 'bg-sky-500' : 'bg-slate-200'
+                  }`} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       <section className="py-10">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="bg-white rounded-2xl p-8 shadow-lg border border-slate-100">
             <div className="mb-8">
-              <h2 className="text-2xl font-bold text-slate-900 mb-2">Laundry, handled for you every month</h2>
+              <h2 className="text-2xl font-bold text-slate-900 mb-2">Complete Your Membership</h2>
               <p className="text-slate-600">
-                Fill out the form below to get started. Our team will contact you to confirm your plan and schedule your first pickup.
+                Fill out your details below and proceed to secure payment.
               </p>
+              {selectedPlan && (
+                <div className="mt-4 p-4 bg-sky-50 rounded-lg border border-sky-200">
+                  <p className="text-sm text-sky-800">
+                    Selected Plan: <strong>{selectedPlan.name}</strong> - <strong>{selectedPlan.price}</strong>
+                  </p>
+                </div>
+              )}
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
-                <Label className="text-slate-700">Name</Label>
+                <Label className="text-slate-700">Name *</Label>
                 <div className="grid md:grid-cols-2 gap-4 mt-1">
                   <Input
                     placeholder="First Name"
@@ -307,7 +364,7 @@ export default function MembershipPage() {
 
               <div className="grid md:grid-cols-2 gap-4">
                 <div>
-                  <Label className="text-slate-700">Email</Label>
+                  <Label className="text-slate-700">Email *</Label>
                   <Input
                     type="email"
                     value={form.email}
@@ -321,7 +378,6 @@ export default function MembershipPage() {
                   <Input
                     value={form.phone}
                     onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                    required
                     className="mt-1"
                   />
                 </div>
@@ -348,7 +404,6 @@ export default function MembershipPage() {
                     placeholder="Address Line 1"
                     value={form.address_line1}
                     onChange={(e) => setForm({ ...form, address_line1: e.target.value })}
-                    required
                   />
                   <Input
                     placeholder="Address Line 2"
@@ -360,19 +415,16 @@ export default function MembershipPage() {
                       placeholder="City"
                       value={form.city}
                       onChange={(e) => setForm({ ...form, city: e.target.value })}
-                      required
                     />
                     <Input
                       placeholder="State"
                       value={form.state}
                       onChange={(e) => setForm({ ...form, state: e.target.value })}
-                      required
                     />
                     <Input
                       placeholder="ZIP Code"
                       value={form.zip_code}
                       onChange={(e) => setForm({ ...form, zip_code: e.target.value })}
-                      required
                     />
                   </div>
                 </div>
@@ -380,15 +432,18 @@ export default function MembershipPage() {
 
               <div className="grid md:grid-cols-2 gap-4">
                 <div>
-                  <Label className="text-slate-700">Select your membership plan</Label>
-                  <Select value={form.membership_plan} onValueChange={(value) => setForm({ ...form, membership_plan: value })}>
+                  <Label className="text-slate-700">Membership Plan *</Label>
+                  <Select 
+                    value={selectedPlan?.id || ""} 
+                    onValueChange={(value) => handlePlanSelect(value)}
+                  >
                     <SelectTrigger className="mt-1">
-                      <SelectValue placeholder="Select an option" />
+                      <SelectValue placeholder="Select a plan" />
                     </SelectTrigger>
                     <SelectContent>
                       {plans.map((plan) => (
-                        <SelectItem key={plan.id} value={plan.name}>
-                          {plan.name}
+                        <SelectItem key={plan.id} value={plan.id}>
+                          {plan.name} - {plan.price}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -410,25 +465,34 @@ export default function MembershipPage() {
               </div>
 
               <div>
-                <Label className="text-slate-700">Estimated weight (Lbs)</Label>
+                <Label className="text-slate-700">Estimated weight per pickup (Lbs)</Label>
                 <Input
                   type="number"
                   min="1"
                   value={form.estimated_lbs}
                   onChange={(e) => setForm({ ...form, estimated_lbs: e.target.value })}
-                  required
                   className="mt-1"
+                  placeholder="e.g., 20"
                 />
               </div>
 
-              <div className="pt-2">
+              <div className="pt-4 space-y-3">
                 <Button
-                  type="submit"
-                  className="w-full bg-sky-500 hover:bg-sky-600 text-white rounded-full h-12 text-lg"
-                  disabled={submitting}
+                  type="button"
+                  onClick={handlePayNow}
+                  className="w-full bg-green-600 hover:bg-green-700 text-white rounded-full h-12 text-lg"
+                  disabled={submitting || !selectedPlan}
                 >
-                  {submitting ? "Submitting..." : "SUBMIT"}
+                  {submitting ? (
+                    <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                  ) : (
+                    <CreditCard className="h-5 w-5 mr-2" />
+                  )}
+                  {submitting ? "Processing..." : `Pay Now ${selectedPlan ? selectedPlan.price : ''}`}
                 </Button>
+                <p className="text-center text-xs text-slate-500">
+                  Secure payment powered by Stripe. Your card details are never stored on our servers.
+                </p>
               </div>
             </form>
           </div>
