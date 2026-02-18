@@ -18,6 +18,7 @@ import AdminServices from "./pages/AdminServices";
 import AdminMemberships from "./pages/AdminMemberships";
 import AdminAi from "./pages/AdminAi";
 import OperatorDashboard from "./pages/OperatorDashboard";
+import UserManagement from "./pages/UserManagement";
 import Layout from "./components/Layout";
 // Public pages
 import LandingPage from "./pages/LandingPage";
@@ -44,6 +45,29 @@ const ProtectedRoute = ({ children }) => {
   
   if (!user) {
     return <Navigate to="/login" replace />;
+  }
+  
+  return children;
+};
+
+// Admin-only route protection
+const AdminRoute = ({ children }) => {
+  const { user, loading } = useAuth();
+  
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-600"></div>
+      </div>
+    );
+  }
+  
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+  
+  if (user.role !== "admin") {
+    return <Navigate to="/admin/operator" replace />;
   }
   
   return children;
