@@ -45,6 +45,7 @@ const allNavItems = [
   { path: "/admin/tickets", icon: HeadphonesIcon, label: "Support" },
   { path: "/admin/store", icon: Store, label: "Store", adminOnly: true },
   { path: "/admin/blog", icon: BookOpen, label: "Blog", adminOnly: true },
+  { path: "/admin/users", icon: Shield, label: "Users", adminOnly: true },
   { path: "/admin/audit-log", icon: ClipboardList, label: "Audit Log", adminOnly: true },
   { path: "/admin/settings", icon: Settings, label: "Settings", adminOnly: true },
 ];
