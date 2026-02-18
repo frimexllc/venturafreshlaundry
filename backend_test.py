@@ -369,9 +369,8 @@ def test_operator_endpoints(test_result: TestResult):
                 else:
                     test_result.log("operator_orders_no_financial", False, f"Operator orders failed: {response.get('status_code')}", str(response.get("data", response.get("error")))[:200])
                 
-                # Test 14: Operator can update order status
-                status_data = {"status": "processing"}
-                response = make_request("PATCH", f"/operator/orders/{order_id}/status", status_data, headers=operator_headers)
+                # Test 14: Operator can update order status (status as query parameter)
+                response = make_request("PATCH", f"/operator/orders/{order_id}/status?status=processing", headers=operator_headers)
                 
                 if response.get("status_code") == 200:
                     test_result.log("operator_update_status", True, "Operator can update order status")
