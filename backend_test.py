@@ -392,12 +392,8 @@ def test_stripe_membership_checkout(test_result: TestResult):
     print("TESTING STRIPE MEMBERSHIP CHECKOUT")
     print("="*50)
     
-    # Test 15: Get membership plans (requires authentication)
-    if test_result.admin_token:
-        admin_headers = {"Authorization": f"Bearer {test_result.admin_token}"}
-        response = make_request("GET", "/services/membership-plans", headers=admin_headers)
-    else:
-        response = {"status_code": 401, "data": {"detail": "No admin token"}}
+    # Test 15: Get membership plans (use public endpoint)
+    response = make_request("GET", "/public/membership-plans")
     
     membership_plan_id = None
     if response.get("status_code") == 200:
