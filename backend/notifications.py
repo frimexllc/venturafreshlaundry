@@ -11,7 +11,6 @@ logger = logging.getLogger(__name__)
 TWILIO_ACCOUNT_SID = os.environ.get('TWILIO_ACCOUNT_SID')
 TWILIO_AUTH_TOKEN = os.environ.get('TWILIO_AUTH_TOKEN')
 TWILIO_PHONE_NUMBER = os.environ.get('TWILIO_PHONE_NUMBER')
-TWILIO_WHATSAPP_NUMBER = os.environ.get('TWILIO_WHATSAPP_NUMBER', 'whatsapp:+18055154030')
 BUSINESS_NAME = os.environ.get('BUSINESS_NAME', 'Ventura Fresh Laundromat')
 
 # Initialize Twilio client
@@ -25,18 +24,41 @@ if TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN:
 
 
 def format_phone(phone: str) -> str:
-    """Format phone number for Twilio"""
+    """Format phone number for Twilio - handles US and international numbers"""
     if not phone:
         return None
-    # Remove spaces, dashes, parentheses
+    # Remove spaces, dashes, parentheses, dots
     cleaned = ''.join(c for c in phone if c.isdigit() or c == '+')
-    # Add +1 if missing country code
-    if not cleaned.startswith('+'):
-        if cleaned.startswith('1') and len(cleaned) == 11:
-            cleaned = '+' + cleaned
-        elif len(cleaned) == 10:
-            cleaned = '+1' + cleaned
-    return cleaned
+    
+    # If already has +, return as is
+    if cleaned.startswith('+'):
+        return cleaned
+    
+    # Check if it's a Mexican number (starts with 52 and has 12 digits total or 10 digits)
+    if cleaned.startswith('52') and len(cleaned) >= 12:
+        return '+' + cleaned
+    
+    # Check if it looks like a Mexican mobile (10 digits starting with common prefixes)
+    if len(cleaned) == 10 and cleaned[0] in ['5', '3', '4', '6', '7', '8', '9']:
+        # Could be Mexican, let's check common area codes
+        if cleaned[:3] in ['551', '552', '553', '554', '555', '556', '557', '558', '559',  # CDMX
+                           '331', '332', '333', '334', '335', '336', '337', '338', '339',  # Guadalajara
+                           '811', '812', '813', '814', '815', '816', '817', '818', '819',  # Monterrey
+                           '722', '723', '724', '725', '726', '727', '728', '729', '721',  # Toluca area
+                           '442', '443', '444', '445', '446', '447', '448', '449',  # Querétaro
+                           '222', '223', '224', '225', '226', '227', '228', '229']:  # Puebla
+            return '+52' + cleaned
+    
+    # Default to US if 10 digits
+    if len(cleaned) == 10:
+        return '+1' + cleaned
+    
+    # If 11 digits starting with 1, assume US
+    if len(cleaned) == 11 and cleaned.startswith('1'):
+        return '+' + cleaned
+    
+    # Return with + prefix for any other case
+    return '+' + cleaned if not cleaned.startswith('+') else cleaned
 
 
 async def send_sms(to_phone: str, message: str) -> bool:
@@ -51,6 +73,8 @@ async def send_sms(to_phone: str, message: str) -> bool:
             logger.error("Invalid phone number")
             return False
         
+        logger.info(f"Sending SMS to: {formatted_phone}")
+        
         msg = twilio_client.messages.create(
             body=f"{BUSINESS_NAME}: {message}",
             from_=TWILIO_PHONE_NUMBER,
@@ -60,30 +84,6 @@ async def send_sms(to_phone: str, message: str) -> bool:
         return True
     except Exception as e:
         logger.error(f"Failed to send SMS: {e}")
-        return False
-
-
-async def send_whatsapp(to_phone: str, message: str) -> bool:
-    """Send WhatsApp message via Twilio"""
-    if not twilio_client:
-        logger.warning("Twilio not configured for WhatsApp")
-        return False
-    
-    try:
-        formatted_phone = format_phone(to_phone)
-        if not formatted_phone:
-            logger.error("Invalid phone number")
-            return False
-        
-        msg = twilio_client.messages.create(
-            body=f"{BUSINESS_NAME}: {message}",
-            from_=TWILIO_WHATSAPP_NUMBER,
-            to=f"whatsapp:{formatted_phone}"
-        )
-        logger.info(f"WhatsApp sent successfully: {msg.sid}")
-        return True
-    except Exception as e:
-        logger.error(f"Failed to send WhatsApp: {e}")
         return False
 
 
@@ -97,38 +97,37 @@ async def notify_order_created(customer: dict, order: dict) -> bool:
     """Notify customer when order is created"""
     phone = customer.get('phone')
     if not phone:
+        logger.warning("No phone number for customer")
         return False
     
     order_number = order.get('order_number', order.get('id', 'N/A'))
     message = f"Your order #{order_number} has been received! We'll notify you when it's ready. Thank you for choosing us!"
     
-    # Try WhatsApp first, fall back to SMS
-    sent = await send_whatsapp(phone, message)
-    if not sent:
-        sent = await send_sms(phone, message)
-    return sent
+    return await send_sms(phone, message)
 
 
 async def notify_order_status_changed(customer: dict, order: dict, new_status: str) -> bool:
     """Notify customer when order status changes to ready or out_for_delivery"""
     phone = customer.get('phone')
     if not phone:
+        logger.warning(f"No phone number for customer in order status notification")
         return False
     
     order_number = order.get('order_number', order.get('id', 'N/A'))
     
+    # Normalize status to lowercase for comparison
+    status_lower = new_status.lower()
+    
     # Only notify for specific statuses
-    if new_status == 'ready':
+    if status_lower == 'ready':
         message = f"Great news! Your order #{order_number} is READY for pickup! Visit us at your convenience."
-    elif new_status == 'out_for_delivery':
+    elif status_lower in ['out_for_delivery', 'out for delivery']:
         message = f"Your order #{order_number} is OUT FOR DELIVERY! Our driver is on the way. Please be ready to receive it."
-    elif new_status == 'delivered':
+    elif status_lower == 'delivered':
         message = f"Your order #{order_number} has been DELIVERED! Thank you for choosing {BUSINESS_NAME}!"
     else:
-        return False  # Don't notify for other statuses
+        logger.info(f"Status {new_status} does not require notification")
+        return False
     
-    # Try WhatsApp first, fall back to SMS
-    sent = await send_whatsapp(phone, message)
-    if not sent:
-        sent = await send_sms(phone, message)
-    return sent
+    logger.info(f"Sending notification for status {new_status} to {phone}")
+    return await send_sms(phone, message)
