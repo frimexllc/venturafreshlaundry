@@ -14,21 +14,24 @@ import time
 BASE_URL = "https://e527bf3a-ffd3-4936-99cc-2e7e810793f2.preview.emergentagent.com"
 API_URL = f"{BASE_URL}/api"
 
-# Test data
+# Test data - use unique timestamps to avoid duplicates
+import time
+timestamp = str(int(time.time()))
+
 ADMIN_USER = {
-    "email": "admin@venturatest.com",
+    "email": f"admin{timestamp}@venturatest.com",
     "password": "AdminPass123!",
     "name": "Admin User"
 }
 
 OPERATOR_USER = {
-    "email": "operator@venturatest.com", 
+    "email": f"operator{timestamp}@venturatest.com", 
     "password": "OperatorPass123!",
     "name": "Operator User"
 }
 
 SECOND_OPERATOR = {
-    "email": "operator2@venturatest.com",
+    "email": f"operator2{timestamp}@venturatest.com",
     "password": "Operator2Pass123!",
     "name": "Second Operator"
 }
