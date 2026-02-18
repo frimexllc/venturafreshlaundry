@@ -719,13 +719,17 @@ async def register(user_data: UserCreate):
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
     
+    # Check if this is the first user - make them admin
+    user_count = await db.users.count_documents({})
+    role = ROLE_ADMIN if user_count == 0 else ROLE_OPERATOR
+    
     user_id = str(uuid.uuid4())
     user = {
         "id": user_id,
         "email": user_data.email.lower(),
         "password_hash": hash_password(user_data.password),
         "name": user_data.name,
-        "role": "admin",
+        "role": role,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.users.insert_one(user)
