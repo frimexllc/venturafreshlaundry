@@ -162,19 +162,19 @@ class CustomerCreate(BaseModel):
 
 class CustomerResponse(BaseModel):
     id: str
-    name: str
+    name: Optional[str] = ""
     email: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None
     preferred_contact: Optional[str] = "email"
     notes: Optional[str] = None
-    status: str
-    total_orders: int
+    status: Optional[str] = "active"
+    total_orders: Optional[int] = 0
     membership_plan: Optional[str] = None
     membership_status: Optional[str] = None
     membership_start_date: Optional[str] = None
-    created_at: str
-    updated_at: str
+    created_at: Optional[str] = ""
+    updated_at: Optional[str] = ""
 
 class PreferenceCreate(BaseModel):
     customer_id: str
