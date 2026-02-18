@@ -125,6 +125,7 @@ function AppRoutes() {
         <Route path="operator" element={<OperatorDashboard />} />
         <Route path="audit-log" element={<AuditLog />} />
         <Route path="settings" element={<Settings />} />
+        <Route path="users" element={<UserManagement />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
