@@ -115,10 +115,27 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str
     name: str
+    role: Optional[str] = "operator"  # Default to operator for new users
 
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
+
+# Role-based access control constants
+ROLE_ADMIN = "admin"
+ROLE_OPERATOR = "operator"
+VALID_ROLES = [ROLE_ADMIN, ROLE_OPERATOR]
+
+# Permissions by role - what each role can access
+ROLE_PERMISSIONS = {
+    ROLE_ADMIN: ["all"],  # Admin has access to everything
+    ROLE_OPERATOR: [
+        "orders:read", "orders:update_status",
+        "customers:read",
+        "services:read",
+        "operator_dashboard"
+    ]
+}
 
 class UserResponse(BaseModel):
     id: str
