@@ -20,28 +20,33 @@ import {
   Zap,
   Layers,
   Star,
-  Bot
+  Bot,
+  Shield
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "./ui/button";
 import AdminFloatingChat from "./AdminFloatingChat";
 
-const navItems = [
-  { path: "/admin", icon: LayoutDashboard, label: "Dashboard" },
-  { path: "/admin/operator", icon: Zap, label: "Panel Operador", highlight: true },
-  { path: "/admin/customers", icon: Users, label: "Clientes" },
-  { path: "/admin/orders", icon: ShoppingBag, label: "Órdenes" },
-  { path: "/admin/services", icon: Layers, label: "Servicios" },
-  { path: "/admin/memberships", icon: Star, label: "Membresías" },
-  { path: "/admin/ai", icon: Bot, label: "IA" },
-  { path: "/admin/calendar", icon: CalendarDays, label: "Calendario" },
-  { path: "/admin/quotes", icon: FileText, label: "Cotizaciones B2B" },
-  { path: "/admin/leads", icon: UserPlus, label: "Leads" },
-  { path: "/admin/tickets", icon: HeadphonesIcon, label: "Soporte" },
-  { path: "/admin/store", icon: Store, label: "Tienda" },
-  { path: "/admin/blog", icon: BookOpen, label: "Blog" },
-  { path: "/admin/audit-log", icon: ClipboardList, label: "Audit Log" },
-  { path: "/admin/settings", icon: Settings, label: "Configuración" },
+// Navigation items with role restrictions
+// adminOnly: true means only admins can see it
+// operatorOnly: true means only operators see it (not admins)
+// no flag means everyone can see it
+const allNavItems = [
+  { path: "/admin", icon: LayoutDashboard, label: "Dashboard", adminOnly: true },
+  { path: "/admin/operator", icon: Zap, label: "Operator Panel", highlight: true },
+  { path: "/admin/customers", icon: Users, label: "Customers", adminOnly: true },
+  { path: "/admin/orders", icon: ShoppingBag, label: "Orders", adminOnly: true },
+  { path: "/admin/services", icon: Layers, label: "Services", adminOnly: true },
+  { path: "/admin/memberships", icon: Star, label: "Memberships", adminOnly: true },
+  { path: "/admin/ai", icon: Bot, label: "AI", adminOnly: true },
+  { path: "/admin/calendar", icon: CalendarDays, label: "Calendar", adminOnly: true },
+  { path: "/admin/quotes", icon: FileText, label: "B2B Quotes", adminOnly: true },
+  { path: "/admin/leads", icon: UserPlus, label: "Leads", adminOnly: true },
+  { path: "/admin/tickets", icon: HeadphonesIcon, label: "Support" },
+  { path: "/admin/store", icon: Store, label: "Store", adminOnly: true },
+  { path: "/admin/blog", icon: BookOpen, label: "Blog", adminOnly: true },
+  { path: "/admin/audit-log", icon: ClipboardList, label: "Audit Log", adminOnly: true },
+  { path: "/admin/settings", icon: Settings, label: "Settings", adminOnly: true },
 ];
 
 export default function Layout() {
@@ -49,9 +54,29 @@ export default function Layout() {
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  // Filter nav items based on user role
+  const isAdmin = user?.role === "admin";
+  const navItems = allNavItems.filter(item => {
+    if (item.adminOnly && !isAdmin) return false;
+    if (item.operatorOnly && isAdmin) return false;
+    return true;
+  });
+
   const handleLogout = () => {
     logout();
     navigate("/login");
+  };
+
+  // Get role display name
+  const getRoleDisplay = (role) => {
+    return role === "admin" ? "Administrator" : "Operator";
+  };
+
+  // Get role badge color
+  const getRoleBadgeColor = (role) => {
+    return role === "admin" 
+      ? "bg-purple-100 text-purple-700" 
+      : "bg-sky-100 text-sky-700";
   };
 
   return (
