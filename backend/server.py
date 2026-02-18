@@ -1127,12 +1127,22 @@ async def update_order(order_id: str, data: dict, current_user: dict = Depends(g
     return OrderResponse(**order)
 
 def should_notify_order_status(order: dict, status_value: str) -> bool:
+    """Determine if order status change should trigger notification"""
+    # Normalize status for comparison
+    status_lower = status_value.lower()
+    
+    # Always notify for these statuses
+    if status_lower in ["ready", "out_for_delivery", "delivered"]:
+        return True
+    
+    # Legacy logic for service types
     service_type = order.get("service_type")
     if service_type == "pickup_delivery":
-        return status_value == "out_for_delivery"
+        return status_lower == "out_for_delivery"
     if service_type in ["wash_fold", "self_service"]:
-        return status_value == "ready"
-    return status_value in ["ready", "out_for_delivery"]
+        return status_lower == "ready"
+    
+    return False
 
 @api_router.patch("/orders/{order_id}/status")
 async def update_order_status(order_id: str, status: str, notify: bool = True, current_user: dict = Depends(get_current_user)):
