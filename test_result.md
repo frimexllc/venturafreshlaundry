@@ -60,44 +60,134 @@
 ##     -agent: "main"  # or "testing" or "user"
 ##     -message: "Communication message between agents"
 
-# Protocol Guidelines for Main agent
-#
-# 1. Update Test Result File Before Testing:
-#    - Main agent must always update the `test_result.md` file before calling the testing agent
-#    - Add implementation details to the status_history
-#    - Set `needs_retesting` to true for tasks that need testing
-#    - Update the `test_plan` section to guide testing priorities
-#    - Add a message to `agent_communication` explaining what you've done
-#
-# 2. Incorporate User Feedback:
-#    - When a user provides feedback that something is or isn't working, add this information to the relevant task's status_history
-#    - Update the working status based on user feedback
-#    - If a user reports an issue with a task that was marked as working, increment the stuck_count
-#    - Whenever user reports issue in the app, if we have testing agent and task_result.md file so find the appropriate task for that and append in status_history of that task to contain the user concern and problem as well 
-#
-# 3. Track Stuck Tasks:
-#    - Monitor which tasks have high stuck_count values or where you are fixing same issue again and again, analyze that when you read task_result.md
-#    - For persistent issues, use websearch tool to find solutions
-#    - Pay special attention to tasks in the stuck_tasks list
-#    - When you fix an issue with a stuck task, don't reset the stuck_count until the testing agent confirms it's working
-#
-# 4. Provide Context to Testing Agent:
-#    - When calling the testing agent, provide clear instructions about:
-#      - Which tasks need testing (reference the test_plan)
-#      - Any authentication details or configuration needed
-#      - Specific test scenarios to focus on
-#      - Any known issues or edge cases to verify
-#
-# 5. Call the testing agent with specific instructions referring to test_result.md
-#
-# IMPORTANT: Main agent must ALWAYS update test_result.md BEFORE calling the testing agent, as it relies on this file to understand what to test next.
-
 #====================================================================================================
 # END - Testing Protocol - DO NOT EDIT OR REMOVE THIS SECTION
 #====================================================================================================
 
-
-
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+user_problem_statement: |
+  Sistema de gestión para lavandería con:
+  1. Módulo de gestión de órdenes/tickets con estados
+  2. Panel de operador simplificado  
+  3. Integración de pagos con Stripe para membresías y servicios
+  4. Sistema de roles (Admin/Operator) con control de acceso
+
+backend:
+  - task: "User Role System (Admin/Operator)"
+    implemented: true
+    working: "NA"
+    file: "server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Implemented role-based access control with admin and operator roles. First user gets admin, subsequent users get operator role."
+
+  - task: "User Management Endpoints (Admin Only)"
+    implemented: true
+    working: "NA"
+    file: "server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Added /api/admin/users endpoints for listing, creating, updating roles, and deleting users. Only admins can access."
+
+  - task: "Operator-Only Endpoints"
+    implemented: true
+    working: "NA"
+    file: "server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Added /api/operator/orders endpoints with limited data (no financial info) for operators."
+
+  - task: "Stripe Membership Checkout"
+    implemented: true
+    working: "NA"
+    file: "store.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Implemented /api/store/membership/checkout endpoint for creating Stripe checkout sessions for membership payments."
+
+  - task: "Stripe Service Checkout"
+    implemented: true
+    working: "NA"
+    file: "store.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Implemented /api/store/service/checkout endpoint for one-time service payments."
+
+frontend:
+  - task: "Role-based Navigation Menu"
+    implemented: true
+    working: "NA"
+    file: "components/Layout.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Updated Layout to filter navigation items based on user role. Operators see limited menu items."
+
+  - task: "User Management Page"
+    implemented: true
+    working: "NA"
+    file: "pages/UserManagement.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Created new page for admins to manage users, create new users, and change roles."
+
+  - task: "Membership Payment Flow"
+    implemented: true
+    working: "NA"
+    file: "pages/MembershipPage.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Updated membership page with plan selection cards and Stripe checkout integration."
+
+metadata:
+  created_by: "main_agent"
+  version: "1.0"
+  test_sequence: 1
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "User Role System (Admin/Operator)"
+    - "User Management Endpoints (Admin Only)"
+    - "Stripe Membership Checkout"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: "Implemented Phase 1 (Role System), Phase 2 (User Management), Phase 3 (Stripe Integration). Ready for backend testing. Please test: 1) Register endpoint creates first user as admin, 2) Admin user management endpoints, 3) Role-based access control, 4) Stripe membership checkout endpoint."
