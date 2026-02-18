@@ -5,7 +5,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
-import { CheckCircle, Star } from "lucide-react";
+import { CheckCircle, Star, CreditCard, Loader2, AlertCircle } from "lucide-react";
 import PublicNav from "../components/PublicNav";
 import PublicFooter from "../components/PublicFooter";
 
@@ -20,10 +20,19 @@ const getErrorMessage = (error) => {
   return "Error submitting request";
 };
 
+// Get URL parameters
+const getUrlParameter = (name) => {
+  const params = new URLSearchParams(window.location.search);
+  return params.get(name);
+};
+
 export default function MembershipPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [plans, setPlans] = useState([]);
+  const [selectedPlan, setSelectedPlan] = useState(null);
+  const [checkingPayment, setCheckingPayment] = useState(false);
+  const [paymentStatus, setPaymentStatus] = useState(null);
   const [form, setForm] = useState({
     first_name: "",
     last_name: "",
@@ -50,12 +59,106 @@ export default function MembershipPage() {
       }
     };
     loadPlans();
+    
+    // Check if returning from Stripe
+    const sessionId = getUrlParameter('session_id');
+    const status = getUrlParameter('status');
+    
+    if (sessionId && status === 'success') {
+      checkPaymentStatus(sessionId);
+    } else if (status === 'cancelled') {
+      toast.error("Payment was cancelled. Please try again.");
+      // Clear URL params
+      window.history.replaceState({}, '', window.location.pathname);
+    }
   }, []);
+
+  const checkPaymentStatus = async (sessionId, attempts = 0) => {
+    const maxAttempts = 5;
+    const pollInterval = 2000;
+
+    if (attempts >= maxAttempts) {
+      setCheckingPayment(false);
+      setPaymentStatus('timeout');
+      toast.error("Payment verification timed out. Please contact support.");
+      return;
+    }
+
+    setCheckingPayment(true);
+    
+    try {
+      const res = await axios.get(`${API}/store/membership/checkout/status/${sessionId}`);
+      
+      if (res.data.payment_status === 'paid') {
+        setCheckingPayment(false);
+        setPaymentStatus('success');
+        setSubmitted(true);
+        toast.success("Payment successful! Welcome to your membership!");
+        // Clear URL params
+        window.history.replaceState({}, '', window.location.pathname);
+        return;
+      } else if (res.data.status === 'expired') {
+        setCheckingPayment(false);
+        setPaymentStatus('expired');
+        toast.error("Payment session expired. Please try again.");
+        window.history.replaceState({}, '', window.location.pathname);
+        return;
+      }
+      
+      // Continue polling
+      setTimeout(() => checkPaymentStatus(sessionId, attempts + 1), pollInterval);
+    } catch (error) {
+      console.error("Error checking payment:", error);
+      setTimeout(() => checkPaymentStatus(sessionId, attempts + 1), pollInterval);
+    }
+  };
+
+  const handlePlanSelect = (planId) => {
+    const plan = plans.find(p => p.id === planId);
+    setSelectedPlan(plan);
+    setForm({ ...form, membership_plan: plan?.name || "" });
+  };
+
+  const handlePayNow = async () => {
+    if (!selectedPlan) {
+      toast.error("Please select a membership plan");
+      return;
+    }
+    if (!form.email) {
+      toast.error("Please enter your email address");
+      return;
+    }
+    if (!form.first_name || !form.last_name) {
+      toast.error("Please enter your name");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const res = await axios.post(`${API}/store/membership/checkout`, {
+        plan_id: selectedPlan.id,
+        origin_url: window.location.origin,
+        customer_email: form.email,
+        customer_name: `${form.first_name} ${form.last_name}`,
+        customer_phone: form.phone
+      });
+      
+      // Redirect to Stripe checkout
+      if (res.data.checkout_url) {
+        window.location.href = res.data.checkout_url;
+      } else {
+        throw new Error("No checkout URL received");
+      }
+    } catch (error) {
+      toast.error(getErrorMessage(error));
+      setSubmitting(false);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.contact_method || !form.membership_plan || !form.laundry_frequency) {
-      toast.error("Completa todos los campos requeridos");
+      toast.error("Please complete all required fields");
       return;
     }
     setSubmitting(true);
@@ -84,6 +187,27 @@ export default function MembershipPage() {
     }
   };
 
+  // Payment checking screen
+  if (checkingPayment) {
+    return (
+      <div className="min-h-screen bg-white">
+        <PublicNav />
+        <section className="pt-32 pb-20">
+          <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+            <div className="h-20 w-20 rounded-full bg-sky-100 flex items-center justify-center mx-auto mb-6">
+              <Loader2 className="h-10 w-10 text-sky-600 animate-spin" />
+            </div>
+            <h1 className="text-3xl font-bold text-slate-900 mb-4">Verifying Payment...</h1>
+            <p className="text-lg text-slate-600 mb-8">
+              Please wait while we confirm your payment.
+            </p>
+          </div>
+        </section>
+        <PublicFooter />
+      </div>
+    );
+  }
+
   if (submitted) {
     return (
       <div className="min-h-screen bg-white">
@@ -93,13 +217,20 @@ export default function MembershipPage() {
             <div className="h-20 w-20 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-6">
               <CheckCircle className="h-10 w-10 text-green-600" />
             </div>
-            <h1 className="text-3xl font-bold text-slate-900 mb-4">Solicitud recibida</h1>
+            <h1 className="text-3xl font-bold text-slate-900 mb-4">
+              {paymentStatus === 'success' ? 'Payment Successful!' : 'Request Received'}
+            </h1>
             <p className="text-lg text-slate-600 mb-8">
-              Nuestro equipo te contactará para confirmar tu plan y programar tu primer pickup.
+              {paymentStatus === 'success' 
+                ? 'Welcome to your membership! Our team will contact you to schedule your first pickup.'
+                : 'Our team will contact you to confirm your plan and schedule your first pickup.'
+              }
             </p>
             <Button 
               onClick={() => {
                 setSubmitted(false);
+                setPaymentStatus(null);
+                setSelectedPlan(null);
                 setForm({
                   first_name: "",
                   last_name: "",
@@ -118,7 +249,7 @@ export default function MembershipPage() {
               }}
               className="bg-sky-500 hover:bg-sky-600 text-white rounded-full px-8"
             >
-              Registrar otra membresía
+              Register another membership
             </Button>
           </div>
         </section>
