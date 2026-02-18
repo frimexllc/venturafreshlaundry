@@ -1771,7 +1771,45 @@ async def get_membership_signups(
     if status:
         query["status"] = status
     signups = await db.membership_signups.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
-    return [MembershipSignupResponse(**s) for s in signups]
+    
+    # Transform signups to match response model
+    result = []
+    for s in signups:
+        try:
+            # Handle both old and new signup formats
+            signup_data = {
+                "id": s.get("id", ""),
+                "first_name": s.get("first_name", ""),
+                "last_name": s.get("last_name", ""),
+                "email": s.get("email", s.get("customer_email", "")),
+                "phone": s.get("phone", s.get("customer_phone", "")),
+                "contact_method": s.get("contact_method", ""),
+                "address_line1": s.get("address_line1", ""),
+                "address_line2": s.get("address_line2"),
+                "city": s.get("city", ""),
+                "state": s.get("state", ""),
+                "zip_code": s.get("zip_code", ""),
+                "membership_plan": s.get("membership_plan", s.get("plan_name", "")),
+                "plan_name": s.get("plan_name"),
+                "plan_id": s.get("plan_id"),
+                "laundry_frequency": s.get("laundry_frequency", ""),
+                "estimated_lbs": s.get("estimated_lbs", 0) or 0,
+                "amount": s.get("amount"),
+                "payment_status": s.get("payment_status"),
+                "status": s.get("status", "pending"),
+                "customer_id": s.get("customer_id"),
+                "customer_name": s.get("customer_name"),
+                "customer_email": s.get("customer_email"),
+                "customer_phone": s.get("customer_phone"),
+                "stripe_session_id": s.get("stripe_session_id"),
+                "created_at": s.get("created_at", ""),
+                "updated_at": s.get("updated_at", "")
+            }
+            result.append(MembershipSignupResponse(**signup_data))
+        except Exception as e:
+            logger.error(f"Error processing signup {s.get('id')}: {e}")
+            continue
+    return result
 
 @api_router.put("/memberships/signups/{signup_id}", response_model=MembershipSignupResponse)
 async def update_membership_signup(signup_id: str, data: MembershipSignupUpdate, current_user: dict = Depends(get_current_user)):
