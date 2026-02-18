@@ -543,8 +543,8 @@ def call_ollama(prompt: str):
     try:
         response = requests.post(
             "http://127.0.0.1:11434/api/generate",
-            json={"model": "phi4-mini", "prompt": prompt, "stream": False},
-            timeout=60
+            json={"model": "llama3.2:1b", "prompt": prompt, "stream": False},
+            timeout=120
         )
     except requests.RequestException as exc:
         raise HTTPException(status_code=502, detail=f"Ollama not reachable: {exc}")
