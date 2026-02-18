@@ -164,7 +164,13 @@ export default function Layout() {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-slate-900 truncate">{user?.name}</p>
-                <p className="text-xs text-slate-500 truncate">{user?.email}</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-xs text-slate-500 truncate">{user?.email}</p>
+                </div>
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full mt-1 ${getRoleBadgeColor(user?.role)}`}>
+                  <Shield className="h-3 w-3" />
+                  {getRoleDisplay(user?.role)}
+                </span>
               </div>
             </div>
             <Button
@@ -174,7 +180,7 @@ export default function Layout() {
               data-testid="logout-btn"
             >
               <LogOut className="h-4 w-4 mr-2" />
-              Cerrar sesión
+              Sign Out
             </Button>
           </div>
         </div>
