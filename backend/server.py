@@ -484,8 +484,41 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         raise HTTPException(status_code=401, detail="Invalid token")
 
 def require_admin(current_user: dict):
-    if current_user.get("role") != "admin":
+    if current_user.get("role") != ROLE_ADMIN:
         raise HTTPException(status_code=403, detail="Admin access required")
+
+def require_role(allowed_roles: List[str]):
+    """Dependency factory that creates a role checker"""
+    def checker(current_user: dict = Depends(get_current_user)):
+        user_role = current_user.get("role", ROLE_OPERATOR)
+        if user_role == ROLE_ADMIN:  # Admin always passes
+            return current_user
+        if user_role not in allowed_roles:
+            raise HTTPException(
+                status_code=403, 
+                detail=f"Access denied. Required roles: {allowed_roles}"
+            )
+        return current_user
+    return checker
+
+def has_permission(current_user: dict, permission: str) -> bool:
+    """Check if user has specific permission"""
+    user_role = current_user.get("role", ROLE_OPERATOR)
+    if user_role == ROLE_ADMIN:
+        return True
+    permissions = ROLE_PERMISSIONS.get(user_role, [])
+    return "all" in permissions or permission in permissions
+
+def require_permission(permission: str):
+    """Dependency factory for permission-based access"""
+    def checker(current_user: dict = Depends(get_current_user)):
+        if not has_permission(current_user, permission):
+            raise HTTPException(
+                status_code=403,
+                detail=f"Permission denied: {permission}"
+            )
+        return current_user
+    return checker
 
 def extract_json_payload(text: str):
     cleaned = text.strip()
