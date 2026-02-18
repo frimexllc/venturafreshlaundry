@@ -675,3 +675,356 @@ async def handle_stripe_webhook(request: Request):
         
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Webhook error: {str(e)}")
+
+
+# ==================== MEMBERSHIP PAYMENT ENDPOINTS ====================
+
+class MembershipCheckoutRequest(BaseModel):
+    plan_id: str
+    origin_url: str
+    customer_email: Optional[str] = None
+    customer_name: Optional[str] = None
+    customer_phone: Optional[str] = None
+
+class ServiceCheckoutRequest(BaseModel):
+    service_id: str
+    origin_url: str
+    quantity: int = 1
+    customer_email: Optional[str] = None
+    estimated_lbs: Optional[float] = None
+
+# Membership plan prices (fixed on backend for security)
+MEMBERSHIP_PRICES = {
+    "most_popular": 139.00,
+    "family_plus": 199.00,
+    "elite_concierge": 299.00
+}
+
+@store_router.post("/membership/checkout")
+async def create_membership_checkout(checkout: MembershipCheckoutRequest, request: Request):
+    """Create Stripe checkout session for membership subscription"""
+    if not STRIPE_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Stripe integration not available")
+    
+    # Get membership plan from database
+    plan = await db.membership_plans.find_one({"id": checkout.plan_id}, {"_id": 0})
+    if not plan:
+        raise HTTPException(status_code=404, detail="Membership plan not found")
+    
+    # Parse price from plan (e.g., "$139 / month" -> 139.00)
+    price_str = plan.get("price", "$0")
+    try:
+        price = float(price_str.replace("$", "").replace(",", "").split("/")[0].strip())
+    except:
+        raise HTTPException(status_code=500, detail="Invalid plan price configuration")
+    
+    if price <= 0:
+        raise HTTPException(status_code=400, detail="Invalid plan price")
+    
+    # Get Stripe API key
+    stripe_api_key = os.environ.get("STRIPE_API_KEY")
+    if not stripe_api_key:
+        raise HTTPException(status_code=500, detail="Payment configuration error")
+    
+    # Build URLs
+    host_url = str(request.base_url).rstrip("/")
+    webhook_url = f"{host_url}/api/webhook/stripe"
+    success_url = f"{checkout.origin_url}/membership?session_id={{CHECKOUT_SESSION_ID}}&status=success"
+    cancel_url = f"{checkout.origin_url}/membership?status=cancelled"
+    
+    # Initialize Stripe checkout
+    stripe_checkout = StripeCheckout(api_key=stripe_api_key, webhook_url=webhook_url)
+    
+    # Create membership signup record
+    now = datetime.now(timezone.utc).isoformat()
+    signup_id = str(uuid.uuid4())
+    
+    signup_doc = {
+        "id": signup_id,
+        "plan_id": checkout.plan_id,
+        "plan_name": plan.get("name"),
+        "customer_email": checkout.customer_email,
+        "customer_name": checkout.customer_name,
+        "customer_phone": checkout.customer_phone,
+        "amount": price,
+        "payment_status": "pending",
+        "stripe_session_id": None,
+        "status": "pending",
+        "created_at": now,
+        "updated_at": now
+    }
+    
+    # Create checkout session
+    try:
+        checkout_request = CheckoutSessionRequest(
+            amount=float(price),
+            currency="usd",
+            success_url=success_url,
+            cancel_url=cancel_url,
+            metadata={
+                "signup_id": signup_id,
+                "plan_id": checkout.plan_id,
+                "plan_name": plan.get("name", ""),
+                "customer_email": checkout.customer_email or "",
+                "type": "membership"
+            }
+        )
+        
+        session: CheckoutSessionResponse = await stripe_checkout.create_checkout_session(checkout_request)
+        
+        # Update signup with session ID
+        signup_doc["stripe_session_id"] = session.session_id
+        
+        # Save signup
+        await db.membership_signups.insert_one(signup_doc)
+        
+        # Create payment transaction record
+        payment_doc = {
+            "id": str(uuid.uuid4()),
+            "session_id": session.session_id,
+            "signup_id": signup_id,
+            "amount": price,
+            "currency": "usd",
+            "customer_email": checkout.customer_email,
+            "payment_type": "membership",
+            "plan_name": plan.get("name"),
+            "payment_status": "initiated",
+            "metadata": {
+                "plan_id": checkout.plan_id,
+                "customer_name": checkout.customer_name
+            },
+            "created_at": now,
+            "updated_at": now
+        }
+        await db.payment_transactions.insert_one(payment_doc)
+        
+        return {
+            "checkout_url": session.url,
+            "session_id": session.session_id,
+            "signup_id": signup_id,
+            "plan_name": plan.get("name"),
+            "amount": price
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create checkout session: {str(e)}")
+
+
+@store_router.get("/membership/checkout/status/{session_id}")
+async def get_membership_checkout_status(session_id: str):
+    """Get the status of a membership checkout session"""
+    if not STRIPE_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Stripe integration not available")
+    
+    stripe_api_key = os.environ.get("STRIPE_API_KEY")
+    if not stripe_api_key:
+        raise HTTPException(status_code=500, detail="Payment configuration error")
+    
+    stripe_checkout = StripeCheckout(api_key=stripe_api_key, webhook_url="")
+    
+    try:
+        status: CheckoutStatusResponse = await stripe_checkout.get_checkout_status(session_id)
+        
+        # Update payment transaction
+        payment_status = "paid" if status.payment_status == "paid" else status.payment_status
+        
+        await db.payment_transactions.update_one(
+            {"session_id": session_id},
+            {
+                "$set": {
+                    "payment_status": payment_status,
+                    "updated_at": datetime.now(timezone.utc).isoformat()
+                }
+            }
+        )
+        
+        # If paid, update membership signup and create customer membership
+        if payment_status == "paid":
+            transaction = await db.payment_transactions.find_one({"session_id": session_id})
+            if transaction:
+                signup_id = transaction.get("signup_id")
+                if signup_id:
+                    # Check if already processed
+                    signup = await db.membership_signups.find_one({"id": signup_id})
+                    if signup and signup.get("payment_status") != "paid":
+                        now = datetime.now(timezone.utc).isoformat()
+                        
+                        # Update signup status
+                        await db.membership_signups.update_one(
+                            {"id": signup_id},
+                            {
+                                "$set": {
+                                    "payment_status": "paid",
+                                    "status": "active",
+                                    "updated_at": now
+                                }
+                            }
+                        )
+                        
+                        # Create or update customer with membership
+                        customer_email = signup.get("customer_email")
+                        if customer_email:
+                            existing_customer = await db.customers.find_one({"email": customer_email.lower()})
+                            if existing_customer:
+                                # Update existing customer
+                                await db.customers.update_one(
+                                    {"email": customer_email.lower()},
+                                    {
+                                        "$set": {
+                                            "membership_plan": signup.get("plan_name"),
+                                            "membership_status": "active",
+                                            "membership_start_date": now,
+                                            "updated_at": now
+                                        }
+                                    }
+                                )
+                            else:
+                                # Create new customer
+                                customer_doc = {
+                                    "id": str(uuid.uuid4()),
+                                    "name": signup.get("customer_name") or "Member",
+                                    "email": customer_email.lower(),
+                                    "phone": signup.get("customer_phone"),
+                                    "address": None,
+                                    "preferred_contact": "email",
+                                    "notes": f"Membership signup: {signup.get('plan_name')}",
+                                    "status": "active",
+                                    "total_orders": 0,
+                                    "membership_plan": signup.get("plan_name"),
+                                    "membership_status": "active",
+                                    "membership_start_date": now,
+                                    "created_at": now,
+                                    "updated_at": now
+                                }
+                                await db.customers.insert_one(customer_doc)
+        
+        return {
+            "status": status.status,
+            "payment_status": payment_status,
+            "amount_total": status.amount_total / 100 if status.amount_total else 0,
+            "currency": status.currency,
+            "metadata": status.metadata
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get checkout status: {str(e)}")
+
+
+@store_router.post("/service/checkout")
+async def create_service_checkout(checkout: ServiceCheckoutRequest, request: Request):
+    """Create Stripe checkout session for a laundry service"""
+    if not STRIPE_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Stripe integration not available")
+    
+    # Get service from database
+    service = await db.services.find_one({"id": checkout.service_id}, {"_id": 0})
+    if not service:
+        raise HTTPException(status_code=404, detail="Service not found")
+    
+    if not service.get("is_active"):
+        raise HTTPException(status_code=400, detail="Service is not available")
+    
+    # Calculate price
+    base_price = service.get("price", 0)
+    price_unit = service.get("price_unit", "")
+    
+    # Calculate total based on unit type
+    total_amount = base_price * checkout.quantity
+    if "lb" in price_unit.lower() and checkout.estimated_lbs:
+        total_amount = base_price * checkout.estimated_lbs
+    
+    if total_amount <= 0:
+        raise HTTPException(status_code=400, detail="Invalid service price")
+    
+    # Get Stripe API key
+    stripe_api_key = os.environ.get("STRIPE_API_KEY")
+    if not stripe_api_key:
+        raise HTTPException(status_code=500, detail="Payment configuration error")
+    
+    # Build URLs
+    host_url = str(request.base_url).rstrip("/")
+    webhook_url = f"{host_url}/api/webhook/stripe"
+    success_url = f"{checkout.origin_url}/services?session_id={{CHECKOUT_SESSION_ID}}&status=success"
+    cancel_url = f"{checkout.origin_url}/services?status=cancelled"
+    
+    # Initialize Stripe checkout
+    stripe_checkout = StripeCheckout(api_key=stripe_api_key, webhook_url=webhook_url)
+    
+    # Create service order record
+    now = datetime.now(timezone.utc).isoformat()
+    order_id = str(uuid.uuid4())
+    order_number = f"SVC-{datetime.now().strftime('%Y%m%d')}-{str(uuid.uuid4())[:8].upper()}"
+    
+    order_doc = {
+        "id": order_id,
+        "order_number": order_number,
+        "service_id": checkout.service_id,
+        "service_name": service.get("name"),
+        "customer_email": checkout.customer_email,
+        "quantity": checkout.quantity,
+        "estimated_lbs": checkout.estimated_lbs,
+        "total_amount": round(total_amount, 2),
+        "payment_status": "pending",
+        "stripe_session_id": None,
+        "status": "pending",
+        "created_at": now,
+        "updated_at": now
+    }
+    
+    try:
+        checkout_request = CheckoutSessionRequest(
+            amount=float(round(total_amount, 2)),
+            currency="usd",
+            success_url=success_url,
+            cancel_url=cancel_url,
+            metadata={
+                "order_id": order_id,
+                "order_number": order_number,
+                "service_id": checkout.service_id,
+                "service_name": service.get("name", ""),
+                "customer_email": checkout.customer_email or "",
+                "type": "service"
+            }
+        )
+        
+        session: CheckoutSessionResponse = await stripe_checkout.create_checkout_session(checkout_request)
+        
+        # Update order with session ID
+        order_doc["stripe_session_id"] = session.session_id
+        
+        # Save order
+        await db.service_orders.insert_one(order_doc)
+        
+        # Create payment transaction record
+        payment_doc = {
+            "id": str(uuid.uuid4()),
+            "session_id": session.session_id,
+            "order_id": order_id,
+            "order_number": order_number,
+            "amount": round(total_amount, 2),
+            "currency": "usd",
+            "customer_email": checkout.customer_email,
+            "payment_type": "service",
+            "service_name": service.get("name"),
+            "payment_status": "initiated",
+            "metadata": {
+                "service_id": checkout.service_id,
+                "quantity": checkout.quantity,
+                "estimated_lbs": checkout.estimated_lbs
+            },
+            "created_at": now,
+            "updated_at": now
+        }
+        await db.payment_transactions.insert_one(payment_doc)
+        
+        return {
+            "checkout_url": session.url,
+            "session_id": session.session_id,
+            "order_id": order_id,
+            "order_number": order_number,
+            "service_name": service.get("name"),
+            "amount": round(total_amount, 2)
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create checkout session: {str(e)}")
