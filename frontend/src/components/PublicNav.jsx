@@ -22,7 +22,7 @@ export default function PublicNav() {
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2">
             <img 
-              src="https://images.squarespace-cdn.com/content/v1/66f3d06a2c293506cfa7d476/57cbc3f3-0394-4498-b021-3908fdc39db7/logo.png?format=100w" 
+              src="https://placehold.co/150x50/0ea5e9/white?text=VFL" 
               alt="Ventura Fresh Laundry" 
               className="h-12 w-auto"
               onError={(e) => {
