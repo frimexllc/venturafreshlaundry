@@ -112,6 +112,16 @@ export default function Orders() {
     }
   };
 
+  const updatePaymentStatus = async (orderId, newStatus) => {
+    try {
+      await axios.patch(`${API}/orders/${orderId}/payment-status?status=${newStatus}`);
+      toast.success("Estado de pago actualizado");
+      fetchOrders();
+    } catch (error) {
+      toast.error("Error actualizando estado de pago");
+    }
+  };
+
   const handleDownloadQr = async (order) => {
     try {
       const res = await axios.get(`${API}/orders/${order.id}/qr.svg`, { responseType: "blob" });
