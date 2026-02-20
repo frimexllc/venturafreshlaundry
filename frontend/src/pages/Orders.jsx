@@ -480,8 +480,8 @@ export default function Orders() {
                       )}
                     </td>
                     <td className="px-6 py-4">
-                      <span className={statusLabels[order.status]?.class || "badge-pending"}>
-                        {statusLabels[order.status]?.label || order.status}
+                      <span className={statusLabels[order.status?.toLowerCase()]?.class || "badge-pending"}>
+                        {statusLabels[order.status?.toLowerCase()]?.label || order.status}
                       </span>
                     </td>
                     <td className="px-6 py-4">
@@ -506,34 +506,56 @@ export default function Orders() {
                             Descargar QR
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
-                          {order.status === "new" && (
+                          {/* Status updates */}
+                          {order.status?.toLowerCase() === "new" && (
                             <DropdownMenuItem onClick={() => updateStatus(order.id, "processing")}>
                               <CheckCircle className="h-4 w-4 mr-2" />
                               Marcar Procesando
                             </DropdownMenuItem>
                           )}
-                          {order.status === "processing" && (
+                          {order.status?.toLowerCase() === "processing" && (
                             <DropdownMenuItem onClick={() => updateStatus(order.id, "ready")}>
                               <CheckCircle className="h-4 w-4 mr-2" />
                               Marcar Lista
                             </DropdownMenuItem>
                           )}
-                          {order.status === "ready" && (
+                          {order.status?.toLowerCase() === "ready" && (
                             <DropdownMenuItem onClick={() => updateStatus(order.id, "out_for_delivery")}>
                               <Truck className="h-4 w-4 mr-2" />
                               En camino
                             </DropdownMenuItem>
                           )}
-                          {order.status === "out_for_delivery" && (
+                          {(order.status?.toLowerCase() === "out_for_delivery" || order.status === "OUT_FOR_DELIVERY") && (
                             <DropdownMenuItem onClick={() => updateStatus(order.id, "delivered")}>
                               <CheckCircle className="h-4 w-4 mr-2" />
-                              Entregada
+                              Marcar Entregada
                             </DropdownMenuItem>
                           )}
-                          {order.status === "delivered" && (
+                          {order.status?.toLowerCase() === "delivered" && (
                             <DropdownMenuItem onClick={() => updateStatus(order.id, "completed")}>
                               <CheckCircle className="h-4 w-4 mr-2" />
-                              Completar
+                              Completar Orden
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuSeparator />
+                          {/* Payment status updates */}
+                          {order.payment_status !== "paid" && (
+                            <DropdownMenuItem onClick={() => updatePaymentStatus(order.id, "paid")}>
+                              <CheckCircle className="h-4 w-4 mr-2 text-green-600" />
+                              Marcar como Pagado
+                            </DropdownMenuItem>
+                          )}
+                          {order.payment_status === "paid" && (
+                            <DropdownMenuItem onClick={() => updatePaymentStatus(order.id, "pending")}>
+                              <CheckCircle className="h-4 w-4 mr-2 text-orange-600" />
+                              Marcar como Pendiente
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuSeparator />
+                          {order.status?.toLowerCase() !== "cancelled" && (
+                            <DropdownMenuItem onClick={() => updateStatus(order.id, "cancelled")} className="text-red-600">
+                              <CheckCircle className="h-4 w-4 mr-2" />
+                              Cancelar Orden
                             </DropdownMenuItem>
                           )}
                         </DropdownMenuContent>
