@@ -1028,3 +1028,11 @@ async def create_service_checkout(checkout: ServiceCheckoutRequest, request: Req
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to create checkout session: {str(e)}")
+
+
+@store_router.get("/transactions")
+async def get_transactions():
+    """Get payment transactions"""
+    transactions = await db.payment_transactions.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    return transactions
+
