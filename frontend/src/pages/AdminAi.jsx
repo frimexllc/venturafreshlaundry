@@ -4,6 +4,7 @@ import { Button } from "../components/ui/button";
 import { Textarea } from "../components/ui/textarea";
 import { Input } from "../components/ui/input";
 import { toast } from "sonner";
+import { Bot, Send, Sparkles, RefreshCw, CheckCircle, AlertTriangle } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -13,6 +14,7 @@ export default function AdminAi() {
   const [loading, setLoading] = useState(false);
   const [reply, setReply] = useState("");
   const [results, setResults] = useState([]);
+  const [chatHistory, setChatHistory] = useState([]);
   const [proposalStatus, setProposalStatus] = useState("pendiente");
   const [proposals, setProposals] = useState([]);
   const [selectedProposal, setSelectedProposal] = useState(null);
@@ -42,21 +44,73 @@ export default function AdminAi() {
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
   const rafRef = useRef(null);
+  const chatEndRef = useRef(null);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatHistory]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!prompt.trim()) return;
+    
+    const userMessage = prompt.trim();
+    setChatHistory(prev => [...prev, { role: "user", content: userMessage }]);
+    setPrompt("");
     setLoading(true);
+    
     try {
-      const res = await axios.post(`${API}/admin/ai`, { message: prompt, execute: true });
-      setReply(res.data.reply || "");
+      // Use the new AI chat endpoint
+      const res = await axios.post(`${API}/ai/chat`, { message: userMessage, execute: true });
+      const aiReply = res.data.reply || "I couldn't process that request.";
+      
+      setChatHistory(prev => [...prev, { 
+        role: "assistant", 
+        content: aiReply,
+        actions: res.data.actions || [],
+        results: res.data.results || []
+      }]);
+      
+      setReply(aiReply);
       setResults(res.data.results || []);
+      
+      // Show action results
+      if (res.data.results && res.data.results.length > 0) {
+        res.data.results.forEach(r => {
+          if (r.ok) {
+            toast.success(r.message || "Action completed");
+          } else {
+            toast.error(r.error || "Action failed");
+          }
+        });
+      }
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Error con la IA");
+      const errorMsg = error.response?.data?.detail || "Error communicating with AI";
+      toast.error(errorMsg);
+      setChatHistory(prev => [...prev, { 
+        role: "assistant", 
+        content: `Error: ${errorMsg}`,
+        isError: true
+      }]);
     } finally {
       setLoading(false);
     }
   };
+
+  const clearChat = () => {
+    setChatHistory([]);
+    setReply("");
+    setResults([]);
+  };
+
+  const quickPrompts = [
+    "Show me today's orders summary",
+    "What orders are ready for delivery?",
+    "Show pending payments",
+    "List open support tickets",
+    "Show new leads this week",
+    "What's the revenue for this month?"
+  ];
 
   const loadProposals = async () => {
     setLoadingProposals(true);
