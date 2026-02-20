@@ -297,7 +297,9 @@ def format_orders_for_ai(orders: List[Dict]) -> str:
         return "No recent orders"
     lines = []
     for o in orders[:15]:
-        lines.append(f"- {o.get('order_number', o.get('id', '')[:8])}: {o.get('status', 'unknown')} | Payment: {o.get('payment_status', 'pending')} | ${o.get('total_amount', 0):.2f} | Customer: {o.get('customer_name', 'N/A')}")
+        amount = o.get('total_amount') or 0
+        order_num = o.get('order_number') or (o.get('id', '')[:8] if o.get('id') else 'N/A')
+        lines.append(f"- {order_num}: {o.get('status', 'unknown')} | Payment: {o.get('payment_status', 'pending')} | ${float(amount):.2f} | Customer: {o.get('customer_name', 'N/A')}")
     return "\n".join(lines)
 
 
