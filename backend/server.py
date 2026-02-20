@@ -1948,6 +1948,145 @@ async def update_membership_customer(customer_id: str, data: MembershipCustomerU
     customer = await db.customers.find_one({"id": customer_id}, {"_id": 0})
     return CustomerResponse(**customer)
 
+# ==================== AI ASSISTANT ENDPOINTS ====================
+
+@api_router.get("/ai/briefing")
+async def get_daily_briefing(current_user: dict = Depends(get_current_user)):
+    """Get AI-generated daily briefing for the current user"""
+    if not AI_ASSISTANT_ENABLED:
+        raise HTTPException(status_code=503, detail="AI Assistant not available")
+    
+    try:
+        briefing = await generate_daily_briefing(
+            db, 
+            current_user.get("role", "operator"),
+            current_user.get("name", "User")
+        )
+        return briefing
+    except Exception as e:
+        logger.error(f"Error generating briefing: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/ai/suggestions")
+async def get_ai_suggestions(current_user: dict = Depends(get_current_user)):
+    """Get AI-powered action suggestions"""
+    if not AI_ASSISTANT_ENABLED:
+        raise HTTPException(status_code=503, detail="AI Assistant not available")
+    
+    try:
+        suggestions = await ai_suggest_actions(db, "general")
+        return {"suggestions": suggestions}
+    except Exception as e:
+        logger.error(f"Error getting suggestions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/ai/chat")
+async def ai_chat(data: AdminAIRequest, current_user: dict = Depends(get_current_user)):
+    """Chat with AI Business Assistant"""
+    if not AI_ASSISTANT_ENABLED:
+        raise HTTPException(status_code=503, detail="AI Assistant not available")
+    
+    try:
+        result = await ai_analyze_business(
+            db,
+            data.message,
+            current_user.get("role", "operator")
+        )
+        
+        # Check if response contains action instructions
+        response_text = result.get("response", "")
+        actions = []
+        results = []
+        
+        # Parse and execute actions if requested
+        if data.execute and "```json" in response_text:
+            import re
+            json_matches = re.findall(r'```json\s*(\{.*?\})\s*```', response_text, re.DOTALL)
+            for json_str in json_matches:
+                try:
+                    action_data = json.loads(json_str)
+                    if "action" in action_data:
+                        action_result = await execute_ai_action(action_data, current_user)
+                        results.append(action_result)
+                        actions.append(action_data)
+                except:
+                    pass
+        
+        return {
+            "reply": response_text,
+            "actions": actions,
+            "results": results,
+            "generated_at": result.get("generated_at")
+        }
+    except Exception as e:
+        logger.error(f"Error in AI chat: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+async def execute_ai_action(action_data: dict, current_user: dict) -> dict:
+    """Execute an action suggested by AI"""
+    action_type = action_data.get("action")
+    params = action_data.get("params", {})
+    
+    try:
+        if action_type == "update_order_status":
+            order_id = params.get("order_id")
+            status = params.get("status")
+            if order_id and status:
+                await db.orders.update_one(
+                    {"id": order_id},
+                    {"$set": {"status": status, "updated_at": datetime.now(timezone.utc).isoformat()}}
+                )
+                await create_audit_log("ORDER_STATUS_CHANGED", "order", order_id, current_user["id"], {"status": status, "source": "ai"})
+                return {"action": action_type, "ok": True, "message": f"Order updated to {status}"}
+        
+        elif action_type == "update_payment_status":
+            order_id = params.get("order_id")
+            status = params.get("status")
+            if order_id and status:
+                await db.orders.update_one(
+                    {"id": order_id},
+                    {"$set": {"payment_status": status, "updated_at": datetime.now(timezone.utc).isoformat()}}
+                )
+                await create_audit_log("ORDER_PAYMENT_UPDATED", "order", order_id, current_user["id"], {"payment_status": status, "source": "ai"})
+                return {"action": action_type, "ok": True, "message": f"Payment status updated to {status}"}
+        
+        elif action_type == "update_quote_status":
+            quote_id = params.get("quote_id")
+            status = params.get("status")
+            if quote_id and status:
+                await db.quotes.update_one(
+                    {"id": quote_id},
+                    {"$set": {"status": status, "updated_at": datetime.now(timezone.utc).isoformat()}}
+                )
+                await create_audit_log("QUOTE_STATUS_CHANGED", "quote", quote_id, current_user["id"], {"status": status, "source": "ai"})
+                return {"action": action_type, "ok": True, "message": f"Quote updated to {status}"}
+        
+        elif action_type == "update_lead_status":
+            lead_id = params.get("lead_id")
+            status = params.get("status")
+            if lead_id and status:
+                await db.leads.update_one(
+                    {"id": lead_id},
+                    {"$set": {"status": status, "updated_at": datetime.now(timezone.utc).isoformat()}}
+                )
+                await create_audit_log("LEAD_STATUS_CHANGED", "lead", lead_id, current_user["id"], {"status": status, "source": "ai"})
+                return {"action": action_type, "ok": True, "message": f"Lead updated to {status}"}
+        
+        elif action_type == "update_ticket_status":
+            ticket_id = params.get("ticket_id")
+            status = params.get("status")
+            if ticket_id and status:
+                await db.tickets.update_one(
+                    {"id": ticket_id},
+                    {"$set": {"status": status, "updated_at": datetime.now(timezone.utc).isoformat()}}
+                )
+                await create_audit_log("TICKET_STATUS_CHANGED", "ticket", ticket_id, current_user["id"], {"status": status, "source": "ai"})
+                return {"action": action_type, "ok": True, "message": f"Ticket updated to {status}"}
+        
+        return {"action": action_type, "ok": False, "error": "Unknown action type"}
+    except Exception as e:
+        return {"action": action_type, "ok": False, "error": str(e)}
+
 @api_router.post("/admin/ai")
 async def admin_ai(data: AdminAIRequest, current_user: dict = Depends(get_current_user)):
     require_admin(current_user)
