@@ -19,6 +19,7 @@ import AdminMemberships from "./pages/AdminMemberships";
 import AdminAi from "./pages/AdminAi";
 import OperatorDashboard from "./pages/OperatorDashboard";
 import UserManagement from "./pages/UserManagement";
+import Finances from "./pages/Finances";
 import Layout from "./components/Layout";
 // Public pages
 import LandingPage from "./pages/LandingPage";
