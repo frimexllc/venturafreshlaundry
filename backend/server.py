@@ -1199,6 +1199,30 @@ async def update_order_status(order_id: str, status: str, notify: bool = True, c
     
     return {"message": f"Order status updated to {status}"}
 
+@api_router.patch("/orders/{order_id}/payment-status")
+async def update_order_payment_status(order_id: str, status: str, current_user: dict = Depends(get_current_user)):
+    """Update payment status of an order"""
+    valid_statuses = ["pending", "paid", "refunded", "failed"]
+    if status not in valid_statuses:
+        raise HTTPException(status_code=400, detail=f"Invalid payment status. Must be one of: {valid_statuses}")
+    
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    result = await db.orders.update_one(
+        {"id": order_id},
+        {
+            "$set": {
+                "payment_status": status,
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }
+        }
+    )
+    
+    await create_audit_log("ORDER_PAYMENT_STATUS_CHANGED", "order", order_id, current_user["id"], {"payment_status": status})
+    return {"message": f"Payment status updated to {status}"}
+
 @api_router.post("/admin/orders/last-completed/notify")
 async def notify_last_completed_order(current_user: dict = Depends(get_current_user)):
     require_admin(current_user)
