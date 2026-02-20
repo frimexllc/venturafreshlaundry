@@ -21,7 +21,8 @@ import {
   Layers,
   Star,
   Bot,
-  Shield
+  Shield,
+  DollarSign
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "./ui/button";
@@ -36,9 +37,10 @@ const allNavItems = [
   { path: "/admin/operator", icon: Zap, label: "Operator Panel", highlight: true },
   { path: "/admin/customers", icon: Users, label: "Customers", adminOnly: true },
   { path: "/admin/orders", icon: ShoppingBag, label: "Orders", adminOnly: true },
+  { path: "/admin/finances", icon: DollarSign, label: "Finances", adminOnly: true },
   { path: "/admin/services", icon: Layers, label: "Services", adminOnly: true },
   { path: "/admin/memberships", icon: Star, label: "Memberships", adminOnly: true },
-  { path: "/admin/ai", icon: Bot, label: "AI", adminOnly: true },
+  { path: "/admin/ai", icon: Bot, label: "AI Assistant", adminOnly: true },
   { path: "/admin/calendar", icon: CalendarDays, label: "Calendar", adminOnly: true },
   { path: "/admin/quotes", icon: FileText, label: "B2B Quotes", adminOnly: true },
   { path: "/admin/leads", icon: UserPlus, label: "Leads", adminOnly: true },
