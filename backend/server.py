@@ -540,18 +540,28 @@ def extract_json_payload(text: str):
     return json.loads(cleaned)
 
 def call_ollama(prompt: str):
+    """Use Groq API for AI responses - faster than local Ollama"""
+    import os
+    from groq import Groq
+    
+    api_key = os.environ.get("GROQ_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="Groq API key not configured")
+    
     try:
-        response = requests.post(
-            "http://127.0.0.1:11434/api/generate",
-            json={"model": "llama3.2:1b", "prompt": prompt, "stream": False},
-            timeout=120
+        client = Groq(api_key=api_key)
+        chat_completion = client.chat.completions.create(
+            messages=[
+                {"role": "user", "content": prompt}
+            ],
+            model="llama-3.3-70b-versatile",  # Free tier model
+            temperature=0.7,
+            max_tokens=2048
         )
-    except requests.RequestException as exc:
-        raise HTTPException(status_code=502, detail=f"Ollama not reachable: {exc}")
-    if not response.ok:
-        raise HTTPException(status_code=502, detail=f"Ollama error: {response.text}")
-    data = response.json()
-    return (data.get("response") or "").strip()
+        return chat_completion.choices[0].message.content.strip()
+    except Exception as e:
+        logger.error(f"Groq API error: {e}")
+        raise HTTPException(status_code=502, detail=f"AI service error: {str(e)}")
 
 ai_indexes_ready = False
 
