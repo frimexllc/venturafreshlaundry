@@ -127,6 +127,7 @@ function AppRoutes() {
         <Route path="audit-log" element={<AuditLog />} />
         <Route path="settings" element={<Settings />} />
         <Route path="users" element={<UserManagement />} />
+        <Route path="finances" element={<Finances />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
