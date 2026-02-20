@@ -267,7 +267,7 @@ async def ai_suggest_actions(db, context_type: str) -> List[Dict[str, Any]]:
     # Pending payments
     pending_payment = [o for o in orders if o.get("payment_status", "").lower() != "paid" and o.get("status", "").lower() == "completed"]
     if pending_payment:
-        total = sum(o.get("total_amount", 0) or 0 for o in pending_payment)
+        total = sum(float(o.get("total_amount") or 0) for o in pending_payment)
         suggestions.append({
             "type": "revenue",
             "title": f"${total:.2f} in pending payments",
