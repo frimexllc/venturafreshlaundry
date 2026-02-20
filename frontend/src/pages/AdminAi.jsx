@@ -449,43 +449,118 @@ export default function AdminAi() {
       </div>
 
       {activeTab === "chat" && (
-        <>
-          <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
-            <Textarea
-              rows={5}
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Ej: Cambia la orden ORD-20240215-0001 a completed"
-            />
-            <div className="flex justify-end">
-              <Button type="submit" disabled={loading}>
-                {loading ? "Procesando..." : "Enviar"}
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          {/* Header */}
+          <div className="p-4 border-b border-slate-100 bg-gradient-to-r from-sky-50 to-indigo-50">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center">
+                  <Bot className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <h2 className="font-semibold text-slate-900 flex items-center gap-2">
+                    AI Business Assistant
+                    <Sparkles className="h-4 w-4 text-amber-500" />
+                  </h2>
+                  <p className="text-xs text-slate-500">Groq • llama-3.3-70b</p>
+                </div>
+              </div>
+              <Button variant="ghost" size="sm" onClick={clearChat}>
+                <RefreshCw className="h-4 w-4 mr-1" />
+                Clear
               </Button>
             </div>
-          </form>
-
-          {reply && (
-            <div className="bg-white rounded-xl border border-slate-200 p-6">
-              <h2 className="text-lg font-semibold text-slate-900 mb-2">Respuesta</h2>
-              <p className="text-slate-700 whitespace-pre-line">{reply}</p>
+          </div>
+          
+          {/* Quick prompts */}
+          <div className="p-3 border-b border-slate-100 bg-slate-50">
+            <p className="text-xs text-slate-500 mb-2">Quick actions:</p>
+            <div className="flex flex-wrap gap-2">
+              {quickPrompts.map((qp, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => setPrompt(qp)}
+                  className="text-xs px-2 py-1 bg-white border border-slate-200 rounded-full hover:bg-sky-50 hover:border-sky-300 transition-colors"
+                >
+                  {qp}
+                </button>
+              ))}
             </div>
-          )}
-
-          {results.length > 0 && (
-            <div className="bg-white rounded-xl border border-slate-200 p-6">
-              <h2 className="text-lg font-semibold text-slate-900 mb-4">Resultados</h2>
-              <div className="space-y-2">
-                {results.map((result, index) => (
-                  <div key={index} className="text-sm text-slate-700">
-                    {result.ok ? "✅" : "⚠️"} {result.type} {result.order_id || result.ticket_id || result.quote_id || result.lead_id || result.signup_id || result.customer_id || ""}
-                    {result.status ? ` → ${result.status}` : ""}
-                    {result.error ? ` (${result.error})` : ""}
-                  </div>
-                ))}
+          </div>
+          
+          {/* Chat history */}
+          <div className="h-[400px] overflow-y-auto p-4 space-y-4">
+            {chatHistory.length === 0 ? (
+              <div className="text-center py-12 text-slate-400">
+                <Bot className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                <p>Start a conversation with your AI assistant</p>
+                <p className="text-sm mt-1">Ask about orders, customers, revenue, or request actions</p>
               </div>
+            ) : (
+              chatHistory.map((msg, idx) => (
+                <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[80%] rounded-xl p-3 ${
+                    msg.role === 'user' 
+                      ? 'bg-sky-600 text-white' 
+                      : msg.isError 
+                      ? 'bg-red-50 border border-red-200 text-red-700'
+                      : 'bg-slate-100 text-slate-700'
+                  }`}>
+                    <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                    {msg.results && msg.results.length > 0 && (
+                      <div className="mt-2 pt-2 border-t border-slate-200">
+                        {msg.results.map((r, ridx) => (
+                          <div key={ridx} className="flex items-center gap-2 text-xs">
+                            {r.ok ? (
+                              <CheckCircle className="h-3 w-3 text-green-600" />
+                            ) : (
+                              <AlertTriangle className="h-3 w-3 text-red-600" />
+                            )}
+                            <span>{r.message || r.error}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+            {loading && (
+              <div className="flex justify-start">
+                <div className="bg-slate-100 rounded-xl p-3">
+                  <div className="flex items-center gap-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-sky-600"></div>
+                    <span className="text-sm text-slate-500">Thinking...</span>
+                  </div>
+                </div>
+              </div>
+            )}
+            <div ref={chatEndRef} />
+          </div>
+          
+          {/* Input */}
+          <form onSubmit={handleSubmit} className="p-4 border-t border-slate-100 bg-slate-50">
+            <div className="flex gap-2">
+              <Textarea
+                rows={2}
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                placeholder="Ask anything... (e.g., 'Show pending orders' or 'Mark order ORD-001 as ready')"
+                className="flex-1 resize-none"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSubmit(e);
+                  }
+                }}
+              />
+              <Button type="submit" disabled={loading || !prompt.trim()} className="bg-sky-600 hover:bg-sky-700">
+                <Send className="h-4 w-4" />
+              </Button>
             </div>
-          )}
-        </>
+            <p className="text-xs text-slate-400 mt-2">Press Enter to send, Shift+Enter for new line</p>
+          </form>
+        </div>
       )}
 
       {activeTab === "propuestas" && (
