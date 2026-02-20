@@ -25,6 +25,15 @@ import zipfile
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env', override=True)
 
+# Import AI Assistant
+try:
+    from ai_assistant import generate_daily_briefing, ai_analyze_business, ai_suggest_actions
+    AI_ASSISTANT_ENABLED = True
+except ImportError:
+    AI_ASSISTANT_ENABLED = False
+    logger = logging.getLogger(__name__)
+    logger.warning("AI Assistant not available")
+
 # Import notification services
 try:
     from notifications import notify_order_created, notify_order_status_changed, send_email, send_sms
