@@ -382,7 +382,7 @@ export default function Orders() {
             <option value="self_service">Self Service</option>
           </select>
         </div>
-        <Button variant="outline" onClick={handleExportQrBatch} disabled={exportingQr}>
+        <Button variant="outline" onClick={handleExportQrBatch} disabled={exportingQr} data-testid="qr-export-button">
           <Download className="h-4 w-4 mr-2" />
           {exportingQr ? "Exportando..." : "Exportar QRs"}
         </Button>
