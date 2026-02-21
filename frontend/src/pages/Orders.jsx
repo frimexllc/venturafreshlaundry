@@ -374,6 +374,7 @@ export default function Orders() {
             className="h-9 rounded-md border border-slate-200 px-2 text-sm"
             value={qrServiceFilter}
             onChange={(e) => setQrServiceFilter(e.target.value)}
+            data-testid="qr-service-filter"
           >
             <option value="">Todos</option>
             <option value="pickup_delivery">Pickup & Delivery</option>
