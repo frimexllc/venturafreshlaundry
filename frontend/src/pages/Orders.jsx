@@ -344,7 +344,7 @@ export default function Orders() {
       <div className="flex flex-col lg:flex-row gap-3 items-start lg:items-end">
         <div>
           <Label>Inicio</Label>
-          <Input type="date" value={qrStartDate} onChange={(e) => setQrStartDate(e.target.value)} />
+          <Input type="date" value={qrStartDate} onChange={(e) => setQrStartDate(e.target.value)} data-testid="qr-start-date" />
         </div>
         <div>
           <Label>Fin</Label>
