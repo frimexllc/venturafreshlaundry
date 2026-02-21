@@ -6,21 +6,21 @@ import PublicNav from "../components/PublicNav";
 import PublicFooter from "../components/PublicFooter";
 
 // ============== CONSTANTES ==============
+// Reordered to put MOST POPULAR in the center
 const MEMBERSHIP_PLANS = [
- 
-  {
-    plan: "MOST POPULAR",
-    price: "$139 / month",
-    image: "https://images.squarespace-cdn.com/content/v1/696c559a4b2b9b1b0febf8d7/4a2815a1-54c1-45fb-8320-244dce8b83c8/MOST+POPULAR.png",
-    features: ["Up to 60 lb/ month", "Basic Preferences saved (folding notes)", "Best value for most families"],
-    isPopular: true
-  },
   {
     plan: "FAMILY PLUS",
     price: "$199 / month",
     image: "https://images.squarespace-cdn.com/content/v1/696c559a4b2b9b1b0febf8d7/f262a5b8-0043-4977-9d32-d6b343be3e70/FAMILY+PLUS.png",
     features: ["Up to 90 lb/ month", "Priority scheduling", "Great for larger households or rentals"],
     isPopular: false
+  },
+  {
+    plan: "MOST POPULAR",
+    price: "$139 / month",
+    image: "https://images.squarespace-cdn.com/content/v1/696c559a4b2b9b1b0febf8d7/4a2815a1-54c1-45fb-8320-244dce8b83c8/MOST+POPULAR.png",
+    features: ["Up to 60 lb/ month", "Basic Preferences saved (folding notes)", "Best value for most families"],
+    isPopular: true
   },
   {
     plan: "ELITE CONCIERGE",
