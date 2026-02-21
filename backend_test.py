@@ -11,7 +11,7 @@ from typing import Dict, Optional
 import time
 
 # Configuration
-BASE_URL = "https://e527bf3a-ffd3-4936-99cc-2e7e810793f2.preview.emergentagent.com"
+BASE_URL = "https://wash-automation.preview.emergentagent.com"
 API_URL = f"{BASE_URL}/api"
 
 # Test data - use unique timestamps to avoid duplicates

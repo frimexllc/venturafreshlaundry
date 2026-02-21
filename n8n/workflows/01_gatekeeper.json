@@ -18,7 +18,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://laundry-portal-5.preview.emergentagent.com/api/automation/ingest",
+        "url": "=https://wash-automation.preview.emergentagent.com/api/automation/ingest",
         "sendBody": true,
         "bodyParameters": {
           "parameters": [
