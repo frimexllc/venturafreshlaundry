@@ -313,7 +313,7 @@ export default function Orders() {
                 />
               </div>
               <div className="flex justify-end gap-3 pt-4">
-                <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+                <Button type="button" variant="outline" onClick={() => setDialogOpen(false)} data-testid="order-cancel-btn">
                   Cancelar
                 </Button>
                 <Button type="submit" className="btn-primary" disabled={submitting || !form.customer_id} data-testid="order-submit-btn">
