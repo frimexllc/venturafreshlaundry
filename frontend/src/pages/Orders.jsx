@@ -128,7 +128,7 @@ export default function Orders() {
       toast.success("Estado de pago actualizado");
       fetchOrders();
     } catch (error) {
-      toast.error("Error actualizando estado de pago");
+      toast.error(error.response?.data?.detail || "Error actualizando estado de pago");
     }
   };
 
