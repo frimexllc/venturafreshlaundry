@@ -3418,20 +3418,30 @@ async def create_b2b_quote(data: B2BQuoteRequest):
 async def export_customers_csv(current_user: dict = Depends(get_current_user)):
     """Export customers to CSV"""
     customers = await db.customers.find({}, {"_id": 0}).to_list(10000)
-    
+
     output = io.StringIO()
     if customers:
-        # Get all unique keys from all customers
         all_keys = set()
-        for c in customers:
-            all_keys.update(c.keys())
+        for customer in customers:
+            if isinstance(customer, dict):
+                all_keys.update([str(key) for key in customer.keys()])
         fieldnames = sorted(list(all_keys))
-        
-        writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction='ignore')
+
+        writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
-        for c in customers:
-            writer.writerow(c)
-    
+        for customer in customers:
+            normalized = {}
+            for key in fieldnames:
+                value = customer.get(key, "")
+                if isinstance(value, (dict, list)):
+                    value = json.dumps(value, default=str)
+                elif value is None:
+                    value = ""
+                elif not isinstance(value, (str, int, float, bool)):
+                    value = str(value)
+                normalized[key] = value
+            writer.writerow(normalized)
+
     output.seek(0)
     return StreamingResponse(
         iter([output.getvalue()]),
