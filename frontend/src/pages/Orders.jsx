@@ -478,114 +478,120 @@ export default function Orders() {
                   <td colSpan={7} className="text-center py-8 text-slate-500">No hay órdenes</td>
                 </tr>
               ) : (
-                orders.map((order) => (
-                  <tr key={order.id} className="hover:bg-slate-50/50" data-testid={`order-row-${order.id}`}>
-                    <td className="px-6 py-4">
-                      <p className="font-mono font-medium text-slate-900">{order.order_number}</p>
-                      <p className="text-xs text-slate-400">{formatDate(order.created_at)}</p>
-                    </td>
-                    <td className="px-6 py-4">
-                      <p className="font-medium text-slate-900">{order.customer_name}</p>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <Truck className="h-4 w-4 text-slate-400" />
-                        <span className="text-sm">{serviceLabels[order.service_type]}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <Calendar className="h-4 w-4 text-slate-400" />
-                        <span className="text-sm">{formatDate(order.pickup_date)}</span>
-                      </div>
-                      {order.pickup_time_window && (
-                        <p className="text-xs text-slate-400 mt-0.5">{order.pickup_time_window}</p>
-                      )}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={statusLabels[order.status?.toLowerCase()]?.class || "badge-pending"}>
-                        {statusLabels[order.status?.toLowerCase()]?.label || order.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={order.payment_status === "paid" ? "badge-completed" : "badge-pending"}>
-                        {order.payment_status === "paid" ? "Pagado" : "Pendiente"}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" data-testid={`order-actions-${order.id}`}>
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => setViewOrder(order)}>
-                            <Eye className="h-4 w-4 mr-2" />
-                            Ver detalles
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleDownloadQr(order)}>
-                            <Download className="h-4 w-4 mr-2" />
-                            Descargar QR
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          {/* Status updates */}
-                          {order.status?.toLowerCase() === "new" && (
-                            <DropdownMenuItem onClick={() => updateStatus(order.id, "processing")}>
-                              <CheckCircle className="h-4 w-4 mr-2" />
-                              Marcar Procesando
+                orders.map((order) => {
+                  const normalizedStatus = normalizeStatus(order.status);
+                  const statusMeta = getStatusMeta(order.status);
+                  const paymentIsPaid = (order.payment_status || "").toLowerCase() === "paid";
+
+                  return (
+                    <tr key={order.id} className="hover:bg-slate-50/50" data-testid={`order-row-${order.id}`}>
+                      <td className="px-6 py-4">
+                        <p className="font-mono font-medium text-slate-900" data-testid={`order-number-${order.id}`}>{order.order_number}</p>
+                        <p className="text-xs text-slate-400" data-testid={`order-created-${order.id}`}>{formatDate(order.created_at)}</p>
+                      </td>
+                      <td className="px-6 py-4">
+                        <p className="font-medium text-slate-900" data-testid={`order-customer-${order.id}`}>{order.customer_name}</p>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <Truck className="h-4 w-4 text-slate-400" />
+                          <span className="text-sm" data-testid={`order-service-${order.id}`}>{serviceLabels[order.service_type]}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <Calendar className="h-4 w-4 text-slate-400" />
+                          <span className="text-sm" data-testid={`order-pickup-${order.id}`}>{formatDate(order.pickup_date)}</span>
+                        </div>
+                        {order.pickup_time_window && (
+                          <p className="text-xs text-slate-400 mt-0.5" data-testid={`order-pickup-window-${order.id}`}>{order.pickup_time_window}</p>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={statusMeta.class} data-testid={`order-status-${order.id}`}>
+                          {statusMeta.label}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={paymentIsPaid ? "badge-completed" : "badge-pending"} data-testid={`order-payment-${order.id}`}>
+                          {paymentIsPaid ? "Pagado" : "Pendiente"}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" data-testid={`order-actions-${order.id}`}>
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem data-testid={`order-view-${order.id}`} onClick={() => setViewOrder(order)}>
+                              <Eye className="h-4 w-4 mr-2" />
+                              Ver detalles
                             </DropdownMenuItem>
-                          )}
-                          {order.status?.toLowerCase() === "processing" && (
-                            <DropdownMenuItem onClick={() => updateStatus(order.id, "ready")}>
-                              <CheckCircle className="h-4 w-4 mr-2" />
-                              Marcar Lista
+                            <DropdownMenuItem data-testid={`order-download-qr-${order.id}`} onClick={() => handleDownloadQr(order)}>
+                              <Download className="h-4 w-4 mr-2" />
+                              Descargar QR
                             </DropdownMenuItem>
-                          )}
-                          {order.status?.toLowerCase() === "ready" && (
-                            <DropdownMenuItem onClick={() => updateStatus(order.id, "out_for_delivery")}>
-                              <Truck className="h-4 w-4 mr-2" />
-                              En camino
-                            </DropdownMenuItem>
-                          )}
-                          {(order.status?.toLowerCase() === "out_for_delivery" || order.status === "OUT_FOR_DELIVERY") && (
-                            <DropdownMenuItem onClick={() => updateStatus(order.id, "delivered")}>
-                              <CheckCircle className="h-4 w-4 mr-2" />
-                              Marcar Entregada
-                            </DropdownMenuItem>
-                          )}
-                          {order.status?.toLowerCase() === "delivered" && (
-                            <DropdownMenuItem onClick={() => updateStatus(order.id, "completed")}>
-                              <CheckCircle className="h-4 w-4 mr-2" />
-                              Completar Orden
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuSeparator />
-                          {/* Payment status updates */}
-                          {order.payment_status !== "paid" && (
-                            <DropdownMenuItem onClick={() => updatePaymentStatus(order.id, "paid")}>
-                              <CheckCircle className="h-4 w-4 mr-2 text-green-600" />
-                              Marcar como Pagado
-                            </DropdownMenuItem>
-                          )}
-                          {order.payment_status === "paid" && (
-                            <DropdownMenuItem onClick={() => updatePaymentStatus(order.id, "pending")}>
-                              <CheckCircle className="h-4 w-4 mr-2 text-orange-600" />
-                              Marcar como Pendiente
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuSeparator />
-                          {order.status?.toLowerCase() !== "cancelled" && (
-                            <DropdownMenuItem onClick={() => updateStatus(order.id, "cancelled")} className="text-red-600">
-                              <CheckCircle className="h-4 w-4 mr-2" />
-                              Cancelar Orden
-                            </DropdownMenuItem>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </td>
-                  </tr>
-                ))
+                            <DropdownMenuSeparator />
+                            {/* Status updates */}
+                            {normalizedStatus === "new" && (
+                              <DropdownMenuItem data-testid={`order-status-processing-${order.id}`} onClick={() => updateStatus(order.id, "processing")}>
+                                <CheckCircle className="h-4 w-4 mr-2" />
+                                Marcar Procesando
+                              </DropdownMenuItem>
+                            )}
+                            {normalizedStatus === "processing" && (
+                              <DropdownMenuItem data-testid={`order-status-ready-${order.id}`} onClick={() => updateStatus(order.id, "ready")}>
+                                <CheckCircle className="h-4 w-4 mr-2" />
+                                Marcar Lista
+                              </DropdownMenuItem>
+                            )}
+                            {normalizedStatus === "ready" && (
+                              <DropdownMenuItem data-testid={`order-status-out-delivery-${order.id}`} onClick={() => updateStatus(order.id, "out_for_delivery")}>
+                                <Truck className="h-4 w-4 mr-2" />
+                                En camino
+                              </DropdownMenuItem>
+                            )}
+                            {normalizedStatus === "out_for_delivery" && (
+                              <DropdownMenuItem data-testid={`order-status-delivered-${order.id}`} onClick={() => updateStatus(order.id, "delivered")}>
+                                <CheckCircle className="h-4 w-4 mr-2" />
+                                Marcar Entregada
+                              </DropdownMenuItem>
+                            )}
+                            {normalizedStatus === "delivered" && (
+                              <DropdownMenuItem data-testid={`order-status-completed-${order.id}`} onClick={() => updateStatus(order.id, "completed")}>
+                                <CheckCircle className="h-4 w-4 mr-2" />
+                                Completar Orden
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuSeparator />
+                            {/* Payment status updates */}
+                            {!paymentIsPaid && (
+                              <DropdownMenuItem data-testid={`order-payment-paid-${order.id}`} onClick={() => updatePaymentStatus(order.id, "paid")}>
+                                <CheckCircle className="h-4 w-4 mr-2 text-green-600" />
+                                Marcar como Pagado
+                              </DropdownMenuItem>
+                            )}
+                            {paymentIsPaid && (
+                              <DropdownMenuItem data-testid={`order-payment-pending-${order.id}`} onClick={() => updatePaymentStatus(order.id, "pending")}>
+                                <CheckCircle className="h-4 w-4 mr-2 text-orange-600" />
+                                Marcar como Pendiente
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuSeparator />
+                            {normalizedStatus !== "cancelled" && (
+                              <DropdownMenuItem data-testid={`order-status-cancel-${order.id}`} onClick={() => updateStatus(order.id, "cancelled")} className="text-red-600">
+                                <CheckCircle className="h-4 w-4 mr-2" />
+                                Cancelar Orden
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
