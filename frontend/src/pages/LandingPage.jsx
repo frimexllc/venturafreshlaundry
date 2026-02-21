@@ -167,7 +167,7 @@ export default function LandingPage() {
         <div className="absolute inset-0 z-0">
           <video
             className="absolute inset-0 w-full h-full object-cover"
-            src={images.videoVFL}
+            src={images.heroVideo}
             autoPlay
             muted
             loop
