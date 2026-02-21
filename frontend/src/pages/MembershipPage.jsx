@@ -192,7 +192,7 @@ export default function MembershipPage() {
     return (
       <div className="min-h-screen bg-white">
         <PublicNav />
-        <section className="pt-32 pb-20">
+       <section className="pt-24 pb-8 bg-gradient-to-b from-sky-50 to-white">
           <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
             <div className="h-20 w-20 rounded-full bg-sky-100 flex items-center justify-center mx-auto mb-6">
               <Loader2 className="h-10 w-10 text-sky-600 animate-spin" />

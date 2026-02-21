@@ -1,6 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { Toaster } from "./components/ui/sonner";
+import ScrollToTop from "./components/ScrollToTop";
+
 // Admin pages
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
@@ -21,6 +23,7 @@ import OperatorDashboard from "./pages/OperatorDashboard";
 import UserManagement from "./pages/UserManagement";
 import Finances from "./pages/Finances";
 import Layout from "./components/Layout";
+
 // Public pages
 import LandingPage from "./pages/LandingPage";
 import ServicesPage from "./pages/ServicesPage";
@@ -35,7 +38,7 @@ import CustomerLogin from "./pages/CustomerLogin";
 
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
-  
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
@@ -43,18 +46,18 @@ const ProtectedRoute = ({ children }) => {
       </div>
     );
   }
-  
+
   if (!user) {
     return <Navigate to="/login" replace />;
   }
-  
+
   return children;
 };
 
 // Admin-only route protection
 const AdminRoute = ({ children }) => {
   const { user, loading } = useAuth();
-  
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
@@ -62,20 +65,20 @@ const AdminRoute = ({ children }) => {
       </div>
     );
   }
-  
+
   if (!user) {
     return <Navigate to="/login" replace />;
   }
-  
+
   if (user.role !== "admin") {
     return <Navigate to="/admin/operator" replace />;
   }
-  
+
   return children;
 };
 
 const CustomerProtectedRoute = ({ children }) => {
-  const token = localStorage.getItem('customer_token');
+  const token = localStorage.getItem("customer_token");
   if (!token) {
     return <Navigate to="/account/login" replace />;
   }
@@ -96,11 +99,18 @@ function AppRoutes() {
       <Route path="/blog/:slug" element={<BlogPage />} />
       <Route path="/schedule-pickup" element={<SchedulePickup />} />
       <Route path="/membership" element={<MembershipPage />} />
-      
+
       {/* Customer portal */}
       <Route path="/account/login" element={<CustomerLogin />} />
-      <Route path="/account" element={<CustomerProtectedRoute><CustomerAccount /></CustomerProtectedRoute>} />
-      
+      <Route
+        path="/account"
+        element={
+          <CustomerProtectedRoute>
+            <CustomerAccount />
+          </CustomerProtectedRoute>
+        }
+      />
+
       {/* Admin */}
       <Route path="/login" element={<Login />} />
       <Route
@@ -129,6 +139,7 @@ function AppRoutes() {
         <Route path="users" element={<UserManagement />} />
         <Route path="finances" element={<Finances />} />
       </Route>
+
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
@@ -138,6 +149,9 @@ function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
+        {/* ✅ Esto arregla que siempre abra arriba */}
+        <ScrollToTop />
+
         <AppRoutes />
         <Toaster position="top-right" richColors />
       </BrowserRouter>
