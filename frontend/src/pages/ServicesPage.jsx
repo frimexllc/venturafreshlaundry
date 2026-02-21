@@ -723,9 +723,9 @@ export default function ServicesPage() {
           </AccordionItem>
         </div>
 
-        <div className="text-center mt-8">
-          <Link to="/contact">
-            <Button className="bg-white text-slate-900 hover:bg-slate-100 rounded-full px-10 py-6 text-lg font-semibold transform transition-all duration-300 hover:scale-105 shadow-lg">
+        <div className="text-center mt-8">
+          <Link to="/request-quote">
+            <Button data-testid="commercial-request-quote-button" className="bg-white text-slate-900 hover:bg-slate-100 rounded-full px-10 py-6 text-lg font-semibold transform transition-all duration-300 hover:scale-105 shadow-lg">
               📋 REQUEST A QUOTE
             </Button>
           </Link>
