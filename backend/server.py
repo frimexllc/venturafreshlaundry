@@ -3421,9 +3421,16 @@ async def export_customers_csv(current_user: dict = Depends(get_current_user)):
     
     output = io.StringIO()
     if customers:
-        writer = csv.DictWriter(output, fieldnames=customers[0].keys())
+        # Get all unique keys from all customers
+        all_keys = set()
+        for c in customers:
+            all_keys.update(c.keys())
+        fieldnames = sorted(list(all_keys))
+        
+        writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction='ignore')
         writer.writeheader()
-        writer.writerows(customers)
+        for c in customers:
+            writer.writerow(c)
     
     output.seek(0)
     return StreamingResponse(
