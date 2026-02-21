@@ -362,6 +362,7 @@ export default function Orders() {
             <option value="processing">Procesando</option>
             <option value="ready">Lista</option>
             <option value="out_for_delivery">En camino</option>
+            <option value="delivered">Entregada</option>
             <option value="completed">Completada</option>
             <option value="cancelled">Cancelada</option>
           </select>
