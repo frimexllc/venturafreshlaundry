@@ -46,10 +46,10 @@ RECEIVED → PROCESSING → READY → OUT_FOR_DELIVERY → DELIVERED → COMPLET
 ### Backend
 - JWT + roles (admin/operador)
 - CRUD de clientes/órdenes/cotizaciones
-- Endpoints de finanzas (base)
+- Finanzas: /api/finances/summary + transacciones de tienda
 - Stripe recurring para membresías
 - Groq AI (briefing y chat)
-- Endpoint de exportación de clientes
+- Exportación de clientes robusta
 
 ### Frontend
 - Dashboard Admin + vista Operador
@@ -57,24 +57,24 @@ RECEIVED → PROCESSING → READY → OUT_FOR_DELIVERY → DELIVERED → COMPLET
 - B2B Quote Form `/request-quote`
 - Sidebar reorganizada por rol
 - Memberships centradas y CTAs
+- Panel de Finanzas funcional (KPIs + transacciones + export CSV)
+- Flujo de órdenes con estados normalizados + acciones entregado/completado
 
 ### Integraciones
 - Stripe (pagos/membresías)
-- Twilio (SMS/WhatsApp) **pendiente validación E2E**
+- Twilio (SMS/WhatsApp) **validado E2E**
 - Groq (IA gerente)
 
 ## Cambios recientes (2026-02-21)
 - ✅ Fix robusto en `/api/export/customers` (normalización de valores CSV)
 - ✅ CTAs de B2B “Request a Quote” conectados a `/request-quote`
+- ✅ Resumen financiero `/api/finances/summary` + panel de finanzas funcional
+- ✅ Normalización de estados y bloqueo completed sin delivered
+- ✅ Twilio SMS validado E2E al cambiar estado
 
 ## Pendientes / Issues
-**P0**
-- Validar notificaciones Twilio E2E al cambiar estados
-
 **P1**
-- Permitir transición OUT_FOR_DELIVERY → DELIVERED/COMPLETED (UI + backend)
-- Revisar fallos de WebSocket en consola
-- Implementar panel de Finanzas funcional
+- Revisar fallos de WebSocket en consola (no reproducido aún)
 
 **P2**
 - Remover “wash and fold” del pickup y crear formulario separado
