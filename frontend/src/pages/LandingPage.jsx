@@ -4,6 +4,7 @@ import { ChevronDown, ChevronUp, Phone, MapPin, Clock } from "lucide-react";
 import { Button } from "../components/ui/button";
 import PublicNav from "../components/PublicNav";
 import PublicFooter from "../components/PublicFooter";
+import videoVFL from "../assets/videoHeroHomeInicial.mp4";
 
 // FAQ Accordion Component
 const FAQItem = ({ question, answer, isOpen, onClick }) => (
@@ -151,7 +152,7 @@ export default function LandingPage() {
   // URLs de imágenes / video
   const images = {
     // ✅ PON AQUÍ TU VIDEO MP4 (reemplaza este placeholder)
-    heroVideo: "https://your-video-url.mp4",
+    heroVideo: videoVFL,
     background:
       "https://images.squarespace-cdn.com/content/v1/696c559a4b2b9b1b0febf8d7/8f9faf72-9068-4289-8f90-869a9b1b00d2/backgound.png",
     delivery:
@@ -166,7 +167,7 @@ export default function LandingPage() {
         <div className="absolute inset-0 z-0">
           <video
             className="absolute inset-0 w-full h-full object-cover"
-            src={images.heroVideo}
+            src={images.videoVFL}
             autoPlay
             muted
             loop
