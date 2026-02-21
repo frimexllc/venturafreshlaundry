@@ -100,6 +100,9 @@ function AppRoutes() {
       <Route path="/blog/:slug" element={<BlogPage />} />
       <Route path="/schedule-pickup" element={<SchedulePickup />} />
       <Route path="/membership" element={<MembershipPage />} />
+      <Route path="/request-quote" element={<RequestQuotePage />} />
+      <Route path="/commercial" element={<RequestQuotePage />} />
+      <Route path="/b2b" element={<RequestQuotePage />} />
 
       {/* Customer portal */}
       <Route path="/account/login" element={<CustomerLogin />} />
