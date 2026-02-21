@@ -1145,68 +1145,74 @@ async def update_order(order_id: str, data: dict, current_user: dict = Depends(g
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     return OrderResponse(**order)
 
+def normalize_status(value: Optional[str]) -> str:
+    if not value:
+        return ""
+    return value.strip().lower().replace(" ", "_")
+
+
 def should_notify_order_status(order: dict, status_value: str) -> bool:
     """Determine if order status change should trigger notification"""
-    # Normalize status for comparison
-    status_lower = status_value.lower()
-    
-    # Always notify for these statuses
-    if status_lower in ["ready", "out_for_delivery", "delivered"]:
+    status_normalized = normalize_status(status_value)
+
+    if status_normalized in ["ready", "out_for_delivery", "delivered"]:
         return True
-    
-    # Legacy logic for service types
+
     service_type = order.get("service_type")
     if service_type == "pickup_delivery":
-        return status_lower == "out_for_delivery"
+        return status_normalized == "out_for_delivery"
     if service_type in ["wash_fold", "self_service"]:
-        return status_lower == "ready"
-    
+        return status_normalized == "ready"
+
     return False
 
 @api_router.patch("/orders/{order_id}/status")
 async def update_order_status(order_id: str, status: str, notify: bool = True, current_user: dict = Depends(get_current_user)):
     valid_statuses = ["new", "processing", "ready", "out_for_delivery", "delivered", "completed", "cancelled"]
-    if status not in valid_statuses:
+    normalized_status = normalize_status(status)
+    if normalized_status not in valid_statuses:
         raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {valid_statuses}")
-    
-    # Get order and customer for notification
+
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    
-    result = await db.orders.update_one(
+
+    current_status = normalize_status(order.get("status"))
+    if normalized_status == "completed" and current_status not in ["delivered", "completed"]:
+        raise HTTPException(status_code=400, detail="Order must be delivered before it can be completed")
+
+    await db.orders.update_one(
         {"id": order_id},
         {
             "$set": {
-                "status": status,
-                "estado_actual": status,
+                "status": normalized_status,
+                "estado_actual": normalized_status,
                 "updated_at": datetime.now(timezone.utc).isoformat(),
                 "tiempos.ultimo_cambio_estado": datetime.now(timezone.utc).isoformat(),
-                f"tiempos.fechas_estado.{status}": datetime.now(timezone.utc).isoformat()
+                f"tiempos.fechas_estado.{normalized_status}": datetime.now(timezone.utc).isoformat()
             }
         }
     )
-    
-    await create_audit_log("ORDER_STATUS_CHANGED", "order", order_id, current_user["id"], {"new_status": status})
+
+    await create_audit_log("ORDER_STATUS_CHANGED", "order", order_id, current_user["id"], {"new_status": normalized_status})
     await db.eventos_automation.insert_one({
         "id": str(uuid.uuid4()),
         "tipo": "ORDER_STATUS_CHANGED",
         "entity_id": order_id,
-        "payload": {"status": status},
+        "payload": {"status": normalized_status},
         "created_at": datetime.now(timezone.utc).isoformat()
     })
-    
-    # Send notifications if enabled
-    if notify and NOTIFICATIONS_ENABLED and not SKIP_SERVER_NOTIFICATIONS and order.get("customer_id") and should_notify_order_status(order, status):
+
+    if notify and NOTIFICATIONS_ENABLED and not SKIP_SERVER_NOTIFICATIONS and order.get("customer_id") and should_notify_order_status(order, normalized_status):
         customer = await db.customers.find_one({"id": order["customer_id"]}, {"_id": 0})
         if customer:
-            order["status"] = status  # Update for notification
+            order["status"] = normalized_status
             try:
-                await notify_order_status_changed(customer, order, status)
+                await notify_order_status_changed(customer, order, normalized_status)
             except Exception as e:
                 logger.error(f"Notification failed: {e}")
-    
-    return {"message": f"Order status updated to {status}"}
+
+    return {"message": f"Order status updated to {normalized_status}"}
 
 @api_router.patch("/orders/{order_id}/payment-status")
 async def update_order_payment_status(order_id: str, status: str, current_user: dict = Depends(get_current_user)):
