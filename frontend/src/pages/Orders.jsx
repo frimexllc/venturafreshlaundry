@@ -327,7 +327,7 @@ export default function Orders() {
 
       {/* Filters */}
       <div className="flex gap-2 flex-wrap">
-        {["all", "new", "processing", "ready", "out_for_delivery", "completed"].map((status) => (
+        {["all", "new", "processing", "ready", "out_for_delivery", "delivered", "completed", "cancelled"].map((status) => (
           <Button
             key={status}
             variant={statusFilter === status ? "default" : "outline"}
