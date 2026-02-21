@@ -22,6 +22,16 @@ const statusLabels = {
   cancelled: { label: "Cancelada", class: "badge-cancelled" }
 };
 
+const normalizeStatus = (status) =>
+  (status || "")
+    .toString()
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_");
+
+const getStatusMeta = (status) =>
+  statusLabels[normalizeStatus(status)] || { label: status || "-", class: "badge-pending" };
+
 const serviceLabels = {
   pickup_delivery: "Pickup & Delivery",
   wash_fold: "Wash & Fold",
