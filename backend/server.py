@@ -3320,6 +3320,98 @@ async def public_membership_signup(data: PublicMembershipSignup):
         "message": "¡Gracias! Tu solicitud de membresía fue recibida. Te contactaremos para confirmar tu plan."
     }
 
+# ==================== B2B QUOTE REQUEST ====================
+
+class B2BQuoteRequest(BaseModel):
+    first_name: str
+    last_name: str
+    email: EmailStr
+    phone: str
+    contact_method: Optional[str] = None
+    address_line1: str
+    address_line2: Optional[str] = None
+    city: str
+    state: str
+    zip_code: str
+    job_title: Optional[str] = None
+    service_type: str
+    has_membership: str
+    company_legal_name: Optional[str] = None
+    dba_name: Optional[str] = None
+    business_type: str
+    laundry_frequency: str
+    estimated_lbs: float
+    best_date: str
+    best_time: str
+    additional_notes: Optional[str] = None
+    subscribe_newsletter: Optional[bool] = False
+
+@api_router.post("/public/b2b-quote")
+async def create_b2b_quote(data: B2BQuoteRequest):
+    """Create a B2B quote request - goes directly to quotes"""
+    now = datetime.now(timezone.utc).isoformat()
+    quote_id = str(uuid.uuid4())
+    quote_number = f"B2B-{datetime.now().strftime('%Y%m%d')}-{str(uuid.uuid4())[:6].upper()}"
+    
+    quote_doc = {
+        "id": quote_id,
+        "quote_number": quote_number,
+        "source": "website_b2b_form",
+        "status": "new",
+        # Contact info
+        "first_name": data.first_name,
+        "last_name": data.last_name,
+        "contact_name": f"{data.first_name} {data.last_name}",
+        "email": data.email.lower(),
+        "phone": data.phone,
+        "contact_method": data.contact_method,
+        "job_title": data.job_title,
+        # Address
+        "address_line1": data.address_line1,
+        "address_line2": data.address_line2,
+        "city": data.city,
+        "state": data.state,
+        "zip_code": data.zip_code,
+        "full_address": f"{data.address_line1}, {data.city}, {data.state} {data.zip_code}",
+        # Business info
+        "company_legal_name": data.company_legal_name,
+        "company_name": data.company_legal_name or data.dba_name,
+        "dba_name": data.dba_name,
+        "business_type": data.business_type,
+        "has_membership": data.has_membership,
+        # Service requirements
+        "service_type": data.service_type,
+        "laundry_frequency": data.laundry_frequency,
+        "estimated_lbs_per_pickup": data.estimated_lbs,
+        "estimated_lbs_per_week": data.estimated_lbs * (7 if data.laundry_frequency == "daily" else 2 if data.laundry_frequency == "twice_week" else 1),
+        # Scheduling
+        "best_contact_date": data.best_date,
+        "best_contact_time": data.best_time,
+        "additional_notes": data.additional_notes,
+        "subscribe_newsletter": data.subscribe_newsletter,
+        # Meta
+        "created_at": now,
+        "updated_at": now
+    }
+    
+    await db.quotes.insert_one(quote_doc)
+    await create_audit_log("B2B_QUOTE_CREATED", "quote", quote_id, "public", {"company": data.company_legal_name, "business_type": data.business_type})
+    
+    # Send notification to admin (if Twilio configured)
+    if NOTIFICATIONS_ENABLED and not SKIP_SERVER_NOTIFICATIONS:
+        try:
+            await send_sms(
+                os.environ.get("ADMIN_PHONE", "+18055154030"),
+                f"New B2B Quote Request: {data.company_legal_name or data.first_name} ({data.business_type}) - {data.estimated_lbs} lbs/{data.laundry_frequency}"
+            )
+        except:
+            pass
+    
+    return {
+        "message": "Thank you! Your quote request has been received. Our team will contact you within 24-48 hours.",
+        "quote_number": quote_number
+    }
+
 # ==================== EXPORT ENDPOINTS ====================
 
 @api_router.get("/export/customers")
