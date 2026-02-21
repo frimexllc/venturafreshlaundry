@@ -5,6 +5,24 @@ require("dotenv").config();
 // Check if we're in development/preview mode (not production build)
 // Craco sets NODE_ENV=development for start, NODE_ENV=production for build
 const isDevServer = process.env.NODE_ENV !== "production";
+const backendUrl = process.env.REACT_APP_BACKEND_URL;
+
+const getWebSocketConfig = () => {
+  if (!backendUrl) {
+    return null;
+  }
+  try {
+    const parsed = new URL(backendUrl);
+    return {
+      protocol: parsed.protocol === "https:" ? "wss" : "ws",
+      hostname: parsed.hostname,
+      port: parsed.port ? Number(parsed.port) : undefined,
+      pathname: "/ws"
+    };
+  } catch (error) {
+    return null;
+  }
+};
 
 // Environment variable overrides
 const config = {
