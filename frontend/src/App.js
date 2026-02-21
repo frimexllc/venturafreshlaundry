@@ -33,6 +33,7 @@ import StorePage from "./pages/StorePage";
 import BlogPage from "./pages/BlogPage";
 import SchedulePickup from "./pages/SchedulePickup";
 import MembershipPage from "./pages/MembershipPage";
+import RequestQuotePage from "./pages/RequestQuotePage";
 import CustomerAccount from "./pages/CustomerAccount";
 import CustomerLogin from "./pages/CustomerLogin";
 
