@@ -118,7 +118,7 @@ export default function Orders() {
       toast.success("Estado actualizado");
       fetchOrders();
     } catch (error) {
-      toast.error("Error actualizando estado");
+      toast.error(error.response?.data?.detail || "Error actualizando estado");
     }
   };
 
