@@ -231,6 +231,7 @@ export default function LandingPage() {
                 </Link>
                 <Link to="/request-quote">
                   <Button
+                    data-testid="landing-b2b-quote-button"
                     variant="outline"
                     className="border-2 border-sky-400 text-sky-400 hover:bg-sky-400 hover:text-white rounded-full px-6 py-3 text-sm font-semibold bg-transparent transition-all duration-300"
                   >
