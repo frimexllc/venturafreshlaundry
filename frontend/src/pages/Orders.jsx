@@ -443,7 +443,7 @@ export default function Orders() {
                 </div>
               </div>
               <div className="flex justify-end">
-                <Button variant="outline" size="sm" onClick={() => handleDownloadQr(viewOrder)}>
+                                                                    <Button variant="outline" size="sm" onClick={() => handleDownloadQr(viewOrder)} data-testid="order-detail-download-qr">
                   <Download className="h-4 w-4 mr-2" />
                   Descargar QR
                 </Button>
