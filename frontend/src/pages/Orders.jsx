@@ -348,7 +348,7 @@ export default function Orders() {
         </div>
         <div>
           <Label>Fin</Label>
-          <Input type="date" value={qrEndDate} onChange={(e) => setQrEndDate(e.target.value)} />
+          <Input type="date" value={qrEndDate} onChange={(e) => setQrEndDate(e.target.value)} data-testid="qr-end-date" />
         </div>
         <div>
           <Label>Estado</Label>
