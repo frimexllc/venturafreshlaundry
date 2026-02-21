@@ -118,6 +118,14 @@ webpackConfig.devServer = (devServerConfig) => {
     };
   }
 
+  const websocketConfig = getWebSocketConfig();
+  if (websocketConfig) {
+    devServerConfig.client = {
+      ...devServerConfig.client,
+      webSocketURL: websocketConfig
+    };
+  }
+
   return devServerConfig;
 };
 
