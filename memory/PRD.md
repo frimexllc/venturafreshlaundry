@@ -71,10 +71,11 @@ RECEIVED → PROCESSING → READY → OUT_FOR_DELIVERY → DELIVERED → COMPLET
 - ✅ Resumen financiero `/api/finances/summary` + panel de finanzas funcional
 - ✅ Normalización de estados y bloqueo completed sin delivered
 - ✅ Twilio SMS validado E2E al cambiar estado
+- ✅ DevServer WebSocket configurado con REACT_APP_BACKEND_URL
 
 ## Pendientes / Issues
 **P1**
-- Revisar fallos de WebSocket en consola (no reproducido aún)
+- Verificar con usuario si persisten fallos de WebSocket en consola (no reproducido aquí)
 
 **P2**
 - Remover “wash and fold” del pickup y crear formulario separado
