@@ -502,7 +502,7 @@ export default function MembershipPage() {
                 <div>
                   <Label className="text-slate-700">Expected laundry frequency</Label>
                   <Select value={form.laundry_frequency} onValueChange={(value) => setForm({ ...form, laundry_frequency: value })}>
-                    <SelectTrigger className="mt-1">
+                    <SelectTrigger className="mt-1" data-testid="membership-frequency">
                       <SelectValue placeholder="Select an option" />
                     </SelectTrigger>
                     <SelectContent>
