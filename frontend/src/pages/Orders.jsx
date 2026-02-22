@@ -561,7 +561,7 @@ export default function Orders() {
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2">
                           <Truck className="h-4 w-4 text-slate-400" />
-                          <span className="text-sm" data-testid={`order-service-${order.id}`}>{serviceLabels[order.service_type]}</span>
+                          <span className="text-sm" data-testid={`order-service-${order.id}`}>{serviceLabels[order.service_type] || order.service_type || "-"}</span>
                         </div>
                       </td>
                       <td className="px-6 py-4">
