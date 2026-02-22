@@ -500,7 +500,7 @@ export default function Orders() {
                 </div>
                 <div>
                   <p className="text-sm text-slate-500">Actual Lbs</p>
-                  <p className="font-medium">{viewOrder.actual_lbs || "-"}</p>
+                  <p className="font-medium" data-testid="order-detail-actual-lbs">{viewOrder.actual_lbs || "-"}</p>
                 </div>
                 <div>
                   <p className="text-sm text-slate-500">Total</p>
