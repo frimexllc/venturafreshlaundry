@@ -3588,8 +3588,7 @@ async def public_membership_signup(data: PublicMembershipSignup):
         "pickup_time_preference": normalize_spaces(data.pickup_time_preference),
         "gate_code": normalize_spaces(data.gate_code)
     }
-    if not any(preferences.values()):
-        preferences = None
+    preferences = normalize_preference_dict(preferences)
 
     signup = {
         "id": signup_id,
