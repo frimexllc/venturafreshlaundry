@@ -3699,6 +3699,106 @@ async def public_pickup_request(data: PublicPickupRequest):
         "message": "¡Gracias! Tu solicitud de pickup ha sido recibida. Te contactaremos pronto."
     }
 
+@api_router.post("/public/wash-fold-request")
+async def public_wash_fold_request(data: PublicWashFoldRequest):
+    """Public endpoint for wash & fold drop-off request"""
+    now = datetime.now(timezone.utc).isoformat()
+
+    normalized_name = normalize_name(data.name)
+    normalized_email = normalize_email(data.email) or data.email.lower()
+    normalized_phone = normalize_phone(data.phone)
+    normalized_address = normalize_address(data.address)
+    normalized_notes = normalize_spaces(data.notes)
+    normalized_contact = normalize_spaces(data.contact_method)
+
+    notes_payload = normalized_notes or ""
+    if normalized_contact:
+        notes_payload = f"Preferred contact: {normalized_contact}\n{notes_payload}".strip()
+
+    customer = await db.customers.find_one({"email": normalized_email}, {"_id": 0})
+    if not customer:
+        customer_id = str(uuid.uuid4())
+        customer = {
+            "id": customer_id,
+            "name": normalized_name or data.name,
+            "email": normalized_email,
+            "phone": normalized_phone or data.phone,
+            "address": normalized_address or data.address,
+            "preferred_contact": normalized_contact or "email",
+            "notes": None,
+            "status": "active",
+            "total_orders": 0,
+            "created_at": now,
+            "updated_at": now
+        }
+        await db.customers.insert_one(customer)
+        await create_audit_log("CUSTOMER_CREATED", "customer", customer_id, None, {"source": "wash_fold_form"})
+    else:
+        await db.customers.update_one(
+            {"id": customer["id"]},
+            {"$set": {
+                "name": normalized_name or customer.get("name"),
+                "phone": normalized_phone or customer.get("phone"),
+                "address": normalized_address or customer.get("address"),
+                "preferred_contact": normalized_contact or customer.get("preferred_contact"),
+                "updated_at": now
+            }}
+        )
+
+    pref = await db.preferences.find({"customer_id": customer["id"]}, {"_id": 0}).sort("version", -1).limit(1).to_list(1)
+    preference_id = pref[0].get("id") if pref else None
+    preference_snapshot = None
+    if pref:
+        preference_snapshot = {k: v for k, v in pref[0].items() if k not in ["_id", "customer_id"]}
+
+    order_id = str(uuid.uuid4())
+    order_number = await generate_order_number()
+    order = {
+        "id": order_id,
+        "order_number": order_number,
+        "customer_id": customer["id"],
+        "customer_name": customer["name"],
+        "service_type": "wash_fold",
+        "pickup_date": data.dropoff_date,
+        "pickup_time_window": data.dropoff_time,
+        "pickup_address": normalized_address,
+        "delivery_address": normalized_address,
+        "estimated_lbs": None,
+        "actual_lbs": None,
+        "notes": notes_payload,
+        "gate_code": None,
+        "preferences_id": preference_id,
+        "preferences_snapshot": preference_snapshot,
+        "status": "new",
+        "estado_actual": "new",
+        "payment_status": "unpaid",
+        "total_amount": None,
+        "origen": "wash_fold_request",
+        "created_at": now,
+        "updated_at": now
+    }
+    await db.orders.insert_one(order)
+    await db.customers.update_one({"id": customer["id"]}, {"$inc": {"total_orders": 1}})
+    await create_audit_log("ORDER_CREATED", "order", order_id, None, {"source": "wash_fold_form"})
+    await emit_realtime("notification", {
+        "type": "order_created",
+        "order_id": order_id,
+        "status": "new",
+        "order_number": order_number
+    })
+
+    if NOTIFICATIONS_ENABLED:
+        try:
+            await notify_order_created(customer, order)
+        except Exception as e:
+            logger.error(f"Notification failed: {e}")
+
+    return {
+        "success": True,
+        "order_number": order_number,
+        "message": "¡Gracias! Tu solicitud de Wash & Fold ha sido recibida."
+    }
+
 @api_router.post("/public/contact")
 async def public_contact(data: PublicContactRequest):
     """Public endpoint for contact form - creates a support ticket"""
