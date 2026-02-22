@@ -541,15 +541,46 @@ export default function Orders() {
               <div className="grid grid-cols-3 gap-4 pt-2 border-t">
                 <div>
                   <p className="text-sm text-slate-500">Est. Lbs</p>
-                  <p className="font-medium" data-testid="order-detail-estimated-lbs">{viewOrder.estimated_lbs || "-"}</p>
+                  <Input
+                    type="number"
+                    step="0.1"
+                    value={weightForm.estimated_lbs}
+                    onChange={(e) => setWeightForm({ ...weightForm, estimated_lbs: e.target.value })}
+                    className="mt-1"
+                    data-testid="order-estimated-lbs-input"
+                  />
                 </div>
                 <div>
                   <p className="text-sm text-slate-500">Actual Lbs</p>
-                  <p className="font-medium" data-testid="order-detail-actual-lbs">{viewOrder.actual_lbs || "-"}</p>
+                  <Input
+                    type="number"
+                    step="0.1"
+                    value={weightForm.actual_lbs}
+                    onChange={(e) => setWeightForm({ ...weightForm, actual_lbs: e.target.value })}
+                    className="mt-1"
+                    data-testid="order-actual-lbs-input"
+                  />
                 </div>
+                <div>
+                  <p className="text-sm text-slate-500">Diferencia</p>
+                  <p className="font-medium" data-testid="order-detail-lbs-delta">{getWeightDelta()}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
                 <div>
                   <p className="text-sm text-slate-500">Total</p>
                   <p className="font-medium" data-testid="order-detail-total">{viewOrder.total_amount ? `$${viewOrder.total_amount}` : "-"}</p>
+                </div>
+                <div className="flex items-end justify-end">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleUpdateWeights}
+                    disabled={savingWeights}
+                    data-testid="order-save-lbs"
+                  >
+                    {savingWeights ? "Guardando..." : "Guardar libras"}
+                  </Button>
                 </div>
               </div>
               <div className="flex justify-end">
