@@ -87,6 +87,16 @@ export default function Quotes() {
     }
   };
 
+  const convertToLead = async (quoteId) => {
+    try {
+      await axios.post(`${API}/quotes/${quoteId}/convert-to-lead`);
+      toast.success("Cotización convertida a lead");
+      fetchQuotes();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Error convirtiendo a lead");
+    }
+  };
+
   const formatDate = (dateStr) => {
     if (!dateStr) return "-";
     return new Date(dateStr).toLocaleDateString("es-MX", {
