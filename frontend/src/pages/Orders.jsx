@@ -463,7 +463,7 @@ export default function Orders() {
               </div>
               <div>
                 <p className="text-sm text-slate-500">Dirección Entrega</p>
-                <p className="font-medium">{viewOrder.delivery_address || "-"}</p>
+                <p className="font-medium" data-testid="order-detail-delivery-address">{viewOrder.delivery_address || "-"}</p>
               </div>
               {viewOrder.notes && (
                 <div>
