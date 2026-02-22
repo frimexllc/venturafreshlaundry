@@ -54,6 +54,8 @@ export default function PublicFooter() {
               <Link to="/contact" className="block hover:text-white transition-colors">Contact Us</Link>
               <Link to="/blog" className="block hover:text-white transition-colors">Blog</Link>
               <Link to="/store" className="block hover:text-white transition-colors">Store</Link>
+              <Link to="/terms-and-conditions" className="block hover:text-white transition-colors" data-testid="footer-terms-link">Términos y condiciones</Link>
+              <Link to="/privacy-policy" className="block hover:text-white transition-colors" data-testid="footer-privacy-link">Política de privacidad</Link>
             </div>
           </div>
 
