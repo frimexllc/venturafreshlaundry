@@ -204,6 +204,35 @@ export default function Orders() {
     });
   };
 
+  const buildDateSlug = (dateStr) => {
+    const base = dateStr ? new Date(dateStr) : new Date();
+    if (Number.isNaN(base.getTime())) {
+      return new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    }
+    return base.toISOString().slice(0, 10).replace(/-/g, "");
+  };
+
+  const formatOrderNumber = (order) => {
+    if (!order) return "-";
+    if (order.order_number && order.order_number.startsWith("VFL-")) {
+      return order.order_number;
+    }
+    const dateSlug = buildDateSlug(order.created_at || order.pickup_date);
+    const raw = (order.order_number || order.id || "00000000").toString();
+    const short = raw.replace(/[^a-zA-Z0-9]/g, "").toLowerCase().slice(-8).padStart(8, "0");
+    return `VFL-${dateSlug}-${short}`;
+  };
+
+  const renderPreferenceValue = (value) => {
+    if (Array.isArray(value)) {
+      return value.length ? value.join(", ") : "-";
+    }
+    if (value === null || value === undefined || value === "") {
+      return "-";
+    }
+    return value.toString();
+  };
+
   return (
     <div data-testid="orders-page" className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
