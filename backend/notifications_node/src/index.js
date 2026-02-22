@@ -319,45 +319,50 @@ function chooseChannels(vars) {
 }
 
 async function watchOrderStatusChanges() {
-  const pipeline = [
-    { $match: { operationType: { $in: ["insert", "update"] } } },
-    {
-      $match: {
-        $or: [
-          { "fullDocument.status": { $exists: true } },
-          { "updateDescription.updatedFields.status": { $exists: true } }
-        ]
+  try {
+    const pipeline = [
+      { $match: { operationType: { $in: ["insert", "update"] } } },
+      {
+        $match: {
+          $or: [
+            { "fullDocument.status": { $exists: true } },
+            { "updateDescription.updatedFields.status": { $exists: true } }
+          ]
+        }
       }
-    }
-  ];
-  const changeStream = db.collection("orders").watch(pipeline, { fullDocument: "updateLookup" });
-  changeStream.on("change", async (event) => {
-    try {
-      const order = event.fullDocument || {};
-      const status =
-        event.operationType === "insert"
-          ? order.status
-          : order.status || event.updateDescription?.updatedFields?.status;
-      if (!status) return;
-      const customer = await db.collection("customers").findOne({ id: order.customer_id }, { projection: { _id: 0 } });
-      const variables = {
-        order_number: order.order_number || order.order_id || order.id,
-        status,
-        name: customer?.name || order.customer_name || "Cliente",
-        email: customer?.email,
-        phone: customer?.phone,
-        carrier: customer?.carrier,
-        address: order.delivery_address || order.pickup_address || "",
-        total: order.total_amount || ""
-      };
-      const channels = chooseChannels(variables);
-      for (const ch of channels) {
-        try {
-          await createNotification({ order, channel: ch, templateName: status.toLowerCase(), variables });
-        } catch (e) {}
-      }
-    } catch {}
-  });
+    ];
+    const changeStream = db.collection("orders").watch(pipeline, { fullDocument: "updateLookup" });
+    changeStream.on("change", async (event) => {
+      try {
+        const order = event.fullDocument || {};
+        const status =
+          event.operationType === "insert"
+            ? order.status
+            : order.status || event.updateDescription?.updatedFields?.status;
+        if (!status) return;
+        const customer = await db.collection("customers").findOne({ id: order.customer_id }, { projection: { _id: 0 } });
+        const variables = {
+          order_number: order.order_number || order.order_id || order.id,
+          status,
+          name: customer?.name || order.customer_name || "Cliente",
+          email: customer?.email,
+          phone: customer?.phone,
+          carrier: customer?.carrier,
+          address: order.delivery_address || order.pickup_address || "",
+          total: order.total_amount || ""
+        };
+        const channels = chooseChannels(variables);
+        for (const ch of channels) {
+          try {
+            await createNotification({ order, channel: ch, templateName: status.toLowerCase(), variables });
+          } catch (e) {}
+        }
+      } catch {}
+    });
+    changeStream.on("error", () => {});
+  } catch (error) {
+    console.warn("Change streams not available. Real-time updates will rely on manual notifications.");
+  }
 }
 watchOrderStatusChanges();
 app.post("/api/notifications/send", async (req, res) => {
