@@ -1358,6 +1358,13 @@ async def export_qr_batch(
     if service_type:
         query["service_type"] = service_type
     orders = await db.orders.find(query, {"_id": 0}).sort("pickup_date", 1).to_list(2000)
+
+    customer_ids = {order.get("customer_id") for order in orders if order.get("customer_id")}
+    customer_map = {}
+    if customer_ids:
+        customers = await db.customers.find({"id": {"$in": list(customer_ids)}}, {"_id": 0}).to_list(2000)
+        customer_map = {customer.get("id"): customer for customer in customers}
+
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
         for order in orders:
@@ -1365,9 +1372,11 @@ async def export_qr_batch(
             if not order.get("qr_token"):
                 await db.orders.update_one({"id": order["id"]}, {"$set": {"qr_token": qr_token}})
             payload = build_qr_payload({"id": order["id"], "order_number": order.get("order_number"), "qr_token": qr_token})
-            svg_bytes = build_qr_svg(payload)
-            filename = f"order-{order.get('order_number') or order['id']}.svg"
-            zip_file.writestr(filename, svg_bytes)
+            customer = customer_map.get(order.get("customer_id"))
+            ticket_svg = build_ticket_svg(order, customer, payload)
+            display_id = build_display_order_number(order)
+            filename = f"ticket-{display_id}.svg"
+            zip_file.writestr(filename, ticket_svg)
     buffer.seek(0)
     filename = f"qr-export-{start_date}-to-{end_date}.zip"
     return StreamingResponse(buffer, media_type="application/zip", headers={"Content-Disposition": f"attachment; filename={filename}"})
