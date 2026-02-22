@@ -488,7 +488,7 @@ export default function Orders() {
               <div className="flex justify-end">
                 <Button variant="outline" size="sm" onClick={() => handleDownloadQr(viewOrder)} data-testid="order-detail-download-qr">
                   <Download className="h-4 w-4 mr-2" />
-                  Descargar QR
+                  Descargar Ticket
                 </Button>
               </div>
             </div>
@@ -574,7 +574,7 @@ export default function Orders() {
                             </DropdownMenuItem>
                             <DropdownMenuItem data-testid={`order-download-qr-${order.id}`} onClick={() => handleDownloadQr(order)}>
                               <Download className="h-4 w-4 mr-2" />
-                              Descargar QR
+                              Descargar Ticket
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             {/* Status updates */}
