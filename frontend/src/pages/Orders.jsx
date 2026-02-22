@@ -468,7 +468,7 @@ export default function Orders() {
               {viewOrder.notes && (
                 <div>
                   <p className="text-sm text-slate-500">Notas</p>
-                  <p className="font-medium">{viewOrder.notes}</p>
+                  <p className="font-medium" data-testid="order-detail-notes">{viewOrder.notes}</p>
                 </div>
               )}
               <div className="border-t pt-3" data-testid="order-preferences-section">
