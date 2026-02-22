@@ -66,6 +66,7 @@ export default function CustomerAccount() {
     }
 
     fetchOrders(token);
+    fetchPreferences(token);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigate]);
 
