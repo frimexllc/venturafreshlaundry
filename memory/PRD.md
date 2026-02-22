@@ -62,6 +62,10 @@ RECEIVED → PROCESSING → READY → OUT_FOR_DELIVERY → DELIVERED → COMPLET
 - Memberships centradas y CTAs
 - Formulario Elite Concierge con preferencias avanzadas
 - Portal de cliente con edición/eliminación de preferencias
+- Preferencias visibles en detalle de órdenes (Admin/Operador)
+- Ticket QR con formato de ticket y prefijo VFL en órdenes
+- Formulario separado Wash & Fold `/wash-fold`
+- Conversión de cotizaciones B2B → Lead
 - Páginas legales + links en footer
 - Checkbox de aceptación en login admin y login cliente (bloquea envío)
 
