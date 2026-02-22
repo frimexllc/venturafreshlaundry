@@ -529,7 +529,7 @@ export default function Orders() {
                   return (
                     <tr key={order.id} className="hover:bg-slate-50/50" data-testid={`order-row-${order.id}`}>
                       <td className="px-6 py-4">
-                        <p className="font-mono font-medium text-slate-900" data-testid={`order-number-${order.id}`}>{order.order_number}</p>
+                        <p className="font-mono font-medium text-slate-900" data-testid={`order-number-${order.id}`}>{formatOrderNumber(order)}</p>
                         <p className="text-xs text-slate-400" data-testid={`order-created-${order.id}`}>{formatDate(order.created_at)}</p>
                       </td>
                       <td className="px-6 py-4">
