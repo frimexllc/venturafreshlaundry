@@ -401,6 +401,7 @@ export default function MembershipPage() {
                     value={form.last_name}
                     onChange={(e) => setForm({ ...form, last_name: e.target.value })}
                     required
+                    data-testid="membership-last-name"
                   />
                 </div>
               </div>
