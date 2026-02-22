@@ -304,19 +304,19 @@ export default function MembershipPage() {
     <div className="min-h-screen bg-white">
       <PublicNav />
 
-      <section className="pt-24 pb-8 bg-gradient-to-b from-sky-50 to-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <div className="h-16 w-16 rounded-full bg-sky-100 flex items-center justify-center mx-auto mb-6">
-            <Star className="h-8 w-8 text-sky-600" />
-          </div>
-          <h1 className="text-4xl sm:text-5xl font-bold text-slate-900 mb-4" style={{ fontFamily: "'Playfair Display', serif" }}>
-            Laundry memberships designed for your lifestyle
-          </h1>
-          <p className="text-lg text-slate-600 max-w-3xl mx-auto">
-            Choose the membership that fits your lifestyle. Enjoy hassle-free laundry with scheduled pickup & delivery, personalized preferences, and professional care every month.
-          </p>
-        </div>
-      </section>
+      <section className="pt-32 pb-8 bg-gradient-to-b from-sky-50 to-white">
+  <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+    <div className="h-16 w-16 rounded-full bg-sky-100 flex items-center justify-center mx-auto mb-6">
+      <Star className="h-8 w-8 text-sky-600" />
+    </div>
+    <h1 className="text-4xl sm:text-5xl font-bold text-slate-900 mb-4" style={{ fontFamily: "'Playfair Display', serif" }}>
+      Laundry memberships designed for your lifestyle
+    </h1>
+    <p className="text-lg text-slate-600 max-w-3xl mx-auto">
+      Choose the membership that fits your lifestyle. Enjoy hassle-free laundry with scheduled pickup & delivery, personalized preferences, and professional care every month.
+    </p>
+  </div>
+</section>
 
       {/* Membership Plans Cards */}
       <section className="py-10">
