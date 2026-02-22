@@ -469,6 +469,7 @@ export default function MembershipPage() {
                       placeholder="State"
                       value={form.state}
                       onChange={(e) => setForm({ ...form, state: e.target.value })}
+                      data-testid="membership-state"
                     />
                     <Input
                       placeholder="ZIP Code"
