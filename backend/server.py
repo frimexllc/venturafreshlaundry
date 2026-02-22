@@ -963,22 +963,20 @@ def normalize_preference_payload(data: PreferenceCreate) -> Dict[str, Any]:
 async def create_preference(data: PreferenceCreate, current_user: dict = Depends(get_current_user)):
     existing = await db.preferences.find({"customer_id": data.customer_id}).sort("version", -1).limit(1).to_list(1)
     version = (existing[0]["version"] + 1) if existing else 1
-    
+
     pref_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
+    normalized = normalize_preference_payload(data)
     pref = {
         "id": pref_id,
         "customer_id": data.customer_id,
-        "detergent_type": data.detergent_type,
-        "folding_style": data.folding_style,
-        "special_instructions": data.special_instructions,
-        "hang_dry_items": data.hang_dry_items or [],
-        "fragrance_preference": data.fragrance_preference,
+        **normalized,
         "version": version,
         "created_at": now,
         "updated_at": now
     }
     await db.preferences.insert_one(pref)
+    await db.customers.update_one({"id": data.customer_id}, {"$set": {"preferences_id": pref_id, "updated_at": now}})
     await create_audit_log("PREFERENCE_CREATED", "preference", pref_id, current_user["id"])
     return PreferenceResponse(**pref)
 
