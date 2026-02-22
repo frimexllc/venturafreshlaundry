@@ -234,7 +234,7 @@ export default function WashFoldRequest() {
                 value={form.contact_method}
                 onValueChange={(v) => setForm({ ...form, contact_method: v })}
               >
-                <SelectTrigger className="mt-2">
+                <SelectTrigger className="mt-2" data-testid="washfold-contact-method">
                   <SelectValue placeholder="Select an option" />
                 </SelectTrigger>
                 <SelectContent>
