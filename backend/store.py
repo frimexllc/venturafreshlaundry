@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 import uuid
 import os
 from motor.motor_asyncio import AsyncIOMotorClient
-from normalization import normalize_email, normalize_phone, normalize_spaces
+from normalization import normalize_email, normalize_phone, normalize_spaces, normalize_preference_dict
 
 # Stripe integration
 try:
