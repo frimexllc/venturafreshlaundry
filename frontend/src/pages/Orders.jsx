@@ -437,6 +437,9 @@ export default function Orders() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Orden <span data-testid="order-detail-number">{formatOrderNumber(viewOrder)}</span></DialogTitle>
+            <DialogDescription data-testid="order-detail-description">
+              Detalle de la orden y preferencias de lavado.
+            </DialogDescription>
           </DialogHeader>
           {viewOrder && (
             <div className="space-y-4 mt-4">
