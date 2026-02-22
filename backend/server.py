@@ -934,6 +934,31 @@ async def delete_customer(customer_id: str, current_user: dict = Depends(get_cur
 
 # ==================== PREFERENCES ====================
 
+def normalize_preference_payload(data: PreferenceCreate) -> Dict[str, Any]:
+    def normalize_list(value):
+        if not value:
+            return []
+        if isinstance(value, list):
+            return [normalize_spaces(v) for v in value if normalize_spaces(v)]
+        if isinstance(value, str):
+            cleaned = normalize_spaces(value)
+            return [v for v in (item.strip() for item in cleaned.split(",")) if v]
+        return []
+
+    return {
+        "detergent_type": normalize_spaces(data.detergent_type) or "standard",
+        "water_temperature": normalize_spaces(data.water_temperature),
+        "fabric_softener": normalize_spaces(data.fabric_softener),
+        "folding_style": normalize_spaces(data.folding_style) or "standard",
+        "hanging_instructions": normalize_spaces(data.hanging_instructions),
+        "allergies": normalize_spaces(data.allergies),
+        "special_instructions": normalize_spaces(data.special_instructions),
+        "pickup_time_preference": normalize_spaces(data.pickup_time_preference),
+        "gate_code": normalize_spaces(data.gate_code),
+        "hang_dry_items": normalize_list(data.hang_dry_items),
+        "fragrance_preference": normalize_spaces(data.fragrance_preference) or "light"
+    }
+
 @api_router.post("/preferences", response_model=PreferenceResponse)
 async def create_preference(data: PreferenceCreate, current_user: dict = Depends(get_current_user)):
     existing = await db.preferences.find({"customer_id": data.customer_id}).sort("version", -1).limit(1).to_list(1)
