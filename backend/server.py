@@ -2470,6 +2470,27 @@ async def execute_ai_action(action_data: dict, current_user: dict) -> dict:
 @api_router.post("/admin/ai")
 async def admin_ai(data: AdminAIRequest, current_user: dict = Depends(get_current_user)):
     require_admin(current_user)
+
+    recent_orders = await db.orders.find({}, {"_id": 0}).sort("created_at", -1).limit(15).to_list(15)
+    orders_summary = "\n".join([
+        f"- {o.get('order_number') or o.get('id')} | id:{o.get('id')} | {o.get('customer_name') or '-'} | status:{o.get('status')} | est:{o.get('estimated_lbs')} | act:{o.get('actual_lbs')} | pickup:{o.get('pickup_date')}"
+        for o in recent_orders
+    ]) or "No recent orders"
+
+    recent_quotes = await db.quotes.find({}, {"_id": 0}).sort("created_at", -1).limit(10).to_list(10)
+    quotes_summary = "\n".join([
+        f"- {q.get('quote_number') or q.get('id')} | id:{q.get('id')} | {q.get('company_name') or q.get('contact_name') or '-'} | status:{q.get('status')} | est_lbs:{q.get('estimated_lbs')}"
+        for q in recent_quotes
+    ]) or "No recent quotes"
+
+    recent_leads = await db.leads.find({}, {"_id": 0}).sort("created_at", -1).limit(10).to_list(10)
+    leads_summary = "\n".join([
+        f"- {l.get('id')} | {l.get('name') or '-'} | status:{l.get('status')}"
+        for l in recent_leads
+    ]) or "No recent leads"
+
+    context = f"RECENT ORDERS:\n{orders_summary}\n\nRECENT QUOTES:\n{quotes_summary}\n\nRECENT LEADS:\n{leads_summary}"
+
     system_prompt = (
         "You are a local admin assistant for Ventura Fresh Laundry CRM. "
         "Return ONLY valid JSON with keys: reply (string) and actions (array). "
