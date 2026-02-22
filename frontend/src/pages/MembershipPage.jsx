@@ -415,6 +415,7 @@ export default function MembershipPage() {
                     onChange={(e) => setForm({ ...form, email: e.target.value })}
                     required
                     className="mt-1"
+                    data-testid="membership-email"
                   />
                 </div>
                 <div>
