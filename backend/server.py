@@ -930,10 +930,26 @@ async def get_customer(customer_id: str, current_user: dict = Depends(get_curren
 @api_router.put("/customers/{customer_id}", response_model=CustomerResponse)
 async def update_customer(customer_id: str, data: CustomerCreate, current_user: dict = Depends(get_current_user)):
     update_data = data.model_dump(exclude_unset=True)
-    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    if "name" in update_data:
+        update_data["name"] = normalize_name(update_data["name"]) or update_data["name"]
     if "email" in update_data and update_data["email"]:
-        update_data["email"] = update_data["email"].lower()
-    
+        normalized_email = normalize_email(update_data["email"])
+        update_data["email"] = normalized_email or update_data["email"].lower()
+    if "phone" in update_data:
+        normalized_phone = normalize_phone(update_data["phone"])
+        update_data["phone"] = normalized_phone or update_data["phone"]
+    if "address" in update_data:
+        update_data["address"] = normalize_address(update_data["address"]) or update_data["address"]
+    if "preferred_contact" in update_data:
+        update_data["preferred_contact"] = normalize_spaces(update_data["preferred_contact"]) or update_data["preferred_contact"]
+    if "notes" in update_data:
+        update_data["notes"] = normalize_spaces(update_data["notes"])
+    if "membership_plan" in update_data:
+        update_data["membership_plan"] = normalize_spaces(update_data["membership_plan"])
+    if "membership_status" in update_data:
+        update_data["membership_status"] = normalize_spaces(update_data["membership_status"])
+
+    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
     result = await db.customers.update_one({"id": customer_id}, {"$set": update_data})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Customer not found")
