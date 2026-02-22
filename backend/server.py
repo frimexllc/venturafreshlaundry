@@ -3379,10 +3379,10 @@ async def public_pickup_request(data: PublicPickupRequest):
         customer_id = str(uuid.uuid4())
         customer = {
             "id": customer_id,
-            "name": data.name,
-            "email": data.email.lower(),
-            "phone": data.phone,
-            "address": data.address,
+            "name": normalized_name or data.name,
+            "email": normalized_email,
+            "phone": normalized_phone or data.phone,
+            "address": normalized_address or data.address,
             "preferred_contact": "email",
             "notes": None,
             "status": "active",
@@ -3392,6 +3392,16 @@ async def public_pickup_request(data: PublicPickupRequest):
         }
         await db.customers.insert_one(customer)
         await create_audit_log("CUSTOMER_CREATED", "customer", customer_id, None, {"source": "public_form"})
+    else:
+        await db.customers.update_one(
+            {"id": customer["id"]},
+            {"$set": {
+                "name": normalized_name or customer.get("name"),
+                "phone": normalized_phone or customer.get("phone"),
+                "address": normalized_address or customer.get("address"),
+                "updated_at": now
+            }}
+        )
     
     # Create order
     order_id = str(uuid.uuid4())
