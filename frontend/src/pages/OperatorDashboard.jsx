@@ -188,6 +188,16 @@ export default function OperatorDashboard() {
     return value.toString();
   };
 
+  const getWeightDelta = () => {
+    const est = parseFloat(weightForm.estimated_lbs);
+    const act = parseFloat(weightForm.actual_lbs);
+    if (Number.isNaN(est) || Number.isNaN(act)) {
+      return "-";
+    }
+    const diff = parseFloat((act - est).toFixed(2));
+    return diff > 0 ? `+${diff}` : `${diff}`;
+  };
+
   const openMaps = (address) => {
     if (!address) return;
     const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
