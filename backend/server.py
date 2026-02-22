@@ -93,6 +93,7 @@ try:
 except ImportError:
     AUTOMATION_ENABLED = False
     automation_router = None
+    set_realtime_emitter = None
     logger = logging.getLogger(__name__)
     logger.warning("Automation engine not available")
 
