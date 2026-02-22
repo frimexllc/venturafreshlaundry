@@ -351,8 +351,14 @@ export default function OperatorDashboard() {
                       </a>
                     )}
                     {order.pickup_address && (
-                      <Button variant="outline" size="sm" onClick={() => openMaps(order.pickup_address)}>
-                        <MapPin className="h-4 w-4 mr-2" />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openMaps(order.pickup_address);
+                        }}
+                      >                        <MapPin className="h-4 w-4 mr-2" />
                         Mapa
                       </Button>
                     )}
