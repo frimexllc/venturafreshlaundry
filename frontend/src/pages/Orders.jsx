@@ -454,7 +454,7 @@ export default function Orders() {
                 </div>
                 <div>
                   <p className="text-sm text-slate-500">Horario</p>
-                  <p className="font-medium">{viewOrder.pickup_time_window || "-"}</p>
+                  <p className="font-medium" data-testid="order-detail-pickup-window">{viewOrder.pickup_time_window || "-"}</p>
                 </div>
               </div>
               <div>
