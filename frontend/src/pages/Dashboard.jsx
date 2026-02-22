@@ -128,6 +128,34 @@ export default function Dashboard() {
     fetchBriefing();
   }, []);
 
+  useEffect(() => {
+    const socket = createNotificationsSocket();
+    if (!socket) {
+      setRealtimeStatus("disabled");
+      return;
+    }
+
+    const handleNotification = (payload) => {
+      const message = payload?.message || "Actualización recibida";
+      toast.info(message);
+      fetchData();
+    };
+
+    socket.on("connect", () => setRealtimeStatus("connected"));
+    socket.on("disconnect", () => setRealtimeStatus("offline"));
+    socket.on("connect_error", () => setRealtimeStatus("offline"));
+    socket.on("notification", handleNotification);
+    socket.on("dashboard", () => {
+      fetchData();
+      fetchBriefing();
+    });
+
+    return () => {
+      socket.off("notification", handleNotification);
+      socket.disconnect();
+    };
+  }, []);
+
   const fetchData = async () => {
     try {
       const [statsRes, activityRes] = await Promise.all([
