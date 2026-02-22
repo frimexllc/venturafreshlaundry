@@ -103,6 +103,15 @@ export default function OperatorDashboard() {
     };
   }, [loadDashboard]);
 
+  useEffect(() => {
+    if (selectedOrder) {
+      setWeightForm({
+        estimated_lbs: selectedOrder.estimated_lbs ?? "",
+        actual_lbs: selectedOrder.actual_lbs ?? ""
+      });
+    }
+  }, [selectedOrder]);
+
   const updateOrderStatus = async (orderId, newStatus) => {
     setUpdating(prev => ({ ...prev, [orderId]: true }));
     try {
