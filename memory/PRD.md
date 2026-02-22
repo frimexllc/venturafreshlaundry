@@ -50,6 +50,9 @@ RECEIVED → PROCESSING → READY → OUT_FOR_DELIVERY → DELIVERED → COMPLET
 - Stripe recurring para membresías
 - Groq AI (briefing y chat)
 - Exportación de clientes robusta
+- Preferencias de cliente (crear/editar/eliminar) + snapshot en órdenes
+- Normalización de datos en formularios públicos (pickup, membership, B2B, contact)
+- Socket.io en backend (/api/socket.io) para eventos en tiempo real
 
 ### Frontend
 - Dashboard Admin + vista Operador
@@ -59,27 +62,29 @@ RECEIVED → PROCESSING → READY → OUT_FOR_DELIVERY → DELIVERED → COMPLET
 - Memberships centradas y CTAs
 - Panel de Finanzas funcional (KPIs + transacciones + export CSV)
 - Flujo de órdenes con estados normalizados + acciones entregado/completado
+- Formulario Elite Concierge con preferencias avanzadas
+- Portal de cliente con edición/eliminación de preferencias
+- Indicadores de tiempo real en Admin y Operador
 
 ### Integraciones
 - Stripe (pagos/membresías)
 - Twilio (SMS/WhatsApp) **validado E2E**
 - Groq (IA gerente)
+- Socket.io (tiempo real)
 
-## Cambios recientes (2026-02-21)
-- ✅ Fix robusto en `/api/export/customers` (normalización de valores CSV)
-- ✅ CTAs de B2B “Request a Quote” conectados a `/request-quote`
-- ✅ Resumen financiero `/api/finances/summary` + panel de finanzas funcional
-- ✅ Normalización de estados y bloqueo completed sin delivered
-- ✅ Twilio SMS validado E2E al cambiar estado
-- ✅ DevServer WebSocket configurado con REACT_APP_BACKEND_URL
+## Cambios recientes (2026-02-22)
+- ✅ Preferencias Elite Concierge guardadas y aplicadas a nuevas órdenes
+- ✅ Normalización de datos en todos los formularios públicos
+- ✅ Preferencias editables/eliminables en portal de cliente
+- ✅ Socket.io activo en /api/socket.io + indicadores en Admin/Operador
 
 ## Pendientes / Issues
 **P1**
-- Verificar con usuario si persisten fallos de WebSocket en consola (no reproducido aquí)
+- Monitorear estabilidad del tiempo real en producción (cambiar a WebSocket cuando el proxy lo permita)
 
 **P2**
 - Remover “wash and fold” del pickup y crear formulario separado
-- Formulario de preferencias avanzadas para membresías premium
+- Formulario de preferencias avanzadas para membresías premium (si se requiere flujo adicional)
 - Corregir warnings React (jsx/keys)
 
 ## Credenciales de prueba
