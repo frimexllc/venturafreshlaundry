@@ -25,6 +25,7 @@ const sourceLabels = {
   referral: "Referido",
   social: "Redes Sociales",
   walk_in: "Walk-in",
+  b2b_quote: "Cotización B2B",
   other: "Otro"
 };
 
