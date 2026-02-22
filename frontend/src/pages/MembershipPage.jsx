@@ -432,7 +432,7 @@ export default function MembershipPage() {
               <div>
                 <Label className="text-slate-700">Best way to contact you</Label>
                 <Select value={form.contact_method} onValueChange={(value) => setForm({ ...form, contact_method: value })}>
-                  <SelectTrigger className="mt-1">
+                  <SelectTrigger className="mt-1" data-testid="membership-contact-method">
                     <SelectValue placeholder="Select an option" />
                   </SelectTrigger>
                   <SelectContent>
