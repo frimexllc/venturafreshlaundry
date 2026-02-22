@@ -325,6 +325,7 @@ export default function MembershipPage() {
             {plans.map((plan) => (
               <div 
                 key={plan.id}
+                data-testid={`membership-plan-${plan.id}`}
                 className={`relative bg-white rounded-2xl border-2 transition-all cursor-pointer ${
                   selectedPlan?.id === plan.id 
                     ? 'border-sky-500 shadow-lg shadow-sky-100' 
