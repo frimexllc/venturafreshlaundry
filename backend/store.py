@@ -746,11 +746,7 @@ async def create_membership_checkout(checkout: MembershipCheckoutRequest, reques
     normalized_name = normalize_spaces(checkout.customer_name)
     normalized_phone = normalize_phone(checkout.customer_phone)
 
-    preferences = checkout.preferences if isinstance(checkout.preferences, dict) else None
-    if preferences:
-        preferences = {key: (normalize_spaces(value) if isinstance(value, str) else value) for key, value in preferences.items()}
-        if not any(preferences.values()):
-            preferences = None
+    preferences = normalize_preference_dict(checkout.preferences)
 
     signup_doc = {
         "id": signup_id,
