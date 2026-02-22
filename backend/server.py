@@ -3543,21 +3543,50 @@ async def public_quote_request(data: PublicQuoteRequest):
 async def public_membership_signup(data: PublicMembershipSignup):
     now = datetime.now(timezone.utc).isoformat()
     signup_id = str(uuid.uuid4())
+
+    normalized_first = normalize_name(data.first_name)
+    normalized_last = normalize_name(data.last_name)
+    normalized_email = normalize_email(data.email) or data.email.lower()
+    normalized_phone = normalize_phone(data.phone)
+    normalized_contact = normalize_spaces(data.contact_method)
+    normalized_address1 = normalize_address(data.address_line1)
+    normalized_address2 = normalize_address(data.address_line2)
+    normalized_city = normalize_spaces(data.city)
+    normalized_state = normalize_spaces(data.state)
+    normalized_zip = normalize_spaces(data.zip_code)
+    normalized_plan = normalize_spaces(data.membership_plan)
+    normalized_frequency = normalize_spaces(data.laundry_frequency)
+
+    preferences = {
+        "detergent_type": normalize_spaces(data.detergent_type),
+        "water_temperature": normalize_spaces(data.water_temperature),
+        "fabric_softener": normalize_spaces(data.fabric_softener),
+        "folding_style": normalize_spaces(data.folding_style),
+        "hanging_instructions": normalize_spaces(data.hanging_instructions),
+        "allergies": normalize_spaces(data.allergies),
+        "special_instructions": normalize_spaces(data.special_instructions),
+        "pickup_time_preference": normalize_spaces(data.pickup_time_preference),
+        "gate_code": normalize_spaces(data.gate_code)
+    }
+    if not any(preferences.values()):
+        preferences = None
+
     signup = {
         "id": signup_id,
-        "first_name": data.first_name,
-        "last_name": data.last_name,
-        "email": data.email.lower(),
-        "phone": data.phone,
-        "contact_method": data.contact_method,
-        "address_line1": data.address_line1,
-        "address_line2": data.address_line2,
-        "city": data.city,
-        "state": data.state,
-        "zip_code": data.zip_code,
-        "membership_plan": data.membership_plan,
-        "laundry_frequency": data.laundry_frequency,
+        "first_name": normalized_first or data.first_name,
+        "last_name": normalized_last or data.last_name,
+        "email": normalized_email,
+        "phone": normalized_phone or data.phone,
+        "contact_method": normalized_contact or data.contact_method,
+        "address_line1": normalized_address1 or data.address_line1,
+        "address_line2": normalized_address2 or data.address_line2,
+        "city": normalized_city or data.city,
+        "state": normalized_state or data.state,
+        "zip_code": normalized_zip or data.zip_code,
+        "membership_plan": normalized_plan or data.membership_plan,
+        "laundry_frequency": normalized_frequency or data.laundry_frequency,
         "estimated_lbs": data.estimated_lbs,
+        "preferences": preferences,
         "status": "new",
         "customer_id": None,
         "created_at": now,
