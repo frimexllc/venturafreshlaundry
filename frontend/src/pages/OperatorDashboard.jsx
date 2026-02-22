@@ -28,6 +28,7 @@ export default function OperatorDashboard() {
   const [updating, setUpdating] = useState({});
   const [lastRefresh, setLastRefresh] = useState(new Date());
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [realtimeStatus, setRealtimeStatus] = useState("offline");
 
   const loadDashboard = useCallback(async () => {
     try {
