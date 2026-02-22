@@ -102,6 +102,7 @@ function AppRoutes() {
       <Route path="/blog" element={<BlogPage />} />
       <Route path="/blog/:slug" element={<BlogPage />} />
       <Route path="/schedule-pickup" element={<SchedulePickup />} />
+      <Route path="/wash-fold" element={<WashFoldRequest />} />
       <Route path="/membership" element={<MembershipPage />} />
       <Route path="/request-quote" element={<RequestQuotePage />} />
       <Route path="/commercial" element={<RequestQuotePage />} />
