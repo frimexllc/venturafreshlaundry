@@ -21,6 +21,7 @@ import requests
 import qrcode
 from qrcode.image.svg import SvgImage
 import zipfile
+import socketio
 
 from normalization import (
     normalize_email,
