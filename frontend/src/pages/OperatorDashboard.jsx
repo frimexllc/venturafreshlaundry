@@ -341,7 +341,11 @@ export default function OperatorDashboard() {
                   </div>
                   <div className="flex flex-col gap-2">
                     {order.customer_phone && (
-                      <a href={`tel:${order.customer_phone}`} className="flex items-center gap-1 text-sm text-sky-600 hover:text-sky-700">
+                      <a
+                        href={`tel:${order.customer_phone}`}
+                        className="flex items-center gap-1 text-sm text-sky-600 hover:text-sky-700"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <Phone className="h-4 w-4" />
                         Llamar
                       </a>
