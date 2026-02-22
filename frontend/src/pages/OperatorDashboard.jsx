@@ -170,10 +170,13 @@ export default function OperatorDashboard() {
           <p className="text-slate-600">Solo actualiza el estado de las órdenes - el sistema hace el resto</p>
         </div>
         <div className="flex items-center gap-3">
+          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${realtimeClass}`} data-testid="operator-realtime-status">
+            {realtimeLabel}
+          </span>
           <span className="text-sm text-slate-500">
             Última actualización: {lastRefresh.toLocaleTimeString()}
           </span>
-          <Button onClick={() => setAutoRefresh(!autoRefresh)} variant="outline" size="sm">
+          <Button onClick={() => setAutoRefresh(!autoRefresh)} variant="outline" size="sm" data-testid="toggle-auto-refresh">
             {autoRefresh ? "Pausar" : "Reanudar"}
           </Button>
           <Button onClick={loadDashboard} variant="outline" size="sm" data-testid="refresh-dashboard">
