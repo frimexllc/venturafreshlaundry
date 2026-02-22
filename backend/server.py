@@ -3550,6 +3550,16 @@ class PublicPickupRequest(BaseModel):
     notes: Optional[str] = None
     gate_code: Optional[str] = None
 
+class PublicWashFoldRequest(BaseModel):
+    name: str
+    email: EmailStr
+    phone: str
+    address: str
+    dropoff_date: Optional[str] = None
+    dropoff_time: Optional[str] = None
+    notes: Optional[str] = None
+    contact_method: Optional[str] = None
+
 class PublicContactRequest(BaseModel):
     name: str
     email: EmailStr
