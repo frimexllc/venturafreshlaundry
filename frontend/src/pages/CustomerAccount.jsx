@@ -38,6 +38,19 @@ export default function CustomerAccount() {
   const [customer, setCustomer] = useState(null);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [preferences, setPreferences] = useState({
+    detergent_type: "",
+    water_temperature: "",
+    fabric_softener: "",
+    folding_style: "",
+    hanging_instructions: "",
+    allergies: "",
+    special_instructions: "",
+    pickup_time_preference: "",
+    gate_code: ""
+  });
+  const [preferencesMeta, setPreferencesMeta] = useState({ updated_at: null, version: null });
+  const [preferencesLoading, setPreferencesLoading] = useState(true);
 
   useEffect(() => {
     const token = localStorage.getItem("customer_token");
