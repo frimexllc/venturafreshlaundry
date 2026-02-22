@@ -435,7 +435,7 @@ export default function Orders() {
       <Dialog open={!!viewOrder} onOpenChange={() => setViewOrder(null)}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Orden {formatOrderNumber(viewOrder)}</DialogTitle>
+            <DialogTitle>Orden <span data-testid="order-detail-number">{formatOrderNumber(viewOrder)}</span></DialogTitle>
           </DialogHeader>
           {viewOrder && (
             <div className="space-y-4 mt-4">
