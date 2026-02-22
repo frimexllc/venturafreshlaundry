@@ -85,14 +85,12 @@ RECEIVED → PROCESSING → READY → OUT_FOR_DELIVERY → DELIVERED → COMPLET
 
 ## Pendientes / Issues
 **P1**
-- Corregir workflow de órdenes: OUT_FOR_DELIVERY → DELIVERED/COMPLETED
-- Investigar fallos de WebSocket/tiempo real en frontend
+- Validar estabilidad de tiempo real (WebSocket/polling) en producción
 - Hacer funcional el panel de Finanzas (UI con KPIs + transacciones + export CSV)
 - Módulo Admin para monitorear estados y errores de mensajes Twilio
+- Integración Twilio Voice + SendGrid + IA (Groq) para llamadas y emails (requiere keys)
 
 **P2**
-- Remover “wash and fold” del pickup y crear formulario separado
-- Flujo B2B de cotización → lead
 - Corregir warnings React (jsx/keys)
 
 ## Credenciales de prueba
