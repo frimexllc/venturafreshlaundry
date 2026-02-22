@@ -874,11 +874,14 @@ async def get_membership_checkout_status(session_id: str):
                         # Create or update customer with membership
                         customer_email = signup.get("customer_email")
                         if customer_email:
-                            existing_customer = await db.customers.find_one({"email": customer_email.lower()})
+                            normalized_email = normalize_email(customer_email) or customer_email.lower()
+                            existing_customer = await db.customers.find_one({"email": normalized_email})
+                            customer_id = None
                             if existing_customer:
+                                customer_id = existing_customer.get("id")
                                 # Update existing customer
                                 await db.customers.update_one(
-                                    {"email": customer_email.lower()},
+                                    {"email": normalized_email},
                                     {
                                         "$set": {
                                             "membership_plan": signup.get("plan_name"),
@@ -890,11 +893,12 @@ async def get_membership_checkout_status(session_id: str):
                                 )
                             else:
                                 # Create new customer
+                                customer_id = str(uuid.uuid4())
                                 customer_doc = {
-                                    "id": str(uuid.uuid4()),
+                                    "id": customer_id,
                                     "name": signup.get("customer_name") or "Member",
-                                    "email": customer_email.lower(),
-                                    "phone": signup.get("customer_phone"),
+                                    "email": normalized_email,
+                                    "phone": normalize_phone(signup.get("customer_phone")),
                                     "address": None,
                                     "preferred_contact": "email",
                                     "notes": f"Membership signup: {signup.get('plan_name')}",
@@ -907,6 +911,32 @@ async def get_membership_checkout_status(session_id: str):
                                     "updated_at": now
                                 }
                                 await db.customers.insert_one(customer_doc)
+
+                            preferences = normalize_preference_dict(signup.get("preferences"))
+                            if preferences and customer_id:
+                                existing_pref = await db.preferences.find({"customer_id": customer_id}).sort("version", -1).limit(1).to_list(1)
+                                version = (existing_pref[0]["version"] + 1) if existing_pref else 1
+                                pref_id = str(uuid.uuid4())
+                                pref_doc = {
+                                    "id": pref_id,
+                                    "customer_id": customer_id,
+                                    "detergent_type": preferences.get("detergent_type") or "standard",
+                                    "water_temperature": preferences.get("water_temperature"),
+                                    "fabric_softener": preferences.get("fabric_softener"),
+                                    "folding_style": preferences.get("folding_style") or "standard",
+                                    "hanging_instructions": preferences.get("hanging_instructions"),
+                                    "allergies": preferences.get("allergies"),
+                                    "special_instructions": preferences.get("special_instructions"),
+                                    "pickup_time_preference": preferences.get("pickup_time_preference"),
+                                    "gate_code": preferences.get("gate_code"),
+                                    "hang_dry_items": preferences.get("hang_dry_items") or [],
+                                    "fragrance_preference": preferences.get("fragrance_preference") or "light",
+                                    "version": version,
+                                    "created_at": now,
+                                    "updated_at": now
+                                }
+                                await db.preferences.insert_one(pref_doc)
+                                await db.customers.update_one({"id": customer_id}, {"$set": {"preferences_id": pref_id, "updated_at": now}})
         
         return {
             "status": status.status,
