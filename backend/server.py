@@ -23,6 +23,7 @@ from qrcode.image.svg import SvgImage
 import zipfile
 import socketio
 import base64
+import html
 
 from normalization import (
     normalize_email,
