@@ -61,10 +61,10 @@ export default function ContactPage() {
     setSubmitting(true);
     try {
       const res = await axios.post(`${API}/public/contact`, {
-        name: form.name,
-        email: form.email,
-        phone: form.phone,
-        message: `Subject: ${form.subject}\nPreferred Contact: ${form.contact_method}\n\n${form.message}`
+        name: form.name.trim(),
+        email: form.email.trim(),
+        phone: form.phone.trim(),
+        message: `Subject: ${form.subject.trim()}\nPreferred Contact: ${form.contact_method}\n\n${form.message.trim()}`.trim()
       });
       toast.success(res.data.message);
       setForm({ name: "", email: "", phone: "", subject: "", contact_method: "", message: "" });
