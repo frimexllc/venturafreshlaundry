@@ -2507,7 +2507,7 @@ async def admin_ai(data: AdminAIRequest, current_user: dict = Depends(get_curren
         "For update_customer_membership payload: customer_id, membership_plan, membership_status, membership_start_date. "
         "Use IDs from the CONTEXT. If no action is needed, return actions: []."
     )
-    prompt = f"{system_prompt}\nUser: {data.message}\nJSON:"
+    prompt = f"{system_prompt}\n\nCONTEXT:\n{context}\n\nUser: {data.message}\nJSON:"
     model_response = call_ollama(prompt)
     try:
         payload = extract_json_payload(model_response)
