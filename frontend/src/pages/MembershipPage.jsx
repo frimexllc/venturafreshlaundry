@@ -659,6 +659,19 @@ export default function MembershipPage() {
                   )}
                   {submitting ? "Processing..." : `Pay Now ${selectedPlan ? selectedPlan.price : ''}`}
                 </Button>
+                <Button
+                  type="submit"
+                  className="w-full bg-sky-600 hover:bg-sky-700 text-white rounded-full h-12 text-lg"
+                  disabled={submitting}
+                  data-testid="membership-submit"
+                >
+                  {submitting ? (
+                    <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                  ) : (
+                    <CheckCircle className="h-5 w-5 mr-2" />
+                  )}
+                  {submitting ? "Submitting..." : "Submit Membership"}
+                </Button>
                 <p className="text-center text-xs text-slate-500">
                   Secure payment powered by Stripe. Your card details are never stored on our servers.
                 </p>
