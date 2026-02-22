@@ -727,6 +727,108 @@ def build_qr_payload(order: dict):
         "qr_token": order.get("qr_token")
     })
 
+
+def build_display_order_number(order: dict) -> str:
+    order_number = order.get("order_number")
+    if order_number and order_number.startswith("VFL-"):
+        return order_number
+    created_at = order.get("created_at") or datetime.now(timezone.utc).isoformat()
+    date_part = created_at[:10].replace("-", "")
+    base_id = order_number or order.get("id") or "00000000"
+    short = "".join([c for c in str(base_id) if c.isalnum()]).lower()[:8]
+    if len(short) < 8:
+        short = (short + "00000000")[:8]
+    return f"VFL-{date_part}-{short}"
+
+
+def format_time_window(window: Optional[str]) -> str:
+    if not window:
+        return "-"
+    cleaned = window.replace(" ", "")
+    if "-" in cleaned:
+        start, end = cleaned.split("-", 1)
+        return f"{start} - {end}"
+    return window
+
+
+def build_ticket_lines(order: dict, customer: Optional[dict]) -> List[str]:
+    customer = customer or {}
+    display_id = build_display_order_number(order)
+    status = normalize_status(order.get("status") or "new").upper()
+    name = order.get("customer_name") or customer.get("name") or "-"
+    phone = customer.get("phone") or order.get("customer_phone") or "-"
+    contact = customer.get("preferred_contact") or order.get("preferred_contact") or "-"
+    contact_label = str(contact).capitalize() if contact else "-"
+    pickup_date = order.get("pickup_date") or "-"
+    window = format_time_window(order.get("pickup_time_window") or order.get("pickup_time"))
+    address = order.get("pickup_address") or order.get("delivery_address") or customer.get("address") or "-"
+    membership = "yes" if customer.get("membership_plan") or customer.get("membership_status") else "no"
+    notes = order.get("notes") or "N/A"
+    pref_id = order.get("preferences_id") or "N/A"
+    customer_id = order.get("customer_id") or customer.get("id") or "N/A"
+    email = customer.get("email") or order.get("customer_email") or ""
+    source = order.get("origen") or "crm"
+    dedup = f"e:{email}|f:{source}"
+    if len(dedup) > 45:
+        dedup = dedup[:42] + "..."
+    summary = f"{display_id} | {pickup_date} {window} | {name}"
+    return [
+        "VENTURA FRESH LAUNDRY",
+        f"ORDER: {display_id}",
+        f"STATUS: {status or 'NEW'}",
+        f"NAME: {name}",
+        f"PHONE: {phone}    CONTACT: {contact_label}",
+        f"PICKUP: {pickup_date}    WINDOW: {window}",
+        f"ADDR: {address}",
+        f"MEMBERSHIP: {membership}",
+        f"NOTES: {notes}",
+        f"PREF: {pref_id}",
+        f"CUS_ID: {customer_id}",
+        f"DEDUP: {dedup}",
+        "",
+        summary
+    ]
+
+
+def build_qr_png_base64(payload: str) -> str:
+    qr = qrcode.QRCode(box_size=6, border=2)
+    qr.add_data(payload)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buffer = io.BytesIO()
+    img.save(buffer, format="PNG")
+    return base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+
+def build_ticket_svg(order: dict, customer: Optional[dict], qr_payload: str) -> bytes:
+    lines = build_ticket_lines(order, customer)
+    qr_base64 = build_qr_png_base64(qr_payload)
+    qr_size = 180
+    padding = 20
+    line_height = 16
+    font_size = 12
+    text_x = padding + qr_size + 20
+    height = max(qr_size + padding * 2, padding * 2 + line_height * len(lines))
+    width = 760
+
+    text_lines = []
+    for index, line in enumerate(lines):
+        dy = line_height if index > 0 else 0
+        text_lines.append(
+            f"<tspan x='{text_x}' dy='{dy}'>{html.escape(line)}</tspan>"
+        )
+
+    svg = f"""
+<svg xmlns='http://www.w3.org/2000/svg' width='{width}' height='{height}'>
+  <rect width='100%' height='100%' fill='white'/>
+  <image href='data:image/png;base64,{qr_base64}' x='{padding}' y='{padding}' width='{qr_size}' height='{qr_size}' />
+  <text x='{text_x}' y='{padding + font_size}' font-family='Courier New, monospace' font-size='{font_size}' fill='#111'>
+    {''.join(text_lines)}
+  </text>
+</svg>
+"""
+    return svg.encode("utf-8")
+
 def parse_qr_payload(payload: str):
     try:
         data = json.loads(payload)
