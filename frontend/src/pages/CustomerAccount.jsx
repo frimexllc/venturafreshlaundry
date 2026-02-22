@@ -206,6 +206,150 @@ export default function CustomerAccount() {
             </div>
           </div>
 
+          <div className="bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-slate-100 mb-6" data-testid="customer-preferences-card">
+            <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+              <div>
+                <h2 className="text-xl font-bold text-slate-900">Preferencias de lavandería</h2>
+                <p className="text-slate-500 text-sm">Estas preferencias se aplicarán automáticamente a tus próximas órdenes.</p>
+              </div>
+              {preferencesMeta.updated_at && (
+                <span className="text-xs text-slate-500" data-testid="customer-preferences-updated">
+                  Actualizado: {new Date(preferencesMeta.updated_at).toLocaleDateString()}
+                </span>
+              )}
+            </div>
+
+            {preferencesLoading ? (
+              <div className="flex items-center justify-center py-6" data-testid="customer-preferences-loading">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-sky-600"></div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <Label>Detergente preferido</Label>
+                    <Select value={preferences.detergent_type} onValueChange={(value) => setPreferences({ ...preferences, detergent_type: value })}>
+                      <SelectTrigger className="mt-1" data-testid="customer-pref-detergent">
+                        <SelectValue placeholder="Selecciona detergente" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="hypoallergenic">Hipoalergénico</SelectItem>
+                        <SelectItem value="free_clear">Sin fragancia</SelectItem>
+                        <SelectItem value="lavender">Lavanda</SelectItem>
+                        <SelectItem value="standard">Estándar</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Temperatura de lavado</Label>
+                    <Select value={preferences.water_temperature} onValueChange={(value) => setPreferences({ ...preferences, water_temperature: value })}>
+                      <SelectTrigger className="mt-1" data-testid="customer-pref-temperature">
+                        <SelectValue placeholder="Selecciona temperatura" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="cold">Fría</SelectItem>
+                        <SelectItem value="warm">Tibia</SelectItem>
+                        <SelectItem value="hot">Caliente</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Suavizante</Label>
+                    <Select value={preferences.fabric_softener} onValueChange={(value) => setPreferences({ ...preferences, fabric_softener: value })}>
+                      <SelectTrigger className="mt-1" data-testid="customer-pref-softener">
+                        <SelectValue placeholder="Selecciona suavizante" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Sin suavizante</SelectItem>
+                        <SelectItem value="light">Ligero</SelectItem>
+                        <SelectItem value="standard">Estándar</SelectItem>
+                        <SelectItem value="extra">Extra</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Estilo de doblado</Label>
+                    <Select value={preferences.folding_style} onValueChange={(value) => setPreferences({ ...preferences, folding_style: value })}>
+                      <SelectTrigger className="mt-1" data-testid="customer-pref-folding">
+                        <SelectValue placeholder="Selecciona estilo" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="standard">Estándar</SelectItem>
+                        <SelectItem value="konmari">KonMari</SelectItem>
+                        <SelectItem value="stacked">Apilado premium</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div>
+                  <Label>Colgado / prendas especiales</Label>
+                  <Input
+                    value={preferences.hanging_instructions}
+                    onChange={(e) => setPreferences({ ...preferences, hanging_instructions: e.target.value })}
+                    className="mt-1"
+                    placeholder="Ej. Camisas en gancho"
+                    data-testid="customer-pref-hanging"
+                  />
+                </div>
+
+                <div>
+                  <Label>Alergias o sensibilidades</Label>
+                  <Textarea
+                    value={preferences.allergies}
+                    onChange={(e) => setPreferences({ ...preferences, allergies: e.target.value })}
+                    className="mt-1"
+                    placeholder="Ej. Sin fragancias"
+                    data-testid="customer-pref-allergies"
+                  />
+                </div>
+
+                <div>
+                  <Label>Notas adicionales</Label>
+                  <Textarea
+                    value={preferences.special_instructions}
+                    onChange={(e) => setPreferences({ ...preferences, special_instructions: e.target.value })}
+                    className="mt-1"
+                    placeholder="Instrucciones especiales"
+                    data-testid="customer-pref-notes"
+                  />
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <Label>Horario preferido de pickup</Label>
+                    <Input
+                      value={preferences.pickup_time_preference}
+                      onChange={(e) => setPreferences({ ...preferences, pickup_time_preference: e.target.value })}
+                      className="mt-1"
+                      placeholder="Ej. 8am - 12pm"
+                      data-testid="customer-pref-pickup-time"
+                    />
+                  </div>
+                  <div>
+                    <Label>Puerta / Código de acceso</Label>
+                    <Input
+                      value={preferences.gate_code}
+                      onChange={(e) => setPreferences({ ...preferences, gate_code: e.target.value })}
+                      className="mt-1"
+                      placeholder="Ej. 1234#"
+                      data-testid="customer-pref-gate"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-3 pt-2">
+                  <Button onClick={handleSavePreferences} className="bg-sky-600 hover:bg-sky-700" data-testid="customer-preferences-save">
+                    Guardar preferencias
+                  </Button>
+                  <Button variant="outline" onClick={handleDeletePreferences} data-testid="customer-preferences-delete">
+                    Eliminar preferencias
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Orders Section */}
           <div className="bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-slate-100 mb-6">
             <div className="flex items-center justify-between mb-6">
