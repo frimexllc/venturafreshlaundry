@@ -540,6 +540,31 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
+def create_customer_token(customer_id: str, email: str) -> str:
+    payload = {
+        "sub": customer_id,
+        "email": email,
+        "type": "customer",
+        "exp": datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRATION_HOURS * 7)
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+async def get_current_customer(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    try:
+        payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        customer_id = payload.get("sub")
+        token_type = payload.get("type")
+        if not customer_id or token_type != "customer":
+            raise HTTPException(status_code=401, detail="Invalid token")
+        customer = await db.customers.find_one({"id": customer_id}, {"_id": 0})
+        if not customer:
+            raise HTTPException(status_code=401, detail="Customer not found")
+        return customer
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
 def require_admin(current_user: dict):
     if current_user.get("role") != ROLE_ADMIN:
         raise HTTPException(status_code=403, detail="Admin access required")
