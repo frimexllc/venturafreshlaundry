@@ -527,6 +527,121 @@ export default function MembershipPage() {
                 />
               </div>
 
+              {isElitePlan && (
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 space-y-4" data-testid="elite-preferences-section">
+                  <div>
+                    <h3 className="text-lg font-semibold text-slate-900">Preferencias Elite Concierge</h3>
+                    <p className="text-sm text-slate-600">Configura tus preferencias para personalizar el servicio.</p>
+                  </div>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-slate-700">Detergente preferido</Label>
+                      <Select value={form.detergent_type} onValueChange={(value) => setForm({ ...form, detergent_type: value })}>
+                        <SelectTrigger className="mt-1" data-testid="elite-detergent">
+                          <SelectValue placeholder="Selecciona detergente" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="hypoallergenic">Hipoalergénico</SelectItem>
+                          <SelectItem value="free_clear">Sin fragancia</SelectItem>
+                          <SelectItem value="lavender">Lavanda</SelectItem>
+                          <SelectItem value="standard">Estándar</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-slate-700">Temperatura de lavado</Label>
+                      <Select value={form.water_temperature} onValueChange={(value) => setForm({ ...form, water_temperature: value })}>
+                        <SelectTrigger className="mt-1" data-testid="elite-water-temperature">
+                          <SelectValue placeholder="Selecciona temperatura" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="cold">Fría</SelectItem>
+                          <SelectItem value="warm">Tibia</SelectItem>
+                          <SelectItem value="hot">Caliente</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-slate-700">Suavizante</Label>
+                      <Select value={form.fabric_softener} onValueChange={(value) => setForm({ ...form, fabric_softener: value })}>
+                        <SelectTrigger className="mt-1" data-testid="elite-fabric-softener">
+                          <SelectValue placeholder="Selecciona suavizante" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Sin suavizante</SelectItem>
+                          <SelectItem value="light">Ligero</SelectItem>
+                          <SelectItem value="standard">Estándar</SelectItem>
+                          <SelectItem value="extra">Extra</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-slate-700">Estilo de doblado</Label>
+                      <Select value={form.folding_style} onValueChange={(value) => setForm({ ...form, folding_style: value })}>
+                        <SelectTrigger className="mt-1" data-testid="elite-folding-style">
+                          <SelectValue placeholder="Selecciona estilo" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="standard">Estándar</SelectItem>
+                          <SelectItem value="konmari">KonMari</SelectItem>
+                          <SelectItem value="stacked">Apilado premium</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="md:col-span-2">
+                      <Label className="text-slate-700">Colgado / prendas especiales</Label>
+                      <Input
+                        value={form.hanging_instructions}
+                        onChange={(e) => setForm({ ...form, hanging_instructions: e.target.value })}
+                        className="mt-1"
+                        placeholder="Ej. Camisas en gancho, vestidos separados"
+                        data-testid="elite-hanging-instructions"
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <Label className="text-slate-700">Alergias o sensibilidades</Label>
+                      <Textarea
+                        value={form.allergies}
+                        onChange={(e) => setForm({ ...form, allergies: e.target.value })}
+                        className="mt-1"
+                        placeholder="Ej. Sin fragancias, piel sensible"
+                        data-testid="elite-allergies"
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <Label className="text-slate-700">Notas adicionales</Label>
+                      <Textarea
+                        value={form.special_instructions}
+                        onChange={(e) => setForm({ ...form, special_instructions: e.target.value })}
+                        className="mt-1"
+                        placeholder="Instrucciones especiales para el servicio"
+                        data-testid="elite-special-instructions"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-slate-700">Horario preferido de pickup</Label>
+                      <Input
+                        value={form.pickup_time_preference}
+                        onChange={(e) => setForm({ ...form, pickup_time_preference: e.target.value })}
+                        className="mt-1"
+                        placeholder="Ej. 8am - 12pm"
+                        data-testid="elite-pickup-time"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-slate-700">Puerta / Código de acceso</Label>
+                      <Input
+                        value={form.gate_code}
+                        onChange={(e) => setForm({ ...form, gate_code: e.target.value })}
+                        className="mt-1"
+                        placeholder="Ej. 1234#"
+                        data-testid="elite-gate-code"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="pt-4 space-y-3">
                 <Button
                   type="button"
