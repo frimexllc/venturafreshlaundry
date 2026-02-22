@@ -93,7 +93,8 @@ STATUS_ACTION_LABELS = {
     "PICKED_UP": "Procesar",
     "PROCESSING": "Listo",
     "READY": "Salir a Entregar",
-    "OUT_FOR_DELIVERY": "Entregado"
+    "OUT_FOR_DELIVERY": "Entregado",
+    "DELIVERED": "Completar"
 }
 
 def normalize_status(value: Optional[str]):
