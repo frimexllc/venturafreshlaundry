@@ -305,29 +305,29 @@ export default function MembershipPage() {
       <PublicNav />
 
       <section className="pt-32 pb-8 bg-gradient-to-b from-sky-50 to-white">
-  <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-    <div className="h-16 w-16 rounded-full bg-sky-100 flex items-center justify-center mx-auto mb-6">
-      <Star className="h-8 w-8 text-sky-600" />
-    </div>
-    <h1 className="text-4xl sm:text-5xl font-bold text-slate-900 mb-4" style={{ fontFamily: "'Playfair Display', serif" }}>
-      Laundry memberships designed for your lifestyle
-    </h1>
-    <p className="text-lg text-slate-600 max-w-3xl mx-auto">
-      Choose the membership that fits your lifestyle. Enjoy hassle-free laundry with scheduled pickup & delivery, personalized preferences, and professional care every month.
-    </p>
-  </div>
-</section>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <div className="h-16 w-16 rounded-full bg-sky-100 flex items-center justify-center mx-auto mb-6">
+            <Star className="h-8 w-8 text-sky-600" />
+          </div>
+          <h1 className="text-4xl sm:text-5xl font-bold text-slate-900 mb-4" style={{ fontFamily: "'Playfair Display', serif" }}>
+            Laundry memberships designed for your lifestyle
+          </h1>
+          <p className="text-lg text-slate-600 max-w-3xl mx-auto">
+            Choose the membership that fits your lifestyle. Enjoy hassle-free laundry with scheduled pickup & delivery, personalized preferences, and professional care every month.
+          </p>
+        </div>
+      </section>
 
-      {/* Membership Plans Cards */}
+      {/* Membership Plans Cards - CENTRADAS con Opción 1 */}
       <section className="py-10">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <h2 className="text-2xl font-bold text-slate-900 text-center mb-8">Choose Your Plan</h2>
-          <div className="grid md:grid-cols-3 gap-6 mb-10">
+          <div className="flex flex-wrap justify-center gap-6 mb-10">
             {plans.map((plan) => (
               <div 
                 key={plan.id}
                 data-testid={`membership-plan-${plan.id}`}
-                className={`relative bg-white rounded-2xl border-2 transition-all cursor-pointer ${
+                className={`relative bg-white rounded-2xl border-2 transition-all cursor-pointer w-full sm:w-[350px] ${
                   selectedPlan?.id === plan.id 
                     ? 'border-sky-500 shadow-lg shadow-sky-100' 
                     : 'border-slate-200 hover:border-sky-300'

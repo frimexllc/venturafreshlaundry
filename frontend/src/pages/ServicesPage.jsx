@@ -442,7 +442,7 @@ export default function ServicesPage() {
         </div>
       </section>
 
-      {/* Membership Section */}
+      {/* Membership Section - CORREGIDO: Cards centradas */}
       <section className="py-20 bg-gradient-to-b from-white to-slate-50">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           {/* Membership Header */}
@@ -467,8 +467,8 @@ export default function ServicesPage() {
             )}
           </div>
 
-          {/* Membership Cards Grid */}
-          <div className="grid md:grid-cols-4 gap-6 mb-12 items-stretch">
+          {/* Membership Cards Grid - CORREGIDO: 3 columnas centradas */}
+          <div className="grid md:grid-cols-3 gap-6 mb-12 items-stretch max-w-4xl mx-auto">
             {membershipPlans.map((plan, index) => (
               <MembershipCard key={index} {...plan} />
             ))}

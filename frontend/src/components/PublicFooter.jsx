@@ -1,27 +1,24 @@
 import { Link } from "react-router-dom";
-import { MapPin, Clock, Phone, Droplets } from "lucide-react";
-
-// Company logo component
-const CompanyLogo = () => (
-  <div className="flex items-center gap-3">
-    <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-sky-400 to-sky-600 flex items-center justify-center">
-      <Droplets className="h-7 w-7 text-white" />
-    </div>
-    <div>
-      <span className="text-lg font-bold text-white">Ventura Fresh</span>
-      <span className="block text-xs text-sky-400">Laundromat</span>
-    </div>
-  </div>
-);
+import { MapPin, Clock, Phone } from "lucide-react";
+import logoVFL from "../assets/LOGO2-fotor-bg-remover-2026011719450.webp";
 
 export default function PublicFooter() {
   return (
     <footer className="bg-slate-900 text-white py-12">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid md:grid-cols-4 gap-8 mb-8">
-          {/* Logo & Contact Info */}
+          {/* Logo & Contact Info - CON EL MISMO LOGO DEL NAV */}
           <div className="md:col-span-1">
-            <CompanyLogo />
+            <Link to="/" className="group inline-block">
+              <img
+                src={logoVFL}
+                alt="Ventura Fresh Laundry"
+                className="h-24 md:h-28 lg:h-32 w-auto object-contain transition-transform duration-300 group-hover:scale-105"
+                onError={(e) => {
+                  e.currentTarget.style.display = "none";
+                }}
+              />
+            </Link>
             <div className="space-y-3 text-slate-400 text-sm mt-6">
               <div className="flex items-start gap-2">
                 <MapPin className="h-4 w-4 flex-shrink-0 mt-0.5" />
@@ -91,7 +88,7 @@ export default function PublicFooter() {
 
         <div className="border-t border-slate-800 pt-8">
           <p className="text-center text-slate-500 text-sm">
-            © {new Date().getFullYear()} Ventura Fresh Laundromat. All rights reserved.
+            © {new Date().getFullYear()} Ventura Fresh Laundry. All rights reserved.
           </p>
         </div>
       </div>
