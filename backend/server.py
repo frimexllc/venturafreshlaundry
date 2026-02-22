@@ -4395,3 +4395,6 @@ async def serve_account():
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+
+# Socket.IO wrapper (served under /api/socket.io)
+app = socketio.ASGIApp(sio, other_asgi_app=fastapi_app, socketio_path="api/socket.io")
