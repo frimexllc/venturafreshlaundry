@@ -20,9 +20,14 @@ export default function CustomerLogin() {
     email: "",
     password: ""
   });
+  const [acceptedPolicies, setAcceptedPolicies] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!acceptedPolicies) {
+      toast.error("Debes aceptar los términos y la política de privacidad");
+      return;
+    }
     setLoading(true);
     
     try {
