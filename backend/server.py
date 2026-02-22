@@ -1000,6 +1000,39 @@ async def get_customer_preference(customer_id: str, current_user: dict = Depends
         raise HTTPException(status_code=404, detail="Preferences not found")
     return PreferenceResponse(**pref[0])
 
+@api_router.get("/customer/preferences", response_model=PreferenceResponse)
+async def get_current_customer_preferences(current_customer: dict = Depends(get_current_customer)):
+    pref = await db.preferences.find({"customer_id": current_customer["id"]}, {"_id": 0}).sort("version", -1).limit(1).to_list(1)
+    if not pref:
+        raise HTTPException(status_code=404, detail="Preferences not found")
+    return PreferenceResponse(**pref[0])
+
+@api_router.post("/customer/preferences", response_model=PreferenceResponse)
+async def upsert_customer_preferences(data: CustomerPreferenceUpdate, current_customer: dict = Depends(get_current_customer)):
+    existing = await db.preferences.find({"customer_id": current_customer["id"]}).sort("version", -1).limit(1).to_list(1)
+    version = (existing[0]["version"] + 1) if existing else 1
+
+    pref_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+    normalized = normalize_preference_payload(PreferenceCreate(customer_id=current_customer["id"], **data.model_dump()))
+    pref = {
+        "id": pref_id,
+        "customer_id": current_customer["id"],
+        **normalized,
+        "version": version,
+        "created_at": now,
+        "updated_at": now
+    }
+    await db.preferences.insert_one(pref)
+    await db.customers.update_one({"id": current_customer["id"]}, {"$set": {"preferences_id": pref_id, "updated_at": now}})
+    return PreferenceResponse(**pref)
+
+@api_router.delete("/customer/preferences")
+async def delete_customer_preferences(current_customer: dict = Depends(get_current_customer)):
+    result = await db.preferences.delete_many({"customer_id": current_customer["id"]})
+    await db.customers.update_one({"id": current_customer["id"]}, {"$set": {"preferences_id": None, "updated_at": datetime.now(timezone.utc).isoformat()}})
+    return {"message": f"Deleted {result.deleted_count} preferences"}
+
 # ==================== ORDERS ====================
 
 async def generate_order_number():
