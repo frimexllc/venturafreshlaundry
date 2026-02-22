@@ -188,6 +188,17 @@ export default function Dashboard() {
     }
   };
 
+  const realtimeLabel = realtimeStatus === "connected"
+    ? "Tiempo real: conectado"
+    : realtimeStatus === "disabled"
+      ? "Tiempo real: sin configurar"
+      : "Tiempo real: desconectado";
+  const realtimeClass = realtimeStatus === "connected"
+    ? "bg-emerald-100 text-emerald-700"
+    : realtimeStatus === "disabled"
+      ? "bg-slate-100 text-slate-500"
+      : "bg-orange-100 text-orange-700";
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
