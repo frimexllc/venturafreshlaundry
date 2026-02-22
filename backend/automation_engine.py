@@ -29,6 +29,22 @@ def set_database(database):
     global db
     db = database
 
+realtime_emitter = None
+
+
+def set_realtime_emitter(emitter):
+    global realtime_emitter
+    realtime_emitter = emitter
+
+
+async def emit_realtime(event: str, payload: dict):
+    if not realtime_emitter:
+        return
+    try:
+        await realtime_emitter(event, payload)
+    except Exception as exc:
+        logger.warning(f"Realtime emit failed: {exc}")
+
 
 # ==================== ENUMS ====================
 
