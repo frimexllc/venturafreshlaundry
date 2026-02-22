@@ -121,6 +121,45 @@ export default function CustomerAccount() {
     navigate("/account/login");
   };
 
+  const handleSavePreferences = async () => {
+    const token = localStorage.getItem("customer_token");
+    if (!token) return;
+    try {
+      const res = await axios.post(`${API}/customer/preferences`, preferences, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      toast.success("Preferencias guardadas");
+      setPreferencesMeta({ updated_at: res.data.updated_at || null, version: res.data.version || null });
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "No se pudieron guardar las preferencias");
+    }
+  };
+
+  const handleDeletePreferences = async () => {
+    const token = localStorage.getItem("customer_token");
+    if (!token) return;
+    try {
+      await axios.delete(`${API}/customer/preferences`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      toast.success("Preferencias eliminadas");
+      setPreferences({
+        detergent_type: "",
+        water_temperature: "",
+        fabric_softener: "",
+        folding_style: "",
+        hanging_instructions: "",
+        allergies: "",
+        special_instructions: "",
+        pickup_time_preference: "",
+        gate_code: ""
+      });
+      setPreferencesMeta({ updated_at: null, version: null });
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "No se pudieron eliminar las preferencias");
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-white">
