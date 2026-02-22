@@ -3510,6 +3510,12 @@ async def public_pickup_request(data: PublicPickupRequest):
     await db.orders.insert_one(order)
     await db.customers.update_one({"id": customer["id"]}, {"$inc": {"total_orders": 1}})
     await create_audit_log("ORDER_CREATED", "order", order_id, None, {"source": "public_form"})
+    await emit_realtime("notification", {
+        "type": "order_created",
+        "order_id": order_id,
+        "status": "new",
+        "order_number": order_number
+    })
     
     # Send notifications
     if NOTIFICATIONS_ENABLED:
