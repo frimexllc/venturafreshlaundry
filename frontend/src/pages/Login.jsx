@@ -124,6 +124,20 @@ export default function Login() {
               </div>
             </div>
 
+            <div className="flex items-start gap-3" data-testid="login-acceptance">
+              <input
+                type="checkbox"
+                checked={acceptedPolicies}
+                onChange={(e) => setAcceptedPolicies(e.target.checked)}
+                className="mt-1 h-4 w-4 rounded border-slate-300 text-sky-600"
+                data-testid="login-accept-checkbox"
+              />
+              <p className="text-sm text-slate-600">
+                Acepto los <Link to="/terms-and-conditions" className="text-sky-600 hover:underline" data-testid="login-terms-link">Términos y condiciones</Link> y la
+                <Link to="/privacy-policy" className="text-sky-600 hover:underline ml-1" data-testid="login-privacy-link">Política de privacidad</Link>.
+              </p>
+            </div>
+
             <Button
               type="submit"
               className="w-full btn-primary h-11"
