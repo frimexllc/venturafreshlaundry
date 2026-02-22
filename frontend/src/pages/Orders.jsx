@@ -504,7 +504,7 @@ export default function Orders() {
                 </div>
                 <div>
                   <p className="text-sm text-slate-500">Total</p>
-                  <p className="font-medium">{viewOrder.total_amount ? `$${viewOrder.total_amount}` : "-"}</p>
+                  <p className="font-medium" data-testid="order-detail-total">{viewOrder.total_amount ? `$${viewOrder.total_amount}` : "-"}</p>
                 </div>
               </div>
               <div className="flex justify-end">
