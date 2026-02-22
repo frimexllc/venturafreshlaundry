@@ -57,6 +57,7 @@ export default function MembershipPage() {
     pickup_time_preference: "",
     gate_code: ""
   });
+  const isElitePlan = selectedPlan?.name?.toLowerCase().includes("elite concierge");
 
   useEffect(() => {
     const loadPlans = async () => {
