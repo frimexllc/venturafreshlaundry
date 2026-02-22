@@ -128,6 +128,9 @@ async def enrich_orders_with_customers(orders: List[Dict]):
         if customer:
             order.setdefault("customer_name", customer.get("name"))
             order.setdefault("customer_phone", customer.get("phone"))
+            order.setdefault("customer_email", customer.get("email"))
+            order.setdefault("preferred_contact", customer.get("preferred_contact"))
+            order.setdefault("membership_plan", customer.get("membership_plan"))
             order.setdefault("delivery_address", customer.get("address"))
     return orders
 
