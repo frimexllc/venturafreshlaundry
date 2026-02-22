@@ -769,6 +769,15 @@ def build_ticket_lines(order: dict, customer: Optional[dict]) -> List[str]:
     address = order.get("pickup_address") or order.get("delivery_address") or customer.get("address") or "-"
     membership = "yes" if customer.get("membership_plan") or customer.get("membership_status") else "no"
     notes = order.get("notes") or "N/A"
+    def format_lbs(value):
+        if value is None or value == "":
+            return "N/A"
+        try:
+            return f"{float(value):g}"
+        except Exception:
+            return str(value)
+    est_lbs = format_lbs(order.get("estimated_lbs"))
+    act_lbs = format_lbs(order.get("actual_lbs"))
     pref_id = order.get("preferences_id") or "N/A"
     customer_id = order.get("customer_id") or customer.get("id") or "N/A"
     email = customer.get("email") or order.get("customer_email") or ""
