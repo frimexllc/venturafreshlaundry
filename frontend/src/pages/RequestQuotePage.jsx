@@ -91,10 +91,29 @@ export default function RequestQuotePage() {
 
     setSubmitting(true);
     try {
-      const res = await axios.post(`${API}/public/b2b-quote`, {
+      const payload = {
         ...form,
+        first_name: form.first_name.trim(),
+        last_name: form.last_name.trim(),
+        email: form.email.trim(),
+        phone: form.phone.trim(),
+        address_line1: form.address_line1.trim(),
+        address_line2: form.address_line2.trim(),
+        city: form.city.trim(),
+        state: form.state.trim(),
+        zip_code: form.zip_code.trim(),
+        job_title: form.job_title.trim(),
+        company_legal_name: form.company_legal_name.trim(),
+        dba_name: form.dba_name.trim(),
+        business_type: form.business_type.trim(),
+        laundry_frequency: form.laundry_frequency,
+        best_date: form.best_date,
+        best_time: form.best_time,
+        additional_notes: form.additional_notes.trim(),
         estimated_lbs: parseFloat(form.estimated_lbs) || 0
-      });
+      };
+
+      const res = await axios.post(`${API}/public/b2b-quote`, payload);
       toast.success(res.data.message || "Quote request submitted successfully!");
       setSubmitted(true);
     } catch (error) {
