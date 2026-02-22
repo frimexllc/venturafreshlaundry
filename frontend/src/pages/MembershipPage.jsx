@@ -129,6 +129,25 @@ export default function MembershipPage() {
     setForm({ ...form, membership_plan: plan?.name || "" });
   };
 
+  const buildPreferencesPayload = () => {
+    if (!isElitePlan) {
+      return null;
+    }
+    const payload = {
+      detergent_type: form.detergent_type,
+      water_temperature: form.water_temperature,
+      fabric_softener: form.fabric_softener,
+      folding_style: form.folding_style,
+      hanging_instructions: form.hanging_instructions,
+      allergies: form.allergies,
+      special_instructions: form.special_instructions,
+      pickup_time_preference: form.pickup_time_preference,
+      gate_code: form.gate_code
+    };
+    const hasValues = Object.values(payload).some((value) => (value || "").toString().trim());
+    return hasValues ? payload : null;
+  };
+
   const handlePayNow = async () => {
     if (!selectedPlan) {
       toast.error("Please select a membership plan");
