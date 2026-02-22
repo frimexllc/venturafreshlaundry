@@ -596,6 +596,45 @@ export default function OperatorDashboard() {
                   <p className="font-medium" data-testid="operator-order-gate">{selectedOrder.gate_code}</p>
                 </div>
               )}
+              <div className="border-t pt-3" data-testid="operator-lbs-section">
+                <p className="text-sm text-slate-500">Libras</p>
+                <div className="grid grid-cols-2 gap-4 mt-2">
+                  <div>
+                    <p className="text-xs text-slate-500">Est. Lbs</p>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      value={weightForm.estimated_lbs}
+                      onChange={(e) => setWeightForm({ ...weightForm, estimated_lbs: e.target.value })}
+                      className="mt-1"
+                      data-testid="operator-estimated-lbs-input"
+                    />
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Actual Lbs</p>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      value={weightForm.actual_lbs}
+                      onChange={(e) => setWeightForm({ ...weightForm, actual_lbs: e.target.value })}
+                      className="mt-1"
+                      data-testid="operator-actual-lbs-input"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between mt-2">
+                  <p className="text-xs text-slate-500" data-testid="operator-lbs-delta">Diferencia: {getWeightDelta()}</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={updateOrderWeights}
+                    disabled={savingWeights}
+                    data-testid="operator-save-lbs"
+                  >
+                    {savingWeights ? "Guardando..." : "Guardar libras"}
+                  </Button>
+                </div>
+              </div>
               <div className="border-t pt-3" data-testid="operator-preferences-section">
                 <p className="text-sm text-slate-500">Preferencias de lavado</p>
                 {selectedOrder.preferences_snapshot ? (
