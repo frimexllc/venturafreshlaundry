@@ -1415,6 +1415,11 @@ async def update_order_payment_status(order_id: str, status: str, current_user: 
     )
     
     await create_audit_log("ORDER_PAYMENT_STATUS_CHANGED", "order", order_id, current_user["id"], {"payment_status": status})
+    await emit_realtime("notification", {
+        "type": "order_payment",
+        "order_id": order_id,
+        "status": status
+    })
     return {"message": f"Payment status updated to {status}"}
 
 @api_router.post("/admin/orders/last-completed/notify")
