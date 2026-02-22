@@ -3622,8 +3622,10 @@ async def public_pickup_request(data: PublicPickupRequest):
         "preferences_id": preference_id,
         "preferences_snapshot": preference_snapshot,
         "status": "new",
+        "estado_actual": "new",
         "payment_status": "unpaid",
         "total_amount": None,
+        "origen": "pickup_request",
         "created_at": now,
         "updated_at": now
     }
