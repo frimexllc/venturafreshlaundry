@@ -1031,11 +1031,11 @@ async def update_order_status(order_id: str, new_status: str, notes: Optional[st
     old_status = order.get("status")
     
     update_data = {
-        "status": status_value,
-        "estado_actual": status_value,
+        "status": status_db,
+        "estado_actual": status_db,
         "updated_at": now.isoformat(),
         "tiempos.ultimo_cambio_estado": now.isoformat(),
-        f"tiempos.fechas_estado.{status_value}": now.isoformat()
+        f"tiempos.fechas_estado.{status_db}": now.isoformat()
     }
     
     if status_value == OrderStatus.PICKED_UP.value:
