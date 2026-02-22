@@ -475,6 +475,7 @@ export default function MembershipPage() {
                       placeholder="ZIP Code"
                       value={form.zip_code}
                       onChange={(e) => setForm({ ...form, zip_code: e.target.value })}
+                      data-testid="membership-zip"
                     />
                   </div>
                 </div>
