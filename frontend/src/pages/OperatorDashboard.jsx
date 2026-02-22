@@ -24,6 +24,20 @@ const ORDER_STATUSES = [
   { value: "CANCELLED", label: "Cancelado", color: "bg-red-100 text-red-800" }
 ];
 
+const PREFERENCE_LABELS = {
+  detergent_type: "Detergente",
+  water_temperature: "Temperatura de agua",
+  fabric_softener: "Suavizante",
+  folding_style: "Doblado",
+  hanging_instructions: "Colgar prendas",
+  allergies: "Alergias",
+  special_instructions: "Instrucciones especiales",
+  pickup_time_preference: "Horario preferido",
+  gate_code: "Código de acceso",
+  hang_dry_items: "Secado al aire",
+  fragrance_preference: "Fragancia"
+};
+
 export default function OperatorDashboard() {
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
