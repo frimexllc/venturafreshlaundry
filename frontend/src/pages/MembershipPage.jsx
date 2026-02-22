@@ -46,7 +46,16 @@ export default function MembershipPage() {
     zip_code: "",
     membership_plan: "",
     laundry_frequency: "",
-    estimated_lbs: ""
+    estimated_lbs: "",
+    detergent_type: "",
+    water_temperature: "",
+    fabric_softener: "",
+    folding_style: "",
+    hanging_instructions: "",
+    allergies: "",
+    special_instructions: "",
+    pickup_time_preference: "",
+    gate_code: ""
   });
 
   useEffect(() => {
