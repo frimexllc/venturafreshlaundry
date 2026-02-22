@@ -424,6 +424,7 @@ export default function MembershipPage() {
                     value={form.phone}
                     onChange={(e) => setForm({ ...form, phone: e.target.value })}
                     className="mt-1"
+                    data-testid="membership-phone"
                   />
                 </div>
               </div>
