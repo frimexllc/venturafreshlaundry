@@ -433,6 +433,7 @@ class MembershipSignupResponse(BaseModel):
     payment_status: Optional[str] = None
     status: str = "pending"
     customer_id: Optional[str] = None
+    preferences: Optional[dict] = None
     customer_name: Optional[str] = None
     customer_email: Optional[str] = None
     customer_phone: Optional[str] = None
