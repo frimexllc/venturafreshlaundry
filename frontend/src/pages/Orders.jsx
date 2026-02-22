@@ -496,7 +496,7 @@ export default function Orders() {
               <div className="grid grid-cols-3 gap-4 pt-2 border-t">
                 <div>
                   <p className="text-sm text-slate-500">Est. Lbs</p>
-                  <p className="font-medium">{viewOrder.estimated_lbs || "-"}</p>
+                  <p className="font-medium" data-testid="order-detail-estimated-lbs">{viewOrder.estimated_lbs || "-"}</p>
                 </div>
                 <div>
                   <p className="text-sm text-slate-500">Actual Lbs</p>
