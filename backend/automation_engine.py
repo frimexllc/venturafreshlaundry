@@ -975,13 +975,19 @@ async def get_operator_dashboard():
             "action_label": STATUS_ACTION_LABELS.get(status),
             "customer_name": order.get("customer_name"),
             "customer_phone": order.get("customer_phone"),
+            "customer_email": order.get("customer_email"),
+            "preferred_contact": order.get("preferred_contact"),
+            "membership_plan": order.get("membership_plan"),
             "service_type": order.get("service_type"),
             "pickup_date": order.get("pickup_date"),
             "pickup_time": pickup_time,
             "pickup_address": order.get("pickup_address"),
             "delivery_address": delivery_address,
             "gate_code": order.get("gate_code"),
-            "special_instructions": order.get("special_instructions") or order.get("notes")
+            "preferences_id": order.get("preferences_id"),
+            "preferences_snapshot": order.get("preferences_snapshot"),
+            "special_instructions": order.get("special_instructions") or order.get("notes"),
+            "created_at": order.get("created_at")
         }
 
     todays_pickups = [normalize_order(order) for order in todays_pickups]
