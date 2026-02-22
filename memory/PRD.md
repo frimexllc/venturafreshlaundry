@@ -75,7 +75,11 @@ RECEIVED → PROCESSING → READY → OUT_FOR_DELIVERY → DELIVERED → COMPLET
 - Groq (IA gerente)
 
 ## Cambios recientes (2026-02-22)
-- ✅ Preferencias Elite Concierge guardadas y aplicadas a nuevas órdenes
+- ✅ Flujo de órdenes actualizado (OUT_FOR_DELIVERY → DELIVERED/COMPLETED) y eventos tiempo real desde operador
+- ✅ Ticket QR con formato tipo ticket + prefijo VFL
+- ✅ Preferencias visibles en detalle de órdenes (Admin/Operador)
+- ✅ Formulario separado Wash & Fold + link desde pickup
+- ✅ Conversión de cotizaciones B2B → Lead
 - ✅ Normalización de datos en pickup y B2B
 - ✅ Páginas legales y aceptación en login (admin/cliente)
 
