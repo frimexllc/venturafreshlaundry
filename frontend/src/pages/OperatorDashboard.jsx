@@ -119,7 +119,7 @@ export default function OperatorDashboard() {
   };
 
   const getNextStatus = (currentStatus) => {
-    const statusOrder = ["NEW", "CONFIRMED", "PICKUP_SCHEDULED", "PICKED_UP", "PROCESSING", "READY", "OUT_FOR_DELIVERY", "DELIVERED"];
+    const statusOrder = ["NEW", "CONFIRMED", "PICKUP_SCHEDULED", "PICKED_UP", "PROCESSING", "READY", "OUT_FOR_DELIVERY", "DELIVERED", "COMPLETED"];
     const currentIndex = statusOrder.indexOf(currentStatus);
     if (currentIndex < statusOrder.length - 1) {
       return statusOrder[currentIndex + 1];
