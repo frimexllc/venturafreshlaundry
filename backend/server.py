@@ -253,6 +253,8 @@ class OrderResponse(BaseModel):
     actual_lbs: Optional[float] = None
     notes: Optional[str] = None
     gate_code: Optional[str] = None
+    preferences_id: Optional[str] = None
+    preferences_snapshot: Optional[dict] = None
     status: str = "new"
     payment_status: Optional[str] = "pending"
     total_amount: Optional[float] = None
