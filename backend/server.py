@@ -3631,42 +3631,63 @@ async def create_b2b_quote(data: B2BQuoteRequest):
     now = datetime.now(timezone.utc).isoformat()
     quote_id = str(uuid.uuid4())
     quote_number = f"B2B-{datetime.now().strftime('%Y%m%d')}-{str(uuid.uuid4())[:6].upper()}"
-    
+
+    normalized_first = normalize_name(data.first_name)
+    normalized_last = normalize_name(data.last_name)
+    normalized_email = normalize_email(data.email) or data.email.lower()
+    normalized_phone = normalize_phone(data.phone)
+    normalized_contact_method = normalize_spaces(data.contact_method)
+    normalized_address1 = normalize_address(data.address_line1)
+    normalized_address2 = normalize_address(data.address_line2)
+    normalized_city = normalize_spaces(data.city)
+    normalized_state = normalize_spaces(data.state)
+    normalized_zip = normalize_spaces(data.zip_code)
+    normalized_job_title = normalize_spaces(data.job_title)
+    normalized_service_type = normalize_spaces(data.service_type).lower().replace(" ", "_")
+    normalized_has_membership = normalize_yes_no(data.has_membership)
+    normalized_company_legal = normalize_spaces(data.company_legal_name)
+    normalized_dba = normalize_spaces(data.dba_name)
+    normalized_business_type = normalize_spaces(data.business_type)
+    normalized_frequency = normalize_spaces(data.laundry_frequency)
+    normalized_best_date = normalize_spaces(data.best_date)
+    normalized_best_time = normalize_spaces(data.best_time)
+    normalized_notes = normalize_spaces(data.additional_notes)
+
     quote_doc = {
         "id": quote_id,
         "quote_number": quote_number,
         "source": "website_b2b_form",
         "status": "new",
         # Contact info
-        "first_name": data.first_name,
-        "last_name": data.last_name,
-        "contact_name": f"{data.first_name} {data.last_name}",
-        "email": data.email.lower(),
-        "phone": data.phone,
-        "contact_method": data.contact_method,
-        "job_title": data.job_title,
+        "first_name": normalized_first or data.first_name,
+        "last_name": normalized_last or data.last_name,
+        "contact_name": f"{normalized_first or data.first_name} {normalized_last or data.last_name}".strip(),
+        "email": normalized_email,
+        "phone": normalized_phone or data.phone,
+        "contact_method": normalized_contact_method or data.contact_method,
+        "job_title": normalized_job_title or data.job_title,
         # Address
-        "address_line1": data.address_line1,
-        "address_line2": data.address_line2,
-        "city": data.city,
-        "state": data.state,
-        "zip_code": data.zip_code,
-        "full_address": f"{data.address_line1}, {data.city}, {data.state} {data.zip_code}",
+        "address_line1": normalized_address1 or data.address_line1,
+        "address_line2": normalized_address2 or data.address_line2,
+        "city": normalized_city or data.city,
+        "state": normalized_state or data.state,
+        "zip_code": normalized_zip or data.zip_code,
+        "full_address": f"{normalized_address1 or data.address_line1}, {normalized_city or data.city}, {normalized_state or data.state} {normalized_zip or data.zip_code}",
         # Business info
-        "company_legal_name": data.company_legal_name,
-        "company_name": data.company_legal_name or data.dba_name,
-        "dba_name": data.dba_name,
-        "business_type": data.business_type,
-        "has_membership": data.has_membership,
+        "company_legal_name": normalized_company_legal,
+        "company_name": normalized_company_legal or normalized_dba,
+        "dba_name": normalized_dba,
+        "business_type": normalized_business_type,
+        "has_membership": normalized_has_membership or data.has_membership,
         # Service requirements
-        "service_type": data.service_type,
-        "laundry_frequency": data.laundry_frequency,
+        "service_type": normalized_service_type or data.service_type,
+        "laundry_frequency": normalized_frequency or data.laundry_frequency,
         "estimated_lbs_per_pickup": data.estimated_lbs,
-        "estimated_lbs_per_week": data.estimated_lbs * (7 if data.laundry_frequency == "daily" else 2 if data.laundry_frequency == "twice_week" else 1),
+        "estimated_lbs_per_week": data.estimated_lbs * (7 if normalized_frequency == "daily" else 2 if normalized_frequency == "twice_week" else 1),
         # Scheduling
-        "best_contact_date": data.best_date,
-        "best_contact_time": data.best_time,
-        "additional_notes": data.additional_notes,
+        "best_contact_date": normalized_best_date or data.best_date,
+        "best_contact_time": normalized_best_time or data.best_time,
+        "additional_notes": normalized_notes,
         "subscribe_newsletter": data.subscribe_newsletter,
         # Meta
         "created_at": now,
