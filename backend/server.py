@@ -568,6 +568,13 @@ async def get_current_customer(credentials: HTTPAuthorizationCredentials = Depen
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
+async def emit_realtime(event: str, payload: dict):
+    try:
+        await sio.emit(event, payload)
+    except Exception as exc:
+        logger.warning(f"Realtime emit failed: {exc}")
+
+
 def require_admin(current_user: dict):
     if current_user.get("role") != ROLE_ADMIN:
         raise HTTPException(status_code=403, detail="Admin access required")
