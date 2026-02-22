@@ -20,6 +20,7 @@ const ORDER_STATUSES = [
   { value: "READY", label: "Listo", color: "bg-emerald-100 text-emerald-800" },
   { value: "OUT_FOR_DELIVERY", label: "En Camino", color: "bg-orange-100 text-orange-800" },
   { value: "DELIVERED", label: "Entregado", color: "bg-green-100 text-green-800" },
+  { value: "COMPLETED", label: "Completado", color: "bg-emerald-100 text-emerald-800" },
   { value: "CANCELLED", label: "Cancelado", color: "bg-red-100 text-red-800" }
 ];
 
