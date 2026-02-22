@@ -533,6 +533,7 @@ export default function MembershipPage() {
                   onClick={handlePayNow}
                   className="w-full bg-green-600 hover:bg-green-700 text-white rounded-full h-12 text-lg"
                   disabled={submitting || !selectedPlan}
+                  data-testid="membership-pay-now"
                 >
                   {submitting ? (
                     <Loader2 className="h-5 w-5 animate-spin mr-2" />
