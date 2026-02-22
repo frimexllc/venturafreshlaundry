@@ -435,6 +435,7 @@ export default function OperatorDashboard() {
                           e.stopPropagation();
                           openMaps(order.delivery_address);
                         }}
+                        data-testid={`operator-delivery-map-${order.order_id}`}
                       >
                         <MapPin className="h-4 w-4 mr-2" />
                         Mapa
