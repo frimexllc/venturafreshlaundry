@@ -346,6 +346,7 @@ export default function OperatorDashboard() {
                         href={`tel:${order.customer_phone}`}
                         className="flex items-center gap-1 text-sm text-sky-600 hover:text-sky-700"
                         onClick={(e) => e.stopPropagation()}
+                        data-testid={`operator-call-${order.order_id}`}
                       >
                         <Phone className="h-4 w-4" />
                         Llamar
