@@ -2418,7 +2418,21 @@ async def execute_ai_action(action_data: dict, current_user: dict) -> dict:
                 )
                 await create_audit_log("ORDER_STATUS_CHANGED", "order", order_id, current_user["id"], {"status": status, "source": "ai"})
                 return {"action": action_type, "ok": True, "message": f"Order updated to {status}"}
-        
+
+        elif action_type == "update_order_lbs":
+            order_id = params.get("order_id")
+            if order_id:
+                update_data = {}
+                if "estimated_lbs" in params:
+                    update_data["estimated_lbs"] = params.get("estimated_lbs")
+                if "actual_lbs" in params:
+                    update_data["actual_lbs"] = params.get("actual_lbs")
+                if update_data:
+                    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+                    await db.orders.update_one({"id": order_id}, {"$set": update_data})
+                    await create_audit_log("ORDER_UPDATED", "order", order_id, current_user["id"], {"changes": list(update_data.keys()), "source": "ai"})
+                    return {"action": action_type, "ok": True, "message": "Order lbs updated"}
+
         elif action_type == "update_payment_status":
             order_id = params.get("order_id")
             status = params.get("status")
