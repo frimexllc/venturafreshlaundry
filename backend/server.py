@@ -28,7 +28,8 @@ from normalization import (
     normalize_spaces,
     normalize_name,
     normalize_address,
-    normalize_yes_no
+    normalize_yes_no,
+    normalize_preference_dict
 )
 
 ROOT_DIR = Path(__file__).parent
