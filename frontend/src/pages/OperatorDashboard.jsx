@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "../components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { 
   Truck, Package, Clock, AlertTriangle, CheckCircle, 
   RefreshCw, Phone, MapPin, MessageSquare, ChevronRight,
