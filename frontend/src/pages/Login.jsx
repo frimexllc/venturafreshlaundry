@@ -141,7 +141,7 @@ export default function Login() {
             <Button
               type="submit"
               className="w-full btn-primary h-11"
-              disabled={loading}
+              disabled={loading || !acceptedPolicies}
               data-testid="login-submit-btn"
             >
               {loading ? (
