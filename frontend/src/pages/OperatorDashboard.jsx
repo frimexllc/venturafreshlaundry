@@ -6,6 +6,7 @@ import {
   Calendar, User, Zap
 } from "lucide-react";
 import { toast } from "sonner";
+import { createNotificationsSocket } from "../utils/notificationsSocket";
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
 
