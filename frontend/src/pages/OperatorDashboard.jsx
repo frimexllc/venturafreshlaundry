@@ -48,6 +48,8 @@ export default function OperatorDashboard() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [realtimeStatus, setRealtimeStatus] = useState("offline");
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [weightForm, setWeightForm] = useState({ estimated_lbs: "", actual_lbs: "" });
+  const [savingWeights, setSavingWeights] = useState(false);
 
   const loadDashboard = useCallback(async () => {
     try {
