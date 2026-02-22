@@ -1385,6 +1385,12 @@ async def update_order_status(order_id: str, status: str, notify: bool = True, c
             except Exception as e:
                 logger.error(f"Notification failed: {e}")
 
+    await emit_realtime("notification", {
+        "type": "order_status",
+        "order_id": order_id,
+        "status": normalized_status
+    })
+
     return {"message": f"Order status updated to {normalized_status}"}
 
 @api_router.patch("/orders/{order_id}/payment-status")
