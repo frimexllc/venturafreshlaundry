@@ -86,6 +86,34 @@ export default function CustomerAccount() {
     }
   };
 
+  const fetchPreferences = async (token) => {
+    setPreferencesLoading(true);
+    try {
+      const res = await axios.get(`${API}/customer/preferences`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = res.data || {};
+      setPreferences({
+        detergent_type: data.detergent_type || "",
+        water_temperature: data.water_temperature || "",
+        fabric_softener: data.fabric_softener || "",
+        folding_style: data.folding_style || "",
+        hanging_instructions: data.hanging_instructions || "",
+        allergies: data.allergies || "",
+        special_instructions: data.special_instructions || "",
+        pickup_time_preference: data.pickup_time_preference || "",
+        gate_code: data.gate_code || ""
+      });
+      setPreferencesMeta({ updated_at: data.updated_at || null, version: data.version || null });
+    } catch (error) {
+      if (error.response?.status !== 404) {
+        toast.error("No se pudieron cargar las preferencias");
+      }
+    } finally {
+      setPreferencesLoading(false);
+    }
+  };
+
   const handleLogout = () => {
     localStorage.removeItem("customer_token");
     localStorage.removeItem("customer_data");
