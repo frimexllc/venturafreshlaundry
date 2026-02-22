@@ -1037,7 +1037,8 @@ async def upsert_customer_preferences(data: CustomerPreferenceUpdate, current_cu
 
     pref_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
-    normalized = normalize_preference_payload(PreferenceCreate(customer_id=current_customer["id"], **data.model_dump()))
+    normalized_data = normalize_preference_dict(data.model_dump())
+    normalized = normalize_preference_payload(PreferenceCreate(customer_id=current_customer["id"], **(normalized_data or {})))
     pref = {
         "id": pref_id,
         "customer_id": current_customer["id"],
