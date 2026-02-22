@@ -64,3 +64,17 @@ def normalize_yes_no(value: Optional[object]) -> str:
     if text in {"no", "n", "false", "0", "inactive", "none"}:
         return "no"
     return text
+
+
+def normalize_preference_dict(value):
+    if not value or not isinstance(value, dict):
+        return None
+    cleaned = {}
+    for key, item in value.items():
+        if isinstance(item, str):
+            cleaned[key] = normalize_spaces(item)
+        elif isinstance(item, list):
+            cleaned[key] = [normalize_spaces(v) for v in item if normalize_spaces(v)]
+        else:
+            cleaned[key] = item
+    return cleaned if any(v for v in cleaned.values()) else None
