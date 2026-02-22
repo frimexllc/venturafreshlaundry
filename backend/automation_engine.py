@@ -1042,6 +1042,8 @@ async def update_order_status(order_id: str, new_status: str, notes: Optional[st
         update_data["picked_up_at"] = now.isoformat()
     elif status_value == OrderStatus.DELIVERED.value:
         update_data["delivered_at"] = now.isoformat()
+    elif status_value == OrderStatus.COMPLETED.value:
+        update_data["completed_at"] = now.isoformat()
     
     await db.orders.update_one(
         {"id": order.get("id")},
