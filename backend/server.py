@@ -177,6 +177,7 @@ class CustomerCreate(BaseModel):
     membership_plan: Optional[str] = None
     membership_status: Optional[str] = None
     membership_start_date: Optional[str] = None
+    preferences_id: Optional[str] = None
 
 class CustomerResponse(BaseModel):
     id: str
@@ -191,6 +192,7 @@ class CustomerResponse(BaseModel):
     membership_plan: Optional[str] = None
     membership_status: Optional[str] = None
     membership_start_date: Optional[str] = None
+    preferences_id: Optional[str] = None
     created_at: Optional[str] = ""
     updated_at: Optional[str] = ""
 
