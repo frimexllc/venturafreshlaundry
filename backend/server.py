@@ -3404,6 +3404,12 @@ async def public_pickup_request(data: PublicPickupRequest):
         )
     
     # Create order
+    pref = await db.preferences.find({"customer_id": customer["id"]}, {"_id": 0}).sort("version", -1).limit(1).to_list(1)
+    preference_id = pref[0].get("id") if pref else None
+    preference_snapshot = None
+    if pref:
+        preference_snapshot = {k: v for k, v in pref[0].items() if k not in ["_id", "customer_id"]}
+
     order_id = str(uuid.uuid4())
     order_number = await generate_order_number()
     order = {
