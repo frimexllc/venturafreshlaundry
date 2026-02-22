@@ -1070,6 +1070,13 @@ async def update_order_status(order_id: str, new_status: str, notes: Optional[st
         "payload": {"status": status_value, "source": "operator"},
         "created_at": now.isoformat()
     })
+
+    await emit_realtime("notification", {
+        "type": "order_status",
+        "order_id": order.get("id") or order_id,
+        "status": status_db
+    })
+    await emit_realtime("dashboard", {"source": "operator", "order_id": order.get("id") or order_id})
     
     if status_value in [OrderStatus.PICKED_UP.value, OrderStatus.CANCELLED.value]:
         await db.calendar_events.update_one(
