@@ -450,6 +450,7 @@ export default function MembershipPage() {
                     placeholder="Address Line 1"
                     value={form.address_line1}
                     onChange={(e) => setForm({ ...form, address_line1: e.target.value })}
+                    data-testid="membership-address-line1"
                   />
                   <Input
                     placeholder="Address Line 2"
