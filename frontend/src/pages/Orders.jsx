@@ -158,6 +158,26 @@ export default function Orders() {
     }
   };
 
+  const handleUpdateWeights = async () => {
+    if (!viewOrder) return;
+    setSavingWeights(true);
+    try {
+      const payload = {
+        estimated_lbs: weightForm.estimated_lbs === "" ? null : parseFloat(weightForm.estimated_lbs),
+        actual_lbs: weightForm.actual_lbs === "" ? null : parseFloat(weightForm.actual_lbs)
+      };
+      const res = await axios.put(`${API}/orders/${viewOrder.id}`, payload);
+      const updated = res.data;
+      toast.success("Libras actualizadas");
+      setViewOrder(updated);
+      setOrders((prev) => prev.map((order) => (order.id === updated.id ? { ...order, ...updated } : order)));
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Error actualizando libras");
+    } finally {
+      setSavingWeights(false);
+    }
+  };
+
   const handleDownloadQr = async (order) => {
     try {
       const res = await axios.get(`${API}/orders/${order.id}/qr.svg`, { responseType: "blob" });
