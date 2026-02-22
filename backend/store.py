@@ -799,13 +799,13 @@ async def create_membership_checkout(checkout: MembershipCheckoutRequest, reques
             "signup_id": signup_id,
             "amount": price,
             "currency": "usd",
-            "customer_email": checkout.customer_email,
+            "customer_email": normalized_email,
             "payment_type": "membership",
             "plan_name": plan.get("name"),
             "payment_status": "initiated",
             "metadata": {
                 "plan_id": checkout.plan_id,
-                "customer_name": checkout.customer_name
+                "customer_name": normalized_name or checkout.customer_name
             },
             "created_at": now,
             "updated_at": now
