@@ -449,6 +449,7 @@ export default function OperatorDashboard() {
                       }}
                       disabled={updating[order.order_id]}
                       className="bg-emerald-600 hover:bg-emerald-700"
+                      data-testid={`delivery-update-${order.order_id}`}
                     >
                       {updating[order.order_id] ? (
                         <RefreshCw className="h-4 w-4 animate-spin" />
