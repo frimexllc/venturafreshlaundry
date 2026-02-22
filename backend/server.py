@@ -22,6 +22,7 @@ import qrcode
 from qrcode.image.svg import SvgImage
 import zipfile
 import socketio
+import base64
 
 from normalization import (
     normalize_email,
