@@ -58,6 +58,30 @@ export default function OperatorDashboard() {
     return () => clearInterval(interval);
   }, [loadDashboard]);
 
+  useEffect(() => {
+    const socket = createNotificationsSocket();
+    if (!socket) {
+      setRealtimeStatus("disabled");
+      return;
+    }
+
+    const handleNotification = () => {
+      loadDashboard();
+    };
+
+    socket.on("connect", () => setRealtimeStatus("connected"));
+    socket.on("disconnect", () => setRealtimeStatus("offline"));
+    socket.on("connect_error", () => setRealtimeStatus("offline"));
+    socket.on("notification", handleNotification);
+    socket.on("dashboard", handleNotification);
+
+    return () => {
+      socket.off("notification", handleNotification);
+      socket.off("dashboard", handleNotification);
+      socket.disconnect();
+    };
+  }, [loadDashboard]);
+
   const updateOrderStatus = async (orderId, newStatus) => {
     setUpdating(prev => ({ ...prev, [orderId]: true }));
     try {
