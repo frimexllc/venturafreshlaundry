@@ -128,10 +128,24 @@ export default function CustomerLogin() {
               </div>
             </div>
 
+            <div className="flex items-start gap-3 mb-6" data-testid="customer-acceptance">
+              <input
+                type="checkbox"
+                checked={acceptedPolicies}
+                onChange={(e) => setAcceptedPolicies(e.target.checked)}
+                className="mt-1 h-4 w-4 rounded border-slate-300 text-sky-600"
+                data-testid="customer-accept-checkbox"
+              />
+              <p className="text-sm text-slate-600">
+                Acepto los <Link to="/terms-and-conditions" className="text-sky-600 hover:underline" data-testid="customer-terms-link">Términos y condiciones</Link> y la
+                <Link to="/privacy-policy" className="text-sky-600 hover:underline ml-1" data-testid="customer-privacy-link">Política de privacidad</Link>.
+              </p>
+            </div>
+
             <Button 
               type="submit" 
               className="w-full bg-sky-500 hover:bg-sky-600 text-white h-12 rounded-full" 
-              disabled={loading}
+              disabled={loading || !acceptedPolicies}
               data-testid="customer-submit-btn"
             >
               {loading ? "Please wait..." : (
