@@ -152,7 +152,7 @@ export default function Orders() {
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement("a");
       link.href = url;
-      link.setAttribute("download", `${order.order_number || order.id}.svg`);
+      link.setAttribute("download", `ticket-${formatOrderNumber(order)}.svg`);
       document.body.appendChild(link);
       link.click();
       link.remove();
