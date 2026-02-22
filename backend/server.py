@@ -197,8 +197,14 @@ class CustomerResponse(BaseModel):
 class PreferenceCreate(BaseModel):
     customer_id: str
     detergent_type: Optional[str] = "standard"
+    water_temperature: Optional[str] = None
+    fabric_softener: Optional[str] = None
     folding_style: Optional[str] = "standard"
+    hanging_instructions: Optional[str] = None
+    allergies: Optional[str] = None
     special_instructions: Optional[str] = None
+    pickup_time_preference: Optional[str] = None
+    gate_code: Optional[str] = None
     hang_dry_items: Optional[List[str]] = []
     fragrance_preference: Optional[str] = "light"
 
@@ -206,8 +212,14 @@ class PreferenceResponse(BaseModel):
     id: str
     customer_id: str
     detergent_type: str
+    water_temperature: Optional[str]
+    fabric_softener: Optional[str]
     folding_style: str
+    hanging_instructions: Optional[str]
+    allergies: Optional[str]
     special_instructions: Optional[str]
+    pickup_time_preference: Optional[str]
+    gate_code: Optional[str]
     hang_dry_items: List[str]
     fragrance_preference: str
     version: int
