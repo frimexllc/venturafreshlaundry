@@ -366,10 +366,15 @@ export default function SchedulePickup() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="pickup_delivery">Pickup & Delivery</SelectItem>
-                  <SelectItem value="wash_fold">Wash & Fold (Drop-off)</SelectItem>
                   <SelectItem value="commercial">Commercial / B2B</SelectItem>
                 </SelectContent>
               </Select>
+              <p className="text-xs text-slate-500 mt-2">
+                ¿Necesitas Wash & Fold?{" "}
+                <Link to="/wash-fold" className="text-sky-600 hover:underline" data-testid="wash-fold-form-link">
+                  Ir al formulario
+                </Link>
+              </p>
             </div>
 
             {/* Pickup Date & Time */}
