@@ -1297,7 +1297,8 @@ async def get_orders(
 ):
     query = {}
     if status:
-        query["status"] = status
+        normalized = normalize_status(status)
+        query["status"] = {"$in": [normalized, normalized.upper(), status]}
     if customer_id:
         query["customer_id"] = customer_id
     if date_from:
