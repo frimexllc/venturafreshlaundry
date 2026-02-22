@@ -471,6 +471,28 @@ export default function Orders() {
                   <p className="font-medium">{viewOrder.notes}</p>
                 </div>
               )}
+              <div className="border-t pt-3" data-testid="order-preferences-section">
+                <p className="text-sm text-slate-500">Preferencias de lavado</p>
+                {viewOrder.preferences_snapshot ? (
+                  <div className="grid grid-cols-2 gap-3 mt-2">
+                    {Object.entries(preferenceLabels).map(([key, label]) => (
+                      <div key={key}>
+                        <p className="text-xs text-slate-500">{label}</p>
+                        <p className="font-medium" data-testid={`order-pref-${key}`}>
+                          {renderPreferenceValue(viewOrder.preferences_snapshot?.[key])}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm font-medium text-slate-600 mt-1" data-testid="order-pref-empty">
+                    Sin preferencias registradas
+                  </p>
+                )}
+                <p className="text-xs text-slate-500 mt-2" data-testid="order-pref-id">
+                  PREF: {viewOrder.preferences_id || "N/A"}
+                </p>
+              </div>
               <div className="grid grid-cols-3 gap-4 pt-2 border-t">
                 <div>
                   <p className="text-sm text-slate-500">Est. Lbs</p>
