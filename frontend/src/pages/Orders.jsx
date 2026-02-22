@@ -459,7 +459,7 @@ export default function Orders() {
               </div>
               <div>
                 <p className="text-sm text-slate-500">Dirección Pickup</p>
-                <p className="font-medium">{viewOrder.pickup_address || "-"}</p>
+                <p className="font-medium" data-testid="order-detail-pickup-address">{viewOrder.pickup_address || "-"}</p>
               </div>
               <div>
                 <p className="text-sm text-slate-500">Dirección Entrega</p>
