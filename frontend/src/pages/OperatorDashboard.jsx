@@ -467,7 +467,7 @@ export default function OperatorDashboard() {
       <Dialog open={!!selectedOrder} onOpenChange={(open) => !open && setSelectedOrder(null)}>
         <DialogContent className="sm:max-w-lg" data-testid="operator-order-detail-modal">
           <DialogHeader>
-            <DialogTitle>Orden {formatOrderNumber(selectedOrder)}</DialogTitle>
+            <DialogTitle>Orden <span data-testid="operator-order-number">{formatOrderNumber(selectedOrder)}</span></DialogTitle>
           </DialogHeader>
           {selectedOrder && (
             <div className="space-y-4 mt-3">
