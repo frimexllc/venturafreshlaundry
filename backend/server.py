@@ -22,6 +22,15 @@ import qrcode
 from qrcode.image.svg import SvgImage
 import zipfile
 
+from normalization import (
+    normalize_email,
+    normalize_phone,
+    normalize_spaces,
+    normalize_name,
+    normalize_address,
+    normalize_yes_no
+)
+
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env', override=True)
 
