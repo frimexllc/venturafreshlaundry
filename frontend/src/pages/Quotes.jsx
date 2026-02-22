@@ -379,13 +379,25 @@ export default function Quotes() {
                               Marcar Negociando
                             </DropdownMenuItem>
                           )}
-                          {["new", "sent", "negotiating"].includes(quote.status) && (
+                          {['new', 'sent', 'negotiating'].includes(quote.status) && (
                             <>
                               <DropdownMenuItem onClick={() => updateStatus(quote.id, "won")} className="text-emerald-600">
                                 Marcar Ganada
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => updateStatus(quote.id, "lost")} className="text-red-600">
                                 Marcar Perdida
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                          {quote.status !== "lost" && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() => convertToLead(quote.id)}
+                                data-testid={`quote-convert-lead-${quote.id}`}
+                                className="text-emerald-600"
+                              >
+                                Convertir a Lead
                               </DropdownMenuItem>
                             </>
                           )}
