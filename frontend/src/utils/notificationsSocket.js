@@ -18,7 +18,8 @@ export const createNotificationsSocket = () => {
   }
   return io(config.url, {
     path: config.path,
-    transports: ["websocket"],
+    transports: ["polling"],
+    upgrade: false,
     reconnectionAttempts: 3,
     timeout: 5000
   });
