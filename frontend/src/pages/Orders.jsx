@@ -450,7 +450,7 @@ export default function Orders() {
                 </div>
                 <div>
                   <p className="text-sm text-slate-500">Fecha Pickup</p>
-                  <p className="font-medium">{formatDate(viewOrder.pickup_date)}</p>
+                  <p className="font-medium" data-testid="order-detail-pickup-date">{formatDate(viewOrder.pickup_date)}</p>
                 </div>
                 <div>
                   <p className="text-sm text-slate-500">Horario</p>
