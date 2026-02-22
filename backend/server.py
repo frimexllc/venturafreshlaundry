@@ -1471,7 +1471,7 @@ async def update_order_status(order_id: str, status: str, notify: bool = True, c
         raise HTTPException(status_code=404, detail="Order not found")
 
     current_status = normalize_status(order.get("status"))
-    if normalized_status == "completed" and current_status not in ["delivered", "completed"]:
+    if normalized_status == "completed" and current_status not in ["delivered", "completed", "out_for_delivery"]:
         raise HTTPException(status_code=400, detail="Order must be delivered before it can be completed")
 
     await db.orders.update_one(
