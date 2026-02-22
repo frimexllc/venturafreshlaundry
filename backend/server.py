@@ -3500,7 +3500,14 @@ async def public_contact(data: PublicContactRequest):
 async def public_quote_request(data: PublicQuoteRequest):
     """Public endpoint for B2B quote request"""
     now = datetime.now(timezone.utc).isoformat()
-    
+
+    normalized_company = normalize_spaces(data.company_name)
+    normalized_contact = normalize_name(data.contact_name)
+    normalized_email = normalize_email(data.email) or data.email.lower()
+    normalized_phone = normalize_phone(data.phone)
+    normalized_industry = normalize_spaces(data.industry)
+    normalized_message = normalize_spaces(data.message)
+
     quote_id = str(uuid.uuid4())
     today = datetime.now(timezone.utc).strftime("%Y%m%d")
     count = await db.quotes.count_documents({"quote_number": {"$regex": f"^QT-{today}"}})
