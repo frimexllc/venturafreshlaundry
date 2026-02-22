@@ -217,14 +217,20 @@ export default function Dashboard() {
           </h1>
           <p className="text-slate-500 mt-1">Here's what's happening today</p>
         </div>
-        <Button 
-          variant="outline" 
-          onClick={fetchBriefing}
-          disabled={briefingLoading}
-        >
-          <RefreshCw className={`h-4 w-4 mr-2 ${briefingLoading ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-3">
+          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${realtimeClass}`} data-testid="dashboard-realtime-status">
+            {realtimeLabel}
+          </span>
+          <Button 
+            variant="outline" 
+            onClick={fetchBriefing}
+            disabled={briefingLoading}
+            data-testid="dashboard-refresh-btn"
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${briefingLoading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {/* AI Briefing Card */}
