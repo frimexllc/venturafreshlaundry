@@ -1050,7 +1050,19 @@ async def create_order(data: OrderCreate, notify: bool = True, current_user: dic
     order_number = await generate_order_number()
     now = datetime.now(timezone.utc).isoformat()
     errors = validate_order_payload(data)
-    
+
+    normalized_pickup_address = normalize_address(data.pickup_address or customer.get("address"))
+    normalized_delivery_address = normalize_address(data.delivery_address)
+    normalized_notes = normalize_spaces(data.notes)
+    normalized_gate_code = normalize_spaces(data.gate_code)
+    normalized_service_type = normalize_spaces(data.service_type).lower().replace(" ", "_")
+
+    pref = await db.preferences.find({"customer_id": data.customer_id}, {"_id": 0}).sort("version", -1).limit(1).to_list(1)
+    preference_id = pref[0].get("id") if pref else None
+    preference_snapshot = None
+    if pref:
+        preference_snapshot = {k: v for k, v in pref[0].items() if k not in ["_id", "customer_id"]}
+
     order = {
         "id": order_id,
         "order_number": order_number,
