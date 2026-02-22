@@ -365,7 +365,10 @@ export default function OperatorDashboard() {
                     {(order.next_status || getNextStatus(order.status)) && (
                       <Button
                         size="sm"
-                        onClick={() => updateOrderStatus(order.order_id, order.next_status || getNextStatus(order.status))}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          updateOrderStatus(order.order_id, order.next_status || getNextStatus(order.status));
+                        }}
                         disabled={updating[order.order_id]}
                         className="bg-sky-600 hover:bg-sky-700"
                         data-testid={`update-${order.order_id}`}
