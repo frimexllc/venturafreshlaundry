@@ -51,8 +51,8 @@ RECEIVED → PROCESSING → READY → OUT_FOR_DELIVERY → DELIVERED → COMPLET
 - Groq AI (briefing y chat)
 - Exportación de clientes robusta
 - Preferencias de cliente (crear/editar/eliminar) + snapshot en órdenes
-- Normalización de datos en formularios públicos (pickup, membership, B2B, contact)
-- Socket.io en backend (/api/socket.io) para eventos en tiempo real
+- Normalización de datos en formularios públicos (pickup, B2B)
+- Envío de notificaciones Twilio (SMS/WhatsApp) con bloqueos de carrier en algunos números
 
 ### Frontend
 - Dashboard Admin + vista Operador
@@ -60,23 +60,20 @@ RECEIVED → PROCESSING → READY → OUT_FOR_DELIVERY → DELIVERED → COMPLET
 - B2B Quote Form `/request-quote`
 - Sidebar reorganizada por rol
 - Memberships centradas y CTAs
-- Panel de Finanzas funcional (KPIs + transacciones + export CSV)
-- Flujo de órdenes con estados normalizados + acciones entregado/completado
 - Formulario Elite Concierge con preferencias avanzadas
 - Portal de cliente con edición/eliminación de preferencias
-- Indicadores de tiempo real en Admin y Operador
+- Páginas legales + links en footer
+- Checkbox de aceptación en login admin y login cliente (bloquea envío)
 
 ### Integraciones
 - Stripe (pagos/membresías)
-- Twilio (SMS/WhatsApp) **validado E2E**
+- Twilio (SMS/WhatsApp) **con error 30034 en algunos carriers**
 - Groq (IA gerente)
-- Socket.io (tiempo real)
 
 ## Cambios recientes (2026-02-22)
 - ✅ Preferencias Elite Concierge guardadas y aplicadas a nuevas órdenes
-- ✅ Normalización de datos en todos los formularios públicos
-- ✅ Preferencias editables/eliminables en portal de cliente
-- ✅ Socket.io activo en /api/socket.io + indicadores en Admin/Operador
+- ✅ Normalización de datos en pickup y B2B
+- ✅ Páginas legales y aceptación en login (admin/cliente)
 
 ## Pendientes / Issues
 **P1**
