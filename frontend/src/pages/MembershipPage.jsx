@@ -523,6 +523,7 @@ export default function MembershipPage() {
                   onChange={(e) => setForm({ ...form, estimated_lbs: e.target.value })}
                   className="mt-1"
                   placeholder="e.g., 20"
+                  data-testid="membership-estimated-lbs"
                 />
               </div>
 
