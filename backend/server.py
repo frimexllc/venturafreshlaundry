@@ -3246,6 +3246,15 @@ class PublicMembershipSignup(BaseModel):
     membership_plan: str
     laundry_frequency: str
     estimated_lbs: float
+    detergent_type: Optional[str] = None
+    water_temperature: Optional[str] = None
+    fabric_softener: Optional[str] = None
+    folding_style: Optional[str] = None
+    hanging_instructions: Optional[str] = None
+    allergies: Optional[str] = None
+    special_instructions: Optional[str] = None
+    pickup_time_preference: Optional[str] = None
+    gate_code: Optional[str] = None
 
 @api_router.post("/public/pickup-request")
 async def public_pickup_request(data: PublicPickupRequest):
