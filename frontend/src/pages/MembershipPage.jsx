@@ -463,6 +463,7 @@ export default function MembershipPage() {
                       placeholder="City"
                       value={form.city}
                       onChange={(e) => setForm({ ...form, city: e.target.value })}
+                      data-testid="membership-city"
                     />
                     <Input
                       placeholder="State"
