@@ -1991,6 +1991,7 @@ async def get_membership_signups(
                 "customer_email": s.get("customer_email"),
                 "customer_phone": s.get("customer_phone"),
                 "stripe_session_id": s.get("stripe_session_id"),
+                "preferences": s.get("preferences"),
                 "created_at": s.get("created_at", ""),
                 "updated_at": s.get("updated_at", "")
             }
