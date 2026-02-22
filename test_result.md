@@ -185,6 +185,90 @@ frontend:
         agent: "main"
         comment: "Updated membership page with plan selection cards and Stripe checkout integration."
 
+  - task: "Admin Login with Terms Checkbox"
+    implemented: true
+    working: true
+    file: "pages/Login.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: Login page working correctly. Terms checkbox is functional and required. Admin login with owner@frimexllc.com successful. User redirected to /admin dashboard after login."
+
+  - task: "Orders Page - VFL Prefix Display"
+    implemented: true
+    working: true
+    file: "pages/Orders.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: All order IDs correctly display with VFL prefix format (e.g., VFL-20260222-02220004). Format includes VFL prefix, date slug, and order identifier."
+
+  - task: "Orders Page - Export Tickets Button"
+    implemented: true
+    working: true
+    file: "pages/Orders.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: 'Exportar Tickets' button present and visible on orders page with date range and filter options."
+
+  - task: "Order Details Dialog - Full Information"
+    implemented: true
+    working: true
+    file: "pages/Orders.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: Order details dialog working correctly. Shows all required information: customer name, service type, pickup/delivery addresses, notes, wash preferences section with all preference fields, and 'Descargar Ticket' button. Action menu 'Ver detalles' option functional."
+
+  - task: "Schedule Pickup - Remove Wash & Fold Option"
+    implemented: true
+    working: true
+    file: "pages/SchedulePickup.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: Wash & Fold option successfully removed from service type selector. Only 'Pickup & Delivery' and 'Commercial / B2B' options present. Link to /wash-fold form visible with text 'Ir al formulario'."
+
+  - task: "Wash & Fold Request Form"
+    implemented: true
+    working: true
+    file: "pages/WashFoldRequest.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: Wash & Fold form page loading correctly. All input fields present (first name, last name, email, phone, address fields, drop-off date, notes). All select fields functional (contact method, drop-off time window). Submit button present and labeled correctly."
+
+  - task: "B2B Quotes - Convert to Lead Option"
+    implemented: true
+    working: true
+    file: "pages/Quotes.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED: B2B Quotes page working correctly. Quote action menu accessible. 'Convertir a Lead' option visible and properly labeled in quote action dropdown menu."
+
 metadata:
   created_by: "main_agent"
   version: "1.0"
