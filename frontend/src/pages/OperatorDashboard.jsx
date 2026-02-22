@@ -142,8 +142,37 @@ export default function OperatorDashboard() {
     return null;
   };
 
+  const buildDateSlug = (dateStr) => {
+    const base = dateStr ? new Date(dateStr) : new Date();
+    if (Number.isNaN(base.getTime())) {
+      return new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    }
+    return base.toISOString().slice(0, 10).replace(/-/g, "");
+  };
+
+  const formatOrderNumber = (order) => {
+    if (!order) return "-";
+    if (order.order_number && order.order_number.startsWith("VFL-")) {
+      return order.order_number;
+    }
+    const dateSlug = buildDateSlug(order.created_at || order.pickup_date);
+    const raw = (order.order_number || order.order_id || "00000000").toString();
+    const short = raw.replace(/[^a-zA-Z0-9]/g, "").toLowerCase().slice(-8).padStart(8, "0");
+    return `VFL-${dateSlug}-${short}`;
+  };
+
   const formatOrderId = (order) => {
-    return order.order_number || order.order_id;
+    return formatOrderNumber(order);
+  };
+
+  const renderPreferenceValue = (value) => {
+    if (Array.isArray(value)) {
+      return value.length ? value.join(", ") : "-";
+    }
+    if (value === null || value === undefined || value === "") {
+      return "-";
+    }
+    return value.toString();
   };
 
   const openMaps = (address) => {
