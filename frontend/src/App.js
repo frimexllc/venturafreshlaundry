@@ -32,6 +32,7 @@ import ContactPage from "./pages/ContactPage";
 import StorePage from "./pages/StorePage";
 import BlogPage from "./pages/BlogPage";
 import SchedulePickup from "./pages/SchedulePickup";
+import WashFoldRequest from "./pages/WashFoldRequest";
 import MembershipPage from "./pages/MembershipPage";
 import RequestQuotePage from "./pages/RequestQuotePage";
 import CustomerAccount from "./pages/CustomerAccount";
