@@ -57,7 +57,7 @@ export default function CustomerLogin() {
     <div className="min-h-screen bg-white">
       <PublicNav />
 
-      <section className="pt-24 pb-20">
+      <section className="pt-32 pb-20">
         <div className="max-w-md mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-8">
             <div className="h-16 w-16 rounded-full bg-sky-100 flex items-center justify-center mx-auto mb-4">
