@@ -426,8 +426,14 @@ export default function OperatorDashboard() {
                   </div>
                   <div className="flex flex-col gap-2">
                     {order.delivery_address && (
-                      <Button variant="outline" size="sm" onClick={() => openMaps(order.delivery_address)}>
-                        <MapPin className="h-4 w-4 mr-2" />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openMaps(order.delivery_address);
+                        }}
+                      >                        <MapPin className="h-4 w-4 mr-2" />
                         Mapa
                       </Button>
                     )}
