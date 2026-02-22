@@ -88,7 +88,7 @@ except ImportError:
 
 # Import automation engine
 try:
-    from automation_engine import automation_router, set_database as set_automation_db
+    from automation_engine import automation_router, set_database as set_automation_db, set_realtime_emitter
     AUTOMATION_ENABLED = True
 except ImportError:
     AUTOMATION_ENABLED = False
