@@ -69,7 +69,7 @@ Los workflows están en `/app/n8n/workflows/`:
 1. En Squarespace, ve a Settings > Advanced > Code Injection
 2. O configura Zapier/Make para enviar a:
    ```
-   https://wash-automation.preview.emergentagent.com/api/automation/ingest
+   https://clean-management-4.preview.emergentagent.com/api/automation/ingest
    ```
 
 ## IDs Importantes
@@ -89,7 +89,7 @@ N8N_BASE_URL=http://localhost:5678
 
 ```bash
 # Test del endpoint de ingest
-curl -X POST https://wash-automation.preview.emergentagent.com/api/automation/ingest \
+curl -X POST https://clean-management-4.preview.emergentagent.com/api/automation/ingest \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Test User",
@@ -100,10 +100,10 @@ curl -X POST https://wash-automation.preview.emergentagent.com/api/automation/in
   }'
 
 # Test del daily summary
-curl https://wash-automation.preview.emergentagent.com/api/automation/daily-summary
+curl https://clean-management-4.preview.emergentagent.com/api/automation/daily-summary
 
 # Test de SLA alerts
-curl https://wash-automation.preview.emergentagent.com/api/automation/sla-alerts
+curl https://clean-management-4.preview.emergentagent.com/api/automation/sla-alerts
 ```
 
 ## Flujo de Datos Automático

@@ -21,7 +21,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "https://wash-automation.preview.emergentagent.com/api/automation/sla-alerts",
+        "url": "https://clean-management-4.preview.emergentagent.com/api/automation/sla-alerts",
         "options": {}
       },
       "id": "get-sla",
@@ -53,7 +53,7 @@
         "operation": "send",
         "subject": "=⚠️ SLA Alert: {{ $json.total_at_risk }} tickets at risk",
         "emailType": "html",
-        "message": "=<h2>⚠️ SLA Alert</h2>\n<p>{{ $json.total_at_risk }} ticket(s) are at risk of missing SLA</p>\n\n<h3>Past SLA ({{ $json.past_sla.length }})</h3>\n{{ $json.past_sla.map(t => '<p>• ' + t.ticket_id + ' - ' + t.subject + ' (Priority: ' + t.priority + ')</p>').join('') }}\n\n<h3>Approaching SLA ({{ $json.approaching_sla.length }})</h3>\n{{ $json.approaching_sla.map(t => '<p>• ' + t.ticket_id + ' - ' + t.subject + ' (Deadline: ' + t.sla_deadline + ')</p>').join('') }}\n\n<p><a href='https://wash-automation.preview.emergentagent.com/admin/tickets'>View Tickets →</a></p>",
+        "message": "=<h2>⚠️ SLA Alert</h2>\n<p>{{ $json.total_at_risk }} ticket(s) are at risk of missing SLA</p>\n\n<h3>Past SLA ({{ $json.past_sla.length }})</h3>\n{{ $json.past_sla.map(t => '<p>• ' + t.ticket_id + ' - ' + t.subject + ' (Priority: ' + t.priority + ')</p>').join('') }}\n\n<h3>Approaching SLA ({{ $json.approaching_sla.length }})</h3>\n{{ $json.approaching_sla.map(t => '<p>• ' + t.ticket_id + ' - ' + t.subject + ' (Deadline: ' + t.sla_deadline + ')</p>').join('') }}\n\n<p><a href='https://clean-management-4.preview.emergentagent.com/admin/tickets'>View Tickets →</a></p>",
         "options": {
           "appendAttribution": false
         }

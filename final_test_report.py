@@ -8,7 +8,7 @@ import requests
 import json
 
 # Configuration
-BASE_URL = "https://wash-automation.preview.emergentagent.com"
+BASE_URL = "https://clean-management-4.preview.emergentagent.com"
 API_URL = f"{BASE_URL}/api"
 
 # Use existing admin user for testing
