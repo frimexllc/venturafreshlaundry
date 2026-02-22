@@ -3455,11 +3455,17 @@ async def public_pickup_request(data: PublicPickupRequest):
 async def public_contact(data: PublicContactRequest):
     """Public endpoint for contact form - creates a support ticket"""
     now = datetime.now(timezone.utc).isoformat()
-    
+
+    normalized_name = normalize_name(data.name)
+    normalized_email = normalize_email(data.email) or data.email.lower()
+    normalized_phone = normalize_phone(data.phone)
+    normalized_message = normalize_spaces(data.message)
+    normalized_subject = normalize_spaces(data.subject) or "Contact Request"
+
     # Find customer if exists
-    customer = await db.customers.find_one({"email": data.email.lower()}, {"_id": 0})
+    customer = await db.customers.find_one({"email": normalized_email}, {"_id": 0})
     customer_id = customer["id"] if customer else None
-    customer_name = customer["name"] if customer else data.name
+    customer_name = customer["name"] if customer else (normalized_name or data.name)
     
     # Create support ticket
     ticket_id = str(uuid.uuid4())
