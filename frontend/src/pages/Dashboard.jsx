@@ -19,6 +19,7 @@ import {
   Zap
 } from "lucide-react";
 import { toast } from "sonner";
+import { createNotificationsSocket } from "../utils/notificationsSocket";
 import { Button } from "../components/ui/button";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
