@@ -427,7 +427,7 @@ export default function Orders() {
         </div>
         <Button variant="outline" onClick={handleExportQrBatch} disabled={exportingQr} data-testid="qr-export-button">
           <Download className="h-4 w-4 mr-2" />
-          {exportingQr ? "Exportando..." : "Exportar QRs"}
+          {exportingQr ? "Exportando..." : "Exportar Tickets"}
         </Button>
       </div>
 
