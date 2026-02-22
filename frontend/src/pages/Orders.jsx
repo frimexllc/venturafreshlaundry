@@ -446,7 +446,7 @@ export default function Orders() {
                 </div>
                 <div>
                   <p className="text-sm text-slate-500">Servicio</p>
-                  <p className="font-medium">{serviceLabels[viewOrder.service_type]}</p>
+                  <p className="font-medium" data-testid="order-detail-service">{serviceLabels[viewOrder.service_type]}</p>
                 </div>
                 <div>
                   <p className="text-sm text-slate-500">Fecha Pickup</p>
