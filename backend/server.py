@@ -875,19 +875,24 @@ async def get_recent_activity(current_user: dict = Depends(get_current_user)):
 async def create_customer(data: CustomerCreate, current_user: dict = Depends(get_current_user)):
     customer_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
+    normalized_name = normalize_name(data.name)
+    normalized_email = normalize_email(data.email) if data.email else ""
+    normalized_phone = normalize_phone(data.phone)
+    normalized_address = normalize_address(data.address)
     customer = {
         "id": customer_id,
-        "name": data.name,
-        "email": data.email.lower() if data.email else None,
-        "phone": data.phone,
-        "address": data.address,
-        "preferred_contact": data.preferred_contact,
-        "notes": data.notes,
+        "name": normalized_name or data.name,
+        "email": normalized_email or (data.email.lower() if data.email else None),
+        "phone": normalized_phone or data.phone,
+        "address": normalized_address or data.address,
+        "preferred_contact": normalize_spaces(data.preferred_contact) or data.preferred_contact,
+        "notes": normalize_spaces(data.notes),
         "status": "active",
         "total_orders": 0,
-        "membership_plan": data.membership_plan,
-        "membership_status": data.membership_status,
+        "membership_plan": normalize_spaces(data.membership_plan),
+        "membership_status": normalize_spaces(data.membership_status),
         "membership_start_date": data.membership_start_date,
+        "preferences_id": data.preferences_id,
         "created_at": now,
         "updated_at": now
     }
