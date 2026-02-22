@@ -164,12 +164,14 @@ export default function MembershipPage() {
 
     setSubmitting(true);
     try {
+      const preferences = buildPreferencesPayload();
       const res = await axios.post(`${API}/store/membership/checkout`, {
         plan_id: selectedPlan.id,
         origin_url: window.location.origin,
-        customer_email: form.email,
-        customer_name: `${form.first_name} ${form.last_name}`,
-        customer_phone: form.phone
+        customer_email: form.email.trim(),
+        customer_name: `${form.first_name.trim()} ${form.last_name.trim()}`.trim(),
+        customer_phone: form.phone.trim(),
+        preferences
       });
       
       // Redirect to Stripe checkout
