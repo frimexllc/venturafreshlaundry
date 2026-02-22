@@ -77,6 +77,8 @@ RECEIVED → PROCESSING → READY → OUT_FOR_DELIVERY → DELIVERED → COMPLET
 - Groq (IA gerente)
 
 ## Cambios recientes (2026-02-22)
+- ✅ Edición de libras estimadas/actuales en órdenes (Admin/Operador) + ticket QR incluye lbs
+- ✅ Mejoras al asistente IA interno con contexto y acciones de órdenes
 - ✅ Flujo de órdenes actualizado (OUT_FOR_DELIVERY → DELIVERED/COMPLETED) y eventos tiempo real desde operador
 - ✅ Ticket QR con formato tipo ticket + prefijo VFL
 - ✅ Preferencias visibles en detalle de órdenes (Admin/Operador)
