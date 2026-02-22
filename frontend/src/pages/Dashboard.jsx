@@ -121,6 +121,7 @@ export default function Dashboard() {
   const [suggestions, setSuggestions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [briefingLoading, setBriefingLoading] = useState(true);
+  const [realtimeStatus, setRealtimeStatus] = useState("offline");
 
   useEffect(() => {
     fetchData();
