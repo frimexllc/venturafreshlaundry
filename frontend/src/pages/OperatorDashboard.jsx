@@ -439,7 +439,10 @@ export default function OperatorDashboard() {
                     )}
                     <Button
                       size="sm"
-                      onClick={() => updateOrderStatus(order.order_id, order.next_status || "OUT_FOR_DELIVERY")}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        updateOrderStatus(order.order_id, order.next_status || "OUT_FOR_DELIVERY");
+                      }}
                       disabled={updating[order.order_id]}
                       className="bg-emerald-600 hover:bg-emerald-700"
                     >
