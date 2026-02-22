@@ -146,6 +146,39 @@ export default function OperatorDashboard() {
     }
   };
 
+  const updateOrderWeights = async () => {
+    if (!selectedOrder) return;
+    setSavingWeights(true);
+    try {
+      const payload = {
+        estimated_lbs: weightForm.estimated_lbs === "" ? null : parseFloat(weightForm.estimated_lbs),
+        actual_lbs: weightForm.actual_lbs === "" ? null : parseFloat(weightForm.actual_lbs)
+      };
+      const res = await axios.put(`${API_URL}/api/orders/${selectedOrder.order_id}`, payload);
+      const updated = res.data;
+      toast.success("Libras actualizadas");
+      setSelectedOrder((prev) => prev ? { ...prev, ...updated, order_id: prev.order_id } : prev);
+      setDashboard(prev => {
+        if (!prev) return prev;
+        const updateList = (list) =>
+          list.map((order) =>
+            order.order_id === selectedOrder.order_id
+              ? { ...order, estimated_lbs: updated.estimated_lbs, actual_lbs: updated.actual_lbs }
+              : order
+          );
+        return {
+          ...prev,
+          todays_pickups: updateList(prev.todays_pickups || []),
+          ready_for_delivery: updateList(prev.ready_for_delivery || [])
+        };
+      });
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Error actualizando libras");
+    } finally {
+      setSavingWeights(false);
+    }
+  };
+
   const getNextStatus = (currentStatus) => {
     const statusOrder = ["NEW", "CONFIRMED", "PICKUP_SCHEDULED", "PICKED_UP", "PROCESSING", "READY", "OUT_FOR_DELIVERY", "DELIVERED", "COMPLETED"];
     const currentIndex = statusOrder.indexOf(currentStatus);
