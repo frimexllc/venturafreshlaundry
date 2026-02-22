@@ -1624,6 +1624,43 @@ async def update_quote(quote_id: str, data: dict, current_user: dict = Depends(g
     quote = await db.quotes.find_one({"id": quote_id}, {"_id": 0})
     return QuoteResponse(**quote)
 
+
+@api_router.post("/quotes/{quote_id}/convert-to-lead", response_model=LeadResponse)
+async def convert_quote_to_lead(quote_id: str, current_user: dict = Depends(get_current_user)):
+    quote = await db.quotes.find_one({"id": quote_id}, {"_id": 0})
+    if not quote:
+        raise HTTPException(status_code=404, detail="Quote not found")
+    if quote.get("converted_lead_id"):
+        raise HTTPException(status_code=400, detail="Quote already converted")
+
+    lead_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+    lead_name = quote.get("contact_name") or quote.get("company_name") or "B2B Lead"
+    lead_notes = "\n".join([
+        note for note in [quote.get("service_needs"), quote.get("notes")] if note
+    ])
+
+    lead = {
+        "id": lead_id,
+        "name": lead_name,
+        "email": normalize_email(quote.get("email")) if quote.get("email") else None,
+        "phone": normalize_phone(quote.get("phone")) if quote.get("phone") else None,
+        "source": "b2b_quote",
+        "interest_type": "B2B Quote",
+        "notes": lead_notes or None,
+        "status": "new",
+        "converted_to_customer_id": None,
+        "created_at": now,
+        "updated_at": now
+    }
+    await db.leads.insert_one(lead)
+    await db.quotes.update_one(
+        {"id": quote_id},
+        {"$set": {"status": "won", "converted_lead_id": lead_id, "updated_at": now}}
+    )
+    await create_audit_log("QUOTE_CONVERTED_TO_LEAD", "quote", quote_id, current_user["id"], {"lead_id": lead_id})
+    return LeadResponse(**lead)
+
 # ==================== LEADS ====================
 
 @api_router.post("/leads", response_model=LeadResponse)
