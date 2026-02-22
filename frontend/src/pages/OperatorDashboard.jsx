@@ -409,8 +409,13 @@ export default function OperatorDashboard() {
             </div>
           ) : (
             dashboard?.ready_for_delivery?.map((order) => (
-              <div key={order.order_id} className="p-4 hover:bg-slate-50 transition-colors" data-testid={`delivery-${order.order_id}`}>
-                <div className="flex items-center justify-between gap-4">
+              <div
+                key={order.order_id}
+                className="p-4 hover:bg-slate-50 transition-colors cursor-pointer"
+                data-testid={`delivery-${order.order_id}`}
+                role="button"
+                onClick={() => setSelectedOrder(order)}
+              >                <div className="flex items-center justify-between gap-4">
                   <div>
                     <span className="font-mono font-semibold text-slate-900">{formatOrderId(order)}</span>
                     <span className="text-slate-600 ml-2">- {order.customer_name || "Cliente"}</span>
