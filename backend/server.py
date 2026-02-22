@@ -210,6 +210,19 @@ class PreferenceCreate(BaseModel):
     hang_dry_items: Optional[List[str]] = []
     fragrance_preference: Optional[str] = "light"
 
+class CustomerPreferenceUpdate(BaseModel):
+    detergent_type: Optional[str] = "standard"
+    water_temperature: Optional[str] = None
+    fabric_softener: Optional[str] = None
+    folding_style: Optional[str] = "standard"
+    hanging_instructions: Optional[str] = None
+    allergies: Optional[str] = None
+    special_instructions: Optional[str] = None
+    pickup_time_preference: Optional[str] = None
+    gate_code: Optional[str] = None
+    hang_dry_items: Optional[List[str]] = []
+    fragrance_preference: Optional[str] = "light"
+
 class PreferenceResponse(BaseModel):
     id: str
     customer_id: str
