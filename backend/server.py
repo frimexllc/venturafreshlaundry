@@ -577,6 +577,9 @@ async def emit_realtime(event: str, payload: dict):
     except Exception as exc:
         logger.warning(f"Realtime emit failed: {exc}")
 
+if AUTOMATION_ENABLED and set_realtime_emitter:
+    set_realtime_emitter(emit_realtime)
+
 
 def require_admin(current_user: dict):
     if current_user.get("role") != ROLE_ADMIN:
