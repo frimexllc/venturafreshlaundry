@@ -484,11 +484,10 @@ export default function MembershipPage() {
               <div className="grid md:grid-cols-2 gap-4">
                 <div>
                   <Label className="text-slate-700">Membership Plan *</Label>
-                  <Select 
-                    value={selectedPlan?.id || ""} 
+                      value={selectedPlan?.id || ""} 
                     onValueChange={(value) => handlePlanSelect(value)}
-                  >
-                    <SelectTrigger className="mt-1">
+                                                                 >
+                    <SelectTrigger className="mt-1" data-testid="membership-plan-select">
                       <SelectValue placeholder="Select a plan" />
                     </SelectTrigger>
                     <SelectContent>
