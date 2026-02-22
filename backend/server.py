@@ -796,6 +796,8 @@ def build_ticket_lines(order: dict, customer: Optional[dict]) -> List[str]:
         f"ADDR: {address}",
         f"MEMBERSHIP: {membership}",
         f"NOTES: {notes}",
+        f"EST_LBS: {est_lbs}",
+        f"ACT_LBS: {act_lbs}",
         f"PREF: {pref_id}",
         f"CUS_ID: {customer_id}",
         f"DEDUP: {dedup}",
