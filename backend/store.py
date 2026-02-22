@@ -779,7 +779,7 @@ async def create_membership_checkout(checkout: MembershipCheckoutRequest, reques
                 "signup_id": signup_id,
                 "plan_id": checkout.plan_id,
                 "plan_name": plan.get("name", ""),
-                "customer_email": checkout.customer_email or "",
+                "customer_email": normalized_email or "",
                 "type": "membership"
             }
         )
