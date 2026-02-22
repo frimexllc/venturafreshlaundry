@@ -87,6 +87,15 @@ export default function Orders() {
     fetchCustomers();
   }, [statusFilter]);
 
+  useEffect(() => {
+    if (viewOrder) {
+      setWeightForm({
+        estimated_lbs: viewOrder.estimated_lbs ?? "",
+        actual_lbs: viewOrder.actual_lbs ?? ""
+      });
+    }
+  }, [viewOrder]);
+
   const fetchOrders = async () => {
     try {
       const params = statusFilter !== "all" ? { status: statusFilter } : {};
