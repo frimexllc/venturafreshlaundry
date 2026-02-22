@@ -38,6 +38,20 @@ const serviceLabels = {
   self_service: "Self Service"
 };
 
+const preferenceLabels = {
+  detergent_type: "Detergente",
+  water_temperature: "Temperatura de agua",
+  fabric_softener: "Suavizante",
+  folding_style: "Doblado",
+  hanging_instructions: "Colgar prendas",
+  allergies: "Alergias",
+  special_instructions: "Instrucciones especiales",
+  pickup_time_preference: "Horario preferido",
+  gate_code: "Código de acceso",
+  hang_dry_items: "Secado al aire",
+  fragrance_preference: "Fragancia"
+};
+
 const emptyForm = {
   customer_id: "",
   service_type: "pickup_delivery",
