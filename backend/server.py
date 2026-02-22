@@ -1097,8 +1097,8 @@ async def delete_customer_preferences(current_customer: dict = Depends(get_curre
 
 async def generate_order_number():
     today = datetime.now(timezone.utc).strftime("%Y%m%d")
-    count = await db.orders.count_documents({"order_number": {"$regex": f"^ORD-{today}"}})
-    return f"ORD-{today}-{str(count + 1).zfill(4)}"
+    unique = uuid.uuid4().hex[:8]
+    return f"VFL-{today}-{unique}"
 
 @api_router.post("/orders", response_model=OrderResponse)
 async def create_order(data: OrderCreate, notify: bool = True, current_user: dict = Depends(get_current_user)):
