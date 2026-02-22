@@ -194,20 +194,30 @@ export default function MembershipPage() {
     }
     setSubmitting(true);
     try {
+      const preferences = buildPreferencesPayload();
       const res = await axios.post(`${API}/public/membership-signup`, {
-        first_name: form.first_name,
-        last_name: form.last_name,
-        email: form.email,
-        phone: form.phone,
+        first_name: form.first_name.trim(),
+        last_name: form.last_name.trim(),
+        email: form.email.trim(),
+        phone: form.phone.trim(),
         contact_method: form.contact_method,
-        address_line1: form.address_line1,
-        address_line2: form.address_line2 || null,
-        city: form.city,
-        state: form.state,
-        zip_code: form.zip_code,
+        address_line1: form.address_line1.trim(),
+        address_line2: form.address_line2 ? form.address_line2.trim() : null,
+        city: form.city.trim(),
+        state: form.state.trim(),
+        zip_code: form.zip_code.trim(),
         membership_plan: form.membership_plan,
         laundry_frequency: form.laundry_frequency,
-        estimated_lbs: parseFloat(form.estimated_lbs)
+        estimated_lbs: parseFloat(form.estimated_lbs),
+        detergent_type: preferences?.detergent_type || null,
+        water_temperature: preferences?.water_temperature || null,
+        fabric_softener: preferences?.fabric_softener || null,
+        folding_style: preferences?.folding_style || null,
+        hanging_instructions: preferences?.hanging_instructions || null,
+        allergies: preferences?.allergies || null,
+        special_instructions: preferences?.special_instructions || null,
+        pickup_time_preference: preferences?.pickup_time_preference || null,
+        gate_code: preferences?.gate_code || null
       });
       toast.success(res.data.message);
       setSubmitted(true);
