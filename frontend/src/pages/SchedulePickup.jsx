@@ -87,17 +87,24 @@ export default function SchedulePickup() {
 
     setSubmitting(true);
     try {
+      const fullName = `${form.first_name.trim()} ${form.last_name.trim()}`.trim();
+      const fullAddress = [
+        form.address_line1.trim(),
+        form.address_line2.trim(),
+        form.city.trim(),
+        form.state.trim(),
+        form.zip_code.trim()
+      ].filter(Boolean).join(", ");
+
       const res = await axios.post(`${API}/public/pickup-request`, {
-        name: `${form.first_name} ${form.last_name}`.trim(),
-        email: form.email,
-        phone: form.phone,
-        address: `${form.address_line1}${
-          form.address_line2 ? ", " + form.address_line2 : ""
-        }, ${form.city}, ${form.state} ${form.zip_code}`,
+        name: fullName,
+        email: form.email.trim(),
+        phone: form.phone.trim(),
+        address: fullAddress,
         pickup_date: form.pickup_date,
         pickup_time: form.pickup_time,
         service_type: form.service_type,
-        notes: `Preferred contact: ${form.contact_method}\n${form.notes || ""}`,
+        notes: `Preferred contact: ${form.contact_method}\n${form.notes?.trim() || ""}`.trim(),
       });
 
       toast.success(res.data?.message || "Request submitted!");
