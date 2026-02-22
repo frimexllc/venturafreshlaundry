@@ -740,14 +740,26 @@ async def create_membership_checkout(checkout: MembershipCheckoutRequest, reques
     # Create membership signup record
     now = datetime.now(timezone.utc).isoformat()
     signup_id = str(uuid.uuid4())
-    
+
+    normalized_email = normalize_email(checkout.customer_email) if checkout.customer_email else ""
+    normalized_email = normalized_email or (checkout.customer_email.lower() if checkout.customer_email else None)
+    normalized_name = normalize_spaces(checkout.customer_name)
+    normalized_phone = normalize_phone(checkout.customer_phone)
+
+    preferences = checkout.preferences if isinstance(checkout.preferences, dict) else None
+    if preferences:
+        preferences = {key: (normalize_spaces(value) if isinstance(value, str) else value) for key, value in preferences.items()}
+        if not any(preferences.values()):
+            preferences = None
+
     signup_doc = {
         "id": signup_id,
         "plan_id": checkout.plan_id,
         "plan_name": plan.get("name"),
-        "customer_email": checkout.customer_email,
-        "customer_name": checkout.customer_name,
-        "customer_phone": checkout.customer_phone,
+        "customer_email": normalized_email,
+        "customer_name": normalized_name or checkout.customer_name,
+        "customer_phone": normalized_phone or checkout.customer_phone,
+        "preferences": preferences,
         "amount": price,
         "payment_status": "pending",
         "stripe_session_id": None,
