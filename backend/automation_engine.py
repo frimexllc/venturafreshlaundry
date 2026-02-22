@@ -1020,6 +1020,7 @@ async def update_order_status(order_id: str, new_status: str, notes: Optional[st
     now = datetime.now(timezone.utc)
     
     status_value = normalize_status(new_status)
+    status_db = status_value.lower() if status_value else status_value
     valid_statuses = {s.value for s in OrderStatus}
     if status_value not in valid_statuses:
         raise HTTPException(status_code=400, detail="Invalid status")
