@@ -685,6 +685,7 @@ class MembershipCheckoutRequest(BaseModel):
     customer_email: Optional[str] = None
     customer_name: Optional[str] = None
     customer_phone: Optional[str] = None
+    preferences: Optional[dict] = None
 
 class ServiceCheckoutRequest(BaseModel):
     service_id: str
