@@ -105,6 +105,8 @@ function AppRoutes() {
       <Route path="/request-quote" element={<RequestQuotePage />} />
       <Route path="/commercial" element={<RequestQuotePage />} />
       <Route path="/b2b" element={<RequestQuotePage />} />
+      <Route path="/terms-and-conditions" element={<TermsAndConditions />} />
+      <Route path="/privacy-policy" element={<PrivacyPolicy />} />
 
       {/* Customer portal */}
       <Route path="/account/login" element={<CustomerLogin />} />
