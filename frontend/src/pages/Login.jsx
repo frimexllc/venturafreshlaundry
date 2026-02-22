@@ -21,7 +21,7 @@ export default function Login() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!acceptedPolicies) {
-      toast.error("Debes स्वीकार los términos y la política de privacidad");
+      toast.error("Debes aceptar los términos y la política de privacidad");
       return;
     }
     setLoading(true);
