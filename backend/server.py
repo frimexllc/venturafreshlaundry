@@ -1448,7 +1448,7 @@ def should_notify_order_status(order: dict, status_value: str) -> bool:
     """Determine if order status change should trigger notification"""
     status_normalized = normalize_status(status_value)
 
-    if status_normalized in ["ready", "out_for_delivery", "delivered"]:
+    if status_normalized in ["ready", "out_for_delivery", "delivered", "completed"]:
         return True
 
     service_type = order.get("service_type")
