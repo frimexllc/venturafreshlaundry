@@ -1167,6 +1167,12 @@ async def create_order(data: OrderCreate, notify: bool = True, current_user: dic
         "created_at": now
     })
     await create_audit_log("ORDER_CREATED", "order", order_id, current_user["id"])
+    await emit_realtime("notification", {
+        "type": "order_created",
+        "order_id": order_id,
+        "status": "new",
+        "order_number": order_number
+    })
     
     # Send notifications if enabled
     if notify and NOTIFICATIONS_ENABLED and not SKIP_SERVER_NOTIFICATIONS:
