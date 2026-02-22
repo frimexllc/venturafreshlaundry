@@ -456,6 +456,7 @@ export default function MembershipPage() {
                     placeholder="Address Line 2"
                     value={form.address_line2}
                     onChange={(e) => setForm({ ...form, address_line2: e.target.value })}
+                    data-testid="membership-address-line2"
                   />
                   <div className="grid md:grid-cols-3 gap-4">
                     <Input
