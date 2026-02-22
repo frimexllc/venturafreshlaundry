@@ -2561,6 +2561,49 @@ async def admin_ai(data: AdminAIRequest, current_user: dict = Depends(get_curren
                             except Exception as e:
                                 logger.error(f"Notification failed: {e}")
                 results.append({"type": action_type, "ok": True, "order_id": order_id, "status": status_value})
+            elif action_type == "update_order_lbs":
+                order_id = action_payload.get("order_id")
+                if not order_id:
+                    results.append({"type": action_type, "ok": False, "error": "Invalid order id"})
+                    continue
+                def to_float(value):
+                    if value is None or value == "":
+                        return None
+                    try:
+                        return float(value)
+                    except Exception:
+                        return None
+                update_data = {}
+                if "estimated_lbs" in action_payload:
+                    update_data["estimated_lbs"] = to_float(action_payload.get("estimated_lbs"))
+                if "actual_lbs" in action_payload:
+                    update_data["actual_lbs"] = to_float(action_payload.get("actual_lbs"))
+                if not update_data:
+                    results.append({"type": action_type, "ok": False, "error": "No lbs provided"})
+                    continue
+                update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+                result = await db.orders.update_one({"id": order_id}, {"$set": update_data})
+                if result.matched_count == 0:
+                    results.append({"type": action_type, "ok": False, "error": "Order not found"})
+                    continue
+                await create_audit_log("ORDER_UPDATED", "order", order_id, current_user["id"], {"changes": list(update_data.keys()), "source": "ai"})
+                results.append({"type": action_type, "ok": True, "order_id": order_id, "estimated_lbs": update_data.get("estimated_lbs"), "actual_lbs": update_data.get("actual_lbs")})
+            elif action_type == "update_payment_status":
+                order_id = action_payload.get("order_id")
+                status_value = action_payload.get("status")
+                valid_payment = ["pending", "paid", "refunded", "failed"]
+                if not order_id or status_value not in valid_payment:
+                    results.append({"type": action_type, "ok": False, "error": "Invalid payment status or id"})
+                    continue
+                result = await db.orders.update_one(
+                    {"id": order_id},
+                    {"$set": {"payment_status": status_value, "updated_at": datetime.now(timezone.utc).isoformat()}}
+                )
+                if result.matched_count == 0:
+                    results.append({"type": action_type, "ok": False, "error": "Order not found"})
+                    continue
+                await create_audit_log("ORDER_PAYMENT_STATUS_CHANGED", "order", order_id, current_user["id"], {"status": status_value, "source": "ai"})
+                results.append({"type": action_type, "ok": True, "order_id": order_id, "status": status_value})
             elif action_type == "update_ticket_status":
                 ticket_id = action_payload.get("ticket_id")
                 status_value = action_payload.get("status")
