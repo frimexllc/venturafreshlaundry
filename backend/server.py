@@ -2048,6 +2048,23 @@ async def convert_membership_signup(signup_id: str, current_user: dict = Depends
         }
         await db.customers.insert_one(customer)
         await create_audit_log("CUSTOMER_CREATED", "customer", customer_id, current_user["id"])
+
+    preferences = signup.get("preferences")
+    if preferences:
+        existing_pref = await db.preferences.find({"customer_id": customer["id"]}).sort("version", -1).limit(1).to_list(1)
+        version = (existing_pref[0]["version"] + 1) if existing_pref else 1
+        pref_id = str(uuid.uuid4())
+        normalized = normalize_preference_payload(PreferenceCreate(customer_id=customer["id"], **preferences))
+        pref_doc = {
+            "id": pref_id,
+            "customer_id": customer["id"],
+            **normalized,
+            "version": version,
+            "created_at": now,
+            "updated_at": now
+        }
+        await db.preferences.insert_one(pref_doc)
+        await db.customers.update_one({"id": customer["id"]}, {"$set": {"preferences_id": pref_id, "updated_at": now}})
     await db.membership_signups.update_one(
         {"id": signup_id},
         {"$set": {"status": "converted", "customer_id": customer["id"], "updated_at": now}}
