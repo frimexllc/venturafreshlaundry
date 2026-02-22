@@ -464,6 +464,102 @@ export default function OperatorDashboard() {
         </div>
       </div>
 
+      <Dialog open={!!selectedOrder} onOpenChange={(open) => !open && setSelectedOrder(null)}>
+        <DialogContent className="sm:max-w-lg" data-testid="operator-order-detail-modal">
+          <DialogHeader>
+            <DialogTitle>Orden {formatOrderNumber(selectedOrder)}</DialogTitle>
+          </DialogHeader>
+          {selectedOrder && (
+            <div className="space-y-4 mt-3">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-slate-500">Estado</p>
+                  <p className="font-medium" data-testid="operator-order-status">{getStatusInfo(selectedOrder.status).label}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-slate-500">Servicio</p>
+                  <p className="font-medium" data-testid="operator-order-service">{selectedOrder.service_type || "-"}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-slate-500">Cliente</p>
+                  <p className="font-medium" data-testid="operator-order-customer">{selectedOrder.customer_name || "-"}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-slate-500">Membresía</p>
+                  <p className="font-medium" data-testid="operator-order-membership">{selectedOrder.membership_plan || "No"}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-slate-500">Teléfono</p>
+                  <p className="font-medium" data-testid="operator-order-phone">{selectedOrder.customer_phone || "-"}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-slate-500">Email</p>
+                  <p className="font-medium" data-testid="operator-order-email">{selectedOrder.customer_email || "-"}</p>
+                </div>
+              </div>
+              <div>
+                <p className="text-sm text-slate-500">Contacto</p>
+                <p className="font-medium" data-testid="operator-order-contact">{selectedOrder.preferred_contact || "-"}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-slate-500">Fecha Pickup</p>
+                  <p className="font-medium" data-testid="operator-order-pickup-date">{selectedOrder.pickup_date || "-"}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-slate-500">Ventana</p>
+                  <p className="font-medium" data-testid="operator-order-pickup-window">{selectedOrder.pickup_time || "-"}</p>
+                </div>
+              </div>
+              <div>
+                <p className="text-sm text-slate-500">Dirección Pickup</p>
+                <p className="font-medium" data-testid="operator-order-pickup-address">{selectedOrder.pickup_address || "-"}</p>
+              </div>
+              <div>
+                <p className="text-sm text-slate-500">Dirección Entrega</p>
+                <p className="font-medium" data-testid="operator-order-delivery-address">{selectedOrder.delivery_address || "-"}</p>
+              </div>
+              {selectedOrder.special_instructions && (
+                <div>
+                  <p className="text-sm text-slate-500">Notas</p>
+                  <p className="font-medium" data-testid="operator-order-notes">{selectedOrder.special_instructions}</p>
+                </div>
+              )}
+              {selectedOrder.gate_code && (
+                <div>
+                  <p className="text-sm text-slate-500">Código de acceso</p>
+                  <p className="font-medium" data-testid="operator-order-gate">{selectedOrder.gate_code}</p>
+                </div>
+              )}
+              <div className="border-t pt-3" data-testid="operator-preferences-section">
+                <p className="text-sm text-slate-500">Preferencias de lavado</p>
+                {selectedOrder.preferences_snapshot ? (
+                  <div className="grid grid-cols-2 gap-3 mt-2">
+                    {Object.entries(PREFERENCE_LABELS).map(([key, label]) => (
+                      <div key={key}>
+                        <p className="text-xs text-slate-500">{label}</p>
+                        <p className="font-medium" data-testid={`operator-pref-${key}`}>
+                          {renderPreferenceValue(selectedOrder.preferences_snapshot?.[key])}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm font-medium text-slate-600 mt-1" data-testid="operator-pref-empty">
+                    Sin preferencias registradas
+                  </p>
+                )}
+                <p className="text-xs text-slate-500 mt-2" data-testid="operator-pref-id">
+                  PREF: {selectedOrder.preferences_id || "N/A"}
+                </p>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Urgent Tickets */}
       {dashboard?.urgent_tickets?.length > 0 && (
         <div className="bg-white rounded-xl border border-red-200 overflow-hidden">
