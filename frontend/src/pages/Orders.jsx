@@ -255,6 +255,16 @@ export default function Orders() {
     return `VFL-${dateSlug}-${short}`;
   };
 
+  const getWeightDelta = () => {
+    const est = parseFloat(weightForm.estimated_lbs);
+    const act = parseFloat(weightForm.actual_lbs);
+    if (Number.isNaN(est) || Number.isNaN(act)) {
+      return "-";
+    }
+    const diff = parseFloat((act - est).toFixed(2));
+    return diff > 0 ? `+${diff}` : `${diff}`;
+  };
+
   const renderPreferenceValue = (value) => {
     if (Array.isArray(value)) {
       return value.length ? value.join(", ") : "-";
