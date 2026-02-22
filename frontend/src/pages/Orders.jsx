@@ -74,6 +74,8 @@ export default function Orders() {
   const [form, setForm] = useState(emptyForm);
   const [submitting, setSubmitting] = useState(false);
   const [viewOrder, setViewOrder] = useState(null);
+  const [weightForm, setWeightForm] = useState({ estimated_lbs: "", actual_lbs: "" });
+  const [savingWeights, setSavingWeights] = useState(false);
   const [qrStartDate, setQrStartDate] = useState("");
   const [qrEndDate, setQrEndDate] = useState("");
   const [exportingQr, setExportingQr] = useState(false);
