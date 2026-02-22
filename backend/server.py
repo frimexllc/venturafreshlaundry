@@ -3990,31 +3990,6 @@ class CustomerAuthResponse(BaseModel):
     token_type: str
     customer: dict
 
-def create_customer_token(customer_id: str, email: str) -> str:
-    payload = {
-        "sub": customer_id,
-        "email": email,
-        "type": "customer",
-        "exp": datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRATION_HOURS * 7)  # 7 days for customers
-    }
-    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
-
-async def get_current_customer(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    try:
-        payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        customer_id = payload.get("sub")
-        token_type = payload.get("type")
-        if not customer_id or token_type != "customer":
-            raise HTTPException(status_code=401, detail="Invalid token")
-        customer = await db.customers.find_one({"id": customer_id}, {"_id": 0})
-        if not customer:
-            raise HTTPException(status_code=401, detail="Customer not found")
-        return customer
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
 @api_router.post("/customer/auth/register", response_model=CustomerAuthResponse)
 async def customer_register(data: CustomerRegister):
     """Register a new customer account"""
