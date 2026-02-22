@@ -3364,9 +3364,17 @@ class PublicMembershipSignup(BaseModel):
 async def public_pickup_request(data: PublicPickupRequest):
     """Public endpoint for pickup request form - no auth required"""
     now = datetime.now(timezone.utc).isoformat()
-    
+
+    normalized_name = normalize_name(data.name)
+    normalized_email = normalize_email(data.email) or data.email.lower()
+    normalized_phone = normalize_phone(data.phone)
+    normalized_address = normalize_address(data.address)
+    normalized_notes = normalize_spaces(data.notes)
+    normalized_gate_code = normalize_spaces(data.gate_code)
+    normalized_service_type = normalize_spaces(data.service_type).lower().replace(" ", "_") or "pickup_delivery"
+
     # Find or create customer
-    customer = await db.customers.find_one({"email": data.email.lower()}, {"_id": 0})
+    customer = await db.customers.find_one({"email": normalized_email}, {"_id": 0})
     if not customer:
         customer_id = str(uuid.uuid4())
         customer = {
