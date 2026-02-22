@@ -196,6 +196,7 @@ When the user asks to perform an action (like updating an order status), respond
 
 Available actions:
 - update_order_status: {{"order_id": "...", "status": "new|processing|ready|out_for_delivery|delivered|completed|cancelled"}}
+- update_order_lbs: {{"order_id": "...", "estimated_lbs": "number or null", "actual_lbs": "number or null"}}
 - update_payment_status: {{"order_id": "...", "status": "pending|paid|refunded"}}
 - update_quote_status: {{"quote_id": "...", "status": "new|sent|accepted|rejected|expired"}}
 - update_lead_status: {{"lead_id": "...", "status": "new|contacted|qualified|converted|lost"}}
