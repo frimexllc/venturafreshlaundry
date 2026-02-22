@@ -35,7 +35,8 @@ const getStatusMeta = (status) =>
 const serviceLabels = {
   pickup_delivery: "Pickup & Delivery",
   wash_fold: "Wash & Fold",
-  self_service: "Self Service"
+  self_service: "Self Service",
+  commercial: "Commercial / B2B"
 };
 
 const preferenceLabels = {
