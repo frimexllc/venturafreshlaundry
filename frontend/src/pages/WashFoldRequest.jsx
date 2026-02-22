@@ -324,7 +324,7 @@ export default function WashFoldRequest() {
                     value={form.dropoff_time}
                     onValueChange={(v) => setForm({ ...form, dropoff_time: v })}
                   >
-                    <SelectTrigger className="mt-1">
+                    <SelectTrigger className="mt-1" data-testid="washfold-dropoff-time">
                       <SelectValue placeholder="Select time window" />
                     </SelectTrigger>
                     <SelectContent>
