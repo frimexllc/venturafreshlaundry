@@ -63,7 +63,9 @@ RECEIVED → PROCESSING → READY → OUT_FOR_DELIVERY → DELIVERED → COMPLET
 - Formulario Elite Concierge con preferencias avanzadas
 - Portal de cliente con edición/eliminación de preferencias
 - Preferencias visibles en detalle de órdenes (Admin/Operador)
-- Ticket QR con formato de ticket y prefijo VFL en órdenes
+- Ticket QR con formato de ticket y prefijo VFL en órdenes (incluye lbs estimadas/actuales)
+- Edición de libras estimadas/actuales en detalle de órdenes (Admin/Operador)
+- Mejoras al asistente IA interno (contexto + acciones de órdenes)
 - Formulario separado Wash & Fold `/wash-fold`
 - Conversión de cotizaciones B2B → Lead
 - Páginas legales + links en footer
