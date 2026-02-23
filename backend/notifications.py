@@ -35,10 +35,10 @@ if TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN:
 sendgrid_client = None
 if SENDGRID_API_KEY:
     try:
-        sendgrid_client = SendGridAPIClient(
-            SENDGRID_API_KEY,
-            host="https://api.eu.sendgrid.com" if SENDGRID_DATA_RESIDENCY == "eu" else None
-        )
+        if SENDGRID_DATA_RESIDENCY == "eu":
+            sendgrid_client = SendGridAPIClient(SENDGRID_API_KEY, host="https://api.eu.sendgrid.com")
+        else:
+            sendgrid_client = SendGridAPIClient(SENDGRID_API_KEY)
         logger.info("SendGrid client initialized successfully")
     except Exception as e:
         logger.error(f"Failed to initialize SendGrid client: {e}")
