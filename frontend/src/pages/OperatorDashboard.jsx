@@ -249,6 +249,22 @@ export default function OperatorDashboard() {
     return diff > 0 ? `+${diff}` : `${diff}`;
   };
 
+  const formatCurrency = (value) => {
+    if (value === null || value === undefined || value === "") return "-";
+    const num = parseFloat(value);
+    if (Number.isNaN(num)) return "-";
+    return `$${num.toFixed(2)}`;
+  };
+
+  const getChangePreview = () => {
+    if (!selectedOrder?.total_amount) return "-";
+    const amount = parseFloat(paymentForm.amountReceived);
+    const total = parseFloat(selectedOrder.total_amount);
+    if (Number.isNaN(amount) || Number.isNaN(total)) return "-";
+    const diff = amount - total;
+    return diff >= 0 ? `$${diff.toFixed(2)}` : `-$${Math.abs(diff).toFixed(2)}`;
+  };
+
   const openMaps = (address) => {
     if (!address) return;
     const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
