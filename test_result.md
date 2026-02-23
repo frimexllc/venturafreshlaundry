@@ -269,6 +269,54 @@ frontend:
         agent: "testing"
         comment: "✅ TESTED: B2B Quotes page working correctly. Quote action menu accessible. 'Convertir a Lead' option visible and properly labeled in quote action dropdown menu."
 
+  - task: "Operator Panel - IA Assistant Card"
+    implemented: true
+    working: true
+    file: "pages/OperatorDashboard.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED (Feb 23, 2026): IA Assistant (Asistente Operativo IA) card fully functional. Verified: textarea input for AI prompts (editable), 'Enviar a IA' button, 'Limpiar' button, and AI reply display area. All components render correctly and are interactive."
+
+  - task: "Operator Panel - Pickups List with Payment Badge and Print Button"
+    implemented: true
+    working: true
+    file: "pages/OperatorDashboard.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED (Feb 23, 2026): Pickups list displaying correctly with 2 pickup items. Each pickup shows payment status badge (e.g., 'Pago: Pendiente') and 'Imprimir Ticket' button. All elements properly visible and functional."
+
+  - task: "Operator Panel - Order Detail Modal with Editable Libras Section"
+    implemented: true
+    working: true
+    file: "pages/OperatorDashboard.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED (Feb 23, 2026): Order detail modal opens correctly on pickup click. Libras (Pounds) section verified as EDITABLE with: 'Estimated lbs' input (tested with value 20.5), 'Actual lbs' input (tested with value 22.8), delta calculation display, and 'Guardar libras' button. Section is fully visible and functional."
+
+  - task: "Operator Panel - Payment Section in Order Detail"
+    implemented: true
+    working: true
+    file: "pages/OperatorDashboard.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED (Feb 23, 2026): Payment section in order detail modal fully functional. Verified all required elements: 1) Payment method select with options (Efectivo, Tarjeta, Transferencia, Otro) - functional and tested, 2) Amount received input (editable, tested with value 100.00), 3) 'Registrar pago' button present and labeled correctly, 4) 'Imprimir Ticket' button in payment section. Change preview also displays correctly. All elements working as expected."
+
 metadata:
   created_by: "main_agent"
   version: "1.0"
