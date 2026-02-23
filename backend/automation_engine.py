@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 try:
     from notifications import notify_order_status_changed
     NOTIFICATIONS_ENABLED = True
+SKIP_SERVER_NOTIFICATIONS = os.environ.get('SKIP_SERVER_NOTIFICATIONS', 'false').lower() == 'true'
 except ImportError:
     NOTIFICATIONS_ENABLED = False
     logger.warning("Notification services not available")
