@@ -1711,7 +1711,7 @@ async def voice_gather(request: Request):
     if not reply:
         reply = "Gracias por tu llamada. Un agente se comunicará contigo pronto." if voice_language == "es-MX" else "Thanks for calling. A team member will reach out soon."
 
-    reply_text = html.escape(reply)
+    reply_text = html.escape(sanitize_voice_text(reply))
     twiml = f"""<?xml version=\"1.0\" encoding=\"UTF-8\"?>
 <Response>
   <Say language=\"{voice_language}\" voice=\"alice\">{reply_text}</Say>
