@@ -564,6 +564,17 @@ export default function OperatorDashboard() {
                         Mapa
                       </Button>
                     )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handlePrintTicket(order);
+                      }}
+                      data-testid={`operator-print-${order.order_id}`}
+                    >
+                      Imprimir Ticket
+                    </Button>
                     {(order.next_status || getNextStatus(order.status)) && (
                       <Button
                         size="sm"
