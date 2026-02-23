@@ -40,6 +40,13 @@ const PREFERENCE_LABELS = {
   fragrance_preference: "Fragancia"
 };
 
+const PAYMENT_METHODS = [
+  { value: "cash", label: "Efectivo" },
+  { value: "card", label: "Tarjeta" },
+  { value: "transfer", label: "Transferencia" },
+  { value: "other", label: "Otro" }
+];
+
 export default function OperatorDashboard() {
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
