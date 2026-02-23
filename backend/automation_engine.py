@@ -969,6 +969,7 @@ async def get_operator_dashboard():
         delivery_address = order.get("delivery_address") or order.get("pickup_address")
         return {
             "order_id": order_id,
+            "id": order.get("id"),
             "order_number": order.get("order_number") or order.get("order_id"),
             "status": status,
             "next_status": get_next_status(status),
@@ -987,6 +988,13 @@ async def get_operator_dashboard():
             "preferences_id": order.get("preferences_id"),
             "preferences_snapshot": order.get("preferences_snapshot"),
             "special_instructions": order.get("special_instructions") or order.get("notes"),
+            "estimated_lbs": order.get("estimated_lbs"),
+            "actual_lbs": order.get("actual_lbs"),
+            "total_amount": order.get("total_amount"),
+            "payment_status": order.get("payment_status"),
+            "payment_method": order.get("payment_method"),
+            "amount_paid": order.get("amount_paid"),
+            "change_due": order.get("change_due"),
             "created_at": order.get("created_at")
         }
 
