@@ -57,6 +57,12 @@ export default function OperatorDashboard() {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [weightForm, setWeightForm] = useState({ estimated_lbs: "", actual_lbs: "" });
   const [savingWeights, setSavingWeights] = useState(false);
+  const [paymentForm, setPaymentForm] = useState({ method: "cash", amountReceived: "" });
+  const [savingPayment, setSavingPayment] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiReply, setAiReply] = useState("");
+  const [aiResults, setAiResults] = useState([]);
+  const [aiLoading, setAiLoading] = useState(false);
 
   const loadDashboard = useCallback(async () => {
     try {
