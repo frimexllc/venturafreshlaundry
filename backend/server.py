@@ -1479,6 +1479,27 @@ def normalize_status(value: Optional[str]) -> str:
     return value.strip().lower().replace(" ", "_")
 
 
+def normalize_payment_method(value: Optional[str]) -> str:
+    if not value:
+        return ""
+    normalized = value.strip().lower()
+    mapping = {
+        "efectivo": "cash",
+        "cash": "cash",
+        "tarjeta": "card",
+        "card": "card",
+        "credito": "card",
+        "débito": "card",
+        "debito": "card",
+        "transferencia": "transfer",
+        "transfer": "transfer",
+        "transferencia_bancaria": "transfer",
+        "otro": "other",
+        "other": "other"
+    }
+    return mapping.get(normalized, normalized)
+
+
 def should_notify_order_status(order: dict, status_value: str) -> bool:
     """Determine if order status change should trigger notification"""
     status_normalized = normalize_status(status_value)
