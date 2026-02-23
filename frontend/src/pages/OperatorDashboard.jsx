@@ -214,7 +214,7 @@ export default function OperatorDashboard() {
         toast.error("Permite pop-ups para imprimir");
         return;
       }
-      printWindow.document.write(`<html><body style="margin:0;display:flex;align-items:center;justify-content:center;"><img src="${blobUrl}" style="max-width:100%;" onload="window.print();window.onafterprint=() => window.close();" /></body></html>`);
+      printWindow.document.write(`<html><body style="margin:0;display:flex;align-items:center;justify-content:center;"><img src="${blobUrl}" style="max-width:100%;" onload="window.print();window.onafterprint=function(){window.close();};" /></body></html>`);
       printWindow.document.close();
     } catch (error) {
       toast.error("No se pudo generar el ticket");
