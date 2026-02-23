@@ -11,6 +11,7 @@ from enum import Enum
 import uuid
 import re
 import logging
+import os
 
 automation_router = APIRouter(prefix="/automation", tags=["Automation Engine"])
 logger = logging.getLogger(__name__)
