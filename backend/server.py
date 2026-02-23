@@ -1365,16 +1365,18 @@ async def get_order_qr(order_id: str, current_user: dict = Depends(get_current_u
 async def get_order_qr_svg(order_id: str, current_user: dict = Depends(get_current_user)):
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not order:
+        order = await db.orders.find_one({"order_number": order_id}, {"_id": 0})
+    if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     qr_token = order.get("qr_token") or str(uuid.uuid4())
     if not order.get("qr_token"):
-        await db.orders.update_one({"id": order_id}, {"$set": {"qr_token": qr_token}})
+        await db.orders.update_one({"id": order.get("id")}, {"$set": {"qr_token": qr_token}})
 
     customer = None
     if order.get("customer_id"):
         customer = await db.customers.find_one({"id": order.get("customer_id")}, {"_id": 0})
 
-    payload = build_qr_payload({"id": order_id, "order_number": order.get("order_number"), "qr_token": qr_token})
+    payload = build_qr_payload({"id": order.get("id"), "order_number": order.get("order_number"), "qr_token": qr_token})
     ticket_svg = build_ticket_svg(order, customer, payload)
     display_id = build_display_order_number(order)
     filename = f"ticket-{display_id}.svg"
