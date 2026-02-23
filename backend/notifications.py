@@ -16,7 +16,12 @@ logger = logging.getLogger(__name__)
 TWILIO_ACCOUNT_SID = os.environ.get('TWILIO_ACCOUNT_SID')
 TWILIO_AUTH_TOKEN = os.environ.get('TWILIO_AUTH_TOKEN')
 TWILIO_PHONE_NUMBER = os.environ.get('TWILIO_PHONE_NUMBER')
+TWILIO_WHATSAPP_NUMBER = os.environ.get('TWILIO_WHATSAPP_NUMBER')
 BUSINESS_NAME = os.environ.get('BUSINESS_NAME', 'Ventura Fresh Laundromat')
+SENDGRID_API_KEY = os.environ.get('SENDGRID_API_KEY')
+SENDGRID_FROM_EMAIL = os.environ.get('SENDGRID_FROM_EMAIL')
+SENDGRID_DATA_RESIDENCY = os.environ.get('SENDGRID_DATA_RESIDENCY', '').lower()
+GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
 
 # Initialize Twilio client
 twilio_client = None
