@@ -802,6 +802,69 @@ export default function OperatorDashboard() {
                   </Button>
                 </div>
               </div>
+              <div className="border-t pt-3" data-testid="operator-payment-section">
+                <p className="text-sm text-slate-500">Pago</p>
+                <div className="grid grid-cols-2 gap-4 mt-2">
+                  <div>
+                    <p className="text-xs text-slate-500">Total</p>
+                    <p className="font-medium" data-testid="operator-payment-total">{formatCurrency(selectedOrder.total_amount)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Estado</p>
+                    <p className="font-medium" data-testid="operator-payment-status">{getPaymentStatusLabel(selectedOrder.payment_status)}</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4 mt-2">
+                  <div>
+                    <p className="text-xs text-slate-500">Método</p>
+                    <select
+                      value={paymentForm.method}
+                      onChange={(e) => setPaymentForm({ ...paymentForm, method: e.target.value })}
+                      className="w-full mt-1 border border-slate-200 rounded-md px-2 py-2 text-sm"
+                      data-testid="operator-payment-method"
+                    >
+                      {PAYMENT_METHODS.map((method) => (
+                        <option key={method.value} value={method.value}>{method.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Monto recibido</p>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={paymentForm.amountReceived}
+                      onChange={(e) => setPaymentForm({ ...paymentForm, amountReceived: e.target.value })}
+                      className="mt-1"
+                      disabled={paymentForm.method !== "cash"}
+                      placeholder={paymentForm.method === "cash" ? "0.00" : "No requerido"}
+                      data-testid="operator-payment-amount"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between mt-2">
+                  <p className="text-xs text-slate-500" data-testid="operator-payment-change">Cambio: {paymentForm.method === "cash" ? getChangePreview() : "-"}</p>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleRegisterPayment}
+                      disabled={savingPayment}
+                      data-testid="operator-payment-save"
+                    >
+                      {savingPayment ? "Guardando..." : "Registrar pago"}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => handlePrintTicket(selectedOrder)}
+                      data-testid="operator-payment-print"
+                    >
+                      Imprimir Ticket
+                    </Button>
+                  </div>
+                </div>
+              </div>
               <div className="border-t pt-3" data-testid="operator-preferences-section">
                 <p className="text-sm text-slate-500">Preferencias de lavado</p>
                 {selectedOrder.preferences_snapshot ? (
