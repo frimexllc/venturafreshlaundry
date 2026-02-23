@@ -1662,9 +1662,12 @@ async def voice_inbound(request: Request):
     if not greeting:
         greeting = "Gracias por llamar a Ventura Fresh Laundry. ¿En qué podemos ayudarte?"
 
-    gather_url = str(request.url_for("voice_gather"))
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+    proto = request.headers.get("x-forwarded-proto") or "https"
+    base_url = f"{proto}://{host}" if host else str(request.base_url).rstrip("/")
+    gather_url = f"{base_url}/api/voice/gather"
     voice_language = "es-MX" if str(language).lower().startswith("es") else "en-US"
-    greeting_text = html.escape(greeting)
+    greeting_text = html.escape(sanitize_voice_text(greeting))
     fallback_text = "No recibí respuesta. Puedes llamarnos de nuevo cuando gustes." if voice_language == "es-MX" else "We did not receive a response. Please call again anytime."
 
     twiml = f"""<?xml version=\"1.0\" encoding=\"UTF-8\"?>
