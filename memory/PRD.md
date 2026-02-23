@@ -65,6 +65,8 @@ RECEIVED → PROCESSING → READY → OUT_FOR_DELIVERY → DELIVERED → COMPLET
 - Preferencias visibles en detalle de órdenes (Admin/Operador)
 - Ticket QR con formato de ticket y prefijo VFL en órdenes (incluye lbs estimadas/actuales)
 - Edición de libras estimadas/actuales en detalle de órdenes (Admin/Operador)
+- Panel Operador: impresión de tickets y registro de pagos (efectivo/tarjeta/transferencia/otro)
+- Asistente Operativo IA en panel de operador
 - Mejoras al asistente IA interno (contexto + acciones de órdenes)
 - Formulario separado Wash & Fold `/wash-fold`
 - Conversión de cotizaciones B2B → Lead
