@@ -2639,6 +2639,136 @@ async def ai_chat(data: AdminAIRequest, current_user: dict = Depends(get_current
         logger.error(f"Error in AI chat: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@api_router.post("/ai/operations")
+async def ai_operations(
+    data: AdminAIRequest,
+    request: Request,
+    current_user: dict = Depends(require_role([ROLE_OPERATOR]))
+):
+    """Specialized AI assistant for operator workflows"""
+    if not AI_ASSISTANT_ENABLED:
+        raise HTTPException(status_code=503, detail="AI Assistant not available")
+
+    recent_orders = await db.orders.find({}, {"_id": 0}).sort("created_at", -1).limit(15).to_list(15)
+    orders_summary = "\n".join([
+        f"- {o.get('order_number') or o.get('id')} | id:{o.get('id')} | {o.get('customer_name') or '-'} | status:{o.get('status')} | total:{o.get('total_amount')} | payment:{o.get('payment_status')}"
+        for o in recent_orders
+    ]) or "No recent orders"
+
+    system_prompt = (
+        "You are an operations assistant for a laundry business. "
+        "Return ONLY valid JSON with keys: reply (string) and actions (array). "
+        "Actions must be objects with type and payload. Allowed types: "
+        "update_order_status, update_order_lbs, register_payment, print_ticket, send_notification. "
+        "For update_order_status payload: order_id, status (new|processing|ready|out_for_delivery|delivered|completed|cancelled). "
+        "For update_order_lbs payload: order_id, estimated_lbs (number or null), actual_lbs (number or null). "
+        "For register_payment payload: order_id, payment_method (cash|card|transfer|other), amount_received (number or null). "
+        "For print_ticket payload: order_id. "
+        "For send_notification payload: order_id, message (optional), channel (email|sms|whatsapp|call). "
+        "Use IDs from the context. If no action is needed, return actions: []."
+    )
+
+    prompt = f"{system_prompt}\n\nCONTEXT:\n{orders_summary}\n\nUSER: {data.message}\nJSON:"
+    raw = call_ollama(prompt)
+    payload = extract_json_payload(raw)
+    reply = payload.get("reply", "")
+    actions = payload.get("actions", []) if isinstance(payload.get("actions", []), list) else []
+
+    results = []
+    if data.execute:
+        host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+        proto = request.headers.get("x-forwarded-proto") or "https"
+        base_url = f"{proto}://{host}" if host else str(request.base_url).rstrip("/")
+
+        for action in actions:
+            action_type = action.get("type") or action.get("action")
+            action_payload = action.get("payload") or action.get("params") or {}
+            try:
+                if action_type == "update_order_status":
+                    order_id = action_payload.get("order_id")
+                    status = action_payload.get("status")
+                    if not order_id or not status:
+                        results.append({"type": action_type, "ok": False, "error": "Missing order_id or status"})
+                        continue
+                    result = await update_order_status(order_id, status, True, current_user)
+                    results.append({"type": action_type, "ok": True, "order_id": order_id, "status": status, "result": result})
+                elif action_type == "update_order_lbs":
+                    order_id = action_payload.get("order_id")
+                    if not order_id:
+                        results.append({"type": action_type, "ok": False, "error": "Missing order_id"})
+                        continue
+                    update_data = {}
+                    if "estimated_lbs" in action_payload:
+                        update_data["estimated_lbs"] = action_payload.get("estimated_lbs")
+                    if "actual_lbs" in action_payload:
+                        update_data["actual_lbs"] = action_payload.get("actual_lbs")
+                    if not update_data:
+                        results.append({"type": action_type, "ok": False, "error": "No lbs provided"})
+                        continue
+                    updated = await update_order(order_id, update_data, current_user)
+                    results.append({"type": action_type, "ok": True, "order_id": order_id, "updated": updated})
+                elif action_type == "register_payment":
+                    order_id = action_payload.get("order_id")
+                    method = action_payload.get("payment_method")
+                    amount_received = action_payload.get("amount_received")
+                    if not order_id or not method:
+                        results.append({"type": action_type, "ok": False, "error": "Missing payment data"})
+                        continue
+                    payment_request = OrderPaymentUpdate(payment_method=method, amount_received=amount_received)
+                    updated = await capture_order_payment(order_id, payment_request, current_user)
+                    results.append({"type": action_type, "ok": True, "order_id": order_id, "updated": updated})
+                elif action_type == "print_ticket":
+                    order_id = action_payload.get("order_id")
+                    if not order_id:
+                        results.append({"type": action_type, "ok": False, "error": "Missing order_id"})
+                        continue
+                    ticket_url = f"{base_url}/api/orders/{order_id}/qr.svg"
+                    results.append({"type": action_type, "ok": True, "order_id": order_id, "ticket_url": ticket_url})
+                elif action_type == "send_notification":
+                    order_id = action_payload.get("order_id")
+                    message = action_payload.get("message")
+                    channel = action_payload.get("channel")
+                    if not order_id:
+                        results.append({"type": action_type, "ok": False, "error": "Missing order_id"})
+                        continue
+                    order = await db.orders.find_one({"$or": [{"id": order_id}, {"order_number": order_id}]}, {"_id": 0})
+                    if not order:
+                        results.append({"type": action_type, "ok": False, "error": "Order not found"})
+                        continue
+                    customer = None
+                    if order.get("customer_id"):
+                        customer = await db.customers.find_one({"id": order.get("customer_id")}, {"_id": 0})
+                    if not customer:
+                        results.append({"type": action_type, "ok": False, "error": "Customer not found"})
+                        continue
+
+                    if message:
+                        preferred = normalize_preferred_contact(channel or customer.get("preferred_contact") or order.get("preferred_contact"))
+                        if preferred == "email":
+                            ok = await send_email(customer.get("email"), "Actualización de tu orden", message)
+                        elif preferred == "call":
+                            language = detect_language(customer, customer.get("phone"))
+                            ok = await send_voice_call(customer.get("phone"), message, language)
+                        elif preferred == "whatsapp":
+                            ok = await send_whatsapp(customer.get("phone"), message)
+                        else:
+                            ok = await send_sms(customer.get("phone"), message)
+                    else:
+                        ok = await send_preferred_notification(customer, order, "status_changed", order.get("status"))
+                    results.append({"type": action_type, "ok": ok, "order_id": order_id})
+                else:
+                    results.append({"type": action_type, "ok": False, "error": "Unknown action"})
+            except Exception as exc:
+                results.append({"type": action_type, "ok": False, "error": str(exc)})
+
+    return {
+        "reply": reply,
+        "actions": actions,
+        "results": results,
+        "generated_at": datetime.now(timezone.utc).isoformat()
+    }
+
+
 async def execute_ai_action(action_data: dict, current_user: dict) -> dict:
     """Execute an action suggested by AI"""
     action_type = action_data.get("action")
