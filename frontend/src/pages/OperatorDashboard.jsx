@@ -197,13 +197,94 @@ export default function OperatorDashboard() {
     }
   };
 
-  const getNextStatus = (currentStatus) => {
-    const statusOrder = ["NEW", "CONFIRMED", "PICKUP_SCHEDULED", "PICKED_UP", "PROCESSING", "READY", "OUT_FOR_DELIVERY", "DELIVERED", "COMPLETED"];
-    const currentIndex = statusOrder.indexOf(currentStatus);
-    if (currentIndex < statusOrder.length - 1) {
-      return statusOrder[currentIndex + 1];
+  const handlePrintTicket = async (order) => {
+    const targetOrder = order || selectedOrder;
+    if (!targetOrder) return;
+    const orderPrimaryId = targetOrder.id || targetOrder.order_id;
+    if (!orderPrimaryId) {
+      toast.error("Orden inválida");
+      return;
     }
-    return null;
+    try {
+      const res = await axios.get(`${API_URL}/api/orders/${orderPrimaryId}/qr.svg`, { responseType: "blob" });
+      const blobUrl = window.URL.createObjectURL(res.data);
+      const printWindow = window.open("");
+      if (!printWindow) {
+        toast.error("Permite pop-ups para imprimir");
+        return;
+      }
+      printWindow.document.write(`chtmlecbody style="margin:0;display:flex;align-items:center;justify-content:center;"ecimg src="${blobUrl}" style="max-width:100%;" onload="window.print();"/ec/bodyec/htmle`);
+      printWindow.document.close();
+    } catch (error) {
+      toast.error("No se pudo generar el ticket");
+    }
+  };
+
+  const handleRegisterPayment = async () => {
+    if (!selectedOrder) return;
+    const orderPrimaryId = selectedOrder.id || selectedOrder.order_id;
+    if (!selectedOrder.total_amount) {
+      toast.error("Agrega el total antes de cobrar");
+      return;
+    }
+    if (paymentForm.method === "cash" && paymentForm.amountReceived === "") {
+      toast.error("Ingresa el monto recibido");
+      return;
+    }
+    setSavingPayment(true);
+    try {
+      const payload = {
+        payment_method: paymentForm.method,
+        amount_received: paymentForm.amountReceived === "" ? null : parseFloat(paymentForm.amountReceived)
+      };
+      const res = await axios.post(`${API_URL}/api/orders/${orderPrimaryId}/payment`, payload);
+      const updated = res.data;
+      toast.success("Pago registrado");
+      setSelectedOrder((prev) => prev ? { ...prev, ...updated } : prev);
+      setDashboard(prev => {
+        if (!prev) return prev;
+        const updateList = (list) =>
+          list.map((order) =>
+            order.order_id === selectedOrder.order_id
+              ? {
+                  ...order,
+                  payment_status: updated.payment_status,
+                  payment_method: updated.payment_method,
+                  amount_paid: updated.amount_paid,
+                  change_due: updated.change_due
+                }
+              : order
+          );
+        return {
+          ...prev,
+          todays_pickups: updateList(prev.todays_pickups || []),
+          ready_for_delivery: updateList(prev.ready_for_delivery || [])
+        };
+      });
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Error registrando pago");
+    } finally {
+      setSavingPayment(false);
+    }
+  };
+
+  const handleAiRequest = async () => {
+    if (!aiPrompt.trim()) return;
+    setAiLoading(true);
+    try {
+      const res = await axios.post(`${API_URL}/api/ai/operations`, { message: aiPrompt, execute: true });
+      setAiReply(res.data?.reply || "");
+      setAiResults(res.data?.results || []);
+      (res.data?.results || []).forEach((result) => {
+        if (result.type === "print_ticket" && result.ticket_url) {
+          handlePrintTicket({ id: result.order_id || result.orderNumber || result.order_id, order_id: result.order_id });
+        }
+      });
+    } catch (error) {
+      toast.error("No se pudo ejecutar la tarea IA");
+    } finally {
+      setAiLoading(false);
+    }
   };
 
   const buildDateSlug = (dateStr) => {
