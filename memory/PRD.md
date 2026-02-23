@@ -73,7 +73,8 @@ RECEIVED → PROCESSING → READY → OUT_FOR_DELIVERY → DELIVERED → COMPLET
 
 ### Integraciones
 - Stripe (pagos/membresías)
-- Twilio (SMS/WhatsApp) **con error 30034 en algunos carriers**
+- Twilio (SMS/WhatsApp/Voice) **con error 30034 en algunos carriers**
+- SendGrid (emails)
 - Groq (IA gerente)
 
 ## Cambios recientes (2026-02-22)
