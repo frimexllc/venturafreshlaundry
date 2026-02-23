@@ -476,6 +476,65 @@ export default function OperatorDashboard() {
         </div>
       </div>
 
+      {/* AI Operations Assistant */}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
+          <Bot className="h-5 w-5 text-sky-600" />
+          <h2 className="font-semibold text-slate-900">Asistente Operativo IA</h2>
+        </div>
+        <div className="p-6 grid gap-6 lg:grid-cols-[2fr_1fr]">
+          <div>
+            <Textarea
+              value={aiPrompt}
+              onChange={(e) => setAiPrompt(e.target.value)}
+              rows={4}
+              placeholder="Ej: Marca la orden VFL-20260222-02220002 como pagada en efectivo 50 y genera ticket"
+              data-testid="operator-ai-input"
+            />
+            <div className="flex flex-wrap gap-2 mt-3">
+              <Button onClick={handleAiRequest} disabled={aiLoading} data-testid="operator-ai-submit">
+                {aiLoading ? "Procesando..." : "Enviar a IA"}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setAiPrompt("");
+                  setAiReply("");
+                  setAiResults([]);
+                }}
+                data-testid="operator-ai-clear"
+              >
+                Limpiar
+              </Button>
+            </div>
+          </div>
+          <div className="bg-slate-50 rounded-xl p-4">
+            <p className="text-sm text-slate-500">Respuesta</p>
+            <p className="font-medium text-slate-900 mt-1" data-testid="operator-ai-reply">
+              {aiReply || "Aún no hay respuesta"}
+            </p>
+            <div className="mt-4">
+              <p className="text-xs text-slate-500">Acciones ejecutadas</p>
+              {aiResults.length === 0 ? (
+                <p className="text-sm text-slate-400 mt-1">Sin acciones todavía</p>
+              ) : (
+                <ul className="mt-2 space-y-2">
+                  {aiResults.map((result, index) => (
+                    <li
+                      key={`${result.type}-${index}`}
+                      className="text-sm text-slate-700"
+                      data-testid={`operator-ai-result-${index}`}
+                    >
+                      {result.type}: {result.ok ? "OK" : "Error"}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Today's Pickups */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-100 bg-slate-50">
