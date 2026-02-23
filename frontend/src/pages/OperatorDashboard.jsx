@@ -523,6 +523,9 @@ export default function OperatorDashboard() {
                     <div className="text-xs text-slate-500 mt-1">
                       Servicio: {order.service_type || "-"}
                     </div>
+                    <div className="text-xs text-slate-500 mt-1" data-testid={`operator-payment-${order.order_id}`}>
+                      Pago: {getPaymentStatusLabel(order.payment_status)} {order.payment_method ? `(${getPaymentMethodLabel(order.payment_method)})` : ""}
+                    </div>
                     {order.special_instructions && (
                       <div className="flex items-start gap-1 text-sm text-amber-600 mt-1">
                         <MessageSquare className="h-4 w-4 mt-0.5 flex-shrink-0" />
