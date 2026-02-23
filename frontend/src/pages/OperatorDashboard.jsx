@@ -165,16 +165,17 @@ export default function OperatorDashboard() {
 
   const updateOrderWeights = async () => {
     if (!selectedOrder) return;
+    const orderPrimaryId = selectedOrder.id || selectedOrder.order_id;
     setSavingWeights(true);
     try {
       const payload = {
         estimated_lbs: weightForm.estimated_lbs === "" ? null : parseFloat(weightForm.estimated_lbs),
         actual_lbs: weightForm.actual_lbs === "" ? null : parseFloat(weightForm.actual_lbs)
       };
-      const res = await axios.put(`${API_URL}/api/orders/${selectedOrder.order_id}`, payload);
+      const res = await axios.put(`${API_URL}/api/orders/${orderPrimaryId}`, payload);
       const updated = res.data;
       toast.success("Libras actualizadas");
-      setSelectedOrder((prev) => prev ? { ...prev, ...updated, order_id: prev.order_id } : prev);
+      setSelectedOrder((prev) => prev ? { ...prev, ...updated, order_id: prev.order_id, id: prev.id || updated.id } : prev);
       setDashboard(prev => {
         if (!prev) return prev;
         const updateList = (list) =>
