@@ -1567,6 +1567,24 @@ async def update_order_payment_status(order_id: str, status: str, current_user: 
     })
     return {"message": f"Payment status updated to {status}"}
 
+@api_router.post("/admin/orders/last-completed/notify")
+async def notify_last_completed_order(current_user: dict = Depends(get_current_user)):
+    require_admin(current_user)
+    last_order = await db.orders.find({"status": "completed"}, {"_id": 0}).sort("updated_at", -1).limit(1).to_list(1)
+    if not last_order:
+        raise HTTPException(status_code=404, detail="No completed orders found")
+    order = last_order[0]
+    customer_id = order.get("customer_id")
+    if not customer_id:
+        raise HTTPException(status_code=400, detail="Order missing customer")
+    customer = await db.customers.find_one({"id": customer_id}, {"_id": 0})
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    if NOTIFICATIONS_ENABLED and not SKIP_SERVER_NOTIFICATIONS:
+        await notify_order_status_changed(customer, order, "completed")
+    await create_audit_log("ORDER_COMPLETED_NOTIFICATION_SENT", "order", order["id"], current_user["id"])
+    return {"ok": True, "order_id": order["id"], "order_number": order.get("order_number")}
+
 class VoiceOutboundRequest(BaseModel):
     to_phone: Optional[str] = None
     order_id: Optional[str] = None
