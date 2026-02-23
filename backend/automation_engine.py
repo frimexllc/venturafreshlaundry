@@ -1081,6 +1081,14 @@ async def update_order_status(order_id: str, new_status: str, notes: Optional[st
         "created_at": now.isoformat()
     })
 
+    if NOTIFICATIONS_ENABLED and not SKIP_SERVER_NOTIFICATIONS and order.get("customer_id"):
+        try:
+            customer = await db.customers.find_one({"id": order.get("customer_id")}, {"_id": 0})
+            if customer:
+                await notify_order_status_changed(customer, order, status_db)
+        except Exception as exc:
+            logger.error(f"Operator notification failed: {exc}")
+
     await emit_realtime("notification", {
         "type": "order_status",
         "order_id": order.get("id") or order_id,
