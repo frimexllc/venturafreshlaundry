@@ -355,6 +355,21 @@ export default function OperatorDashboard() {
     return diff >= 0 ? `$${diff.toFixed(2)}` : `-$${Math.abs(diff).toFixed(2)}`;
   };
 
+  const getPaymentMethodLabel = (method) => {
+    if (!method) return "-";
+    const found = PAYMENT_METHODS.find((item) => item.value === method);
+    return found ? found.label : method;
+  };
+
+  const getPaymentStatusLabel = (status) => {
+    if (!status) return "Pendiente";
+    const normalized = status.toString().toLowerCase();
+    if (normalized === "paid") return "Pagado";
+    if (normalized === "refunded") return "Reembolsado";
+    if (normalized === "failed") return "Fallido";
+    return "Pendiente";
+  };
+
   const openMaps = (address) => {
     if (!address) return;
     const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
