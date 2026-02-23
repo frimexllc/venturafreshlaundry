@@ -56,10 +56,12 @@ try:
         send_email,
         send_sms,
         send_voice_call,
+        send_whatsapp,
         send_preferred_notification,
         build_notification_content,
         generate_ai_message,
-        detect_language
+        detect_language,
+        normalize_preferred_contact
     )
     NOTIFICATIONS_ENABLED = True
 except ImportError:
