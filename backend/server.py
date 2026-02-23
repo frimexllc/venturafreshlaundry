@@ -1598,6 +1598,67 @@ async def update_order_payment_status(order_id: str, status: str, current_user: 
     })
     return {"message": f"Payment status updated to {status}"}
 
+
+@api_router.post("/orders/{order_id}/payment")
+async def capture_order_payment(
+    order_id: str,
+    data: OrderPaymentUpdate,
+    current_user: dict = Depends(require_role([ROLE_OPERATOR]))
+):
+    """Capture payment details for an order"""
+    method = normalize_payment_method(data.payment_method)
+    allowed = ["cash", "card", "transfer", "other"]
+    if method not in allowed:
+        raise HTTPException(status_code=400, detail=f"Invalid payment method. Must be one of: {allowed}")
+
+    order = await db.orders.find_one({"$or": [{"id": order_id}, {"order_number": order_id}]}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    total_amount = order.get("total_amount")
+    amount_received = data.amount_received
+
+    if method == "cash" and amount_received is None:
+        raise HTTPException(status_code=400, detail="Amount received is required for cash payments")
+
+    if amount_received is None:
+        amount_received = total_amount
+
+    if total_amount is not None and amount_received is not None:
+        try:
+            total_amount = float(total_amount)
+            amount_received = float(amount_received)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid amount values")
+        if amount_received < total_amount:
+            raise HTTPException(status_code=400, detail="Amount received cannot be less than total")
+
+    change_due = None
+    if method == "cash" and total_amount is not None and amount_received is not None:
+        change_due = round(amount_received - total_amount, 2)
+
+    now = datetime.now(timezone.utc).isoformat()
+    update_data = {
+        "payment_status": "paid",
+        "payment_method": method,
+        "amount_paid": amount_received,
+        "change_due": change_due,
+        "paid_at": now,
+        "updated_at": now
+    }
+
+    await db.orders.update_one({"id": order.get("id")}, {"$set": update_data})
+    await create_audit_log("ORDER_PAYMENT_CAPTURED", "order", order.get("id"), current_user["id"], update_data)
+    await emit_realtime("notification", {
+        "type": "order_payment",
+        "order_id": order.get("id"),
+        "status": "paid",
+        "method": method
+    })
+
+    return {"ok": True, "order_id": order.get("id"), **update_data}
+
+
 @api_router.post("/admin/orders/last-completed/notify")
 async def notify_last_completed_order(current_user: dict = Depends(get_current_user)):
     require_admin(current_user)
