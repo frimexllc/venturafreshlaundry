@@ -4331,8 +4331,9 @@ async def get_calendar_orders(
 async def get_notification_settings(current_user: dict = Depends(get_current_user)):
     """Get notification service status"""
     return {
-        "email_enabled": bool(os.environ.get('RESEND_API_KEY')),
+        "email_enabled": bool(os.environ.get('SENDGRID_API_KEY') and os.environ.get('SENDGRID_FROM_EMAIL')),
         "sms_enabled": bool(os.environ.get('TWILIO_ACCOUNT_SID') and os.environ.get('TWILIO_AUTH_TOKEN')),
+        "voice_enabled": bool(os.environ.get('TWILIO_ACCOUNT_SID') and os.environ.get('TWILIO_AUTH_TOKEN') and os.environ.get('TWILIO_PHONE_NUMBER')),
         "notifications_available": NOTIFICATIONS_ENABLED
     }
 
