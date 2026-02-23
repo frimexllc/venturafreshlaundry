@@ -296,6 +296,11 @@ class OrderResponse(BaseModel):
     created_at: Optional[str] = ""
     updated_at: Optional[str] = ""
 
+class OrderPaymentUpdate(BaseModel):
+    payment_method: str
+    amount_received: Optional[float] = None
+
+
 class QuoteCreate(BaseModel):
     company_name: str
     contact_name: str
