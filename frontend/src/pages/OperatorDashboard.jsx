@@ -654,6 +654,17 @@ export default function OperatorDashboard() {
                       </Button>
                     )}
                     <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handlePrintTicket(order);
+                      }}
+                      data-testid={`operator-delivery-print-${order.order_id}`}
+                    >
+                      Imprimir Ticket
+                    </Button>
+                    <Button
                       size="sm"
                       onClick={(e) => {
                         e.stopPropagation();
