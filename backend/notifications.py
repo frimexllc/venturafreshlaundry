@@ -32,6 +32,27 @@ if TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN:
     except Exception as e:
         logger.error(f"Failed to initialize Twilio client: {e}")
 
+sendgrid_client = None
+if SENDGRID_API_KEY:
+    try:
+        sendgrid_client = SendGridAPIClient(
+            SENDGRID_API_KEY,
+            host="https://api.eu.sendgrid.com" if SENDGRID_DATA_RESIDENCY == "eu" else None
+        )
+        logger.info("SendGrid client initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize SendGrid client: {e}")
+
+
+def get_groq_client():
+    if not GROQ_API_KEY:
+        return None
+    try:
+        return Groq(api_key=GROQ_API_KEY)
+    except Exception as exc:
+        logger.error(f"Failed to init Groq client: {exc}")
+        return None
+
 
 def format_phone(phone: str) -> str:
     """Format phone number for Twilio - handles US and international numbers"""
