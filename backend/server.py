@@ -1586,6 +1586,15 @@ async def notify_last_completed_order(current_user: dict = Depends(get_current_u
     await create_audit_log("ORDER_COMPLETED_NOTIFICATION_SENT", "order", order["id"], current_user["id"])
     return {"ok": True, "order_id": order["id"], "order_number": order.get("order_number")}
 
+def sanitize_voice_text(text: str) -> str:
+    if not text:
+        return ""
+    cleaned = text.strip()
+    if (cleaned.startswith("\"") and cleaned.endswith("\"")) or (cleaned.startswith("'") and cleaned.endswith("'")):
+        cleaned = cleaned[1:-1].strip()
+    return cleaned
+
+
 class VoiceOutboundRequest(BaseModel):
     to_phone: Optional[str] = None
     order_id: Optional[str] = None
