@@ -288,6 +288,10 @@ class OrderResponse(BaseModel):
     preferences_snapshot: Optional[dict] = None
     status: str = "new"
     payment_status: Optional[str] = "pending"
+    payment_method: Optional[str] = None
+    amount_paid: Optional[float] = None
+    change_due: Optional[float] = None
+    paid_at: Optional[str] = None
     total_amount: Optional[float] = None
     created_at: Optional[str] = ""
     updated_at: Optional[str] = ""
