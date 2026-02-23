@@ -78,6 +78,9 @@ RECEIVED → PROCESSING → READY → OUT_FOR_DELIVERY → DELIVERED → COMPLET
 - Groq (IA gerente)
 
 ## Cambios recientes (2026-02-22)
+- ✅ Notificaciones según preferencia de contacto (email/sms/whatsapp/llamada)
+- ✅ SendGrid integrado para emails (EU Data Residency)
+- ✅ Endpoints de voz Twilio (inbound/outbound) con mensajes IA
 - ✅ Edición de libras estimadas/actuales en órdenes (Admin/Operador) + ticket QR incluye lbs
 - ✅ Mejoras al asistente IA interno con contexto y acciones de órdenes
 - ✅ Flujo de órdenes actualizado (OUT_FOR_DELIVERY → DELIVERED/COMPLETED) y eventos tiempo real desde operador
