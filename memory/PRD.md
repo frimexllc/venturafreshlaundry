@@ -96,7 +96,7 @@ RECEIVED → PROCESSING → READY → OUT_FOR_DELIVERY → DELIVERED → COMPLET
 - Validar estabilidad de tiempo real (WebSocket/polling) en producción
 - Hacer funcional el panel de Finanzas (UI con KPIs + transacciones + export CSV)
 - Módulo Admin para monitorear estados y errores de mensajes Twilio
-- Integración Twilio Voice + SendGrid + IA (Groq) para llamadas y emails (requiere keys)
+- Verificación de dominio SendGrid/Twilio Trust (DNS) pendiente en proveedor de dominio
 
 **P2**
 - Corregir warnings React (jsx/keys)
