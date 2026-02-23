@@ -122,6 +122,10 @@ export default function OperatorDashboard() {
         estimated_lbs: selectedOrder.estimated_lbs ?? "",
         actual_lbs: selectedOrder.actual_lbs ?? ""
       });
+      setPaymentForm({
+        method: selectedOrder.payment_method || "cash",
+        amountReceived: selectedOrder.amount_paid ?? ""
+      });
     }
   }, [selectedOrder]);
 
