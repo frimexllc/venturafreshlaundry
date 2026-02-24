@@ -37,9 +37,12 @@ def normalize_email(value: Optional[object]) -> str:
 
 
 def normalize_phone(value: Optional[object]) -> str:
-    digits = re.sub(r"\D", "", to_str(value))
+    raw = to_str(value).strip()
+    digits = re.sub(r"\D", "", raw)
     if not digits:
         return ""
+    if raw.startswith("+"):
+        return f"+{digits}"
     if len(digits) == 10:
         return f"+1{digits}"
     if len(digits) == 11 and digits.startswith("1"):
