@@ -349,12 +349,7 @@ def get_public_forms_router(
             "customer_id": customer_id,
             "customer_name": customer_name,
             "subject": normalized_subject,
-            "description": f"Nombre: {normalized_name or data.name}
-Email: {normalized_email}
-Teléfono: {normalized_phone or 'N/A'}
-
-Mensaje:
-{normalized_message}",
+            "description": f"Nombre: {normalized_name or data.name}\nEmail: {normalized_email}\nTeléfono: {normalized_phone or 'N/A'}\n\nMensaje:\n{normalized_message}",
             "category": "general",
             "priority": "medium",
             "status": "open",
