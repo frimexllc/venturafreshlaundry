@@ -4134,6 +4134,7 @@ async def public_pickup_request(data: PublicPickupRequest):
         "actual_lbs": None,
         "notes": normalized_notes,
         "gate_code": normalized_gate_code,
+        "preferred_contact": preferred_contact,
         "preferences_id": preference_id,
         "preferences_snapshot": preference_snapshot,
         "status": "new",
