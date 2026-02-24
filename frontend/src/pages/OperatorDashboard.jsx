@@ -458,8 +458,8 @@ export default function OperatorDashboard() {
               <CheckCircle className="h-5 w-5 text-green-600" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-slate-900">{dashboard?.stats?.orders_ready || 0}</p>
-              <p className="text-sm text-slate-600">Listos para Entrega</p>
+              <p className="text-2xl font-bold text-slate-900" data-testid="operator-stat-deliveries-count">{dashboard?.stats?.orders_ready || 0}</p>
+              <p className="text-sm text-slate-600" data-testid="operator-stat-deliveries-label">Entregas en curso</p>
             </div>
           </div>
         </div>
