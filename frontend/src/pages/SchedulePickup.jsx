@@ -87,6 +87,12 @@ export default function SchedulePickup() {
     }
 
     setSubmitting(true);
+    if !form.contact_method) {
+      toast.error("Please select the best way to contact you.");
+      setSubmitting(false);
+      return;
+    }
+
     try {
       const fullName = `${form.first_name.trim()} ${form.last_name.trim()}`.trim();
       const fullAddress = [
