@@ -328,7 +328,7 @@ def extract_contact_from_notes(order: dict) -> str:
     return None
 
 
-def send_preferred_notification(customer: dict, order: dict, event: str, status: str = None) -> bool:
+async def send_preferred_notification(customer: dict, order: dict, event: str, status: str = None) -> bool:
     preference = normalize_preferred_contact(
         (customer or {}).get("preferred_contact")
         or (order or {}).get("preferred_contact")
