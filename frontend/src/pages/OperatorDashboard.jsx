@@ -436,8 +436,8 @@ export default function OperatorDashboard() {
               <Truck className="h-5 w-5 text-sky-600" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-slate-900">{dashboard?.stats?.pickups_remaining_today || 0}</p>
-              <p className="text-sm text-slate-600">Pickups Hoy</p>
+              <p className="text-2xl font-bold text-slate-900" data-testid="operator-stat-pickups-count">{dashboard?.stats?.pickups_remaining_today || 0}</p>
+              <p className="text-sm text-slate-600" data-testid="operator-stat-pickups-label">Pickups Hoy</p>
             </div>
           </div>
         </div>
