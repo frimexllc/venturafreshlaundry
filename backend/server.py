@@ -64,6 +64,9 @@ try:
         normalize_preferred_contact
     )
     NOTIFICATIONS_ENABLED = True
+
+    from routes.public_forms import get_public_forms_router
+    from routes.voice import get_voice_router
 except ImportError:
     NOTIFICATIONS_ENABLED = False
     logger = logging.getLogger(__name__)
