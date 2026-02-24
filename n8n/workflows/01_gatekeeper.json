@@ -18,7 +18,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://clean-management-4.preview.emergentagent.com/api/automation/ingest",
+        "url": "=https://laundry-ai-hub.preview.emergentagent.com/api/automation/ingest",
         "sendBody": true,
         "bodyParameters": {
           "parameters": [
