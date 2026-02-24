@@ -239,8 +239,7 @@ def get_public_forms_router(
 
         notes_payload = normalized_notes or ""
         if normalized_contact:
-            notes_payload = f"Preferred contact: {normalized_contact}
-{notes_payload}".strip()
+            notes_payload = f"Preferred contact: {normalized_contact}\n{notes_payload}".strip()
 
         customer = await db.customers.find_one({"email": normalized_email}, {"_id": 0})
         if not customer:
