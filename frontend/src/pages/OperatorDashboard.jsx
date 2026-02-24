@@ -694,6 +694,9 @@ export default function OperatorDashboard() {
                       <MapPin className="h-4 w-4" />
                       {order.delivery_address || "-"}
                     </div>
+                    <div className="text-xs text-slate-500 mt-1" data-testid={`operator-delivery-status-${order.order_id}`}>
+                      Estado: {getStatusInfo(order.status).label}
+                    </div>
                     <div className="text-xs text-slate-500 mt-1" data-testid={`operator-delivery-payment-${order.order_id}`}>
                       Pago: {getPaymentStatusLabel(order.payment_status)} {order.payment_method ? `(${getPaymentMethodLabel(order.payment_method)})` : ""}
                     </div>
