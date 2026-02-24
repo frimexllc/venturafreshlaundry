@@ -667,9 +667,9 @@ export default function OperatorDashboard() {
       {/* Ready for Delivery */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-100 bg-emerald-50">
-          <h2 className="font-semibold text-slate-900 flex items-center gap-2">
+          <h2 className="font-semibold text-slate-900 flex items-center gap-2" data-testid="operator-delivery-section-title">
             <CheckCircle className="h-5 w-5 text-emerald-600" />
-            Listos para Entrega ({dashboard?.ready_for_delivery?.length || 0})
+            Entregas en curso ({dashboard?.ready_for_delivery?.length || 0})
           </h2>
         </div>
         <div className="divide-y divide-slate-100">
