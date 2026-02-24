@@ -469,8 +469,8 @@ export default function OperatorDashboard() {
               <AlertTriangle className="h-5 w-5 text-red-600" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-slate-900">{dashboard?.stats?.urgent_tickets || 0}</p>
-              <p className="text-sm text-slate-600">Tickets Urgentes</p>
+              <p className="text-2xl font-bold text-slate-900" data-testid="operator-stat-urgent-count">{dashboard?.stats?.urgent_tickets || 0}</p>
+              <p className="text-sm text-slate-600" data-testid="operator-stat-urgent-label">Tickets Urgentes</p>
             </div>
           </div>
         </div>
