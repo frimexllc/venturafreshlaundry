@@ -315,8 +315,25 @@ async def build_notification_content(customer: dict, order: dict, event: str, st
     }
 
 
-async def send_preferred_notification(customer: dict, order: dict, event: str, status: str = None) -> bool:
-    preference = normalize_preferred_contact(customer.get("preferred_contact") or order.get("preferred_contact"))
+def extract_contact_from_notes(order: dict) -> str:
+    if not order:
+        return None
+    notes = order.get("notes") or ""
+    marker = "Preferred contact:"
+    if marker.lower() in notes.lower():
+        parts = notes.split(marker)
+        if len(parts) > 1:
+            value = parts[1].split("\n")[0].strip()
+            return value
+    return None
+
+
+def send_preferred_notification(customer: dict, order: dict, event: str, status: str = None) -> bool:
+    preference = normalize_preferred_contact(
+        (customer or {}).get("preferred_contact")
+        or (order or {}).get("preferred_contact")
+        or extract_contact_from_notes(order)
+    )
     content = await build_notification_content(customer, order, event, status)
     message = content["message"]
     subject = content["subject"]
