@@ -8,7 +8,7 @@ Construir un sistema integral de gestión de lavandería para Ventura Fresh Laun
 - **Backend**: FastAPI (Python)
 - **Base de datos**: MongoDB
 - **Pagos**: Stripe (pagos únicos + membresías recurrentes)
-- **Notificaciones**: Twilio SMS/WhatsApp
+- **Notificaciones**: Twilio SMS/WhatsApp/Voice + SendGrid Email
 - **IA**: Groq (briefing diario + chat de gestión)
 - **Autenticación**: JWT (roles admin/operador)
 
