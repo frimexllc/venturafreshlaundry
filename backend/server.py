@@ -4110,6 +4110,13 @@ async def public_pickup_request(data: PublicPickupRequest):
                 "updated_at": now
             }}
         )
+        customer = {
+            **customer,
+            "name": normalized_name or customer.get("name"),
+            "phone": normalized_phone or customer.get("phone"),
+            "address": normalized_address or customer.get("address"),
+            **({"preferred_contact": preferred_contact} if preferred_contact else {})
+        }
     
     # Create order
     pref = await db.preferences.find({"customer_id": customer["id"]}, {"_id": 0}).sort("version", -1).limit(1).to_list(1)
