@@ -367,7 +367,7 @@ async def notify_order_created(customer: dict, order: dict) -> bool:
 async def notify_order_status_changed(customer: dict, order: dict, new_status: str) -> bool:
     """Notify customer when order status changes"""
     status_lower = (new_status or "").lower()
-    if status_lower not in ["ready", "out_for_delivery", "out for delivery", "delivered", "completed"]:
-        logger.info(f"Status {new_status} does not require notification")
+    if not status_lower:
+        logger.info("Status vacío no requiere notificación")
         return False
     return await send_preferred_notification(customer, order, "status_changed", new_status)
