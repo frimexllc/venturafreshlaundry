@@ -1510,17 +1510,9 @@ def normalize_payment_method(value: Optional[str]) -> str:
 def should_notify_order_status(order: dict, status_value: str) -> bool:
     """Determine if order status change should trigger notification"""
     status_normalized = normalize_status(status_value)
-
-    if status_normalized in ["ready", "out_for_delivery", "delivered", "completed"]:
-        return True
-
-    service_type = order.get("service_type")
-    if service_type == "pickup_delivery":
-        return status_normalized == "out_for_delivery"
-    if service_type in ["wash_fold", "self_service"]:
-        return status_normalized == "ready"
-
-    return False
+    if not status_normalized or status_normalized == "new":
+        return False
+    return True
 
 @api_router.patch("/orders/{order_id}/status")
 async def update_order_status(order_id: str, status: str, notify: bool = True, current_user: dict = Depends(get_current_user)):
