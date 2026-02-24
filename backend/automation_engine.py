@@ -945,7 +945,7 @@ async def get_operator_dashboard():
     now = datetime.now(timezone.utc)
     today = now.strftime("%Y-%m-%d")
     pickup_statuses = ["NEW", "CONFIRMED", "PICKUP_SCHEDULED", "PICKED_UP", "new", "confirmed", "pickup_scheduled", "picked_up"]
-    ready_statuses = ["READY", "ready"]
+    ready_statuses = ["READY", "ready", "OUT_FOR_DELIVERY", "out_for_delivery", "DELIVERED", "delivered"]
     processing_statuses = ["PROCESSING", "processing"]
     
     todays_pickups = await db.orders.find({
