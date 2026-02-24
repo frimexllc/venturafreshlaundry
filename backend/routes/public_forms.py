@@ -323,7 +323,7 @@ def get_public_forms_router(
         return {
             "success": True,
             "order_number": order_number,
-            "message": "¡Gracias! Tu solicitud de Wash  Fold ha sido recibida."
+            "message": "¡Gracias! Tu solicitud de Wash & Fold ha sido recibida."
         }
 
     @router.post("/public/contact")
