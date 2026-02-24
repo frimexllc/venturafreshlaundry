@@ -4011,6 +4011,7 @@ class PublicPickupRequest(BaseModel):
     pickup_date: Optional[str] = None
     pickup_time: Optional[str] = None
     service_type: Optional[str] = "pickup_delivery"
+    contact_method: Optional[str] = None
     notes: Optional[str] = None
     gate_code: Optional[str] = None
 
@@ -4076,6 +4077,8 @@ async def public_pickup_request(data: PublicPickupRequest):
     normalized_notes = normalize_spaces(data.notes)
     normalized_gate_code = normalize_spaces(data.gate_code)
     normalized_service_type = normalize_spaces(data.service_type).lower().replace(" ", "_") or "pickup_delivery"
+    normalized_contact_raw = normalize_spaces(data.contact_method)
+    preferred_contact = normalize_preferred_contact(normalized_contact_raw) if normalized_contact_raw else None
 
     # Find or create customer
     customer = await db.customers.find_one({"email": normalized_email}, {"_id": 0})
@@ -4087,7 +4090,7 @@ async def public_pickup_request(data: PublicPickupRequest):
             "email": normalized_email,
             "phone": normalized_phone or data.phone,
             "address": normalized_address or data.address,
-            "preferred_contact": "email",
+            "preferred_contact": preferred_contact or "email",
             "notes": None,
             "status": "active",
             "total_orders": 0,
@@ -4103,6 +4106,7 @@ async def public_pickup_request(data: PublicPickupRequest):
                 "name": normalized_name or customer.get("name"),
                 "phone": normalized_phone or customer.get("phone"),
                 "address": normalized_address or customer.get("address"),
+                **({"preferred_contact": preferred_contact} if preferred_contact else {}),
                 "updated_at": now
             }}
         )

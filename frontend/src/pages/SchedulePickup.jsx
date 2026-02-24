@@ -105,6 +105,7 @@ export default function SchedulePickup() {
         pickup_date: form.pickup_date,
         pickup_time: form.pickup_time,
         service_type: form.service_type,
+        contact_method: form.contact_method,
         notes: `Preferred contact: ${form.contact_method}\n${form.notes?.trim() || ""}`.trim(),
       });
 
