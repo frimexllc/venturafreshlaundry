@@ -447,8 +447,8 @@ export default function OperatorDashboard() {
               <Package className="h-5 w-5 text-yellow-600" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-slate-900">{dashboard?.stats?.orders_in_processing || 0}</p>
-              <p className="text-sm text-slate-600">En Proceso</p>
+              <p className="text-2xl font-bold text-slate-900" data-testid="operator-stat-processing-count">{dashboard?.stats?.orders_in_processing || 0}</p>
+              <p className="text-sm text-slate-600" data-testid="operator-stat-processing-label">En Proceso</p>
             </div>
           </div>
         </div>
