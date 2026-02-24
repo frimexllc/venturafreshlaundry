@@ -98,6 +98,10 @@ RECEIVED → PROCESSING → READY → OUT_FOR_DELIVERY → DELIVERED → COMPLET
 - ✅ Normalización de datos en pickup y B2B
 - ✅ Páginas legales y aceptación en login (admin/cliente)
 
+## Cambios recientes (2026-02-24)
+- ✅ Panel Operador: lista de entregas en curso incluye OUT_FOR_DELIVERY y DELIVERED para completar el flujo de entrega.
+- ✅ Notificaciones por cambios de estado se envían para cualquier estado (excepto NEW).
+
 ## Pendientes / Issues
 **P1**
 - Validar estabilidad de tiempo real (WebSocket/polling) en producción
