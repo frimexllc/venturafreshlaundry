@@ -82,9 +82,10 @@ RECEIVED → PROCESSING → READY → OUT_FOR_DELIVERY → DELIVERED → COMPLET
 ## Cambios recientes (2026-02-22)
 - ✅ Panel Operador: impresión de tickets y registro de pagos (efectivo/tarjeta/transferencia/otro)
 - ✅ Asistente Operativo IA con acciones de órdenes/pagos/tickets
-- ✅ Envío de emails SendGrid verificado (host US; EU residency desactivado temporalmente)
+- ✅ Preferencia de contacto desde formulario Pickup se guarda y se respeta en notificaciones
+- ✅ Normalización de teléfonos respeta prefijo + (MX/EU)
+- ✅ Envío de emails SendGrid verificado (host US temporal; EU residency desactivado)
 - ✅ Notificaciones según preferencia de contacto (email/sms/whatsapp/llamada)
-- ✅ SendGrid integrado para emails (EU Data Residency)
 - ✅ Endpoints de voz Twilio (inbound/outbound) con mensajes IA
 - ✅ Edición de libras estimadas/actuales en órdenes (Admin/Operador) + ticket QR incluye lbs
 - ✅ Mejoras al asistente IA interno con contexto y acciones de órdenes
