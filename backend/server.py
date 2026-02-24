@@ -4351,6 +4351,33 @@ async def operator_update_order_status(
     
     return {"message": f"Order status updated to {status}"}
 
+# === External routers (refactored) ===
+if NOTIFICATIONS_ENABLED and 'get_public_forms_router' in globals():
+    public_forms_router = get_public_forms_router(
+        db=db,
+        generate_order_number=generate_order_number,
+        create_audit_log=create_audit_log,
+        emit_realtime=emit_realtime,
+        notifications_enabled=NOTIFICATIONS_ENABLED,
+        skip_server_notifications=SKIP_SERVER_NOTIFICATIONS,
+        logger=logger
+    )
+    api_router.include_router(public_forms_router)
+
+if NOTIFICATIONS_ENABLED and 'get_voice_router' in globals():
+    voice_router = get_voice_router(
+        db=db,
+        require_admin=require_admin,
+        get_current_user=get_current_user,
+        build_notification_content=build_notification_content,
+        send_voice_call=send_voice_call,
+        detect_language=detect_language,
+        generate_ai_message=generate_ai_message,
+        normalize_phone=normalize_phone,
+        create_audit_log=create_audit_log
+    )
+    api_router.include_router(voice_router)
+
 # Include router and middleware
 app.include_router(api_router)
 
