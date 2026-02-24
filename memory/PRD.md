@@ -80,6 +80,7 @@ RECEIVED → PROCESSING → READY → OUT_FOR_DELIVERY → DELIVERED → COMPLET
 - Groq (IA gerente)
 
 ## Cambios recientes (2026-02-22)
+- ✅ Refactor: endpoints públicos y voz movidos a routers (routes/public_forms.py, routes/voice.py) para reducir server.py
 - ✅ Panel Operador: impresión de tickets y registro de pagos (efectivo/tarjeta/transferencia/otro)
 - ✅ Asistente Operativo IA con acciones de órdenes/pagos/tickets
 - ✅ Preferencia de contacto desde formulario Pickup se guarda y se respeta en notificaciones
