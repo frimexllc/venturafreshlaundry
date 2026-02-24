@@ -109,7 +109,7 @@ def get_voice_router(
   </Gather>
   <Say language="{voice_language}" voice="alice">{fallback_text}</Say>
 </Response>"""
-        return twiml
+        return Response(content=twiml, media_type="text/xml")
 
     @router.post("/voice/gather", name="voice_gather")
     async def voice_gather(request: Request):
@@ -147,6 +147,6 @@ def get_voice_router(
 <Response>
   <Say language="{voice_language}" voice="alice">{reply_text}</Say>
 </Response>"""
-        return twiml
+        return Response(content=twiml, media_type="text/xml")
 
     return router
