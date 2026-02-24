@@ -38,8 +38,7 @@ def get_voice_router(
     router = APIRouter()
 
     @router.post("/voice/outbound")
-    async def voice_outbound_call(data: VoiceOutboundRequest, current_user: dict = None):
-        current_user = current_user or await get_current_user()
+    async def voice_outbound_call(data: VoiceOutboundRequest, current_user: dict = Depends(get_current_user)):
         require_admin(current_user)
 
         to_phone = data.to_phone
