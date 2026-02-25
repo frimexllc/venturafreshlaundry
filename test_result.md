@@ -317,6 +317,54 @@ frontend:
         agent: "testing"
         comment: "✅ TESTED (Feb 23, 2026): Payment section in order detail modal fully functional. Verified all required elements: 1) Payment method select with options (Efectivo, Tarjeta, Transferencia, Otro) - functional and tested, 2) Amount received input (editable, tested with value 100.00), 3) 'Registrar pago' button present and labeled correctly, 4) 'Imprimir Ticket' button in payment section. Change preview also displays correctly. All elements working as expected."
 
+  - task: "Operator Panel - Stats Cards Display"
+    implemented: true
+    working: true
+    file: "pages/OperatorDashboard.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED (Feb 25, 2026): All 4 stat cards verified and displaying correctly. Stats cards show: 1) 'Pickups Hoy' with count (data-testid: operator-stat-pickups-label/count), 2) 'En Proceso' with count (data-testid: operator-stat-processing-label/count), 3) 'Entregas en curso' with count (data-testid: operator-stat-deliveries-label/count), 4) 'Tickets Urgentes' with count (data-testid: operator-stat-urgent-label/count). All cards visible and functional."
+
+  - task: "Operator Panel - Entregas en curso Section"
+    implemented: true
+    working: true
+    file: "pages/OperatorDashboard.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED (Feb 25, 2026): 'Entregas en curso' section fully functional. Section title visible (data-testid: operator-delivery-section-title). Successfully displays delivery orders with READY, OUT_FOR_DELIVERY, and DELIVERED statuses. Each order shows: order ID (VFL format), customer name, delivery address, status (Estado: Entregado, En Camino, etc.), and payment info. Tested with 20 delivery orders displaying correctly."
+
+  - task: "Operator Panel - Status Update Buttons with Toast"
+    implemented: true
+    working: true
+    file: "pages/OperatorDashboard.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED (Feb 25, 2026): Status update buttons working perfectly. Buttons display appropriate labels ('Completar' for DELIVERED orders, 'Entregado' for OUT_FOR_DELIVERY orders) (data-testid: delivery-update-{order_id}). Clicking button successfully updates order status. Toast notification appears with success message (e.g., 'Orden ORD-20260218-0001 actualizada a COMPLETED'). UI updates correctly after status change (delivery count decremented from 10 to 9)."
+
+  - task: "Operator Panel - Real-time Connection Indicator"
+    implemented: true
+    working: true
+    file: "pages/OperatorDashboard.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED (Feb 25, 2026): Real-time connection indicator fully functional (data-testid: operator-realtime-status). Displays 'Tiempo real: conectado' in green badge when WebSocket is connected. Indicator visible in header section and accurately reflects connection state. WebSocket integration working correctly for real-time updates."
+
 metadata:
   created_by: "main_agent"
   version: "1.0"
