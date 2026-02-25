@@ -151,7 +151,6 @@ export default function LandingPage() {
 
   // URLs de imágenes / video
   const images = {
-    // ✅ PON AQUÍ TU VIDEO MP4 (reemplaza este placeholder)
     heroVideo: videoVFL,
     background:
       "https://images.squarespace-cdn.com/content/v1/696c559a4b2b9b1b0febf8d7/8f9faf72-9068-4289-8f90-869a9b1b00d2/backgound.png",
@@ -163,7 +162,7 @@ export default function LandingPage() {
     <div className="min-h-screen bg-white overflow-x-hidden">
       {/* Hero Section with Video Background */}
       <section className="relative min-h-screen flex items-center overflow-hidden">
-        {/* ✅ VIDEO Background */}
+        {/* VIDEO Background */}
         <div className="absolute inset-0 z-0">
           <video
             className="absolute inset-0 w-full h-full object-cover"
@@ -174,22 +173,19 @@ export default function LandingPage() {
             playsInline
             preload="auto"
           />
-          {/* ✅ Overlay ligero para legibilidad */}
+          {/* Overlay ligero para legibilidad */}
           <div className="absolute inset-0 bg-black/25"></div>
         </div>
 
-        {/* ✅ NAV NORMALIZADO (usa el componente PublicNav) */}
+        {/* NAV NORMALIZADO (usa el componente PublicNav) */}
         <PublicNav />
 
         {/* Hero Content con animaciones escalonadas */}
         <div className="relative z-10 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
           <div className="max-w-xl">
             <StaggeredElement delay={100}>
-            <h1
-  className="text-4xl sm:text-5xl md:text-6xl font-light text-white mb-2 leading-tight italic mt-20"
-  style={{ fontFamily: "'Playfair Display', serif" }}
-></h1>  <h1
-                className="text-4xl sm:text-5xl md:text-6xl font-light text-white mb-2 leading-tight italic"
+              <h1
+                className="text-4xl sm:text-5xl md:text-6xl font-light text-white mb-2 leading-tight italic mt-20"
                 style={{ fontFamily: "'Playfair Display', serif" }}
               >
                 We do your laundry.
@@ -259,7 +255,7 @@ export default function LandingPage() {
           </div>
         </div>
 
-        {/* Wave Divider */}
+        {/* Wave Divider - Una sola ola alargada */}
         <div className="absolute bottom-0 left-0 right-0 z-10 pointer-events-none">
           <svg
             viewBox="0 0 1440 120"
@@ -268,10 +264,9 @@ export default function LandingPage() {
             preserveAspectRatio="none"
           >
             <path
-              d="M0,0 C240,80 480,0 720,40 C960,80 1200,0 1440,40 L1440,120 L0,120 Z"
+              d="M0,40 C360,0 1080,80 1440,40 L1440,120 L0,120 Z"
               fill="white"
-              className="transition-all duration-1000"
-              style={{ transform: `translateY(${scrollY * 0.1}px)` }}
+              opacity="0.9"
             />
           </svg>
         </div>
@@ -279,6 +274,7 @@ export default function LandingPage() {
 
       {/* Features Section */}
       <section className="pt-20 pb-40 relative overflow-hidden">
+        {/* Fondo con overlay */}
         <div
           className="absolute inset-0 bg-cover bg-center"
           style={{
@@ -332,8 +328,9 @@ export default function LandingPage() {
             </p>
           </StaggeredElement>
 
+          {/* Botones con z-index superior para que estén por encima del SVG */}
           <StaggeredElement delay={600}>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <div className="flex flex-col sm:flex-row gap-4 justify-center relative z-20">
               <Link to="/services">
                 <Button className="bg-white text-sky-600 hover:bg-slate-100 rounded-full px-8 py-4 text-lg font-semibold transition-all duration-300 hover:scale-105">
                   MORE SERVICES
@@ -348,123 +345,117 @@ export default function LandingPage() {
           </StaggeredElement>
         </div>
 
-        <div className="absolute bottom-0 left-0 right-0 z-10">
+        {/* SVG inferior - Una sola ola alargada */}
+        <div className="absolute bottom-0 left-0 right-0 z-10 pointer-events-none">
           <svg viewBox="0 0 1440 120" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full">
             <path
               d="M0,40 Q360,100 720,40 T1440,40 L1440,120 L0,120 Z"
               fill="white"
-              className="transition-all duration-1000"
-              style={{ transform: `translateY(${scrollY * 0.05}px)` }}
             />
           </svg>
         </div>
       </section>
 
-      {/* How It Works Section */}
-      <section className="py-24 bg-slate-900 relative overflow-hidden">
-        <div
-          className="absolute inset-0 bg-cover bg-center opacity-30"
-          style={{
-            backgroundImage: `url(${images.delivery})`,
-            transform: `translateY(${scrollY * 0.2}px) scale(1.05)`,
-            backgroundPosition: "center 30%",
-          }}
-        ></div>
+{/* How It Works Section */}
+<section className="py-24 bg-slate-900 relative overflow-hidden">
+  <div
+    className="absolute inset-0 bg-cover bg-center opacity-30"
+    style={{
+      backgroundImage: `url(${images.delivery})`,
+      transform: `translateY(${scrollY * 0.2}px) scale(1.05)`,
+      backgroundPosition: "center 30%",
+    }}
+  ></div>
 
-        <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <StaggeredElement>
-            <h2
-              className="text-3xl sm:text-4xl md:text-5xl font-bold text-white text-center mb-16"
-              style={{ fontFamily: "'Playfair Display', serif" }}
-            >
-              How It Works
-            </h2>
-          </StaggeredElement>
+  <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+    <StaggeredElement>
+      <h2
+        className="text-3xl sm:text-4xl md:text-5xl font-bold text-white text-center mb-16"
+        style={{ fontFamily: "'Playfair Display', serif" }}
+      >
+        How It Works
+      </h2>
+    </StaggeredElement>
 
-          <div className="grid md:grid-cols-3 gap-8">
-            {[
-              {
-                step: "1",
-                title: "Schedule Your Pickup in Seconds",
-                content:
-                  "Click the pickup button below to submit your request instantly. Once received, we'll confirm:",
-                list: [
-                  "Your preferred pickup time window",
-                  "Special instructions (detergent type, folding style, hang dry, etc.)",
-                  "Any important details about your order",
-                ],
-                footer: "Our team ensures everything is set and seamless before we arrive.",
-              },
-              {
-                step: "2",
-                title: "We Pick Up",
-                content:
-                  "Leave your laundry bag(s) in the agreed location — at your door, front desk, or designated spot.",
-                list: [
-                  "Pick up your items on time",
-                  "Label and track your order",
-                  "Transport your laundry safely to our facility",
-                ],
-                footer: "No waiting. No hassle.",
-              },
-              {
-                step: "3",
-                title: "Delivered Clean",
-                content:
-                  "Your clothes are professionally washed, dried, and folded using premium products and modern equipment.",
-                list: [
-                  "Clean and fresh",
-                  "Neatly folded or hung, based on your preference",
-                  "Carefully packaged and ready to wear",
-                ],
-                footer: "Delivered right back to your door.",
-              },
-            ].map((stepData, idx) => (
-              <StaggeredElement key={idx} delay={100 + idx * 100}>
-                <div className="bg-white/10 rounded-2xl p-8 border border-white/20 hover:bg-white/15 transition-all duration-500 hover:scale-105">
-                  <div className="h-16 w-16 rounded-full bg-gradient-to-br from-sky-500 to-sky-700 text-white text-2xl font-bold flex items-center justify-center mx-auto mb-6 shadow-lg">
-                    {stepData.step}
-                  </div>
-                  <h3 className="text-2xl font-bold text-white text-center mb-4">
-                    {stepData.title}
-                  </h3>
-                  <p className="text-white/80 mb-4">{stepData.content}</p>
-                  <ul className="text-white/80 space-y-2 text-sm">
-                    {stepData.list.map((item, itemIdx) => (
-                      <li key={itemIdx}>• {item}</li>
-                    ))}
-                  </ul>
-                  <p className="text-white/80 mt-4 text-sm font-semibold">
-                    {stepData.footer}
-                  </p>
-
-                  {idx === 0 && (
-                    <div className="mt-6">
-                      <Link to="/schedule-pickup">
-                        <Button className="bg-slate-900 text-white hover:bg-slate-800 rounded-full px-6 py-3 text-sm font-semibold w-full">
-                          SCHEDULE PICK-UP
-                        </Button>
-                      </Link>
-                    </div>
-                  )}
-                </div>
-              </StaggeredElement>
-            ))}
+    <div className="grid md:grid-cols-3 gap-8">
+      {[
+        {
+          step: "1",
+          title: "Schedule Your Pickup in Seconds",
+          content:
+            "Click the pickup button below to submit your request instantly. Once received, we'll confirm:",
+          list: [
+            "Your preferred pickup time window",
+            "Special instructions (detergent type, folding style, hang dry, etc.)",
+            "Any important details about your order",
+          ],
+          footer: "Our team ensures everything is set and seamless before we arrive.",
+        },
+        {
+          step: "2",
+          title: "We Pick Up",
+          content:
+            "Leave your laundry bag(s) in the agreed location — at your door, front desk, or designated spot.",
+          list: [
+            "Pick up your items on time",
+            "Label and track your order",
+            "Transport your laundry safely to our facility",
+          ],
+          footer: "No waiting. No hassle.",
+        },
+        {
+          step: "3",
+          title: "Delivered Clean",
+          content:
+            "Your clothes are professionally washed, dried, and folded using premium products and modern equipment.",
+          list: [
+            "Clean and fresh",
+            "Neatly folded or hung, based on your preference",
+            "Carefully packaged and ready to wear",
+          ],
+          footer: "Delivered right back to your door.",
+        },
+      ].map((stepData, idx) => (
+        <StaggeredElement key={idx} delay={100 + idx * 100}>
+          <div className="bg-white/10 rounded-2xl p-8 border border-white/20 hover:bg-white/15 transition-all duration-500 hover:scale-105 flex flex-col h-full">
+            <div className="h-16 w-16 rounded-full bg-gradient-to-br from-sky-500 to-sky-700 text-white text-2xl font-bold flex items-center justify-center mx-auto mb-6 shadow-lg">
+              {stepData.step}
+            </div>
+            <h3 className="text-2xl font-bold text-white text-center mb-4">
+              {stepData.title}
+            </h3>
+            <p className="text-white/80 mb-4">{stepData.content}</p>
+            <ul className="text-white/80 space-y-2 text-sm">
+              {stepData.list.map((item, itemIdx) => (
+                <li key={itemIdx}>• {item}</li>
+              ))}
+            </ul>
+            <p className="text-white/80 mt-4 text-sm font-semibold">
+              {stepData.footer}
+            </p>
+            <div className="mt-6">
+              <Link to="/schedule-pickup">
+                <Button className="bg-slate-900 text-white hover:bg-slate-800 rounded-full px-6 py-3 text-sm font-semibold w-full">
+                  {idx === 0 ? "SCHEDULE PICK-UP" : idx === 1 ? "REQUEST PICK-UP" : "GET STARTED"}
+                </Button>
+              </Link>
+            </div>
           </div>
-        </div>
+        </StaggeredElement>
+      ))}
+    </div>
+  </div>
 
-        <div className="absolute bottom-0 left-0 right-0 z-10">
-          <svg viewBox="0 0 1440 120" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full">
-            <path
-              d="M0,60 Q360,0 720,60 T1440,60 L1440,120 L0,120 Z"
-              fill="white"
-              className="transition-all duration-1000"
-              style={{ transform: `translateY(${scrollY * 0.03}px)` }}
-            />
-          </svg>
-        </div>
-      </section>
-
+  {/* SVG inferior - Una sola ola alargada */}
+  <div className="absolute bottom-0 left-0 right-0 z-10 pointer-events-none">
+    <svg viewBox="0 0 1440 120" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full">
+      <path
+        d="M0,60 Q360,0 720,60 T1440,60 L1440,120 L0,120 Z"
+        fill="white"
+      />
+    </svg>
+  </div>
+</section>
       {/* Benefits Section */}
       <section className="py-24 bg-white">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -533,6 +524,8 @@ export default function LandingPage() {
             </div>
           </div>
         </div>
+
+        {/* SVG inferior (opcional) - si no quieres onda en esta sección, omite */}
       </section>
 
       {/* Testimonial Section */}
@@ -570,13 +563,12 @@ export default function LandingPage() {
           </StaggeredElement>
         </div>
 
-        <div className="absolute bottom-0 left-0 right-0 z-10">
+        {/* SVG inferior - Una sola ola alargada */}
+        <div className="absolute bottom-0 left-0 right-0 z-10 pointer-events-none">
           <svg viewBox="0 0 1440 60" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full">
             <path
-              d="M0,30 Q80,60 160,30 T320,30 T480,30 T640,30 T800,30 T960,30 T1120,30 T1280,30 T1440,30 L1440,60 L0,60 Z"
+              d="M0,30 Q80,60 160,30 T1440,30 L1440,60 L0,60 Z"
               fill="white"
-              className="transition-all duration-1000"
-              style={{ transform: `translateY(${scrollY * 0.02}px)` }}
             />
           </svg>
         </div>
@@ -604,6 +596,8 @@ export default function LandingPage() {
             ))}
           </div>
         </div>
+
+        {/* SVG inferior (opcional) */}
       </section>
 
       {/* Contact Info Section */}

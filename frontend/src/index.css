@@ -6,7 +6,7 @@
 
 @layer base {
     :root {
-        --background: 210 40% 98%;
+        --background: 210 40% 98%
         --foreground: 222 47% 11%;
         --card: 0 0% 100%;
         --card-foreground: 222 47% 11%;
@@ -147,4 +147,25 @@
 
 [data-debug-wrapper="true"] {
     display: contents !important;
+}
+/* Wave effects - una sola onda alargada */
+.wave-divider {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    overflow: hidden;
+    line-height: 0;
+    pointer-events: none;
+}
+
+.wave-divider svg {
+    position: relative;
+    display: block;
+    width: calc(100% + 1.3px);
+    height: 80px;
+}
+
+.wave-divider .shape-fill {
+    fill: #FFFFFF;
 }
