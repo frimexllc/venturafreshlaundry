@@ -676,7 +676,7 @@ export default function OperatorDashboard() {
           {dashboard?.ready_for_delivery?.length === 0 ? (
             <div className="p-8 text-center text-slate-500">
               <Package className="h-12 w-12 mx-auto mb-3 text-slate-300" />
-              <p>No hay entregas en curso</p>
+              <p data-testid="operator-delivery-empty">No hay entregas en curso</p>
             </div>
           ) : (
             dashboard?.ready_for_delivery?.map((order) => (
