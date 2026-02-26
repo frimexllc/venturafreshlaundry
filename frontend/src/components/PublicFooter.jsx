@@ -92,7 +92,7 @@ export default function PublicFooter() {
 
         <div className="border-t border-slate-800 pt-8">
           <p className="text-center text-slate-500 text-sm">
-            © {new Date().getFullYear()} Ventura Fresh Laundry. All rights reserved.
+            © {new Date().getFullYear()} Ventura Fresh Laundry. {t("All rights reserved.", "Todos los derechos reservados.")}
           </p>
         </div>
       </div>
