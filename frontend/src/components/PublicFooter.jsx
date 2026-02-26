@@ -41,10 +41,10 @@ export default function PublicFooter() {
           <div>
             <h4 className="font-semibold mb-4">{t("Services", "Servicios")}</h4>
             <div className="space-y-2 text-slate-400 text-sm">
-              <Link to="/services" className="block hover:text-white transition-colors">All Services</Link>
-              <Link to="/schedule-pickup" className="block hover:text-white transition-colors">Schedule Pickup</Link>
-              <Link to="/membership" className="block hover:text-white transition-colors">Memberships</Link>
-              <Link to="/request-quote" className="block hover:text-white transition-colors">Commercial/B2B</Link>
+              <Link to="/services" className="block hover:text-white transition-colors">{t("All Services", "Todos los servicios")}</Link>
+              <Link to="/schedule-pickup" className="block hover:text-white transition-colors">{t("Schedule Pickup", "Programar recolección")}</Link>
+              <Link to="/membership" className="block hover:text-white transition-colors">{t("Memberships", "Membresías")}</Link>
+              <Link to="/request-quote" className="block hover:text-white transition-colors">{t("Commercial/B2B", "Comercial/B2B")}</Link>
             </div>
           </div>
 
