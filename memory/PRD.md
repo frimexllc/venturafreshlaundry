@@ -104,6 +104,10 @@ RECEIVED → PROCESSING → READY → OUT_FOR_DELIVERY → DELIVERED → COMPLET
 - ✅ Backend: carga de .env solo en preview/local (según APP_URL) para no sobrescribir MONGO_URL de producción.
 - ✅ Repo: .gitignore permite frontend/package.json para builds de deployment.
 
+## Cambios recientes (2026-02-26)
+- ✅ Deployment: se agregó CORS_ORIGINS=* en backend/.env para compatibilidad en producción.
+- ✅ Health check /api/health verificado en preview.
+
 ## Pendientes / Issues
 **P1**
 - Validar estabilidad de tiempo real (WebSocket/polling) en producción
