@@ -7,11 +7,11 @@ import { Menu, X } from "lucide-react";
 import logoVFL from "../assets/LOGO2-fotor-bg-remover-2026011719450.webp";
 
 const navLinks = [
-  { path: "/services", label: "Services" },
-  { path: "/about", label: "About" },
-  { path: "/contact", label: "Contact" },
-  { path: "/store", label: "Store" },
-  { path: "/blog", label: "Blog" },
+  { path: "/services", key: "services" },
+  { path: "/about", key: "about" },
+  { path: "/contact", key: "contact" },
+  { path: "/store", key: "store" },
+  { path: "/blog", key: "blog" }
 ];
 
 export default function PublicNav() {
