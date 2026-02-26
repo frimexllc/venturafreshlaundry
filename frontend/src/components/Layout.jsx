@@ -196,6 +196,9 @@ export default function Layout() {
                 </span>
               </div>
             </div>
+            <div className="mb-3">
+              <LanguageToggle />
+            </div>
             <Button
               variant="ghost"
               className="w-full justify-start text-slate-600 hover:text-red-600 hover:bg-red-50"
