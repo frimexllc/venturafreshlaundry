@@ -28,7 +28,7 @@ export default function PublicFooter() {
               </div>
               <div className="flex items-center gap-2">
                 <Clock className="h-4 w-4 flex-shrink-0" />
-                <span>Mon-Sun 6:00 AM - 10:00 PM</span>
+                <span>{t("Mon-Sun 6:00 AM - 10:00 PM", "Lun-Dom 6:00 AM - 10:00 PM")}</span>
               </div>
               <div className="flex items-center gap-2">
                 <Phone className="h-4 w-4 flex-shrink-0" />
