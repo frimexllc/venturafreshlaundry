@@ -10,6 +10,7 @@ import { useLocale } from "../context/LocaleContext";
 
 export default function Login() {
   const [isLogin, setIsLogin] = useState(true);
+  const { t } = useLocale();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
