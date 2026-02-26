@@ -50,7 +50,7 @@ export default function PublicFooter() {
 
           {/* Company */}
           <div>
-            <h4 className="font-semibold mb-4">Company</h4>
+            <h4 className="font-semibold mb-4">{t("Company", "Empresa")}</h4>
             <div className="space-y-2 text-slate-400 text-sm">
               <Link to="/about" className="block hover:text-white transition-colors">About Us</Link>
               <Link to="/contact" className="block hover:text-white transition-colors">Contact Us</Link>
