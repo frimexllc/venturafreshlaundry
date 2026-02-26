@@ -75,6 +75,7 @@ export default function PublicNav() {
                 {t("SCHEDULE PICK-UP", "PROGRAMAR RECOLECCIÓN")}
               </Button>
             </Link>
+            <LanguageToggle className="ml-2" />
           </div>
 
           {/* ✅ Mobile menu button (NEGRO) */}
