@@ -156,10 +156,10 @@ export default function Layout() {
                     className={({ isActive }) =>
                       `sidebar-link ${isActive ? "active" : ""}`
                     }
-                    data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}
+                    data-testid={`nav-${item.key}`}
                   >
                     <item.icon className="h-5 w-5" />
-                    <span>{item.label}</span>
+                    <span>{navLabels[item.key]}</span>
                   </NavLink>
                 </li>
               ))}
