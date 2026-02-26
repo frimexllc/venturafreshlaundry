@@ -39,7 +39,7 @@ export default function PublicFooter() {
 
           {/* Services */}
           <div>
-            <h4 className="font-semibold mb-4">Services</h4>
+            <h4 className="font-semibold mb-4">{t("Services", "Servicios")}</h4>
             <div className="space-y-2 text-slate-400 text-sm">
               <Link to="/services" className="block hover:text-white transition-colors">All Services</Link>
               <Link to="/schedule-pickup" className="block hover:text-white transition-colors">Schedule Pickup</Link>
