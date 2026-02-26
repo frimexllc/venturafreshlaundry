@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useLocale } from "../context/LocaleContext";
+import LanguageToggle from "./LanguageToggle";
 import { Link, NavLink } from "react-router-dom";
 import { Button } from "./ui/button";
 import { Menu, X } from "lucide-react";
