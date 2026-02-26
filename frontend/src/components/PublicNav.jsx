@@ -59,7 +59,7 @@ export default function PublicNav() {
                 }
                 style={{ transitionDelay: `${idx * 0.05}s` }}
               >
-                {link.label}
+                {navLabel[link.key]}
               </NavLink>
             ))}
 
@@ -103,7 +103,7 @@ export default function PublicNav() {
                       }`
                     }
                   >
-                    {link.label}
+                    {navLabel[link.key]}
                   </NavLink>
                 ))}
 
