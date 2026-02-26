@@ -203,7 +203,7 @@ export default function Layout() {
               data-testid="logout-btn"
             >
               <LogOut className="h-4 w-4 mr-2" />
-              Sign Out
+              {t("Sign Out", "Cerrar sesión")}
             </Button>
           </div>
         </div>
