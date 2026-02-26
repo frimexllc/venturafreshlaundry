@@ -19,6 +19,14 @@ export default function PublicNav() {
   const { t } = useLocale();
   const customerToken = localStorage.getItem("customer_token");
 
+  const navLabel = {
+    services: t("Services", "Servicios"),
+    about: t("About", "Nosotros"),
+    contact: t("Contact", "Contacto"),
+    store: t("Store", "Tienda"),
+    blog: t("Blog", "Blog")
+  };
+
   return (
     <>
       {/* ✅ NAV TRANSPARENTE (igual al Landing) */}
