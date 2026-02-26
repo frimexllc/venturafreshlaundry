@@ -52,12 +52,12 @@ export default function PublicFooter() {
           <div>
             <h4 className="font-semibold mb-4">{t("Company", "Empresa")}</h4>
             <div className="space-y-2 text-slate-400 text-sm">
-              <Link to="/about" className="block hover:text-white transition-colors">About Us</Link>
-              <Link to="/contact" className="block hover:text-white transition-colors">Contact Us</Link>
-              <Link to="/blog" className="block hover:text-white transition-colors">Blog</Link>
-              <Link to="/store" className="block hover:text-white transition-colors">Store</Link>
-              <Link to="/terms-and-conditions" className="block hover:text-white transition-colors" data-testid="footer-terms-link">Términos y condiciones</Link>
-              <Link to="/privacy-policy" className="block hover:text-white transition-colors" data-testid="footer-privacy-link">Política de privacidad</Link>
+              <Link to="/about" className="block hover:text-white transition-colors">{t("About Us", "Sobre nosotros")}</Link>
+              <Link to="/contact" className="block hover:text-white transition-colors">{t("Contact Us", "Contáctanos")}</Link>
+              <Link to="/blog" className="block hover:text-white transition-colors">{t("Blog", "Blog")}</Link>
+              <Link to="/store" className="block hover:text-white transition-colors">{t("Store", "Tienda")}</Link>
+              <Link to="/terms-and-conditions" className="block hover:text-white transition-colors" data-testid="footer-terms-link">{t("Terms and Conditions", "Términos y condiciones")}</Link>
+              <Link to="/privacy-policy" className="block hover:text-white transition-colors" data-testid="footer-privacy-link">{t("Privacy Policy", "Política de privacidad")}</Link>
             </div>
           </div>
 
