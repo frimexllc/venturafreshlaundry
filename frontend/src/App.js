@@ -158,15 +158,17 @@ function AppRoutes() {
 
 function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        {/* ✅ Esto arregla que siempre abra arriba */}
-        <ScrollToTop />
+    <LocaleProvider>
+      <AuthProvider>
+        <BrowserRouter>
+          {/* ✅ Esto arregla que siempre abra arriba */}
+          <ScrollToTop />
 
-        <AppRoutes />
-        <Toaster position="top-right" richColors />
-      </BrowserRouter>
-    </AuthProvider>
+          <AppRoutes />
+          <Toaster position="top-right" richColors />
+        </BrowserRouter>
+      </AuthProvider>
+    </LocaleProvider>
   );
 }
 
