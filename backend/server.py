@@ -36,7 +36,7 @@ from normalization import (
 )
 
 ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / '.env', override=True)
+load_dotenv(ROOT_DIR / '.env', override=False)
 BUSINESS_NAME = os.environ.get("BUSINESS_NAME", "Ventura Fresh Laundromat")
 
 # Import AI Assistant
