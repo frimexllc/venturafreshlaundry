@@ -67,7 +67,7 @@ export default function PublicNav() {
               to={customerToken ? "/account" : "/account/login"}
               className="text-black/90 hover:text-black font-medium transition-colors flex items-center gap-1 hover:scale-105 transition-transform duration-300"
             >
-              Account
+              {t("Account", "Cuenta")}
             </Link>
 
             <Link to="/schedule-pickup">
