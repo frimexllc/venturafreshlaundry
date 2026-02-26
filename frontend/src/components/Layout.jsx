@@ -65,6 +65,26 @@ export default function Layout() {
     return true;
   });
 
+  const navLabels = {
+    dashboard: t("Dashboard", "Panel"),
+    ai_assistant: t("AI Assistant", "Asistente IA"),
+    operator_panel: t("Operator Panel", "Panel Operador"),
+    calendar: t("Calendar", "Calendario"),
+    orders: t("Orders", "Órdenes"),
+    customers: t("Customers", "Clientes"),
+    memberships: t("Memberships", "Membresías"),
+    b2b_quotes: t("B2B Quotes", "Cotizaciones B2B"),
+    leads: t("Leads", "Prospectos"),
+    services: t("Services", "Servicios"),
+    finances: t("Finances", "Finanzas"),
+    support: t("Support", "Soporte"),
+    store: t("Store", "Tienda"),
+    blog: t("Blog", "Blog"),
+    users: t("Users", "Usuarios"),
+    audit_log: t("Audit Log", "Bitácora"),
+    settings: t("Settings", "Configuración")
+  };
+
   const handleLogout = () => {
     logout();
     navigate("/login");
