@@ -112,7 +112,7 @@ export default function PublicNav() {
                   onClick={() => setMobileMenuOpen(false)}
                   className="text-black/80 hover:text-black font-medium py-2"
                 >
-                  Account
+                  {t("Account", "Cuenta")}
                 </Link>
 
                 <Link to="/schedule-pickup" onClick={() => setMobileMenuOpen(false)}>
