@@ -25,6 +25,8 @@ import {
   DollarSign
 } from "lucide-react";
 import { useState } from "react";
+import { useLocale } from "../context/LocaleContext";
+import LanguageToggle from "./LanguageToggle";
 import { Button } from "./ui/button";
 import AdminFloatingChat from "./AdminFloatingChat";
 
