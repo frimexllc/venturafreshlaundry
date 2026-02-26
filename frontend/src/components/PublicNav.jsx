@@ -121,6 +121,9 @@ export default function PublicNav() {
                     {t("SCHEDULE PICK-UP", "PROGRAMAR RECOLECCIÓN")}
                   </Button>
                 </Link>
+                <div className="flex justify-center pt-2">
+                  <LanguageToggle />
+                </div>
               </div>
             </div>
           </div>
