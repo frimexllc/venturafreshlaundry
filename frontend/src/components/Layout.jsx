@@ -55,6 +55,7 @@ export default function Layout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { t } = useLocale();
 
   // Filter nav items based on user role
   const isAdmin = user?.role === "admin";
