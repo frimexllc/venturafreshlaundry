@@ -92,7 +92,7 @@ export default function Layout() {
 
   // Get role display name
   const getRoleDisplay = (role) => {
-    return role === "admin" ? "Administrator" : "Operator";
+    return role === "admin" ? t("Administrator", "Administrador") : t("Operator", "Operador");
   };
 
   // Get role badge color
