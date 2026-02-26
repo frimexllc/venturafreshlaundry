@@ -172,7 +172,7 @@ export default function Layout() {
                 className="sidebar-link text-sky-600"
               >
                 <ExternalLink className="h-5 w-5" />
-                <span>Ver Landing Page</span>
+                <span>{t("View Landing Page", "Ver página principal")}</span>
               </a>
             </div>
           </nav>
