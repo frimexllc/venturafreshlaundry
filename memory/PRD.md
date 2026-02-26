@@ -101,6 +101,8 @@ RECEIVED → PROCESSING → READY → OUT_FOR_DELIVERY → DELIVERED → COMPLET
 ## Cambios recientes (2026-02-25)
 - ✅ Panel Operador: lista de entregas en curso incluye OUT_FOR_DELIVERY y DELIVERED para completar el flujo de entrega.
 - ✅ Notificaciones por cambios de estado se envían para cualquier estado (excepto NEW).
+- ✅ Backend: carga de .env solo en preview/local (según APP_URL) para no sobrescribir MONGO_URL de producción.
+- ✅ Repo: .gitignore permite frontend/package.json para builds de deployment.
 
 ## Pendientes / Issues
 **P1**
