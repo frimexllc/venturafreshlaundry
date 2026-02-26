@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { useLocale } from "../context/LocaleContext";
 import { MapPin, Clock, Phone } from "lucide-react";
 import logoVFL from "../assets/LOGO2-fotor-bg-remover-2026011719450.webp";
 
