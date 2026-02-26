@@ -4,6 +4,7 @@ import { MapPin, Clock, Phone } from "lucide-react";
 import logoVFL from "../assets/LOGO2-fotor-bg-remover-2026011719450.webp";
 
 export default function PublicFooter() {
+  const { t } = useLocale();
   return (
     <footer className="bg-slate-900 text-white py-12">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
