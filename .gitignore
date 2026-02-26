@@ -30,6 +30,9 @@ frontend/.env
 *.deb
 *.dylib
 *.json
+!package.json
+!frontend/package.json
+!frontend/package-lock.json
 *.pack
 *.pem
 *.tsbuildinfo
