@@ -72,7 +72,7 @@ export default function PublicNav() {
 
             <Link to="/schedule-pickup">
               <Button className="bg-sky-500 hover:bg-sky-600 text-white rounded-full px-6 py-2.5 transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl">
-                SCHEDULE PICK-UP
+                {t("SCHEDULE PICK-UP", "PROGRAMAR RECOLECCIÓN")}
               </Button>
             </Link>
           </div>
@@ -117,7 +117,7 @@ export default function PublicNav() {
 
                 <Link to="/schedule-pickup" onClick={() => setMobileMenuOpen(false)}>
                   <Button className="bg-sky-500 hover:bg-sky-600 text-white rounded-full w-full mt-2 py-3">
-                    SCHEDULE PICK-UP
+                    {t("SCHEDULE PICK-UP", "PROGRAMAR RECOLECCIÓN")}
                   </Button>
                 </Link>
               </div>
