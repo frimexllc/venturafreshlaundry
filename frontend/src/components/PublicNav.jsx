@@ -16,6 +16,7 @@ const navLinks = [
 
 export default function PublicNav() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { t } = useLocale();
   const customerToken = localStorage.getItem("customer_token");
 
   return (
