@@ -63,7 +63,7 @@ export default function PublicFooter() {
 
           {/* Account & Social */}
           <div>
-            <h4 className="font-semibold mb-4">Account</h4>
+            <h4 className="font-semibold mb-4">{t("Account", "Cuenta")}</h4>
             <div className="space-y-2 text-slate-400 text-sm">
               <Link to="/account" className="block hover:text-white transition-colors">My Account</Link>
               <Link to="/account/login" className="block hover:text-white transition-colors">Customer Login</Link>
