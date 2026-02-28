@@ -270,7 +270,7 @@ export default function DeliveryZonesManager() {
       </div>
 
       <div className="space-y-3" data-testid="delivery-zones-list">
-        zones.length === 0 ? (
+        {zones.length === 0 ? (
           <p className="text-sm text-slate-500" data-testid="delivery-zones-empty">
             {t("No zones available", "Sin zonas")}
           </p>
@@ -284,7 +284,7 @@ export default function DeliveryZonesManager() {
                 <p className="text-xs text-slate-500">
                   {zone.type === "circle"
                     ? t("Circle", "Círculo")
-                    : t("Polygon", "Polígono")} 7 {zone.rate_per_km}/km
+                    : t("Polygon", "Polígono")} - {zone.rate_per_km}/km
                 </p>
               </div>
               <Button
@@ -297,7 +297,7 @@ export default function DeliveryZonesManager() {
               </Button>
             </div>
           ))
-        )
+        )}
       </div>
 
       {loading && (
