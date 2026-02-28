@@ -412,6 +412,84 @@ export default function OperatorDashboard() {
     window.open(url, "_blank");
   };
 
+  const isMemberOrder = (order) => {
+    const status = (order?.membership_status || "").toString().toLowerCase();
+    if (["inactive", "cancelled", "canceled", "expired"].includes(status)) return false;
+    if (["active", "current", "paid", "yes", "true"].includes(status)) return true;
+    return Boolean(order?.membership_plan);
+  };
+
+  const calculateServiceCharge = (order) => {
+    if (!order) return null;
+    const lbsValue = parseFloat(order.actual_lbs);
+    if (Number.isNaN(lbsValue) || lbsValue <= 0) return null;
+    if (order.service_type === "wash_fold") {
+      const billable = Math.max(lbsValue, 10);
+      return billable * 2.25;
+    }
+    const rate = isMemberOrder(order) ? 2.5 : 2.75;
+    const amount = Math.max(lbsValue * rate, 40);
+    return amount;
+  };
+
+  const initiateStripeCheckout = async (order) => {
+    if (!order) return;
+    setStripeLoading(true);
+    try {
+      const orderId = order.id || order.order_id;
+      const res = await axios.post(`${API_URL}/api/orders/${orderId}/stripe-checkout`, {
+        origin_url: window.location.origin
+      });
+      if (res.data?.url) {
+        window.location.href = res.data.url;
+      } else {
+        toast.error(t("Unable to start Stripe checkout", "No se pudo iniciar Stripe"));
+      }
+    } catch (error) {
+      const message = error.response?.data?.detail || t("Stripe checkout failed", "Falló Stripe");
+      toast.error(message);
+    } finally {
+      setStripeLoading(false);
+    }
+  };
+
+  const pollStripeStatus = async (sessionId, attempt = 0) => {
+    const maxAttempts = 6;
+    if (attempt >= maxAttempts) {
+      setStripePolling(false);
+      toast.error(t("Payment status timeout", "Tiempo de espera de pago"));
+      return;
+    }
+    try {
+      const res = await axios.get(`${API_URL}/api/orders/stripe/status/${sessionId}`);
+      if (res.data?.payment_status === "paid") {
+        toast.success(t("Payment confirmed", "Pago confirmado"));
+        setStripePolling(false);
+        await loadDashboard();
+        return;
+      }
+      if (res.data?.status === "expired") {
+        toast.error(t("Payment expired", "Pago expirado"));
+        setStripePolling(false);
+        return;
+      }
+      setTimeout(() => pollStripeStatus(sessionId, attempt + 1), 2000);
+    } catch (error) {
+      setTimeout(() => pollStripeStatus(sessionId, attempt + 1), 2000);
+    }
+  };
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const sessionId = params.get("session_id");
+    if (sessionId && !stripePolling) {
+      setStripePolling(true);
+      pollStripeStatus(sessionId);
+      const cleanUrl = window.location.pathname;
+      window.history.replaceState({}, "", cleanUrl);
+    }
+  }, [stripePolling]);
+
   const realtimeLabel = realtimeStatus === "connected"
     ? t("Realtime: connected", "Tiempo real: conectado")
     : realtimeStatus === "disabled"
