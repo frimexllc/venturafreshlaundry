@@ -272,6 +272,73 @@ export default function OperatorDashboard() {
     }
   };
 
+  const updateStoreOrderStatus = async (orderId, newStatus) => {
+    setStoreUpdating(prev => ({ ...prev, [orderId]: true }));
+    try {
+      const res = await fetch(`${API_URL}/api/store/orders/${orderId}/status?status=${newStatus}`, {
+        method: "PUT"
+      });
+      if (res.ok) {
+        toast.success(t("Store order updated", "Orden de tienda actualizada"));
+        await loadStoreOrders();
+      } else {
+        const error = await res.json();
+        toast.error(error.detail || t("Error updating store order", "Error actualizando orden de tienda"));
+      }
+    } catch (error) {
+      toast.error(t("Connection error", "Error de conexión"));
+    } finally {
+      setStoreUpdating(prev => ({ ...prev, [orderId]: false }));
+    }
+  };
+
+  const refundStoreOrder = async (orderId) => {
+    setStoreUpdating(prev => ({ ...prev, [orderId]: true }));
+    try {
+      const res = await fetch(`${API_URL}/api/store/orders/${orderId}/refund`, { method: "POST" });
+      if (res.ok) {
+        toast.success(t("Store order refunded", "Orden reembolsada"));
+        await loadStoreOrders();
+      } else {
+        const error = await res.json();
+        toast.error(error.detail || t("Refund failed", "Falló el reembolso"));
+      }
+    } catch (error) {
+      toast.error(t("Connection error", "Error de conexión"));
+    } finally {
+      setStoreUpdating(prev => ({ ...prev, [orderId]: false }));
+    }
+  };
+
+  const handlePrintStoreOrder = (order) => {
+    if (!order) return;
+    const printWindow = window.open("");
+    if (!printWindow) {
+      toast.error(t("Allow pop-ups to print", "Permite ventanas emergentes para imprimir"));
+      return;
+    }
+    const itemsRows = (order.items || [])
+      .map((item) => `<tr><td>${item.name || item.product_name || "Item"}</td><td>${item.quantity}</td><td>$${(item.price || 0).toFixed(2)}</td></tr>`)
+      .join("");
+    printWindow.document.write(`
+      <html>
+        <body style="font-family: Arial, sans-serif; padding: 24px;">
+          <h2>Store Order ${order.order_number}</h2>
+          <p>${order.customer_name || ""} ${order.customer_email || ""}</p>
+          <table style="width:100%; border-collapse: collapse; margin-top: 16px;">
+            <thead><tr><th align="left">Item</th><th align="left">Qty</th><th align="left">Price</th></tr></thead>
+            <tbody>${itemsRows}</tbody>
+          </table>
+          <p style="margin-top: 16px;">Subtotal: $${(order.subtotal || 0).toFixed(2)}</p>
+          <p>Shipping: $${(order.shipping_fee || 0).toFixed(2)}</p>
+          <p><strong>Total: $${(order.total || 0).toFixed(2)}</strong></p>
+          <script>window.print();window.onafterprint=function(){window.close();};</script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
   const updateOrderWeights = async () => {
     if (!selectedOrder) return;
     const orderPrimaryId = selectedOrder.id || selectedOrder.order_id;
