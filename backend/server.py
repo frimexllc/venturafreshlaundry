@@ -351,6 +351,15 @@ class OrderPaymentUpdate(BaseModel):
     payment_method: str
     amount_received: Optional[float] = None
 
+class OrderStripeCheckoutRequest(BaseModel):
+    origin_url: str
+
+class OrderStripeCheckoutResponse(BaseModel):
+    session_id: str
+    url: str
+    amount: float
+    currency: str
+
 
 class QuoteCreate(BaseModel):
     company_name: str
