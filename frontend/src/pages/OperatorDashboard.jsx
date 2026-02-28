@@ -398,9 +398,10 @@ export default function OperatorDashboard() {
   };
 
   const getChangePreview = () => {
-    if (!selectedOrder?.total_amount) return "-";
+    const totalRaw = selectedOrder?.total_amount ?? calculateServiceCharge(selectedOrder);
+    if (!totalRaw) return "-";
     const amount = parseFloat(paymentForm.amountReceived);
-    const total = parseFloat(selectedOrder.total_amount);
+    const total = parseFloat(totalRaw);
     if (Number.isNaN(amount) || Number.isNaN(total)) return "-";
     const diff = amount - total;
     return diff >= 0 ? `$${diff.toFixed(2)}` : `-$${Math.abs(diff).toFixed(2)}`;
