@@ -305,6 +305,8 @@ class ShippingQuoteRequest(BaseModel):
 class ShippingQuoteResponse(BaseModel):
     distance_km: float
     fee: float
+    zone_id: Optional[str] = None
+    zone_name: Optional[str] = None
 
 class StoreOrderResponse(BaseModel):
     id: str
