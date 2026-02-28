@@ -197,11 +197,27 @@ def point_in_polygon(point: List[float], polygon: List[List[float]]) -> bool:
 
 
 async def ensure_default_zone(store_center: List[float]):
-    count = await db.delivery_zones.count_documents({})
-    if count > 0:
-        return
     _, _, rate_per_km, min_fee, max_fee = get_store_config()
     now = datetime.now(timezone.utc).isoformat()
+    existing = await db.delivery_zones.find_one({"name": "Default 10km"}, {"_id": 0})
+    if existing:
+        current_center = existing.get("center") or store_center
+        if haversine_km(current_center, store_center) > 50:
+            await db.delivery_zones.update_one(
+                {"id": existing.get("id")},
+                {
+                    "$set": {
+                        "center": store_center,
+                        "radius_km": 10,
+                        "rate_per_km": rate_per_km,
+                        "min_fee": min_fee,
+                        "max_fee": max_fee,
+                        "updated_at": now
+                    }
+                }
+            )
+        return
+
     zone_doc = {
         "id": str(uuid.uuid4()),
         "name": "Default 10km",
