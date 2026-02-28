@@ -63,6 +63,22 @@ export default function StorePage() {
       .finally(() => setLoading(false));
   }, []);
 
+  // Load or create cart
+  useEffect(() => {
+    const cartId = localStorage.getItem('cartId');
+    if (cartId) {
+      fetch(`${API_URL}/api/store/cart/${cartId}`)
+        .then(res => {
+          if (res.ok) return res.json();
+          throw new Error('Cart not found');
+        })
+        .then(setCart)
+        .catch(() => {
+          localStorage.removeItem('cartId');
+        });
+    }
+  }, []);
+
   useEffect(() => {
     if (!checkoutForm.address || checkoutForm.address.length < 5) {
       setShippingQuote({ distance_km: null, fee: 0 });
