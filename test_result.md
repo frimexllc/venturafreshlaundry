@@ -500,6 +500,42 @@ frontend:
         agent: "testing"
         comment: "✅ TESTED (Feb 28, 2026): Payment Methods section fully functional on Finances page. Verified all components: 1) Payment methods section visible with title 'Payment methods' (Métodos de pago) ✓, 2) Section displays payment method breakdown with 3 methods found: UNKNOWN (9 payments, $75.98), CASH (4 payments, $58.96), CARD (1 payment, $16.99) ✓, 3) Each payment method shows: method name in uppercase, payment count subtitle, total amount in bold ✓, 4) All items displayed in slate-50 background cards with proper formatting ✓. Payment methods data loads correctly and displays comprehensive breakdown. Evidence: screenshot captured."
 
+  - task: "Operator Panel - Store Orders Header with New Sale & Request Payment Buttons"
+    implemented: true
+    working: true
+    file: "pages/OperatorDashboard.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED (Feb 28, 2026): Store Orders header fully functional with all required elements. Verified: 1) 'New Store Sale' button present with text 'New Store Sale' (data-testid: store-pos-open) ✓, 2) 'Request payment' button present showing count '(3)' for unpaid orders (data-testid: store-pos-request-payment) ✓, 3) Steps banner visible displaying 3 steps: '1. Open POS', '2. Add products', '3. Collect payment' with additional hint 'Pending payments available below' (data-testid: store-orders-steps) ✓. All header elements rendering correctly and are clickable. Evidence: screenshot 01_store_orders_header.png captured."
+
+  - task: "Operator Panel - POS Modal with Product List, Cart, Customer Fields, Fulfillment & Payment"
+    implemented: true
+    working: true
+    file: "pages/OperatorDashboard.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED (Feb 28, 2026): POS modal opens correctly and contains all required sections. Verified: 1) Modal opens when 'New Store Sale' button clicked (data-testid: store-pos-modal) ✓, 2) Product list displays 5 available products with stock info (data-testid: store-pos-products) ✓, 3) Cart section shows 'No items yet' initially (data-testid: store-pos-cart) ✓, 4) Customer fields section includes Name, Email, Phone inputs - all editable (data-testid: store-pos-name, store-pos-email, store-pos-phone) ✓, 5) Fulfillment dropdown with Pickup/Delivery options (data-testid: store-pos-fulfillment) ✓, 6) Payment method dropdown with Card/Cash/Transfer/Other options, default 'card' (data-testid: store-pos-payment-method) ✓, 7) Order summary section displays Subtotal, Shipping, Total (data-testid: store-pos-summary) ✓, 8) Submit button shows 'Pay with Stripe' text (data-testid: store-pos-submit) ✓. Modal closes correctly with Escape key. All POS functionality working as expected. Evidence: screenshot 02_pos_modal_open.png captured."
+
+  - task: "Operator Panel - Payment Modal for Unpaid Store Orders"
+    implemented: true
+    working: true
+    file: "pages/OperatorDashboard.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED (Feb 28, 2026): Payment modal for unpaid orders fully functional. Verified: 1) Modal opens when 'Request payment' button clicked (data-testid: store-payment-modal) ✓, 2) Displays unpaid order number: SO-20260222-1C108307 ✓, 3) Shows order total: $24.99 ✓, 4) Payment method dropdown present with all options: Card (Stripe), Cash, Transfer, Other (data-testid: store-payment-method) ✓, 5) Submit button displays 'Pay with Stripe' when card selected (data-testid: store-payment-submit) ✓, 6) Helper text shown: 'Stripe Checkout will open in a new page' (data-testid: store-payment-note) ✓. Modal closes correctly with Escape key. All payment request functionality working correctly. Evidence: screenshot 03_payment_modal_open.png captured."
+
 metadata:
   created_by: "main_agent"
   version: "1.0"
