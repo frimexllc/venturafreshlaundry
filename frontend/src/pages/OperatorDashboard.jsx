@@ -870,6 +870,8 @@ export default function OperatorDashboard() {
     product.name?.toLowerCase().includes(storeSearch.toLowerCase())
   );
 
+  const selectedOrderCharge = selectedOrder ? calculateServiceCharge(selectedOrder) : null;
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
