@@ -612,6 +612,220 @@ export default function OperatorDashboard() {
       window.history.replaceState({}, "", cleanUrl);
     }
   }, [stripePolling]);
+  }, [stripePolling]);
+
+  const openStorePos = async () => {
+    setStorePosOpen(true);
+    setStoreCartLoading(true);
+    try {
+      const [cartRes, productsRes] = await Promise.all([
+        fetch(`${API_URL}/api/store/cart`, { method: "POST" }),
+        fetch(`${API_URL}/api/store/products`)
+      ]);
+      if (cartRes.ok) {
+        const cartData = await cartRes.json();
+        setStoreCart(cartData);
+      }
+      if (productsRes.ok) {
+        const productsData = await productsRes.json();
+        setStoreProducts(productsData || []);
+      }
+    } catch (error) {
+      toast.error(t("Error loading store POS", "Error cargando POS"));
+    } finally {
+      setStoreCartLoading(false);
+    }
+  };
+
+  const resetStorePos = () => {
+    setStorePosOpen(false);
+    setStoreCart(null);
+    setStoreProducts([]);
+    setStoreSearch("");
+    setStoreCheckoutForm({
+      name: "",
+      email: "",
+      phone: "",
+      address: "",
+      apt: "",
+      instructions: "",
+      notes: "",
+      preferred_contact: "sms",
+      payment_method: "card",
+      fulfillment_type: "pickup"
+    });
+    setStoreShippingQuote({ distance_km: null, fee: 0, zone_name: null });
+  };
+
+  const getCartItemQuantity = (productId) => {
+    const item = storeCart?.items?.find((entry) => entry.product_id === productId);
+    return item ? item.quantity : 0;
+  };
+
+  const updateStoreCartItem = async (product, quantity) => {
+    if (!storeCart) return;
+    try {
+      const endpoint = `${API_URL}/api/store/cart/${storeCart.id}/items/${product.id}`;
+      let res;
+      if (quantity <= 0) {
+        res = await fetch(endpoint, { method: "DELETE" });
+      } else if (getCartItemQuantity(product.id) === 0) {
+        res = await fetch(`${API_URL}/api/store/cart/${storeCart.id}/items`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ product_id: product.id, quantity })
+        });
+      } else {
+        res = await fetch(endpoint, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ quantity })
+        });
+      }
+      if (res.ok) {
+        const data = await res.json();
+        setStoreCart(data);
+      } else {
+        const error = await res.json();
+        toast.error(error.detail || t("Unable to update cart", "No se pudo actualizar el carrito"));
+      }
+    } catch (error) {
+      toast.error(t("Connection error", "Error de conexión"));
+    }
+  };
+
+  const handleStoreCheckout = async () => {
+    if (!storeCart || !storeCart.items?.length) {
+      toast.error(t("Cart is empty", "El carrito está vacío"));
+      return;
+    }
+    if (!storeCheckoutForm.name || !storeCheckoutForm.email || !storeCheckoutForm.phone) {
+      toast.error(t("Complete customer details", "Completa los datos del cliente"));
+      return;
+    }
+    if (storeCheckoutForm.fulfillment_type === "delivery" && !storeCheckoutForm.address) {
+      toast.error(t("Add delivery address", "Agrega dirección de entrega"));
+      return;
+    }
+
+    setStoreCheckoutLoading(true);
+    try {
+      const payload = {
+        cart_id: storeCart.id,
+        origin_url: window.location.origin,
+        customer_name: storeCheckoutForm.name,
+        customer_email: storeCheckoutForm.email,
+        customer_phone: storeCheckoutForm.phone,
+        shipping_address: storeCheckoutForm.fulfillment_type === "delivery" ? storeCheckoutForm.address : "",
+        shipping_apt: storeCheckoutForm.apt,
+        delivery_instructions: storeCheckoutForm.instructions,
+        notes: storeCheckoutForm.notes,
+        preferred_contact: storeCheckoutForm.preferred_contact,
+        fulfillment_type: storeCheckoutForm.fulfillment_type
+      };
+
+      const endpoint = storeCheckoutForm.payment_method === "card"
+        ? `${API_URL}/api/store/checkout`
+        : `${API_URL}/api/store/checkout/manual`;
+
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          storeCheckoutForm.payment_method === "card"
+            ? payload
+            : { ...payload, payment_method: storeCheckoutForm.payment_method }
+        )
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (storeCheckoutForm.payment_method === "card") {
+          window.location.href = data.checkout_url;
+        } else {
+          toast.success(t("Store order confirmed", "Orden confirmada"));
+          resetStorePos();
+          await loadStoreOrders();
+        }
+      } else {
+        const error = await res.json();
+        toast.error(error.detail || t("Payment failed", "Pago fallido"));
+      }
+    } catch (error) {
+      toast.error(t("Connection error", "Error de conexión"));
+    } finally {
+      setStoreCheckoutLoading(false);
+    }
+  };
+
+  const handleStorePayment = async () => {
+    if (!storePaymentOrder) return;
+    setStoreProcessingPayment(true);
+    try {
+      if (storePaymentForm.method === "card") {
+        const res = await fetch(`${API_URL}/api/store/orders/${storePaymentOrder.id}/stripe-checkout`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ origin_url: window.location.origin })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          window.location.href = data.checkout_url;
+          return;
+        }
+        const error = await res.json();
+        toast.error(error.detail || t("Stripe checkout failed", "Falló Stripe"));
+      } else {
+        const res = await fetch(`${API_URL}/api/store/orders/${storePaymentOrder.id}/payment`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ payment_method: storePaymentForm.method })
+        });
+        if (res.ok) {
+          toast.success(t("Payment registered", "Pago registrado"));
+          setStorePaymentOrder(null);
+          await loadStoreOrders();
+        } else {
+          const error = await res.json();
+          toast.error(error.detail || t("Payment failed", "Pago fallido"));
+        }
+      }
+    } catch (error) {
+      toast.error(t("Connection error", "Error de conexión"));
+    } finally {
+      setStoreProcessingPayment(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!storePosOpen) return;
+    if (storeCheckoutForm.fulfillment_type !== "delivery") {
+      setStoreShippingQuote({ distance_km: null, fee: 0, zone_name: null });
+      return;
+    }
+    if (!storeCheckoutForm.address) {
+      setStoreShippingQuote({ distance_km: null, fee: 0, zone_name: null });
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/store/shipping/quote`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ address: storeCheckoutForm.address })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setStoreShippingQuote(data);
+        } else {
+          setStoreShippingQuote({ distance_km: null, fee: 0, zone_name: null });
+        }
+      } catch (error) {
+        setStoreShippingQuote({ distance_km: null, fee: 0, zone_name: null });
+      }
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [storeCheckoutForm.address, storeCheckoutForm.fulfillment_type, storePosOpen]);
 
   const realtimeLabel = realtimeStatus === "connected"
     ? t("Realtime: connected", "Tiempo real: conectado")
