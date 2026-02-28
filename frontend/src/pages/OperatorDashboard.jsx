@@ -52,6 +52,7 @@ const getStoreStatusLabel = (status) => {
 };
 
 
+const PREFERENCE_LABELS = {
   detergent_type: "Detergent",
   water_temperature: "Water temperature",
   fabric_softener: "Fabric softener",
