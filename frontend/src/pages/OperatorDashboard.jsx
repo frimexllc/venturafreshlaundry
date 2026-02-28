@@ -1217,7 +1217,7 @@ export default function OperatorDashboard() {
                 </div>
                 <div className="flex items-center justify-between mt-2">
                   <p className="text-xs text-slate-500" data-testid="operator-payment-change">{t("Change:", "Cambio:")} {paymentForm.method === "cash" ? getChangePreview() : "-"}</p>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <Button
                       variant="outline"
                       size="sm"
@@ -1235,6 +1235,17 @@ export default function OperatorDashboard() {
                     >
                       {t("Print Ticket", "Imprimir Ticket")}
                     </Button>
+                    {paymentForm.method === "card" && (
+                      <Button
+                        size="sm"
+                        className="bg-emerald-600 hover:bg-emerald-700"
+                        onClick={() => initiateStripeCheckout(selectedOrder)}
+                        disabled={stripeLoading || !selectedOrderCharge}
+                        data-testid="operator-payment-stripe"
+                      >
+                        {stripeLoading ? t("Starting Stripe...", "Iniciando Stripe...") : t("Pay with Stripe", "Pagar con Stripe")}
+                      </Button>
+                    )}
                   </div>
                 </div>
               </div>
