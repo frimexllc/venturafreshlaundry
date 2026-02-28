@@ -7,6 +7,7 @@ from typing import List, Optional, Dict
 from datetime import datetime, timezone
 import uuid
 import os
+import openrouteservice
 from motor.motor_asyncio import AsyncIOMotorClient
 from normalization import normalize_email, normalize_phone, normalize_spaces, normalize_preference_dict
 
