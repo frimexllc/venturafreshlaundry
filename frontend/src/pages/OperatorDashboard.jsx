@@ -706,6 +706,10 @@ export default function OperatorDashboard() {
       toast.error(t("Add delivery address", "Agrega dirección de entrega"));
       return;
     }
+    if (storeCheckoutForm.fulfillment_type === "delivery" && !storeShippingQuote.distance_km) {
+      toast.error(t("Calculate shipping before charging", "Calcula el envío antes de cobrar"));
+      return;
+    }
 
     setStoreCheckoutLoading(true);
     try {
