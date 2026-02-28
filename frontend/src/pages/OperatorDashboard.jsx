@@ -117,6 +117,20 @@ export default function OperatorDashboard() {
     return { ...found, label: getStatusLabel(found.value) };
   };
 
+  const storeStatusLabels = {
+    pending: t("Pending", "Pendiente"),
+    confirmed: t("Confirmed", "Confirmado"),
+    processing: t("Processing", "Procesando"),
+    shipped: t("Shipped", "Enviado"),
+    delivered: t("Delivered", "Entregado"),
+    cancelled: t("Cancelled", "Cancelado")
+  };
+
+  const getStoreStatusDisplay = (status) => {
+    const normalized = (status || "pending").toLowerCase();
+    return storeStatusLabels[normalized] || status;
+  };
+
   // Translate preference labels
   const getPreferenceLabel = (key) => {
     const map = {
