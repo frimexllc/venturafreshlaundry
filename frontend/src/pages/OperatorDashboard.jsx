@@ -1414,9 +1414,19 @@ export default function OperatorDashboard() {
               <h3 className="font-semibold text-slate-900">{t("Store Orders", "Órdenes tienda")}</h3>
               <p className="text-sm text-slate-500">{t("Process product purchases", "Procesa compras de productos")}</p>
             </div>
-            <span className="text-sm font-semibold text-slate-600" data-testid="store-orders-count">
-              {storeOrders.length}
-            </span>
+            <div className="flex items-center gap-3">
+              <Button
+                size="sm"
+                className="bg-sky-600 hover:bg-sky-700"
+                onClick={openStorePos}
+                data-testid="store-pos-open"
+              >
+                {t("New Store Sale", "Nueva venta")}
+              </Button>
+              <span className="text-sm font-semibold text-slate-600" data-testid="store-orders-count">
+                {storeOrders.length}
+              </span>
+            </div>
           </div>
           {storeOrdersLoading ? (
             <div className="p-6 text-center text-slate-500" data-testid="store-orders-loading">
