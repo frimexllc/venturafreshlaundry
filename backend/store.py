@@ -129,6 +129,70 @@ def calculate_shipping_fee(address: str) -> Dict[str, float]:
     fee = min(fee, max_fee)
     return {"distance_km": round(distance_km, 2), "fee": round(fee, 2)}
 
+def haversine_km(coord1: List[float], coord2: List[float]) -> float:
+    import math
+    lon1, lat1 = coord1
+    lon2, lat2 = coord2
+    r = 6371.0
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+    return 2 * r * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+def point_in_polygon(point: List[float], polygon: List[List[float]]) -> bool:
+    x, y = point
+    inside = False
+    n = len(polygon)
+    if n < 3:
+        return False
+    p1x, p1y = polygon[0]
+    for i in range(n + 1):
+        p2x, p2y = polygon[i % n]
+        if y > min(p1y, p2y):
+            if y <= max(p1y, p2y):
+                if x <= max(p1x, p2x):
+                    if p1y != p2y:
+                        xinters = (y - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
+                    else:
+                        xinters = p1x
+                    if p1x == p2x or x <= xinters:
+                        inside = not inside
+        p1x, p1y = p2x, p2y
+    return inside
+
+
+async def ensure_default_zone(store_center: List[float]):
+    count = await db.delivery_zones.count_documents({})
+    if count > 0:
+        return
+    _, _, rate_per_km, min_fee, max_fee = get_store_config()
+    now = datetime.now(timezone.utc).isoformat()
+    zone_doc = {
+        "id": str(uuid.uuid4()),
+        "name": "Default 10km",
+        "type": "circle",
+        "radius_km": 10,
+        "center": store_center,
+        "polygon": None,
+        "rate_per_km": rate_per_km,
+        "min_fee": min_fee,
+        "max_fee": max_fee,
+        "created_at": now,
+        "updated_at": now
+    }
+    await db.delivery_zones.insert_one(zone_doc)
+
+
+async def get_zones_with_defaults(store_center: List[float]) -> List[Dict]:
+    await ensure_default_zone(store_center)
+    zones = await db.delivery_zones.find({}, {"_id": 0}).sort("created_at", 1).to_list(200)
+    return zones
+
+
+
 
 def build_customer_snapshot(payload: dict) -> Dict:
     return {
