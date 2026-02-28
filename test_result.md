@@ -365,6 +365,51 @@ frontend:
         agent: "testing"
         comment: "✅ TESTED (Feb 25, 2026): Real-time connection indicator fully functional (data-testid: operator-realtime-status). Displays 'Tiempo real: conectado' in green badge when WebSocket is connected. Indicator visible in header section and accurately reflects connection state. WebSocket integration working correctly for real-time updates."
 
+  - task: "Language Toggle EN/ES"
+    implemented: true
+    working: true
+    file: "components/LanguageToggle.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Language toggle component with EN/ES buttons implemented using LocaleContext"
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED (Feb 28, 2026): Language toggle fully functional. Both EN and ES buttons visible in sidebar (data-testid: language-toggle-en, language-toggle-es). Clicking ES button successfully changes all labels from English to Spanish: Dashboard→Panel, Operator Panel→Panel Operador, AI Assistant→Asistente IA, Calendar→Calendario, Orders→Órdenes, Customers→Clientes, Memberships→Membresías, B2B Quotes→Cotizaciones B2B, Leads→Prospectos, Services→Servicios, Finances→Finanzas, Support→Soporte, Store→Tienda, Blog→Blog, Users→Usuarios, Audit Log→Bitácora, Settings→Configuración. Language persistence working correctly."
+
+  - task: "Operator Panel - 6 POS Cards Layout"
+    implemented: true
+    working: true
+    file: "pages/OperatorDashboard.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Operator POS grid with 6 cards implemented: Pickup & Delivery (Pickups Today, Request Payment, Deliveries in progress) and Wash & Fold (Drop-Off, Request Payment, Ready or Delivered)"
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED (Feb 28, 2026): All 6 POS cards verified and visible in operator panel (data-testid: operator-pos-grid). Left column: 1) pos-pickup-today-card (Pickup & Delivery — Pickups Today), 2) pos-pickup-payment-card (Pickup & Delivery — Request Payment), 3) pos-pickup-delivery-card (Pickup & Delivery — Deliveries in progress). Right column: 4) pos-washfold-dropoff-card (Wash & Fold Drop-Off), 5) pos-washfold-payment-card (Wash & Fold — Request Payment), 6) pos-washfold-ready-card (Wash & Fold — Ready or Delivered). All cards display correctly with order counts and appropriate styling."
+
+  - task: "Operator Panel - Stripe Payment Button"
+    implemented: true
+    working: true
+    file: "pages/OperatorDashboard.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Stripe checkout button in order detail modal, conditionally shown when payment method is 'card'"
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED (Feb 28, 2026): Stripe payment button functionality verified. When payment method is set to 'Cash', Stripe button is hidden. When payment method changed to 'Card (Stripe)', button appears with text 'Pay with Stripe' (data-testid: operator-payment-stripe). Button is properly styled with emerald-600 background and only enabled when order has actual lbs set for total calculation. Conditional rendering working correctly based on paymentForm.method === 'card' check."
+
 metadata:
   created_by: "main_agent"
   version: "1.0"
