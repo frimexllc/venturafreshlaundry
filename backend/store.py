@@ -305,11 +305,12 @@ class CheckoutRequest(BaseModel):
     customer_name: str
     customer_email: str
     customer_phone: str
-    shipping_address: str
+    shipping_address: Optional[str] = None
     shipping_apt: Optional[str] = None
     delivery_instructions: Optional[str] = None
     notes: Optional[str] = None
     preferred_contact: Optional[str] = None
+    fulfillment_type: Optional[str] = "delivery"
 
 class ManualCheckoutRequest(CheckoutRequest):
     payment_method: str
