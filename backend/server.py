@@ -1527,6 +1527,16 @@ async def resolve_qr(data: QrResolveRequest, current_user: dict = Depends(get_cu
 @api_router.put("/orders/{order_id}", response_model=OrderResponse)
 async def update_order(order_id: str, data: dict, current_user: dict = Depends(get_current_user)):
     data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    if "actual_lbs" in data:
+        order_snapshot = await db.orders.find_one({"id": order_id}, {"_id": 0})
+        if order_snapshot:
+            customer_snapshot = None
+            if order_snapshot.get("customer_id"):
+                customer_snapshot = await db.customers.find_one({"id": order_snapshot.get("customer_id")}, {"_id": 0})
+            temp_order = {**order_snapshot, **data}
+            total_amount = calculate_service_amount(temp_order, customer_snapshot)
+            if total_amount is not None:
+                data["total_amount"] = total_amount
     result = await db.orders.update_one({"id": order_id}, {"$set": data})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Order not found")
