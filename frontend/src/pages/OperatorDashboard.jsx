@@ -119,6 +119,26 @@ export default function OperatorDashboard() {
   const [aiResults, setAiResults] = useState([]);
   const [aiLoading, setAiLoading] = useState(false);
 
+  // Helper function to safely get error message
+  const getErrorMessage = (error, defaultMessage) => {
+    if (typeof error === 'string') return error;
+    if (error?.response?.data?.detail) return error.response.data.detail;
+    if (error?.message) return error.message;
+    return defaultMessage;
+  };
+
+  // Safe string conversion for any value
+  const safeString = (value, defaultValue = "-") => {
+    if (value === null || value === undefined) return defaultValue;
+    if (typeof value === 'object') {
+      // Si es un objeto de error, retornar mensaje de error o default
+      if (value.message) return value.message;
+      if (value.msg) return value.msg;
+      return defaultValue;
+    }
+    return String(value);
+  };
+
   // Translate status labels dynamically
   const getStatusLabel = (status) => {
     const map = {
@@ -133,7 +153,7 @@ export default function OperatorDashboard() {
       COMPLETED: t("Completed", "Completada"),
       CANCELLED: t("Cancelled", "Cancelada")
     };
-    return map[status] || status;
+    return map[status] || safeString(status);
   };
 
   const getStatusInfo = (status) => {
@@ -152,7 +172,7 @@ export default function OperatorDashboard() {
 
   const getStoreStatusDisplay = (status) => {
     const normalized = (status || "pending").toLowerCase();
-    return storeStatusLabels[normalized] || status;
+    return storeStatusLabels[normalized] || safeString(status);
   };
 
   // Translate preference labels
@@ -181,7 +201,7 @@ export default function OperatorDashboard() {
       transfer: t("Transfer", "Transferencia"),
       other: t("Other", "Otro")
     };
-    return map[method] || method;
+    return map[method] || safeString(method);
   };
 
   const getPaymentStatusLabel = (status) => {
@@ -236,7 +256,7 @@ export default function OperatorDashboard() {
       }
     }, 30000);
     return () => clearInterval(interval);
-  }, [loadDashboard, loadStoreOrders]);
+  }, [loadDashboard, loadStoreOrders, autoRefresh]);
 
   useEffect(() => {
     const socket = createNotificationsSocket();
@@ -284,7 +304,7 @@ export default function OperatorDashboard() {
       });
       if (res.ok) {
         toast.success(t("Order {id} updated to {status}", "Orden {id} actualizada a {status}")
-          .replace("{id}", orderId).replace("{status}", getStatusLabel(newStatus)));
+          .replace("{id}", safeString(orderId)).replace("{status}", getStatusLabel(newStatus)));
         await loadDashboard();
       } else {
         toast.error(t("Error updating order", "Error al actualizar orden"));
@@ -342,20 +362,20 @@ export default function OperatorDashboard() {
       return;
     }
     const itemsRows = (order.items || [])
-      .map((item) => `<tr><td>${item.name || item.product_name || "Item"}</td><td>${item.quantity}</td><td>$${(item.price || 0).toFixed(2)}</td></tr>`)
+      .map((item) => `<tr><td>${safeString(item.name || item.product_name || "Item")}</td><td>${safeString(item.quantity)}</td><td>$${(Number(item.price) || 0).toFixed(2)}</td></tr>`)
       .join("");
     printWindow.document.write(`
       <html>
         <body style="font-family: Arial, sans-serif; padding: 24px;">
-          <h2>Store Order ${order.order_number}</h2>
-          <p>${order.customer_name || ""} ${order.customer_email || ""}</p>
+          <h2>Store Order ${safeString(order.order_number)}</h2>
+          <p>${safeString(order.customer_name)} ${safeString(order.customer_email)}</p>
           <table style="width:100%; border-collapse: collapse; margin-top: 16px;">
             <thead><tr><th align="left">Item</th><th align="left">Qty</th><th align="left">Price</th></tr></thead>
             <tbody>${itemsRows}</tbody>
           </table>
-          <p style="margin-top: 16px;">Subtotal: $${(order.subtotal || 0).toFixed(2)}</p>
-          <p>Shipping: $${(order.shipping_fee || 0).toFixed(2)}</p>
-          <p><strong>Total: $${(order.total || 0).toFixed(2)}</strong></p>
+          <p style="margin-top: 16px;">Subtotal: $${(Number(order.subtotal) || 0).toFixed(2)}</p>
+          <p>Shipping: $${(Number(order.shipping_fee) || 0).toFixed(2)}</p>
+          <p><strong>Total: $${(Number(order.total) || 0).toFixed(2)}</strong></p>
           <script>window.print();window.onafterprint=function(){window.close();};</script>
         </body>
       </html>
@@ -378,7 +398,7 @@ export default function OperatorDashboard() {
       setSelectedOrder((prev) => prev ? { ...prev, ...updated, order_id: prev.order_id, id: prev.id || updated.id } : prev);
       await loadDashboard();
     } catch (error) {
-      toast.error(error.response?.data?.detail || t("Error updating weights", "Error actualizando libras"));
+      toast.error(getErrorMessage(error, t("Error updating weights", "Error actualizando libras")));
     } finally {
       setSavingWeights(false);
     }
@@ -436,7 +456,7 @@ export default function OperatorDashboard() {
       setSelectedOrder((prev) => prev ? { ...prev, ...updated } : prev);
       await loadDashboard();
     } catch (error) {
-      toast.error(error.response?.data?.detail || t("Error registering payment", "Error registrando pago"));
+      toast.error(getErrorMessage(error, t("Error registering payment", "Error registrando pago")));
     } finally {
       setSavingPayment(false);
     }
@@ -471,22 +491,31 @@ export default function OperatorDashboard() {
   };
 
   const buildDateSlug = (dateStr) => {
-    const base = dateStr ? new Date(dateStr) : new Date();
-    if (Number.isNaN(base.getTime())) {
+    if (!dateStr) return new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    try {
+      const base = new Date(dateStr);
+      if (Number.isNaN(base.getTime())) {
+        return new Date().toISOString().slice(0, 10).replace(/-/g, "");
+      }
+      return base.toISOString().slice(0, 10).replace(/-/g, "");
+    } catch {
       return new Date().toISOString().slice(0, 10).replace(/-/g, "");
     }
-    return base.toISOString().slice(0, 10).replace(/-/g, "");
   };
 
   const formatOrderNumber = (order) => {
-    if (!order) return "-";
-    if (order.order_number && order.order_number.startsWith("VFL-")) {
-      return order.order_number;
+    if (!order || typeof order !== 'object') return "-";
+    try {
+      if (order.order_number && typeof order.order_number === 'string' && order.order_number.startsWith("VFL-")) {
+        return order.order_number;
+      }
+      const dateSlug = buildDateSlug(order.created_at || order.pickup_date);
+      const raw = (order.order_number || order.order_id || "00000000").toString();
+      const short = raw.replace(/[^a-zA-Z0-9]/g, "").toLowerCase().slice(-8).padStart(8, "0");
+      return `VFL-${dateSlug}-${short}`;
+    } catch {
+      return "-";
     }
-    const dateSlug = buildDateSlug(order.created_at || order.pickup_date);
-    const raw = (order.order_number || order.order_id || "00000000").toString();
-    const short = raw.replace(/[^a-zA-Z0-9]/g, "").toLowerCase().slice(-8).padStart(8, "0");
-    return `VFL-${dateSlug}-${short}`;
   };
 
   const formatOrderId = (order) => {
@@ -495,65 +524,89 @@ export default function OperatorDashboard() {
 
   const renderPreferenceValue = (value) => {
     if (Array.isArray(value)) {
-      return value.length ? value.join(", ") : "-";
+      return value.length ? value.map(v => safeString(v)).join(", ") : "-";
     }
     if (value === null || value === undefined || value === "") {
+      return "-";
+    }
+    if (typeof value === 'object') {
       return "-";
     }
     return value.toString();
   };
 
   const getWeightDelta = () => {
-    const est = parseFloat(weightForm.estimated_lbs);
-    const act = parseFloat(weightForm.actual_lbs);
-    if (Number.isNaN(est) || Number.isNaN(act)) {
+    try {
+      const est = parseFloat(weightForm.estimated_lbs);
+      const act = parseFloat(weightForm.actual_lbs);
+      if (Number.isNaN(est) || Number.isNaN(act)) {
+        return "-";
+      }
+      const diff = parseFloat((act - est).toFixed(2));
+      return diff > 0 ? `+${diff}` : `${diff}`;
+    } catch {
       return "-";
     }
-    const diff = parseFloat((act - est).toFixed(2));
-    return diff > 0 ? `+${diff}` : `${diff}`;
   };
 
   const formatCurrency = (value) => {
     if (value === null || value === undefined || value === "") return "-";
-    const num = parseFloat(value);
-    if (Number.isNaN(num)) return "-";
-    return `$${num.toFixed(2)}`;
+    try {
+      const num = parseFloat(value);
+      if (Number.isNaN(num)) return "-";
+      return `$${num.toFixed(2)}`;
+    } catch {
+      return "-";
+    }
   };
 
   const getChangePreview = () => {
-    const totalRaw = selectedOrder?.total_amount ?? calculateServiceCharge(selectedOrder);
-    if (!totalRaw) return "-";
-    const amount = parseFloat(paymentForm.amountReceived);
-    const total = parseFloat(totalRaw);
-    if (Number.isNaN(amount) || Number.isNaN(total)) return "-";
-    const diff = amount - total;
-    return diff >= 0 ? `$${diff.toFixed(2)}` : `-$${Math.abs(diff).toFixed(2)}`;
+    try {
+      const totalRaw = selectedOrder?.total_amount ?? calculateServiceCharge(selectedOrder);
+      if (!totalRaw) return "-";
+      const amount = parseFloat(paymentForm.amountReceived);
+      const total = parseFloat(totalRaw);
+      if (Number.isNaN(amount) || Number.isNaN(total)) return "-";
+      const diff = amount - total;
+      return diff >= 0 ? `$${diff.toFixed(2)}` : `-$${Math.abs(diff).toFixed(2)}`;
+    } catch {
+      return "-";
+    }
   };
 
   const openMaps = (address) => {
     if (!address) return;
-    const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+    const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(safeString(address))}`;
     window.open(url, "_blank");
   };
 
   const isMemberOrder = (order) => {
-    const status = (order?.membership_status || "").toString().toLowerCase();
-    if (["inactive", "cancelled", "canceled", "expired"].includes(status)) return false;
-    if (["active", "current", "paid", "yes", "true"].includes(status)) return true;
-    return Boolean(order?.membership_plan);
+    if (!order) return false;
+    try {
+      const status = (order?.membership_status || "").toString().toLowerCase();
+      if (["inactive", "cancelled", "canceled", "expired"].includes(status)) return false;
+      if (["active", "current", "paid", "yes", "true"].includes(status)) return true;
+      return Boolean(order?.membership_plan);
+    } catch {
+      return false;
+    }
   };
 
   const calculateServiceCharge = (order) => {
     if (!order) return null;
-    const lbsValue = parseFloat(order.actual_lbs);
-    if (Number.isNaN(lbsValue) || lbsValue <= 0) return null;
-    if (order.service_type === "wash_fold") {
-      const billable = Math.max(lbsValue, 10);
-      return billable * 2.25;
+    try {
+      const lbsValue = parseFloat(order.actual_lbs);
+      if (Number.isNaN(lbsValue) || lbsValue <= 0) return null;
+      if (order.service_type === "wash_fold") {
+        const billable = Math.max(lbsValue, 10);
+        return billable * 2.25;
+      }
+      const rate = isMemberOrder(order) ? 2.5 : 2.75;
+      const amount = Math.max(lbsValue * rate, 40);
+      return amount;
+    } catch {
+      return null;
     }
-    const rate = isMemberOrder(order) ? 2.5 : 2.75;
-    const amount = Math.max(lbsValue * rate, 40);
-    return amount;
   };
 
   const initiateStripeCheckout = async (order) => {
@@ -570,7 +623,7 @@ export default function OperatorDashboard() {
         toast.error(t("Unable to start Stripe checkout", "No se pudo iniciar Stripe"));
       }
     } catch (error) {
-      const message = error.response?.data?.detail || t("Stripe checkout failed", "Falló Stripe");
+      const message = getErrorMessage(error, t("Stripe checkout failed", "Falló Stripe"));
       toast.error(message);
     } finally {
       setStripeLoading(false);
@@ -684,8 +737,12 @@ export default function OperatorDashboard() {
   };
 
   const getCartItemQuantity = (productId) => {
-    const item = storeCart?.items?.find((entry) => entry.product_id === productId);
-    return item ? item.quantity : 0;
+    try {
+      const item = storeCart?.items?.find((entry) => entry.product_id === productId);
+      return item ? item.quantity : 0;
+    } catch {
+      return 0;
+    }
   };
 
   const updateStoreCartItem = async (product, quantity) => {
@@ -869,8 +926,10 @@ export default function OperatorDashboard() {
       : "bg-orange-100 text-orange-700";
 
   const dedupeOrders = (orders) => {
+    if (!Array.isArray(orders)) return [];
     const seen = new Set();
     return orders.filter((order) => {
+      if (!order || typeof order !== 'object') return false;
       const key = order.order_id || order.id;
       if (!key || seen.has(key)) return false;
       seen.add(key);
@@ -878,14 +937,14 @@ export default function OperatorDashboard() {
     });
   };
 
-  const pickupOrders = (dashboard?.todays_pickups || []).filter(
+  const pickupOrders = dedupeOrders(dashboard?.todays_pickups || []).filter(
     (order) => !order.service_type || order.service_type === "pickup_delivery"
   );
-  const pickupDeliveries = (dashboard?.ready_for_delivery || []).filter(
+  const pickupDeliveries = dedupeOrders(dashboard?.ready_for_delivery || []).filter(
     (order) => !order.service_type || order.service_type === "pickup_delivery"
   );
-  const washFoldDropoffs = dashboard?.wash_fold_dropoffs || [];
-  const washFoldReady = dashboard?.wash_fold_ready || [];
+  const washFoldDropoffs = dedupeOrders(dashboard?.wash_fold_dropoffs || []);
+  const washFoldReady = dedupeOrders(dashboard?.wash_fold_ready || []);
 
   const pickupPaymentQueue = dedupeOrders([...pickupOrders, ...pickupDeliveries]).filter(
     (order) => (order.payment_status || "pending") !== "paid"
@@ -1076,9 +1135,9 @@ export default function OperatorDashboard() {
               ) : (
                 pickupOrders.map((order) => (
                   <div
-                    key={order.order_id}
+                    key={order.order_id || Math.random()}
                     className="p-4 hover:bg-slate-50 transition-colors cursor-pointer"
-                    data-testid={`pos-pickup-item-${order.order_id}`}
+                    data-testid={`pos-pickup-item-${order.order_id || 'unknown'}`}
                     role="button"
                     onClick={() => setSelectedOrder(order)}
                   >
@@ -1090,9 +1149,9 @@ export default function OperatorDashboard() {
                             {getStatusInfo(order.status).label}
                           </span>
                         </div>
-                        <div className="text-sm text-slate-600">{order.customer_name || t("Customer", "Cliente")}</div>
+                        <div className="text-sm text-slate-600">{safeString(order.customer_name, t("Customer", "Cliente"))}</div>
                         <div className="text-xs text-slate-500 mt-1">
-                          {order.pickup_time || t("No time", "Sin hora")} · {order.pickup_address || t("No address", "Sin dirección")}
+                          {safeString(order.pickup_time, t("No time", "Sin hora"))} · {safeString(order.pickup_address, t("No address", "Sin dirección"))}
                         </div>
                       </div>
                       <div className="flex flex-col gap-2">
@@ -1154,9 +1213,9 @@ export default function OperatorDashboard() {
                   const amount = calculateServiceCharge(order);
                   return (
                     <div
-                      key={order.order_id}
+                      key={order.order_id || Math.random()}
                       className="p-4 hover:bg-slate-50 transition-colors cursor-pointer"
-                      data-testid={`pos-pickup-payment-${order.order_id}`}
+                      data-testid={`pos-pickup-payment-${order.order_id || 'unknown'}`}
                       role="button"
                       onClick={() => setSelectedOrder(order)}
                     >
@@ -1168,7 +1227,7 @@ export default function OperatorDashboard() {
                               {getStatusInfo(order.status).label}
                             </span>
                           </div>
-                          <div className="text-sm text-slate-600">{order.customer_name || t("Customer", "Cliente")}</div>
+                          <div className="text-sm text-slate-600">{safeString(order.customer_name, t("Customer", "Cliente"))}</div>
                           <div className="text-xs text-slate-500 mt-1">
                             {t("Charge", "Cobro")}: {amount ? formatCurrency(amount) : t("Set actual lbs", "Ingresa lbs reales")}
                           </div>
@@ -1209,9 +1268,9 @@ export default function OperatorDashboard() {
               ) : (
                 pickupDeliveries.map((order) => (
                   <div
-                    key={order.order_id}
+                    key={order.order_id || Math.random()}
                     className="p-4 hover:bg-slate-50 transition-colors cursor-pointer"
-                    data-testid={`pos-pickup-delivery-${order.order_id}`}
+                    data-testid={`pos-pickup-delivery-${order.order_id || 'unknown'}`}
                     role="button"
                     onClick={() => setSelectedOrder(order)}
                   >
@@ -1223,9 +1282,9 @@ export default function OperatorDashboard() {
                             {getStatusInfo(order.status).label}
                           </span>
                         </div>
-                        <div className="text-sm text-slate-600">{order.customer_name || t("Customer", "Cliente")}</div>
+                        <div className="text-sm text-slate-600">{safeString(order.customer_name, t("Customer", "Cliente"))}</div>
                         <div className="text-xs text-slate-500 mt-1">
-                          {order.delivery_address || order.pickup_address || "-"}
+                          {safeString(order.delivery_address || order.pickup_address, "-")}
                         </div>
                       </div>
                       {(order.next_status || getNextStatus(order.status)) && (
@@ -1274,9 +1333,9 @@ export default function OperatorDashboard() {
               ) : (
                 washFoldDropoffs.map((order) => (
                   <div
-                    key={order.order_id}
+                    key={order.order_id || Math.random()}
                     className="p-4 hover:bg-slate-50 transition-colors cursor-pointer"
-                    data-testid={`pos-washfold-dropoff-${order.order_id}`}
+                    data-testid={`pos-washfold-dropoff-${order.order_id || 'unknown'}`}
                     role="button"
                     onClick={() => setSelectedOrder(order)}
                   >
@@ -1288,9 +1347,9 @@ export default function OperatorDashboard() {
                             {getStatusInfo(order.status).label}
                           </span>
                         </div>
-                        <div className="text-sm text-slate-600">{order.customer_name || t("Customer", "Cliente")}</div>
+                        <div className="text-sm text-slate-600">{safeString(order.customer_name, t("Customer", "Cliente"))}</div>
                         <div className="text-xs text-slate-500 mt-1">
-                          {order.pickup_date || t("Drop-off today", "Entrega hoy")}
+                          {safeString(order.pickup_date, t("Drop-off today", "Entrega hoy"))}
                         </div>
                       </div>
                       {(order.next_status || getNextStatus(order.status)) && (
@@ -1339,9 +1398,9 @@ export default function OperatorDashboard() {
                   const amount = calculateServiceCharge(order);
                   return (
                     <div
-                      key={order.order_id}
+                      key={order.order_id || Math.random()}
                       className="p-4 hover:bg-slate-50 transition-colors cursor-pointer"
-                      data-testid={`pos-washfold-payment-${order.order_id}`}
+                      data-testid={`pos-washfold-payment-${order.order_id || 'unknown'}`}
                       role="button"
                       onClick={() => setSelectedOrder(order)}
                     >
@@ -1353,7 +1412,7 @@ export default function OperatorDashboard() {
                               {getStatusInfo(order.status).label}
                             </span>
                           </div>
-                          <div className="text-sm text-slate-600">{order.customer_name || t("Customer", "Cliente")}</div>
+                          <div className="text-sm text-slate-600">{safeString(order.customer_name, t("Customer", "Cliente"))}</div>
                           <div className="text-xs text-slate-500 mt-1">
                             {t("Charge", "Cobro")}: {amount ? formatCurrency(amount) : t("Set actual lbs", "Ingresa lbs reales")}
                           </div>
@@ -1393,9 +1452,9 @@ export default function OperatorDashboard() {
               ) : (
                 washFoldReady.map((order) => (
                   <div
-                    key={order.order_id}
+                    key={order.order_id || Math.random()}
                     className="p-4 hover:bg-slate-50 transition-colors cursor-pointer"
-                    data-testid={`pos-washfold-ready-${order.order_id}`}
+                    data-testid={`pos-washfold-ready-${order.order_id || 'unknown'}`}
                     role="button"
                     onClick={() => setSelectedOrder(order)}
                   >
@@ -1407,7 +1466,7 @@ export default function OperatorDashboard() {
                             {getStatusInfo(order.status).label}
                           </span>
                         </div>
-                        <div className="text-sm text-slate-600">{order.customer_name || t("Customer", "Cliente")}</div>
+                        <div className="text-sm text-slate-600">{safeString(order.customer_name, t("Customer", "Cliente"))}</div>
                         <div className="text-xs text-slate-500 mt-1">
                           {t("Payment", "Pago")}: {getPaymentStatusLabel(order.payment_status)}
                         </div>
@@ -1513,11 +1572,11 @@ export default function OperatorDashboard() {
                   {storeOrders.map((order) => {
                     const nextStatus = getNextStoreStatus(order.status);
                     return (
-                      <tr key={order.id} className="border-t border-slate-100" data-testid={`store-order-row-${order.id}`}>
-                        <td className="px-4 py-3 font-mono text-slate-900">{order.order_number}</td>
+                      <tr key={order.id || Math.random()} className="border-t border-slate-100" data-testid={`store-order-row-${order.id || 'unknown'}`}>
+                        <td className="px-4 py-3 font-mono text-slate-900">{safeString(order.order_number)}</td>
                         <td className="px-4 py-3">
-                          <div className="text-slate-900">{order.customer_name || t("Customer", "Cliente")}</div>
-                          <div className="text-xs text-slate-500">{order.customer_email || ""}</div>
+                          <div className="text-slate-900">{safeString(order.customer_name, t("Customer", "Cliente"))}</div>
+                          <div className="text-xs text-slate-500">{safeString(order.customer_email)}</div>
                         </td>
                         <td className="px-4 py-3">
                           <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700 text-xs" data-testid={`store-order-status-${order.id}`}>
@@ -1528,7 +1587,7 @@ export default function OperatorDashboard() {
                           <div className="text-slate-900" data-testid={`store-order-payment-${order.id}`}>
                             {getPaymentStatusLabel(order.payment_status)}
                           </div>
-                          <div className="text-xs text-slate-500">{order.payment_method || "-"}</div>
+                          <div className="text-xs text-slate-500">{safeString(order.payment_method, "-")}</div>
                         </td>
                         <td className="px-4 py-3 font-semibold" data-testid={`store-order-total-${order.id}`}>
                           {formatCurrency(order.total)}
@@ -1592,7 +1651,7 @@ export default function OperatorDashboard() {
       </div>
 
       <Dialog open={storePosOpen} onOpenChange={(open) => !open ? resetStorePos() : setStorePosOpen(true)}>
-        <DialogContent className="sm:max-w-5xl">
+        <DialogContent className="sm:max-w-5xl bg-white">
           <DialogHeader>
             <DialogTitle>{t("New Store Sale", "Nueva venta en tienda")}</DialogTitle>
             <DialogDescription>
@@ -1620,10 +1679,10 @@ export default function OperatorDashboard() {
                       const qty = getCartItemQuantity(product.id);
                       const disabled = product.stock <= 0 || !product.is_active;
                       return (
-                        <div key={product.id} className="p-4 flex items-center justify-between gap-4" data-testid={`store-pos-product-${product.id}`}>
+                        <div key={product.id || Math.random()} className="p-4 flex items-center justify-between gap-4" data-testid={`store-pos-product-${product.id}`}>
                           <div>
-                            <p className="font-semibold text-slate-900">{product.name}</p>
-                            <p className="text-sm text-slate-500">${product.price?.toFixed(2)} · {t("Stock", "Stock")}: {product.stock}</p>
+                            <p className="font-semibold text-slate-900">{safeString(product.name)}</p>
+                            <p className="text-sm text-slate-500">${Number(product.price).toFixed(2)} · {t("Stock", "Stock")}: {product.stock}</p>
                             {disabled && <p className="text-xs text-red-500">{t("Unavailable", "No disponible")}</p>}
                           </div>
                           <div className="flex items-center gap-2">
@@ -1654,13 +1713,13 @@ export default function OperatorDashboard() {
               </div>
             </div>
             <div className="space-y-4">
-              <div className="border border-slate-200 rounded-xl p-4" data-testid="store-pos-cart">
+              <div className="border border-slate-200 rounded-xl p-4 bg-white" data-testid="store-pos-cart">
                 <h4 className="font-semibold text-slate-900 mb-3">{t("Cart", "Carrito")}</h4>
                 {storeCart?.items?.length ? (
                   <div className="space-y-2">
                     {storeCart.items.map((item) => (
-                      <div key={item.product_id} className="flex items-center justify-between text-sm">
-                        <span>{item.name || item.product_name}</span>
+                      <div key={item.product_id || Math.random()} className="flex items-center justify-between text-sm">
+                        <span>{safeString(item.name || item.product_name)}</span>
                         <span>{item.quantity} × ${Number(item.price || 0).toFixed(2)}</span>
                       </div>
                     ))}
@@ -1670,7 +1729,7 @@ export default function OperatorDashboard() {
                 )}
               </div>
 
-              <div className="border border-slate-200 rounded-xl p-4 space-y-3" data-testid="store-pos-customer">
+              <div className="border border-slate-200 rounded-xl p-4 bg-white space-y-3" data-testid="store-pos-customer">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <Label>{t("Name", "Nombre")} *</Label>
@@ -1746,7 +1805,7 @@ export default function OperatorDashboard() {
                 </div>
               </div>
 
-              <div className="border border-slate-200 rounded-xl p-4 space-y-2" data-testid="store-pos-summary">
+              <div className="border border-slate-200 rounded-xl p-4 bg-white space-y-2" data-testid="store-pos-summary">
                 <div className="flex items-center justify-between text-sm">
                   <span>{t("Subtotal", "Subtotal")}</span>
                   <span>${storeCartSubtotal.toFixed(2)}</span>
@@ -1762,7 +1821,7 @@ export default function OperatorDashboard() {
                   </span>
                 </div>
                 {storeShippingQuote.zone_name && storeCheckoutForm.fulfillment_type === "delivery" && (
-                  <p className="text-xs text-slate-500" data-testid="store-pos-zone">{storeShippingQuote.zone_name}</p>
+                  <p className="text-xs text-slate-500" data-testid="store-pos-zone">{safeString(storeShippingQuote.zone_name)}</p>
                 )}
                 <div className="flex items-center justify-between font-semibold">
                   <span>{t("Total", "Total")}</span>
@@ -1787,10 +1846,10 @@ export default function OperatorDashboard() {
       </Dialog>
 
       <Dialog open={!!storePaymentOrder} onOpenChange={(open) => !open && setStorePaymentOrder(null)}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg bg-white">
           <DialogHeader>
             <DialogTitle>{t("Request payment", "Solicitar pago")}</DialogTitle>
-            <DialogDescription>{storePaymentOrder?.order_number}</DialogDescription>
+            <DialogDescription>{safeString(storePaymentOrder?.order_number)}</DialogDescription>
           </DialogHeader>
           {storePaymentOrder && (
             <div className="space-y-4" data-testid="store-payment-modal">
@@ -1851,59 +1910,59 @@ export default function OperatorDashboard() {
                 </div>
                 <div>
                   <p className="text-sm text-slate-500">{t("Service", "Servicio")}</p>
-                  <p className="font-medium" data-testid="operator-order-service">{selectedOrder.service_type || "-"}</p>
+                  <p className="font-medium" data-testid="operator-order-service">{safeString(selectedOrder.service_type, "-")}</p>
                 </div>
                 <div>
                   <p className="text-sm text-slate-500">{t("Customer", "Cliente")}</p>
-                  <p className="font-medium" data-testid="operator-order-customer">{selectedOrder.customer_name || "-"}</p>
+                  <p className="font-medium" data-testid="operator-order-customer">{safeString(selectedOrder.customer_name, "-")}</p>
                 </div>
                 <div>
                   <p className="text-sm text-slate-500">{t("Membership", "Membresía")}</p>
-                  <p className="font-medium" data-testid="operator-order-membership">{selectedOrder.membership_plan || t("No", "No")}</p>
+                  <p className="font-medium" data-testid="operator-order-membership">{safeString(selectedOrder.membership_plan, t("No", "No"))}</p>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-slate-500">{t("Phone", "Teléfono")}</p>
-                  <p className="font-medium" data-testid="operator-order-phone">{selectedOrder.customer_phone || "-"}</p>
+                  <p className="font-medium" data-testid="operator-order-phone">{safeString(selectedOrder.customer_phone, "-")}</p>
                 </div>
                 <div>
                   <p className="text-sm text-slate-500">{t("Email", "Correo")}</p>
-                  <p className="font-medium" data-testid="operator-order-email">{selectedOrder.customer_email || "-"}</p>
+                  <p className="font-medium" data-testid="operator-order-email">{safeString(selectedOrder.customer_email, "-")}</p>
                 </div>
               </div>
               <div>
                 <p className="text-sm text-slate-500">{t("Contact preference", "Contacto preferido")}</p>
-                <p className="font-medium" data-testid="operator-order-contact">{selectedOrder.preferred_contact || "-"}</p>
+                <p className="font-medium" data-testid="operator-order-contact">{safeString(selectedOrder.preferred_contact, "-")}</p>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-slate-500">{t("Pickup Date", "Fecha Pickup")}</p>
-                  <p className="font-medium" data-testid="operator-order-pickup-date">{selectedOrder.pickup_date || "-"}</p>
+                  <p className="font-medium" data-testid="operator-order-pickup-date">{safeString(selectedOrder.pickup_date, "-")}</p>
                 </div>
                 <div>
                   <p className="text-sm text-slate-500">{t("Time Window", "Ventana de tiempo")}</p>
-                  <p className="font-medium" data-testid="operator-order-pickup-window">{selectedOrder.pickup_time || "-"}</p>
+                  <p className="font-medium" data-testid="operator-order-pickup-window">{safeString(selectedOrder.pickup_time, "-")}</p>
                 </div>
               </div>
               <div>
                 <p className="text-sm text-slate-500">{t("Pickup Address", "Dirección Pickup")}</p>
-                <p className="font-medium" data-testid="operator-order-pickup-address">{selectedOrder.pickup_address || "-"}</p>
+                <p className="font-medium" data-testid="operator-order-pickup-address">{safeString(selectedOrder.pickup_address, "-")}</p>
               </div>
               <div>
                 <p className="text-sm text-slate-500">{t("Delivery Address", "Dirección Entrega")}</p>
-                <p className="font-medium" data-testid="operator-order-delivery-address">{selectedOrder.delivery_address || "-"}</p>
+                <p className="font-medium" data-testid="operator-order-delivery-address">{safeString(selectedOrder.delivery_address, "-")}</p>
               </div>
               {selectedOrder.special_instructions && (
                 <div>
                   <p className="text-sm text-slate-500">{t("Notes", "Notas")}</p>
-                  <p className="font-medium" data-testid="operator-order-notes">{selectedOrder.special_instructions}</p>
+                  <p className="font-medium" data-testid="operator-order-notes">{safeString(selectedOrder.special_instructions)}</p>
                 </div>
               )}
               {selectedOrder.gate_code && (
                 <div>
                   <p className="text-sm text-slate-500">{t("Gate code", "Código de acceso")}</p>
-                  <p className="font-medium" data-testid="operator-order-gate">{selectedOrder.gate_code}</p>
+                  <p className="font-medium" data-testid="operator-order-gate">{safeString(selectedOrder.gate_code)}</p>
                 </div>
               )}
               <div className="border-t pt-3" data-testid="operator-lbs-section">
@@ -2048,7 +2107,7 @@ export default function OperatorDashboard() {
                   </p>
                 )}
                 <p className="text-xs text-slate-500 mt-2" data-testid="operator-pref-id">
-                  {t("PREF:", "PREF:")} {selectedOrder.preferences_id || "N/A"}
+                  {t("PREF:", "PREF:")} {safeString(selectedOrder.preferences_id, "N/A")}
                 </p>
               </div>
             </div>
@@ -2067,23 +2126,23 @@ export default function OperatorDashboard() {
           </div>
           <div className="divide-y divide-red-100">
             {dashboard.urgent_tickets.map((ticket) => (
-              <div key={ticket.ticket_id} className="p-4" data-testid={`ticket-${ticket.ticket_id}`}>
+              <div key={ticket.ticket_id || Math.random()} className="p-4" data-testid={`ticket-${ticket.ticket_id}`}>
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="font-mono font-semibold text-slate-900">{ticket.ticket_id}</span>
+                      <span className="font-mono font-semibold text-slate-900">{safeString(ticket.ticket_id)}</span>
                       <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-red-100 text-red-800">
                         {t("URGENT", "URGENTE")}
                       </span>
                     </div>
-                    <p className="font-medium text-slate-900 mt-1">{ticket.subject}</p>
-                    <p className="text-sm text-slate-600 mt-1 line-clamp-2">{ticket.description}</p>
+                    <p className="font-medium text-slate-900 mt-1">{safeString(ticket.subject)}</p>
+                    <p className="text-sm text-slate-600 mt-1 line-clamp-2">{safeString(ticket.description)}</p>
                     <p className="text-xs text-red-600 mt-2">
                       {t("SLA:", "SLA:")} {new Date(ticket.sla_deadline).toLocaleString()}
                     </p>
                   </div>
                   {ticket.customer_phone && (
-                    <a href={`tel:${ticket.customer_phone}`} className="flex items-center gap-1 text-sm text-sky-600 hover:text-sky-700">
+                    <a href={`tel:${safeString(ticket.customer_phone)}`} className="flex items-center gap-1 text-sm text-sky-600 hover:text-sky-700">
                       <Phone className="h-4 w-4" />
                       {t("Call", "Llamar")}
                     </a>
