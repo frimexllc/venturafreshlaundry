@@ -847,7 +847,7 @@ export default function OperatorDashboard() {
         }
       } else {
         const error = await res.json();
-        toast.error(error.detail || t("Payment failed", "Pago fallido"));
+        toast.error(formatApiError(error.detail, t("Payment failed", "Pago fallido")));
       }
     } catch (error) {
       toast.error(t("Connection error", "Error de conexión"));
@@ -885,7 +885,7 @@ export default function OperatorDashboard() {
           await loadStoreOrders();
         } else {
           const error = await res.json();
-          toast.error(error.detail || t("Payment failed", "Pago fallido"));
+          toast.error(formatApiError(error.detail, t("Payment failed", "Pago fallido")));
         }
       }
     } catch (error) {
