@@ -29,7 +29,29 @@ const ORDER_STATUSES = [
   { value: "CANCELLED", color: "bg-red-100 text-red-800" }
 ];
 
-const PREFERENCE_LABELS = {
+const STORE_STATUS_FLOW = ["pending", "confirmed", "processing", "shipped", "delivered", "cancelled"];
+
+const getNextStoreStatus = (status) => {
+  const normalized = (status || "pending").toLowerCase();
+  const idx = STORE_STATUS_FLOW.indexOf(normalized);
+  if (idx === -1 || idx === STORE_STATUS_FLOW.length - 1) return null;
+  return STORE_STATUS_FLOW[idx + 1];
+};
+
+const getStoreStatusLabel = (status) => {
+  const normalized = (status || "pending").toLowerCase();
+  const labels = {
+    pending: "Pending",
+    confirmed: "Confirmed",
+    processing: "Processing",
+    shipped: "Shipped",
+    delivered: "Delivered",
+    cancelled: "Cancelled"
+  };
+  return labels[normalized] || status;
+};
+
+
   detergent_type: "Detergent",
   water_temperature: "Water temperature",
   fabric_softener: "Fabric softener",
