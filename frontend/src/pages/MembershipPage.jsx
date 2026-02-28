@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { CheckCircle, Star, CreditCard, Loader2, AlertCircle } from "lucide-react";
 import PublicNav from "../components/PublicNav";
 import PublicFooter from "../components/PublicFooter";
+import { useLocale } from "../context/LocaleContext";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -28,6 +29,7 @@ const getUrlParameter = (name) => {
 };
 
 export default function MembershipPage() {
+  const { t } = useLocale();
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [plans, setPlans] = useState([]);
@@ -78,7 +80,7 @@ export default function MembershipPage() {
     if (sessionId && status === 'success') {
       checkPaymentStatus(sessionId);
     } else if (status === 'cancelled') {
-      toast.error("Payment was cancelled. Please try again.");
+      toast.error(t("Payment was cancelled. Please try again.", "El pago fue cancelado. Por favor, inténtalo de nuevo."));
       // Clear URL params
       window.history.replaceState({}, '', window.location.pathname);
     }
@@ -91,7 +93,7 @@ export default function MembershipPage() {
     if (attempts >= maxAttempts) {
       setCheckingPayment(false);
       setPaymentStatus('timeout');
-      toast.error("Payment verification timed out. Please contact support.");
+      toast.error(t("Payment verification timed out. Please contact support.", "La verificación del pago expiró. Por favor contacta a soporte."));
       return;
     }
 
@@ -104,14 +106,14 @@ export default function MembershipPage() {
         setCheckingPayment(false);
         setPaymentStatus('success');
         setSubmitted(true);
-        toast.success("Payment successful! Welcome to your membership!");
+        toast.success(t("Payment successful! Welcome to your membership!", "¡Pago exitoso! ¡Bienvenido a tu membresía!"));
         // Clear URL params
         window.history.replaceState({}, '', window.location.pathname);
         return;
       } else if (res.data.status === 'expired') {
         setCheckingPayment(false);
         setPaymentStatus('expired');
-        toast.error("Payment session expired. Please try again.");
+        toast.error(t("Payment session expired. Please try again.", "La sesión de pago expiró. Por favor, inténtalo de nuevo."));
         window.history.replaceState({}, '', window.location.pathname);
         return;
       }
@@ -151,15 +153,15 @@ export default function MembershipPage() {
 
   const handlePayNow = async () => {
     if (!selectedPlan) {
-      toast.error("Please select a membership plan");
+      toast.error(t("Please select a membership plan", "Por favor selecciona un plan de membresía"));
       return;
     }
     if (!form.email) {
-      toast.error("Please enter your email address");
+      toast.error(t("Please enter your email address", "Por favor ingresa tu correo electrónico"));
       return;
     }
     if (!form.first_name || !form.last_name) {
-      toast.error("Please enter your name");
+      toast.error(t("Please enter your name", "Por favor ingresa tu nombre"));
       return;
     }
 
@@ -190,7 +192,7 @@ export default function MembershipPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.contact_method || !form.membership_plan || !form.laundry_frequency) {
-      toast.error("Please complete all required fields");
+      toast.error(t("Please complete all required fields", "Por favor completa todos los campos obligatorios"));
       return;
     }
     setSubmitting(true);
@@ -239,9 +241,9 @@ export default function MembershipPage() {
             <div className="h-20 w-20 rounded-full bg-sky-100 flex items-center justify-center mx-auto mb-6">
               <Loader2 className="h-10 w-10 text-sky-600 animate-spin" />
             </div>
-            <h1 className="text-3xl font-bold text-slate-900 mb-4">Verifying Payment...</h1>
+            <h1 className="text-3xl font-bold text-slate-900 mb-4">{t("Verifying Payment...", "Verificando pago...")}</h1>
             <p className="text-lg text-slate-600 mb-8">
-              Please wait while we confirm your payment.
+              {t("Please wait while we confirm your payment.", "Por favor espera mientras confirmamos tu pago.")}
             </p>
           </div>
         </section>
@@ -260,12 +262,12 @@ export default function MembershipPage() {
               <CheckCircle className="h-10 w-10 text-green-600" />
             </div>
             <h1 className="text-3xl font-bold text-slate-900 mb-4">
-              {paymentStatus === 'success' ? 'Payment Successful!' : 'Request Received'}
+              {paymentStatus === 'success' ? t("Payment Successful!", "¡Pago exitoso!") : t("Request Received", "Solicitud recibida")}
             </h1>
             <p className="text-lg text-slate-600 mb-8">
               {paymentStatus === 'success' 
-                ? 'Welcome to your membership! Our team will contact you to schedule your first pickup.'
-                : 'Our team will contact you to confirm your plan and schedule your first pickup.'
+                ? t("Welcome to your membership! Our team will contact you to schedule your first pickup.", "¡Bienvenido a tu membresía! Nuestro equipo te contactará para programar tu primera recogida.")
+                : t("Our team will contact you to confirm your plan and schedule your first pickup.", "Nuestro equipo te contactará para confirmar tu plan y programar tu primera recogida.")
               }
             </p>
             <Button 
@@ -291,7 +293,7 @@ export default function MembershipPage() {
               }}
               className="bg-sky-500 hover:bg-sky-600 text-white rounded-full px-8"
             >
-              Register another membership
+              {t("Register another membership", "Registrar otra membresía")}
             </Button>
           </div>
         </section>
@@ -310,18 +312,21 @@ export default function MembershipPage() {
             <Star className="h-8 w-8 text-sky-600" />
           </div>
           <h1 className="text-4xl sm:text-5xl font-bold text-slate-900 mb-4" style={{ fontFamily: "'Playfair Display', serif" }}>
-            Laundry memberships designed for your lifestyle
+            {t("Laundry memberships designed for your lifestyle", "Membresías de lavandería diseñadas para tu estilo de vida")}
           </h1>
           <p className="text-lg text-slate-600 max-w-3xl mx-auto">
-            Choose the membership that fits your lifestyle. Enjoy hassle-free laundry with scheduled pickup & delivery, personalized preferences, and professional care every month.
+            {t(
+              "Choose the membership that fits your lifestyle. Enjoy hassle-free laundry with scheduled pickup & delivery, personalized preferences, and professional care every month.",
+              "Elige la membresía que se adapte a tu estilo de vida. Disfruta de lavandería sin complicaciones con recogida y entrega programada, preferencias personalizadas y cuidado profesional cada mes."
+            )}
           </p>
         </div>
       </section>
 
-      {/* Membership Plans Cards - CENTRADAS con Opción 1 */}
+      {/* Membership Plans Cards */}
       <section className="py-10">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-2xl font-bold text-slate-900 text-center mb-8">Choose Your Plan</h2>
+          <h2 className="text-2xl font-bold text-slate-900 text-center mb-8">{t("Choose Your Plan", "Elige tu plan")}</h2>
           <div className="flex flex-wrap justify-center gap-6 mb-10">
             {plans.map((plan) => (
               <div 
@@ -337,7 +342,7 @@ export default function MembershipPage() {
                 {plan.is_popular && (
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2">
                     <span className="bg-sky-500 text-white text-xs font-semibold px-3 py-1 rounded-full">
-                      MOST POPULAR
+                      {t("MOST POPULAR", "MÁS POPULAR")}
                     </span>
                   </div>
                 )}
@@ -373,14 +378,14 @@ export default function MembershipPage() {
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="bg-white rounded-2xl p-8 shadow-lg border border-slate-100">
             <div className="mb-8">
-              <h2 className="text-2xl font-bold text-slate-900 mb-2">Complete Your Membership</h2>
+              <h2 className="text-2xl font-bold text-slate-900 mb-2">{t("Complete Your Membership", "Completa tu membresía")}</h2>
               <p className="text-slate-600">
-                Fill out your details below and proceed to secure payment.
+                {t("Fill out your details below and proceed to secure payment.", "Completa tus datos a continuación y procede al pago seguro.")}
               </p>
               {selectedPlan && (
                 <div className="mt-4 p-4 bg-sky-50 rounded-lg border border-sky-200">
                   <p className="text-sm text-sky-800">
-                    Selected Plan: <strong>{selectedPlan.name}</strong> - <strong>{selectedPlan.price}</strong>
+                    {t("Selected Plan:", "Plan seleccionado:")} <strong>{selectedPlan.name}</strong> - <strong>{selectedPlan.price}</strong>
                   </p>
                 </div>
               )}
@@ -388,17 +393,17 @@ export default function MembershipPage() {
 
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
-                <Label className="text-slate-700">Name *</Label>
+                <Label className="text-slate-700">{t("Name *", "Nombre *")}</Label>
                 <div className="grid md:grid-cols-2 gap-4 mt-1">
                   <Input
-                    placeholder="First Name"
+                    placeholder={t("First Name", "Nombre")}
                     value={form.first_name}
                     onChange={(e) => setForm({ ...form, first_name: e.target.value })}
                     required
                     data-testid="membership-first-name"
                   />
                   <Input
-                    placeholder="Last Name"
+                    placeholder={t("Last Name", "Apellido")}
                     value={form.last_name}
                     onChange={(e) => setForm({ ...form, last_name: e.target.value })}
                     required
@@ -409,7 +414,7 @@ export default function MembershipPage() {
 
               <div className="grid md:grid-cols-2 gap-4">
                 <div>
-                  <Label className="text-slate-700">Email *</Label>
+                  <Label className="text-slate-700">{t("Email *", "Correo *")}</Label>
                   <Input
                     type="email"
                     value={form.email}
@@ -420,7 +425,7 @@ export default function MembershipPage() {
                   />
                 </div>
                 <div>
-                  <Label className="text-slate-700">Phone</Label>
+                  <Label className="text-slate-700">{t("Phone", "Teléfono")}</Label>
                   <Input
                     value={form.phone}
                     onChange={(e) => setForm({ ...form, phone: e.target.value })}
@@ -431,49 +436,49 @@ export default function MembershipPage() {
               </div>
 
               <div>
-                <Label className="text-slate-700">Best way to contact you</Label>
+                <Label className="text-slate-700">{t("Best way to contact you", "Mejor forma de contactarte")}</Label>
                 <Select value={form.contact_method} onValueChange={(value) => setForm({ ...form, contact_method: value })}>
                   <SelectTrigger className="mt-1" data-testid="membership-contact-method">
-                    <SelectValue placeholder="Select an option" />
+                    <SelectValue placeholder={t("Select an option", "Selecciona una opción")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="phone">Phone</SelectItem>
-                    <SelectItem value="text">Text</SelectItem>
-                    <SelectItem value="email">Email</SelectItem>
+                    <SelectItem value="phone">{t("Phone", "Teléfono")}</SelectItem>
+                    <SelectItem value="text">{t("Text", "Mensaje")}</SelectItem>
+                    <SelectItem value="email">{t("Email", "Correo")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div>
-                <Label className="text-slate-700">Address</Label>
+                <Label className="text-slate-700">{t("Address", "Dirección")}</Label>
                 <div className="space-y-4 mt-1">
                   <Input
-                    placeholder="Address Line 1"
+                    placeholder={t("Address Line 1", "Dirección línea 1")}
                     value={form.address_line1}
                     onChange={(e) => setForm({ ...form, address_line1: e.target.value })}
                     data-testid="membership-address-line1"
                   />
                   <Input
-                    placeholder="Address Line 2"
+                    placeholder={t("Address Line 2", "Dirección línea 2")}
                     value={form.address_line2}
                     onChange={(e) => setForm({ ...form, address_line2: e.target.value })}
                     data-testid="membership-address-line2"
                   />
                   <div className="grid md:grid-cols-3 gap-4">
                     <Input
-                      placeholder="City"
+                      placeholder={t("City", "Ciudad")}
                       value={form.city}
                       onChange={(e) => setForm({ ...form, city: e.target.value })}
                       data-testid="membership-city"
                     />
                     <Input
-                      placeholder="State"
+                      placeholder={t("State", "Estado")}
                       value={form.state}
                       onChange={(e) => setForm({ ...form, state: e.target.value })}
                       data-testid="membership-state"
                     />
                     <Input
-                      placeholder="ZIP Code"
+                      placeholder={t("ZIP Code", "Código postal")}
                       value={form.zip_code}
                       onChange={(e) => setForm({ ...form, zip_code: e.target.value })}
                       data-testid="membership-zip"
@@ -484,13 +489,13 @@ export default function MembershipPage() {
 
               <div className="grid md:grid-cols-2 gap-4">
                 <div>
-                  <Label className="text-slate-700">Membership Plan *</Label>
+                  <Label className="text-slate-700">{t("Membership Plan *", "Plan de membresía *")}</Label>
                   <Select 
                     value={selectedPlan?.id || ""} 
                     onValueChange={(value) => handlePlanSelect(value)}
                   >
                     <SelectTrigger className="mt-1" data-testid="membership-plan-select">
-                      <SelectValue placeholder="Select a plan" />
+                      <SelectValue placeholder={t("Select a plan", "Selecciona un plan")} />
                     </SelectTrigger>
                     <SelectContent>
                       {plans.map((plan) => (
@@ -502,29 +507,29 @@ export default function MembershipPage() {
                   </Select>
                 </div>
                 <div>
-                  <Label className="text-slate-700">Expected laundry frequency</Label>
+                  <Label className="text-slate-700">{t("Expected laundry frequency", "Frecuencia esperada de lavandería")}</Label>
                   <Select value={form.laundry_frequency} onValueChange={(value) => setForm({ ...form, laundry_frequency: value })}>
                     <SelectTrigger className="mt-1" data-testid="membership-frequency">
-                      <SelectValue placeholder="Select an option" />
+                      <SelectValue placeholder={t("Select an option", "Selecciona una opción")} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="weekly">Weekly</SelectItem>
-                      <SelectItem value="biweekly">Biweekly</SelectItem>
-                      <SelectItem value="monthly">Monthly</SelectItem>
+                      <SelectItem value="weekly">{t("Weekly", "Semanal")}</SelectItem>
+                      <SelectItem value="biweekly">{t("Biweekly", "Quincenal")}</SelectItem>
+                      <SelectItem value="monthly">{t("Monthly", "Mensual")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </div>
 
               <div>
-                <Label className="text-slate-700">Estimated weight per pickup (Lbs)</Label>
+                <Label className="text-slate-700">{t("Estimated weight per pickup (Lbs)", "Peso estimado por recogida (Libras)")}</Label>
                 <Input
                   type="number"
                   min="1"
                   value={form.estimated_lbs}
                   onChange={(e) => setForm({ ...form, estimated_lbs: e.target.value })}
                   className="mt-1"
-                  placeholder="e.g., 20"
+                  placeholder={t("e.g., 20", "ej. 20")}
                   data-testid="membership-estimated-lbs"
                 />
               </div>
@@ -532,111 +537,111 @@ export default function MembershipPage() {
               {isElitePlan && (
                 <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 space-y-4" data-testid="elite-preferences-section">
                   <div>
-                    <h3 className="text-lg font-semibold text-slate-900">Preferencias Elite Concierge</h3>
-                    <p className="text-sm text-slate-600">Configura tus preferencias para personalizar el servicio.</p>
+                    <h3 className="text-lg font-semibold text-slate-900">{t("Elite Concierge Preferences", "Preferencias Elite Concierge")}</h3>
+                    <p className="text-sm text-slate-600">{t("Set your preferences to personalize the service.", "Configura tus preferencias para personalizar el servicio.")}</p>
                   </div>
                   <div className="grid md:grid-cols-2 gap-4">
                     <div>
-                      <Label className="text-slate-700">Detergente preferido</Label>
+                      <Label className="text-slate-700">{t("Preferred detergent", "Detergente preferido")}</Label>
                       <Select value={form.detergent_type} onValueChange={(value) => setForm({ ...form, detergent_type: value })}>
                         <SelectTrigger className="mt-1" data-testid="elite-detergent">
-                          <SelectValue placeholder="Selecciona detergente" />
+                          <SelectValue placeholder={t("Select detergent", "Selecciona detergente")} />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="hypoallergenic">Hipoalergénico</SelectItem>
-                          <SelectItem value="free_clear">Sin fragancia</SelectItem>
-                          <SelectItem value="lavender">Lavanda</SelectItem>
-                          <SelectItem value="standard">Estándar</SelectItem>
+                          <SelectItem value="hypoallergenic">{t("Hypoallergenic", "Hipoalergénico")}</SelectItem>
+                          <SelectItem value="free_clear">{t("Free & Clear", "Sin fragancia")}</SelectItem>
+                          <SelectItem value="lavender">{t("Lavender", "Lavanda")}</SelectItem>
+                          <SelectItem value="standard">{t("Standard", "Estándar")}</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                     <div>
-                      <Label className="text-slate-700">Temperatura de lavado</Label>
+                      <Label className="text-slate-700">{t("Water temperature", "Temperatura de lavado")}</Label>
                       <Select value={form.water_temperature} onValueChange={(value) => setForm({ ...form, water_temperature: value })}>
                         <SelectTrigger className="mt-1" data-testid="elite-water-temperature">
-                          <SelectValue placeholder="Selecciona temperatura" />
+                          <SelectValue placeholder={t("Select temperature", "Selecciona temperatura")} />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="cold">Fría</SelectItem>
-                          <SelectItem value="warm">Tibia</SelectItem>
-                          <SelectItem value="hot">Caliente</SelectItem>
+                          <SelectItem value="cold">{t("Cold", "Fría")}</SelectItem>
+                          <SelectItem value="warm">{t("Warm", "Tibia")}</SelectItem>
+                          <SelectItem value="hot">{t("Hot", "Caliente")}</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                     <div>
-                      <Label className="text-slate-700">Suavizante</Label>
+                      <Label className="text-slate-700">{t("Fabric softener", "Suavizante")}</Label>
                       <Select value={form.fabric_softener} onValueChange={(value) => setForm({ ...form, fabric_softener: value })}>
                         <SelectTrigger className="mt-1" data-testid="elite-fabric-softener">
-                          <SelectValue placeholder="Selecciona suavizante" />
+                          <SelectValue placeholder={t("Select softener", "Selecciona suavizante")} />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="none">Sin suavizante</SelectItem>
-                          <SelectItem value="light">Ligero</SelectItem>
-                          <SelectItem value="standard">Estándar</SelectItem>
-                          <SelectItem value="extra">Extra</SelectItem>
+                          <SelectItem value="none">{t("None", "Sin suavizante")}</SelectItem>
+                          <SelectItem value="light">{t("Light", "Ligero")}</SelectItem>
+                          <SelectItem value="standard">{t("Standard", "Estándar")}</SelectItem>
+                          <SelectItem value="extra">{t("Extra", "Extra")}</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                     <div>
-                      <Label className="text-slate-700">Estilo de doblado</Label>
+                      <Label className="text-slate-700">{t("Folding style", "Estilo de doblado")}</Label>
                       <Select value={form.folding_style} onValueChange={(value) => setForm({ ...form, folding_style: value })}>
                         <SelectTrigger className="mt-1" data-testid="elite-folding-style">
-                          <SelectValue placeholder="Selecciona estilo" />
+                          <SelectValue placeholder={t("Select style", "Selecciona estilo")} />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="standard">Estándar</SelectItem>
-                          <SelectItem value="konmari">KonMari</SelectItem>
-                          <SelectItem value="stacked">Apilado premium</SelectItem>
+                          <SelectItem value="standard">{t("Standard", "Estándar")}</SelectItem>
+                          <SelectItem value="konmari">{t("KonMari", "KonMari")}</SelectItem>
+                          <SelectItem value="stacked">{t("Premium stacked", "Apilado premium")}</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                     <div className="md:col-span-2">
-                      <Label className="text-slate-700">Colgado / prendas especiales</Label>
+                      <Label className="text-slate-700">{t("Hanging / special items", "Colgado / prendas especiales")}</Label>
                       <Input
                         value={form.hanging_instructions}
                         onChange={(e) => setForm({ ...form, hanging_instructions: e.target.value })}
                         className="mt-1"
-                        placeholder="Ej. Camisas en gancho, vestidos separados"
+                        placeholder={t("e.g. Shirts on hangers, dresses separate", "Ej. Camisas en gancho, vestidos separados")}
                         data-testid="elite-hanging-instructions"
                       />
                     </div>
                     <div className="md:col-span-2">
-                      <Label className="text-slate-700">Alergias o sensibilidades</Label>
+                      <Label className="text-slate-700">{t("Allergies or sensitivities", "Alergias o sensibilidades")}</Label>
                       <Textarea
                         value={form.allergies}
                         onChange={(e) => setForm({ ...form, allergies: e.target.value })}
                         className="mt-1"
-                        placeholder="Ej. Sin fragancias, piel sensible"
+                        placeholder={t("e.g. No fragrances, sensitive skin", "Ej. Sin fragancias, piel sensible")}
                         data-testid="elite-allergies"
                       />
                     </div>
                     <div className="md:col-span-2">
-                      <Label className="text-slate-700">Notas adicionales</Label>
+                      <Label className="text-slate-700">{t("Additional notes", "Notas adicionales")}</Label>
                       <Textarea
                         value={form.special_instructions}
                         onChange={(e) => setForm({ ...form, special_instructions: e.target.value })}
                         className="mt-1"
-                        placeholder="Instrucciones especiales para el servicio"
+                        placeholder={t("Special instructions for the service", "Instrucciones especiales para el servicio")}
                         data-testid="elite-special-instructions"
                       />
                     </div>
                     <div>
-                      <Label className="text-slate-700">Horario preferido de pickup</Label>
+                      <Label className="text-slate-700">{t("Preferred pickup time", "Horario preferido de pickup")}</Label>
                       <Input
                         value={form.pickup_time_preference}
                         onChange={(e) => setForm({ ...form, pickup_time_preference: e.target.value })}
                         className="mt-1"
-                        placeholder="Ej. 8am - 12pm"
+                        placeholder={t("e.g. 8am - 12pm", "Ej. 8am - 12pm")}
                         data-testid="elite-pickup-time"
                       />
                     </div>
                     <div>
-                      <Label className="text-slate-700">Puerta / Código de acceso</Label>
+                      <Label className="text-slate-700">{t("Gate / Access code", "Puerta / Código de acceso")}</Label>
                       <Input
                         value={form.gate_code}
                         onChange={(e) => setForm({ ...form, gate_code: e.target.value })}
                         className="mt-1"
-                        placeholder="Ej. 1234#"
+                        placeholder={t("e.g. 1234#", "Ej. 1234#")}
                         data-testid="elite-gate-code"
                       />
                     </div>
@@ -657,7 +662,7 @@ export default function MembershipPage() {
                   ) : (
                     <CreditCard className="h-5 w-5 mr-2" />
                   )}
-                  {submitting ? "Processing..." : `Pay Now ${selectedPlan ? selectedPlan.price : ''}`}
+                  {submitting ? t("Processing...", "Procesando...") : `${t("Pay Now", "Pagar ahora")} ${selectedPlan ? selectedPlan.price : ''}`}
                 </Button>
                 <Button
                   type="submit"
@@ -670,10 +675,13 @@ export default function MembershipPage() {
                   ) : (
                     <CheckCircle className="h-5 w-5 mr-2" />
                   )}
-                  {submitting ? "Submitting..." : "Submit Membership"}
+                  {submitting ? t("Submitting...", "Enviando...") : t("Submit Membership", "Enviar membresía")}
                 </Button>
                 <p className="text-center text-xs text-slate-500">
-                  Secure payment powered by Stripe. Your card details are never stored on our servers.
+                  {t(
+                    "Secure payment powered by Stripe. Your card details are never stored on our servers.",
+                    "Pago seguro con Stripe. Los detalles de tu tarjeta nunca se almacenan en nuestros servidores."
+                  )}
                 </p>
               </div>
             </form>

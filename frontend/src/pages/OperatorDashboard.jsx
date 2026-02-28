@@ -11,44 +11,46 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { createNotificationsSocket } from "../utils/notificationsSocket";
+import { useLocale } from "../context/LocaleContext";
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 const ORDER_STATUSES = [
-  { value: "NEW", label: "Nuevo", color: "bg-blue-100 text-blue-800" },
-  { value: "CONFIRMED", label: "Confirmado", color: "bg-indigo-100 text-indigo-800" },
-  { value: "PICKUP_SCHEDULED", label: "Pickup Programado", color: "bg-purple-100 text-purple-800" },
-  { value: "PICKED_UP", label: "Recogido", color: "bg-cyan-100 text-cyan-800" },
-  { value: "PROCESSING", label: "En Proceso", color: "bg-yellow-100 text-yellow-800" },
-  { value: "READY", label: "Listo", color: "bg-emerald-100 text-emerald-800" },
-  { value: "OUT_FOR_DELIVERY", label: "En Camino", color: "bg-orange-100 text-orange-800" },
-  { value: "DELIVERED", label: "Entregado", color: "bg-green-100 text-green-800" },
-  { value: "COMPLETED", label: "Completado", color: "bg-emerald-100 text-emerald-800" },
-  { value: "CANCELLED", label: "Cancelado", color: "bg-red-100 text-red-800" }
+  { value: "NEW", color: "bg-blue-100 text-blue-800" },
+  { value: "CONFIRMED", color: "bg-indigo-100 text-indigo-800" },
+  { value: "PICKUP_SCHEDULED", color: "bg-purple-100 text-purple-800" },
+  { value: "PICKED_UP", color: "bg-cyan-100 text-cyan-800" },
+  { value: "PROCESSING", color: "bg-yellow-100 text-yellow-800" },
+  { value: "READY", color: "bg-emerald-100 text-emerald-800" },
+  { value: "OUT_FOR_DELIVERY", color: "bg-orange-100 text-orange-800" },
+  { value: "DELIVERED", color: "bg-green-100 text-green-800" },
+  { value: "COMPLETED", color: "bg-emerald-100 text-emerald-800" },
+  { value: "CANCELLED", color: "bg-red-100 text-red-800" }
 ];
 
 const PREFERENCE_LABELS = {
-  detergent_type: "Detergente",
-  water_temperature: "Temperatura de agua",
-  fabric_softener: "Suavizante",
-  folding_style: "Doblado",
-  hanging_instructions: "Colgar prendas",
-  allergies: "Alergias",
-  special_instructions: "Instrucciones especiales",
-  pickup_time_preference: "Horario preferido",
-  gate_code: "Código de acceso",
-  hang_dry_items: "Secado al aire",
-  fragrance_preference: "Fragancia"
+  detergent_type: "Detergent",
+  water_temperature: "Water temperature",
+  fabric_softener: "Fabric softener",
+  folding_style: "Folding style",
+  hanging_instructions: "Hanging instructions",
+  allergies: "Allergies",
+  special_instructions: "Special instructions",
+  pickup_time_preference: "Preferred time",
+  gate_code: "Gate code",
+  hang_dry_items: "Hang dry items",
+  fragrance_preference: "Fragrance"
 };
 
 const PAYMENT_METHODS = [
-  { value: "cash", label: "Efectivo" },
-  { value: "card", label: "Tarjeta" },
-  { value: "transfer", label: "Transferencia" },
-  { value: "other", label: "Otro" }
+  { value: "cash", label: "Cash" },
+  { value: "card", label: "Card" },
+  { value: "transfer", label: "Transfer" },
+  { value: "other", label: "Other" }
 ];
 
 export default function OperatorDashboard() {
+  const { t } = useLocale();
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState({});
@@ -65,6 +67,66 @@ export default function OperatorDashboard() {
   const [aiResults, setAiResults] = useState([]);
   const [aiLoading, setAiLoading] = useState(false);
 
+  // Translate status labels dynamically
+  const getStatusLabel = (status) => {
+    const map = {
+      NEW: t("New", "Nueva"),
+      CONFIRMED: t("Confirmed", "Confirmado"),
+      PICKUP_SCHEDULED: t("Pickup Scheduled", "Pickup Programado"),
+      PICKED_UP: t("Picked Up", "Recogido"),
+      PROCESSING: t("Processing", "En Proceso"),
+      READY: t("Ready", "Lista"),
+      OUT_FOR_DELIVERY: t("Out for Delivery", "En camino"),
+      DELIVERED: t("Delivered", "Entregada"),
+      COMPLETED: t("Completed", "Completada"),
+      CANCELLED: t("Cancelled", "Cancelada")
+    };
+    return map[status] || status;
+  };
+
+  const getStatusInfo = (status) => {
+    const found = ORDER_STATUSES.find(s => s.value === status) || ORDER_STATUSES[0];
+    return { ...found, label: getStatusLabel(found.value) };
+  };
+
+  // Translate preference labels
+  const getPreferenceLabel = (key) => {
+    const map = {
+      detergent_type: t("Detergent", "Detergente"),
+      water_temperature: t("Water temperature", "Temperatura de agua"),
+      fabric_softener: t("Fabric softener", "Suavizante"),
+      folding_style: t("Folding style", "Estilo de doblado"),
+      hanging_instructions: t("Hanging instructions", "Instrucciones de colgado"),
+      allergies: t("Allergies", "Alergias"),
+      special_instructions: t("Special instructions", "Instrucciones especiales"),
+      pickup_time_preference: t("Preferred time", "Horario preferido"),
+      gate_code: t("Gate code", "Código de acceso"),
+      hang_dry_items: t("Hang dry items", "Secado al aire"),
+      fragrance_preference: t("Fragrance", "Fragancia")
+    };
+    return map[key] || key;
+  };
+
+  // Translate payment method labels
+  const getPaymentMethodLabel = (method) => {
+    const map = {
+      cash: t("Cash", "Efectivo"),
+      card: t("Card", "Tarjeta"),
+      transfer: t("Transfer", "Transferencia"),
+      other: t("Other", "Otro")
+    };
+    return map[method] || method;
+  };
+
+  const getPaymentStatusLabel = (status) => {
+    if (!status) return t("Pending", "Pendiente");
+    const normalized = status.toString().toLowerCase();
+    if (normalized === "paid") return t("Paid", "Pagado");
+    if (normalized === "refunded") return t("Refunded", "Reembolsado");
+    if (normalized === "failed") return t("Failed", "Fallido");
+    return t("Pending", "Pendiente");
+  };
+
   const loadDashboard = useCallback(async () => {
     try {
       if (document.visibilityState !== "visible" && autoRefresh) {
@@ -77,11 +139,11 @@ export default function OperatorDashboard() {
         setLastRefresh(new Date());
       }
     } catch (error) {
-      toast.error("Error al cargar dashboard");
+      toast.error(t("Error loading dashboard", "Error al cargar dashboard"));
     } finally {
       setLoading(false);
     }
-  }, [autoRefresh]);
+  }, [autoRefresh, t]);
 
   useEffect(() => {
     loadDashboard();
@@ -137,7 +199,8 @@ export default function OperatorDashboard() {
         method: "PUT"
       });
       if (res.ok) {
-        toast.success(`Orden ${orderId} actualizada a ${newStatus}`);
+        toast.success(t("Order {id} updated to {status}", "Orden {id} actualizada a {status}")
+          .replace("{id}", orderId).replace("{status}", getStatusLabel(newStatus)));
         setDashboard(prev => {
           if (!prev) return prev;
           const updateList = (list) =>
@@ -155,10 +218,10 @@ export default function OperatorDashboard() {
           };
         });
       } else {
-        toast.error("Error al actualizar orden");
+        toast.error(t("Error updating order", "Error al actualizar orden"));
       }
     } catch (error) {
-      toast.error("Error de conexión");
+      toast.error(t("Connection error", "Error de conexión"));
     } finally {
       setUpdating(prev => ({ ...prev, [orderId]: false }));
     }
@@ -175,7 +238,7 @@ export default function OperatorDashboard() {
       };
       const res = await axios.put(`${API_URL}/api/orders/${orderPrimaryId}`, payload);
       const updated = res.data;
-      toast.success("Libras actualizadas");
+      toast.success(t("Weights updated", "Libras actualizadas"));
       setSelectedOrder((prev) => prev ? { ...prev, ...updated, order_id: prev.order_id, id: prev.id || updated.id } : prev);
       setDashboard(prev => {
         if (!prev) return prev;
@@ -192,7 +255,7 @@ export default function OperatorDashboard() {
         };
       });
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Error actualizando libras");
+      toast.error(error.response?.data?.detail || t("Error updating weights", "Error actualizando libras"));
     } finally {
       setSavingWeights(false);
     }
@@ -203,7 +266,7 @@ export default function OperatorDashboard() {
     if (!targetOrder) return;
     const orderPrimaryId = targetOrder.id || targetOrder.order_id;
     if (!orderPrimaryId) {
-      toast.error("Orden inválida");
+      toast.error(t("Invalid order", "Orden inválida"));
       return;
     }
     try {
@@ -211,13 +274,13 @@ export default function OperatorDashboard() {
       const blobUrl = window.URL.createObjectURL(res.data);
       const printWindow = window.open("");
       if (!printWindow) {
-        toast.error("Permite pop-ups para imprimir");
+        toast.error(t("Allow pop-ups to print", "Permite ventanas emergentes para imprimir"));
         return;
       }
       printWindow.document.write(`<html><body style="margin:0;display:flex;align-items:center;justify-content:center;"><img src="${blobUrl}" style="max-width:100%;" onload="window.print();window.onafterprint=function(){window.close();};" /></body></html>`);
       printWindow.document.close();
     } catch (error) {
-      toast.error("No se pudo generar el ticket");
+      toast.error(t("Could not generate ticket", "No se pudo generar el ticket"));
     }
   };
 
@@ -225,11 +288,11 @@ export default function OperatorDashboard() {
     if (!selectedOrder) return;
     const orderPrimaryId = selectedOrder.id || selectedOrder.order_id;
     if (!selectedOrder.total_amount) {
-      toast.error("Agrega el total antes de cobrar");
+      toast.error(t("Add total before charging", "Agrega el total antes de cobrar"));
       return;
     }
     if (paymentForm.method === "cash" && paymentForm.amountReceived === "") {
-      toast.error("Ingresa el monto recibido");
+      toast.error(t("Enter amount received", "Ingresa el monto recibido"));
       return;
     }
     setSavingPayment(true);
@@ -240,7 +303,7 @@ export default function OperatorDashboard() {
       };
       const res = await axios.post(`${API_URL}/api/orders/${orderPrimaryId}/payment`, payload);
       const updated = res.data;
-      toast.success("Pago registrado");
+      toast.success(t("Payment registered", "Pago registrado"));
       setSelectedOrder((prev) => prev ? { ...prev, ...updated } : prev);
       setDashboard(prev => {
         if (!prev) return prev;
@@ -263,7 +326,7 @@ export default function OperatorDashboard() {
         };
       });
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Error registrando pago");
+      toast.error(error.response?.data?.detail || t("Error registering payment", "Error registrando pago"));
     } finally {
       setSavingPayment(false);
     }
@@ -282,7 +345,7 @@ export default function OperatorDashboard() {
         }
       });
     } catch (error) {
-      toast.error("No se pudo ejecutar la tarea IA");
+      toast.error(t("Could not execute AI task", "No se pudo ejecutar la tarea IA"));
     } finally {
       setAiLoading(false);
     }
@@ -356,36 +419,17 @@ export default function OperatorDashboard() {
     return diff >= 0 ? `$${diff.toFixed(2)}` : `-$${Math.abs(diff).toFixed(2)}`;
   };
 
-  const getPaymentMethodLabel = (method) => {
-    if (!method) return "-";
-    const found = PAYMENT_METHODS.find((item) => item.value === method);
-    return found ? found.label : method;
-  };
-
-  const getPaymentStatusLabel = (status) => {
-    if (!status) return "Pendiente";
-    const normalized = status.toString().toLowerCase();
-    if (normalized === "paid") return "Pagado";
-    if (normalized === "refunded") return "Reembolsado";
-    if (normalized === "failed") return "Fallido";
-    return "Pendiente";
-  };
-
   const openMaps = (address) => {
     if (!address) return;
     const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
     window.open(url, "_blank");
   };
 
-  const getStatusInfo = (status) => {
-    return ORDER_STATUSES.find(s => s.value === status) || ORDER_STATUSES[0];
-  };
-
   const realtimeLabel = realtimeStatus === "connected"
-    ? "Tiempo real: conectado"
+    ? t("Realtime: connected", "Tiempo real: conectado")
     : realtimeStatus === "disabled"
-      ? "Tiempo real: sin configurar"
-      : "Tiempo real: desconectado";
+      ? t("Realtime: not configured", "Tiempo real: sin configurar")
+      : t("Realtime: disconnected", "Tiempo real: desconectado");
   const realtimeClass = realtimeStatus === "connected"
     ? "bg-emerald-100 text-emerald-700"
     : realtimeStatus === "disabled"
@@ -407,23 +451,25 @@ export default function OperatorDashboard() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
             <Zap className="h-7 w-7 text-sky-600" />
-            Panel del Operador
+            {t("Operator Dashboard", "Panel del Operador")}
           </h1>
-          <p className="text-slate-600">Solo actualiza el estado de las órdenes - el sistema hace el resto</p>
+          <p className="text-slate-600">
+            {t("Just update order status – the system does the rest", "Solo actualiza el estado de las órdenes - el sistema hace el resto")}
+          </p>
         </div>
         <div className="flex items-center gap-3">
           <span className={`px-3 py-1 rounded-full text-xs font-semibold ${realtimeClass}`} data-testid="operator-realtime-status">
             {realtimeLabel}
           </span>
           <span className="text-sm text-slate-500">
-            Última actualización: {lastRefresh.toLocaleTimeString()}
+            {t("Last refresh:", "Última actualización:")} {lastRefresh.toLocaleTimeString()}
           </span>
           <Button onClick={() => setAutoRefresh(!autoRefresh)} variant="outline" size="sm" data-testid="toggle-auto-refresh">
-            {autoRefresh ? "Pausar" : "Reanudar"}
+            {autoRefresh ? t("Pause", "Pausar") : t("Resume", "Reanudar")}
           </Button>
           <Button onClick={loadDashboard} variant="outline" size="sm" data-testid="refresh-dashboard">
             <RefreshCw className="h-4 w-4 mr-2" />
-            Actualizar
+            {t("Refresh", "Actualizar")}
           </Button>
         </div>
       </div>
@@ -437,7 +483,7 @@ export default function OperatorDashboard() {
             </div>
             <div>
               <p className="text-2xl font-bold text-slate-900" data-testid="operator-stat-pickups-count">{dashboard?.stats?.pickups_remaining_today || 0}</p>
-              <p className="text-sm text-slate-600" data-testid="operator-stat-pickups-label">Pickups Hoy</p>
+              <p className="text-sm text-slate-600" data-testid="operator-stat-pickups-label">{t("Pickups Today", "Pickups Hoy")}</p>
             </div>
           </div>
         </div>
@@ -448,7 +494,7 @@ export default function OperatorDashboard() {
             </div>
             <div>
               <p className="text-2xl font-bold text-slate-900" data-testid="operator-stat-processing-count">{dashboard?.stats?.orders_in_processing || 0}</p>
-              <p className="text-sm text-slate-600" data-testid="operator-stat-processing-label">En Proceso</p>
+              <p className="text-sm text-slate-600" data-testid="operator-stat-processing-label">{t("In Process", "En Proceso")}</p>
             </div>
           </div>
         </div>
@@ -459,7 +505,7 @@ export default function OperatorDashboard() {
             </div>
             <div>
               <p className="text-2xl font-bold text-slate-900" data-testid="operator-stat-deliveries-count">{dashboard?.stats?.orders_ready || 0}</p>
-              <p className="text-sm text-slate-600" data-testid="operator-stat-deliveries-label">Entregas en curso</p>
+              <p className="text-sm text-slate-600" data-testid="operator-stat-deliveries-label">{t("Deliveries Ongoing", "Entregas en curso")}</p>
             </div>
           </div>
         </div>
@@ -470,7 +516,7 @@ export default function OperatorDashboard() {
             </div>
             <div>
               <p className="text-2xl font-bold text-slate-900" data-testid="operator-stat-urgent-count">{dashboard?.stats?.urgent_tickets || 0}</p>
-              <p className="text-sm text-slate-600" data-testid="operator-stat-urgent-label">Tickets Urgentes</p>
+              <p className="text-sm text-slate-600" data-testid="operator-stat-urgent-label">{t("Urgent Tickets", "Tickets Urgentes")}</p>
             </div>
           </div>
         </div>
@@ -480,7 +526,7 @@ export default function OperatorDashboard() {
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
           <Bot className="h-5 w-5 text-sky-600" />
-          <h2 className="font-semibold text-slate-900">Asistente Operativo IA</h2>
+          <h2 className="font-semibold text-slate-900">{t("AI Operations Assistant", "Asistente Operativo IA")}</h2>
         </div>
         <div className="p-6 grid gap-6 lg:grid-cols-[2fr_1fr]">
           <div>
@@ -488,12 +534,15 @@ export default function OperatorDashboard() {
               value={aiPrompt}
               onChange={(e) => setAiPrompt(e.target.value)}
               rows={4}
-              placeholder="Ej: Marca la orden VFL-20260222-02220002 como pagada en efectivo 50 y genera ticket"
+              placeholder={t(
+                "Example: Mark order VFL-20260222-02220002 as paid in cash $50 and generate ticket",
+                "Ej: Marca la orden VFL-20260222-02220002 como pagada en efectivo $50 y genera ticket"
+              )}
               data-testid="operator-ai-input"
             />
             <div className="flex flex-wrap gap-2 mt-3">
               <Button onClick={handleAiRequest} disabled={aiLoading} data-testid="operator-ai-submit">
-                {aiLoading ? "Procesando..." : "Enviar a IA"}
+                {aiLoading ? t("Processing...", "Procesando...") : t("Send to AI", "Enviar a IA")}
               </Button>
               <Button
                 variant="outline"
@@ -504,19 +553,19 @@ export default function OperatorDashboard() {
                 }}
                 data-testid="operator-ai-clear"
               >
-                Limpiar
+                {t("Clear", "Limpiar")}
               </Button>
             </div>
           </div>
           <div className="bg-slate-50 rounded-xl p-4">
-            <p className="text-sm text-slate-500">Respuesta</p>
+            <p className="text-sm text-slate-500">{t("Response", "Respuesta")}</p>
             <p className="font-medium text-slate-900 mt-1" data-testid="operator-ai-reply">
-              {aiReply || "Aún no hay respuesta"}
+              {aiReply || t("No reply yet", "Aún no hay respuesta")}
             </p>
             <div className="mt-4">
-              <p className="text-xs text-slate-500">Acciones ejecutadas</p>
+              <p className="text-xs text-slate-500">{t("Executed actions", "Acciones ejecutadas")}</p>
               {aiResults.length === 0 ? (
-                <p className="text-sm text-slate-400 mt-1">Sin acciones todavía</p>
+                <p className="text-sm text-slate-400 mt-1">{t("No actions yet", "Sin acciones todavía")}</p>
               ) : (
                 <ul className="mt-2 space-y-2">
                   {aiResults.map((result, index) => (
@@ -525,7 +574,7 @@ export default function OperatorDashboard() {
                       className="text-sm text-slate-700"
                       data-testid={`operator-ai-result-${index}`}
                     >
-                      {result.type}: {result.ok ? "OK" : "Error"}
+                      {result.type}: {result.ok ? t("OK", "OK") : t("Error", "Error")}
                     </li>
                   ))}
                 </ul>
@@ -540,14 +589,14 @@ export default function OperatorDashboard() {
         <div className="px-6 py-4 border-b border-slate-100 bg-slate-50">
           <h2 className="font-semibold text-slate-900 flex items-center gap-2">
             <Calendar className="h-5 w-5 text-sky-600" />
-            Pickups de Hoy ({dashboard?.todays_pickups?.length || 0})
+            {t("Today's Pickups", "Pickups de Hoy")} ({dashboard?.todays_pickups?.length || 0})
           </h2>
         </div>
         <div className="divide-y divide-slate-100">
           {dashboard?.todays_pickups?.length === 0 ? (
             <div className="p-8 text-center text-slate-500">
               <Truck className="h-12 w-12 mx-auto mb-3 text-slate-300" />
-              <p>No hay pickups programados para hoy</p>
+              <p>{t("No pickups scheduled for today", "No hay pickups programados para hoy")}</p>
             </div>
           ) : (
             dashboard?.todays_pickups?.map((order) => (
@@ -569,22 +618,22 @@ export default function OperatorDashboard() {
                     <div className="flex items-center gap-4 text-sm text-slate-600 mb-2">
                       <span className="flex items-center gap-1">
                         <User className="h-4 w-4" />
-                        {order.customer_name || "Cliente"}
+                        {order.customer_name || t("Customer", "Cliente")}
                       </span>
                       <span className="flex items-center gap-1">
                         <Clock className="h-4 w-4" />
-                        {order.pickup_time || "Sin hora"}
+                        {order.pickup_time || t("No time", "Sin hora")}
                       </span>
                     </div>
                     <div className="flex items-start gap-1 text-sm text-slate-500">
                       <MapPin className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                      <span className="line-clamp-1">{order.pickup_address || "Sin dirección"}</span>
+                      <span className="line-clamp-1">{order.pickup_address || t("No address", "Sin dirección")}</span>
                     </div>
                     <div className="text-xs text-slate-500 mt-1">
-                      Servicio: {order.service_type || "-"}
+                      {t("Service:", "Servicio:")} {order.service_type || "-"}
                     </div>
                     <div className="text-xs text-slate-500 mt-1" data-testid={`operator-payment-${order.order_id}`}>
-                      Pago: {getPaymentStatusLabel(order.payment_status)} {order.payment_method ? `(${getPaymentMethodLabel(order.payment_method)})` : ""}
+                      {t("Payment:", "Pago:")} {getPaymentStatusLabel(order.payment_status)} {order.payment_method ? `(${getPaymentMethodLabel(order.payment_method)})` : ""}
                     </div>
                     {order.special_instructions && (
                       <div className="flex items-start gap-1 text-sm text-amber-600 mt-1">
@@ -594,7 +643,7 @@ export default function OperatorDashboard() {
                     )}
                     {order.gate_code && (
                       <div className="text-sm font-medium text-purple-600 mt-1">
-                        🔑 Código: {order.gate_code}
+                        🔑 {t("Code:", "Código:")} {order.gate_code}
                       </div>
                     )}
                   </div>
@@ -607,7 +656,7 @@ export default function OperatorDashboard() {
                         data-testid={`operator-call-${order.order_id}`}
                       >
                         <Phone className="h-4 w-4" />
-                        Llamar
+                        {t("Call", "Llamar")}
                       </a>
                     )}
                     {order.pickup_address && (
@@ -621,7 +670,7 @@ export default function OperatorDashboard() {
                         data-testid={`operator-map-${order.order_id}`}
                       >
                         <MapPin className="h-4 w-4 mr-2" />
-                        Mapa
+                        {t("Map", "Mapa")}
                       </Button>
                     )}
                     <Button
@@ -633,7 +682,7 @@ export default function OperatorDashboard() {
                       }}
                       data-testid={`operator-print-${order.order_id}`}
                     >
-                      Imprimir Ticket
+                      {t("Print Ticket", "Imprimir Ticket")}
                     </Button>
                     {(order.next_status || getNextStatus(order.status)) && (
                       <Button
@@ -669,14 +718,14 @@ export default function OperatorDashboard() {
         <div className="px-6 py-4 border-b border-slate-100 bg-emerald-50">
           <h2 className="font-semibold text-slate-900 flex items-center gap-2" data-testid="operator-delivery-section-title">
             <CheckCircle className="h-5 w-5 text-emerald-600" />
-            Entregas en curso ({dashboard?.ready_for_delivery?.length || 0})
+            {t("Deliveries Ongoing", "Entregas en curso")} ({dashboard?.ready_for_delivery?.length || 0})
           </h2>
         </div>
         <div className="divide-y divide-slate-100">
           {dashboard?.ready_for_delivery?.length === 0 ? (
             <div className="p-8 text-center text-slate-500">
               <Package className="h-12 w-12 mx-auto mb-3 text-slate-300" />
-              <p data-testid="operator-delivery-empty">No hay entregas en curso</p>
+              <p data-testid="operator-delivery-empty">{t("No deliveries in progress", "No hay entregas en curso")}</p>
             </div>
           ) : (
             dashboard?.ready_for_delivery?.map((order) => (
@@ -690,16 +739,16 @@ export default function OperatorDashboard() {
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <span className="font-mono font-semibold text-slate-900">{formatOrderId(order)}</span>
-                    <span className="text-slate-600 ml-2">- {order.customer_name || "Cliente"}</span>
+                    <span className="text-slate-600 ml-2">- {order.customer_name || t("Customer", "Cliente")}</span>
                     <div className="text-sm text-slate-500 flex items-center gap-1 mt-1">
                       <MapPin className="h-4 w-4" />
                       {order.delivery_address || "-"}
                     </div>
                     <div className="text-xs text-slate-500 mt-1" data-testid={`operator-delivery-status-${order.order_id}`}>
-                      Estado: {getStatusInfo(order.status).label}
+                      {t("Status:", "Estado:")} {getStatusInfo(order.status).label}
                     </div>
                     <div className="text-xs text-slate-500 mt-1" data-testid={`operator-delivery-payment-${order.order_id}`}>
-                      Pago: {getPaymentStatusLabel(order.payment_status)} {order.payment_method ? `(${getPaymentMethodLabel(order.payment_method)})` : ""}
+                      {t("Payment:", "Pago:")} {getPaymentStatusLabel(order.payment_status)} {order.payment_method ? `(${getPaymentMethodLabel(order.payment_method)})` : ""}
                     </div>
                   </div>
                   <div className="flex flex-col gap-2">
@@ -714,7 +763,7 @@ export default function OperatorDashboard() {
                         data-testid={`operator-delivery-map-${order.order_id}`}
                       >
                         <MapPin className="h-4 w-4 mr-2" />
-                        Mapa
+                        {t("Map", "Mapa")}
                       </Button>
                     )}
                     <Button
@@ -726,7 +775,7 @@ export default function OperatorDashboard() {
                       }}
                       data-testid={`operator-delivery-print-${order.order_id}`}
                     >
-                      Imprimir Ticket
+                      {t("Print Ticket", "Imprimir Ticket")}
                     </Button>
                     <Button
                       size="sm"
@@ -742,7 +791,7 @@ export default function OperatorDashboard() {
                         <RefreshCw className="h-4 w-4 animate-spin" />
                       ) : (
                         <>
-                          {order.action_label || "Salir a Entregar"}
+                          {order.action_label || t("Out for Delivery", "Salir a Entregar")}
                           <Truck className="h-4 w-4 ml-1" />
                         </>
                       )}
@@ -756,82 +805,82 @@ export default function OperatorDashboard() {
       </div>
 
       <Dialog open={!!selectedOrder} onOpenChange={(open) => !open && setSelectedOrder(null)}>
-        <DialogContent className="sm:max-w-lg" data-testid="operator-order-detail-modal">
+        <DialogContent className="sm:max-w-lg bg-white" style={{ backgroundColor: 'white', opacity: 1 }} data-testid="operator-order-detail-modal">
           <DialogHeader>
-            <DialogTitle>Orden <span data-testid="operator-order-number">{formatOrderNumber(selectedOrder)}</span></DialogTitle>
+            <DialogTitle>{t("Order", "Orden")} <span data-testid="operator-order-number">{formatOrderNumber(selectedOrder)}</span></DialogTitle>
             <DialogDescription data-testid="operator-order-description">
-              Detalle completo de la orden para operación.
+              {t("Complete order details for operation.", "Detalle completo de la orden para operación.")}
             </DialogDescription>
           </DialogHeader>
           {selectedOrder && (
             <div className="space-y-4 mt-3">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm text-slate-500">Estado</p>
+                  <p className="text-sm text-slate-500">{t("Status", "Estado")}</p>
                   <p className="font-medium" data-testid="operator-order-status">{getStatusInfo(selectedOrder.status).label}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-slate-500">Servicio</p>
+                  <p className="text-sm text-slate-500">{t("Service", "Servicio")}</p>
                   <p className="font-medium" data-testid="operator-order-service">{selectedOrder.service_type || "-"}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-slate-500">Cliente</p>
+                  <p className="text-sm text-slate-500">{t("Customer", "Cliente")}</p>
                   <p className="font-medium" data-testid="operator-order-customer">{selectedOrder.customer_name || "-"}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-slate-500">Membresía</p>
-                  <p className="font-medium" data-testid="operator-order-membership">{selectedOrder.membership_plan || "No"}</p>
+                  <p className="text-sm text-slate-500">{t("Membership", "Membresía")}</p>
+                  <p className="font-medium" data-testid="operator-order-membership">{selectedOrder.membership_plan || t("No", "No")}</p>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm text-slate-500">Teléfono</p>
+                  <p className="text-sm text-slate-500">{t("Phone", "Teléfono")}</p>
                   <p className="font-medium" data-testid="operator-order-phone">{selectedOrder.customer_phone || "-"}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-slate-500">Email</p>
+                  <p className="text-sm text-slate-500">{t("Email", "Correo")}</p>
                   <p className="font-medium" data-testid="operator-order-email">{selectedOrder.customer_email || "-"}</p>
                 </div>
               </div>
               <div>
-                <p className="text-sm text-slate-500">Contacto</p>
+                <p className="text-sm text-slate-500">{t("Contact preference", "Contacto preferido")}</p>
                 <p className="font-medium" data-testid="operator-order-contact">{selectedOrder.preferred_contact || "-"}</p>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm text-slate-500">Fecha Pickup</p>
+                  <p className="text-sm text-slate-500">{t("Pickup Date", "Fecha Pickup")}</p>
                   <p className="font-medium" data-testid="operator-order-pickup-date">{selectedOrder.pickup_date || "-"}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-slate-500">Ventana</p>
+                  <p className="text-sm text-slate-500">{t("Time Window", "Ventana de tiempo")}</p>
                   <p className="font-medium" data-testid="operator-order-pickup-window">{selectedOrder.pickup_time || "-"}</p>
                 </div>
               </div>
               <div>
-                <p className="text-sm text-slate-500">Dirección Pickup</p>
+                <p className="text-sm text-slate-500">{t("Pickup Address", "Dirección Pickup")}</p>
                 <p className="font-medium" data-testid="operator-order-pickup-address">{selectedOrder.pickup_address || "-"}</p>
               </div>
               <div>
-                <p className="text-sm text-slate-500">Dirección Entrega</p>
+                <p className="text-sm text-slate-500">{t("Delivery Address", "Dirección Entrega")}</p>
                 <p className="font-medium" data-testid="operator-order-delivery-address">{selectedOrder.delivery_address || "-"}</p>
               </div>
               {selectedOrder.special_instructions && (
                 <div>
-                  <p className="text-sm text-slate-500">Notas</p>
+                  <p className="text-sm text-slate-500">{t("Notes", "Notas")}</p>
                   <p className="font-medium" data-testid="operator-order-notes">{selectedOrder.special_instructions}</p>
                 </div>
               )}
               {selectedOrder.gate_code && (
                 <div>
-                  <p className="text-sm text-slate-500">Código de acceso</p>
+                  <p className="text-sm text-slate-500">{t("Gate code", "Código de acceso")}</p>
                   <p className="font-medium" data-testid="operator-order-gate">{selectedOrder.gate_code}</p>
                 </div>
               )}
               <div className="border-t pt-3" data-testid="operator-lbs-section">
-                <p className="text-sm text-slate-500">Libras</p>
+                <p className="text-sm text-slate-500">{t("Pounds", "Libras")}</p>
                 <div className="grid grid-cols-2 gap-4 mt-2">
                   <div>
-                    <p className="text-xs text-slate-500">Est. Lbs</p>
+                    <p className="text-xs text-slate-500">{t("Est. Lbs", "Est. Lbs")}</p>
                     <Input
                       type="number"
                       step="0.1"
@@ -842,7 +891,7 @@ export default function OperatorDashboard() {
                     />
                   </div>
                   <div>
-                    <p className="text-xs text-slate-500">Actual Lbs</p>
+                    <p className="text-xs text-slate-500">{t("Actual Lbs", "Actual Lbs")}</p>
                     <Input
                       type="number"
                       step="0.1"
@@ -854,7 +903,7 @@ export default function OperatorDashboard() {
                   </div>
                 </div>
                 <div className="flex items-center justify-between mt-2">
-                  <p className="text-xs text-slate-500" data-testid="operator-lbs-delta">Diferencia: {getWeightDelta()}</p>
+                  <p className="text-xs text-slate-500" data-testid="operator-lbs-delta">{t("Difference:", "Diferencia:")} {getWeightDelta()}</p>
                   <Button
                     variant="outline"
                     size="sm"
@@ -862,25 +911,25 @@ export default function OperatorDashboard() {
                     disabled={savingWeights}
                     data-testid="operator-save-lbs"
                   >
-                    {savingWeights ? "Guardando..." : "Guardar libras"}
+                    {savingWeights ? t("Saving...", "Guardando...") : t("Save lbs", "Guardar libras")}
                   </Button>
                 </div>
               </div>
               <div className="border-t pt-3" data-testid="operator-payment-section">
-                <p className="text-sm text-slate-500">Pago</p>
+                <p className="text-sm text-slate-500">{t("Payment", "Pago")}</p>
                 <div className="grid grid-cols-2 gap-4 mt-2">
                   <div>
-                    <p className="text-xs text-slate-500">Total</p>
+                    <p className="text-xs text-slate-500">{t("Total", "Total")}</p>
                     <p className="font-medium" data-testid="operator-payment-total">{formatCurrency(selectedOrder.total_amount)}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-slate-500">Estado</p>
+                    <p className="text-xs text-slate-500">{t("Status", "Estado")}</p>
                     <p className="font-medium" data-testid="operator-payment-status">{getPaymentStatusLabel(selectedOrder.payment_status)}</p>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4 mt-2">
                   <div>
-                    <p className="text-xs text-slate-500">Método</p>
+                    <p className="text-xs text-slate-500">{t("Method", "Método")}</p>
                     <select
                       value={paymentForm.method}
                       onChange={(e) => setPaymentForm({ ...paymentForm, method: e.target.value })}
@@ -888,12 +937,12 @@ export default function OperatorDashboard() {
                       data-testid="operator-payment-method"
                     >
                       {PAYMENT_METHODS.map((method) => (
-                        <option key={method.value} value={method.value}>{method.label}</option>
+                        <option key={method.value} value={method.value}>{getPaymentMethodLabel(method.value)}</option>
                       ))}
                     </select>
                   </div>
                   <div>
-                    <p className="text-xs text-slate-500">Monto recibido</p>
+                    <p className="text-xs text-slate-500">{t("Amount received", "Monto recibido")}</p>
                     <Input
                       type="number"
                       step="0.01"
@@ -901,13 +950,13 @@ export default function OperatorDashboard() {
                       onChange={(e) => setPaymentForm({ ...paymentForm, amountReceived: e.target.value })}
                       className="mt-1"
                       disabled={paymentForm.method !== "cash"}
-                      placeholder={paymentForm.method === "cash" ? "0.00" : "No requerido"}
+                      placeholder={paymentForm.method === "cash" ? "0.00" : t("Not required", "No requerido")}
                       data-testid="operator-payment-amount"
                     />
                   </div>
                 </div>
                 <div className="flex items-center justify-between mt-2">
-                  <p className="text-xs text-slate-500" data-testid="operator-payment-change">Cambio: {paymentForm.method === "cash" ? getChangePreview() : "-"}</p>
+                  <p className="text-xs text-slate-500" data-testid="operator-payment-change">{t("Change:", "Cambio:")} {paymentForm.method === "cash" ? getChangePreview() : "-"}</p>
                   <div className="flex gap-2">
                     <Button
                       variant="outline"
@@ -916,7 +965,7 @@ export default function OperatorDashboard() {
                       disabled={savingPayment}
                       data-testid="operator-payment-save"
                     >
-                      {savingPayment ? "Guardando..." : "Registrar pago"}
+                      {savingPayment ? t("Saving...", "Guardando...") : t("Register payment", "Registrar pago")}
                     </Button>
                     <Button
                       variant="secondary"
@@ -924,18 +973,18 @@ export default function OperatorDashboard() {
                       onClick={() => handlePrintTicket(selectedOrder)}
                       data-testid="operator-payment-print"
                     >
-                      Imprimir Ticket
+                      {t("Print Ticket", "Imprimir Ticket")}
                     </Button>
                   </div>
                 </div>
               </div>
               <div className="border-t pt-3" data-testid="operator-preferences-section">
-                <p className="text-sm text-slate-500">Preferencias de lavado</p>
+                <p className="text-sm text-slate-500">{t("Laundry preferences", "Preferencias de lavandería")}</p>
                 {selectedOrder.preferences_snapshot ? (
                   <div className="grid grid-cols-2 gap-3 mt-2">
-                    {Object.entries(PREFERENCE_LABELS).map(([key, label]) => (
+                    {Object.entries(PREFERENCE_LABELS).map(([key]) => (
                       <div key={key}>
-                        <p className="text-xs text-slate-500">{label}</p>
+                        <p className="text-xs text-slate-500">{getPreferenceLabel(key)}</p>
                         <p className="font-medium" data-testid={`operator-pref-${key}`}>
                           {renderPreferenceValue(selectedOrder.preferences_snapshot?.[key])}
                         </p>
@@ -944,11 +993,11 @@ export default function OperatorDashboard() {
                   </div>
                 ) : (
                   <p className="text-sm font-medium text-slate-600 mt-1" data-testid="operator-pref-empty">
-                    Sin preferencias registradas
+                    {t("No preferences recorded", "Sin preferencias registradas")}
                   </p>
                 )}
                 <p className="text-xs text-slate-500 mt-2" data-testid="operator-pref-id">
-                  PREF: {selectedOrder.preferences_id || "N/A"}
+                  {t("PREF:", "PREF:")} {selectedOrder.preferences_id || "N/A"}
                 </p>
               </div>
             </div>
@@ -962,7 +1011,7 @@ export default function OperatorDashboard() {
           <div className="px-6 py-4 border-b border-red-100 bg-red-50">
             <h2 className="font-semibold text-red-900 flex items-center gap-2">
               <AlertTriangle className="h-5 w-5 text-red-600" />
-              Tickets Urgentes ({dashboard.urgent_tickets.length})
+              {t("Urgent Tickets", "Tickets Urgentes")} ({dashboard.urgent_tickets.length})
             </h2>
           </div>
           <div className="divide-y divide-red-100">
@@ -973,19 +1022,19 @@ export default function OperatorDashboard() {
                     <div className="flex items-center gap-2">
                       <span className="font-mono font-semibold text-slate-900">{ticket.ticket_id}</span>
                       <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-red-100 text-red-800">
-                        URGENTE
+                        {t("URGENT", "URGENTE")}
                       </span>
                     </div>
                     <p className="font-medium text-slate-900 mt-1">{ticket.subject}</p>
                     <p className="text-sm text-slate-600 mt-1 line-clamp-2">{ticket.description}</p>
                     <p className="text-xs text-red-600 mt-2">
-                      SLA: {new Date(ticket.sla_deadline).toLocaleString()}
+                      {t("SLA:", "SLA:")} {new Date(ticket.sla_deadline).toLocaleString()}
                     </p>
                   </div>
                   {ticket.customer_phone && (
                     <a href={`tel:${ticket.customer_phone}`} className="flex items-center gap-1 text-sm text-sky-600 hover:text-sky-700">
                       <Phone className="h-4 w-4" />
-                      Llamar
+                      {t("Call", "Llamar")}
                     </a>
                   )}
                 </div>

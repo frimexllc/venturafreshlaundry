@@ -5,10 +5,12 @@ import { ShoppingBag, Plus, Minus, Trash2, ShoppingCart, Check, X } from "lucide
 import PublicNav from "../components/PublicNav";
 import PublicFooter from "../components/PublicFooter";
 import { toast } from "sonner";
+import { useLocale } from "../context/LocaleContext";
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 export default function StorePage() {
+  const { t } = useLocale();
   const [products, setProducts] = useState([]);
   const [cart, setCart] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -27,7 +29,7 @@ export default function StorePage() {
         .then(res => res.json())
         .then(data => {
           if (data.payment_status === 'paid') {
-            toast.success('¡Pago completado exitosamente!');
+            toast.success(t('Payment completed successfully!', '¡Pago completado exitosamente!'));
             // Clear local cart
             localStorage.removeItem('cartId');
             setCart(null);
@@ -35,9 +37,9 @@ export default function StorePage() {
         })
         .catch(console.error);
     } else if (status === 'cancelled') {
-      toast.error('El pago fue cancelado');
+      toast.error(t('Payment was cancelled', 'El pago fue cancelado'));
     }
-  }, [searchParams]);
+  }, [searchParams, t]);
 
   // Load products
   useEffect(() => {
@@ -87,9 +89,9 @@ export default function StorePage() {
     if (res.ok) {
       const updatedCart = await res.json();
       setCart(updatedCart);
-      toast.success(`${product.name} agregado al carrito`);
+      toast.success(t('{name} added to cart', '{name} agregado al carrito').replace('{name}', product.name));
     } else {
-      toast.error('Error al agregar al carrito');
+      toast.error(t('Error adding to cart', 'Error al agregar al carrito'));
     }
   };
 
@@ -116,13 +118,13 @@ export default function StorePage() {
     if (res.ok) {
       const updatedCart = await res.json();
       setCart(updatedCart);
-      toast.success('Producto eliminado del carrito');
+      toast.success(t('Product removed from cart', 'Producto eliminado del carrito'));
     }
   };
 
   const checkout = async () => {
     if (!cart || cart.items.length === 0) {
-      toast.error('El carrito está vacío');
+      toast.error(t('Cart is empty', 'El carrito está vacío'));
       return;
     }
 
@@ -143,10 +145,10 @@ export default function StorePage() {
         window.location.href = data.checkout_url;
       } else {
         const error = await res.json();
-        toast.error(error.detail || 'Error al procesar el pago');
+        toast.error(error.detail || t('Error processing payment', 'Error al procesar el pago'));
       }
     } catch (error) {
-      toast.error('Error de conexión');
+      toast.error(t('Connection error', 'Error de conexión'));
     } finally {
       setCheckingOut(false);
     }
@@ -162,12 +164,13 @@ export default function StorePage() {
       <section className="pt-24 pb-16 bg-gradient-to-b from-sky-50 to-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h1
-  className="text-4xl sm:text-5xl font-bold text-slate-900 mb-6 mt-12"
-  style={{ fontFamily: "'Playfair Display', serif" }}
->  Tienda
+            className="text-4xl sm:text-5xl font-bold text-slate-900 mb-6 mt-12"
+            style={{ fontFamily: "'Playfair Display', serif" }}
+          >
+            {t("Store", "Tienda")}
           </h1>
           <p className="text-lg text-slate-600 max-w-2xl mx-auto">
-            Productos de lavandería y accesorios de calidad
+            {t("Quality laundry products and accessories", "Productos de lavandería y accesorios de calidad")}
           </p>
         </div>
       </section>
@@ -193,7 +196,7 @@ export default function StorePage() {
           <div className="relative w-full max-w-md bg-white h-full shadow-xl overflow-y-auto" data-testid="cart-sidebar">
             <div className="p-6">
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-bold text-slate-900">Tu Carrito</h2>
+                <h2 className="text-2xl font-bold text-slate-900">{t("Your Cart", "Tu Carrito")}</h2>
                 <button onClick={() => setCartOpen(false)} className="text-slate-500 hover:text-slate-700">
                   <X className="h-6 w-6" />
                 </button>
@@ -202,7 +205,7 @@ export default function StorePage() {
               {!cart || cart.items.length === 0 ? (
                 <div className="text-center py-12">
                   <ShoppingBag className="h-16 w-16 text-slate-300 mx-auto mb-4" />
-                  <p className="text-slate-600">Tu carrito está vacío</p>
+                  <p className="text-slate-600">{t("Your cart is empty", "Tu carrito está vacío")}</p>
                 </div>
               ) : (
                 <>
@@ -240,7 +243,7 @@ export default function StorePage() {
 
                   <div className="mt-6 pt-6 border-t border-slate-200">
                     <div className="flex justify-between items-center mb-6">
-                      <span className="text-lg font-semibold text-slate-900">Total:</span>
+                      <span className="text-lg font-semibold text-slate-900">{t("Total:", "Total:")}</span>
                       <span className="text-2xl font-bold text-sky-600">${cart.total.toFixed(2)}</span>
                     </div>
                     <Button
@@ -252,10 +255,10 @@ export default function StorePage() {
                       {checkingOut ? (
                         <span className="flex items-center justify-center gap-2">
                           <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent" />
-                          Procesando...
+                          {t("Processing...", "Procesando...")}
                         </span>
                       ) : (
-                        <>Pagar con Stripe</>
+                        t("Pay with Stripe", "Pagar con Stripe")
                       )}
                     </Button>
                   </div>
@@ -276,8 +279,8 @@ export default function StorePage() {
           ) : products.length === 0 ? (
             <div className="text-center py-12">
               <ShoppingBag className="h-24 w-24 text-slate-300 mx-auto mb-6" />
-              <h2 className="text-2xl font-bold text-slate-900 mb-4">No hay productos disponibles</h2>
-              <p className="text-slate-600">Estamos trabajando en traer productos de calidad. ¡Vuelve pronto!</p>
+              <h2 className="text-2xl font-bold text-slate-900 mb-4">{t("No products available", "No hay productos disponibles")}</h2>
+              <p className="text-slate-600">{t("We are working on bringing quality products. Check back soon!", "Estamos trabajando en traer productos de calidad. ¡Vuelve pronto!")}</p>
             </div>
           ) : (
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -305,14 +308,16 @@ export default function StorePage() {
                         data-testid={`add-to-cart-${product.id}`}
                       >
                         <Plus className="h-4 w-4 mr-1" />
-                        Agregar
+                        {t("Add", "Agregar")}
                       </Button>
                     </div>
                     {product.stock <= 5 && product.stock > 0 && (
-                      <p className="text-orange-600 text-xs mt-2">¡Solo quedan {product.stock} unidades!</p>
+                      <p className="text-orange-600 text-xs mt-2">
+                        {t("Only {count} left!", "¡Solo quedan {count} unidades!").replace('{count}', product.stock)}
+                      </p>
                     )}
                     {product.stock <= 0 && (
-                      <p className="text-red-600 text-xs mt-2">Agotado</p>
+                      <p className="text-red-600 text-xs mt-2">{t("Out of stock", "Agotado")}</p>
                     )}
                   </div>
                 </div>

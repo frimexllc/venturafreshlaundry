@@ -23,7 +23,7 @@ export default function Login() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!acceptedPolicies) {
-      toast.error("Debes aceptar los términos y la política de privacidad");
+      toast.error(t("You must accept the terms and privacy policy", "Debes aceptar los términos y la política de privacidad"));
       return;
     }
     setLoading(true);
@@ -31,14 +31,14 @@ export default function Login() {
     try {
       if (isLogin) {
         await login(email, password);
-        toast.success("¡Bienvenido de vuelta!");
+        toast.success(t("Welcome back!", "¡Bienvenido de vuelta!"));
       } else {
         await register(name, email, password);
-        toast.success("¡Cuenta creada exitosamente!");
+        toast.success(t("Account created successfully!", "¡Cuenta creada exitosamente!"));
       }
       navigate("/admin");
     } catch (error) {
-      const message = error.response?.data?.detail || "Ocurrió un error";
+      const message = error.response?.data?.detail || t("An error occurred", "Ocurrió un error");
       toast.error(message);
     } finally {
       setLoading(false);
@@ -56,31 +56,31 @@ export default function Login() {
             </div>
             <div>
               <h1 className="text-2xl font-bold text-slate-900">Ventura Fresh</h1>
-              <p className="text-sm text-slate-500">Laundry CRM</p>
+              <p className="text-sm text-slate-500">{t("Laundry CRM", "CRM de Lavandería")}</p>
             </div>
           </div>
 
           <div className="mb-8">
             <h2 className="text-xl font-semibold text-slate-900 mb-2">
-              {isLogin ? "Iniciar sesión" : "Crear cuenta"}
+              {isLogin ? t("Sign in", "Iniciar sesión") : t("Create account", "Crear cuenta")}
             </h2>
             <p className="text-slate-500">
               {isLogin
-                ? "Ingresa tus credenciales para acceder al panel"
-                : "Completa el formulario para registrarte"}
+                ? t("Enter your credentials to access the panel", "Ingresa tus credenciales para acceder al panel")
+                : t("Complete the form to register", "Completa el formulario para registrarte")}
             </p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
             {!isLogin && (
               <div>
-                <Label htmlFor="name" className="text-slate-700">Nombre completo</Label>
+                <Label htmlFor="name" className="text-slate-700">{t("Full name", "Nombre completo")}</Label>
                 <Input
                   id="name"
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="Tu nombre"
+                  placeholder={t("Your name", "Tu nombre")}
                   className="mt-1.5 input-default"
                   required={!isLogin}
                   data-testid="register-name-input"
@@ -89,13 +89,13 @@ export default function Login() {
             )}
 
             <div>
-              <Label htmlFor="email" className="text-slate-700">Correo electrónico</Label>
+              <Label htmlFor="email" className="text-slate-700">{t("Email", "Correo electrónico")}</Label>
               <Input
                 id="email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="tu@email.com"
+                placeholder={t("your@email.com", "tu@email.com")}
                 className="mt-1.5 input-default"
                 required
                 data-testid="login-email-input"
@@ -103,7 +103,7 @@ export default function Login() {
             </div>
 
             <div>
-              <Label htmlFor="password" className="text-slate-700">Contraseña</Label>
+              <Label htmlFor="password" className="text-slate-700">{t("Password", "Contraseña")}</Label>
               <div className="relative mt-1.5">
                 <Input
                   id="password"
@@ -135,8 +135,14 @@ export default function Login() {
                 data-testid="login-accept-checkbox"
               />
               <p className="text-sm text-slate-600">
-                Acepto los <Link to="/terms-and-conditions" className="text-sky-600 hover:underline" data-testid="login-terms-link">Términos y condiciones</Link> y la
-                <Link to="/privacy-policy" className="text-sky-600 hover:underline ml-1" data-testid="login-privacy-link">Política de privacidad</Link>.
+                {t("I accept the", "Acepto los")}{" "}
+                <Link to="/terms-and-conditions" className="text-sky-600 hover:underline" data-testid="login-terms-link">
+                  {t("Terms and Conditions", "Términos y condiciones")}
+                </Link>{" "}
+                {t("and the", "y la")}{" "}
+                <Link to="/privacy-policy" className="text-sky-600 hover:underline ml-1" data-testid="login-privacy-link">
+                  {t("Privacy Policy", "Política de privacidad")}
+                </Link>.
               </p>
             </div>
 
@@ -149,10 +155,10 @@ export default function Login() {
               {loading ? (
                 <span className="flex items-center gap-2">
                   <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>
-                  {isLogin ? "Iniciando..." : "Creando..."}
+                  {isLogin ? t("Signing in...", "Iniciando...") : t("Creating...", "Creando...")}
                 </span>
               ) : (
-                isLogin ? "Iniciar sesión" : "Crear cuenta"
+                isLogin ? t("Sign in", "Iniciar sesión") : t("Create account", "Crear cuenta")
               )}
             </Button>
           </form>
@@ -164,7 +170,9 @@ export default function Login() {
               className="text-sm text-sky-600 hover:text-sky-700 font-medium"
               data-testid="toggle-auth-mode"
             >
-              {isLogin ? "¿No tienes cuenta? Regístrate" : "¿Ya tienes cuenta? Inicia sesión"}
+              {isLogin
+                ? t("Don't have an account? Sign up", "¿No tienes cuenta? Regístrate")
+                : t("Already have an account? Sign in", "¿Ya tienes cuenta? Inicia sesión")}
             </button>
           </div>
         </div>
@@ -182,23 +190,26 @@ export default function Login() {
         </div>
         <div className="relative h-full flex flex-col justify-end p-12 text-white">
           <h2 className="text-3xl font-bold mb-3">
-            Gestiona tu lavandería de forma eficiente
+            {t("Manage your laundry efficiently", "Gestiona tu lavandería de forma eficiente")}
           </h2>
           <p className="text-sky-100 text-lg max-w-md">
-            Control total de clientes, órdenes, cotizaciones B2B y soporte en una sola plataforma.
+            {t(
+              "Complete control of customers, orders, B2B quotes and support in one platform.",
+              "Control total de clientes, órdenes, cotizaciones B2B y soporte en una sola plataforma."
+            )}
           </p>
           <div className="mt-8 flex gap-8">
             <div>
               <p className="text-3xl font-bold">100%</p>
-              <p className="text-sky-200 text-sm">Digitalizado</p>
+              <p className="text-sky-200 text-sm">{t("Digitalized", "Digitalizado")}</p>
             </div>
             <div>
               <p className="text-3xl font-bold">24/7</p>
-              <p className="text-sky-200 text-sm">Disponible</p>
+              <p className="text-sky-200 text-sm">{t("Available", "Disponible")}</p>
             </div>
             <div>
               <p className="text-3xl font-bold">Real-time</p>
-              <p className="text-sky-200 text-sm">Tracking</p>
+              <p className="text-sky-200 text-sm">{t("Tracking", "Tracking")}</p>
             </div>
           </div>
         </div>

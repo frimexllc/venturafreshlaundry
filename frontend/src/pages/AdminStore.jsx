@@ -4,10 +4,12 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Package, Plus, Edit2, Trash2, Search, DollarSign, Archive, X } from "lucide-react";
 import { toast } from "sonner";
+import { useLocale } from "../context/LocaleContext";
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 export default function AdminStore() {
+  const { t } = useLocale();
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -39,7 +41,7 @@ export default function AdminStore() {
       setProducts(await productsRes.json());
       setOrders(await ordersRes.json());
     } catch (error) {
-      toast.error('Error al cargar datos');
+      toast.error(t('Error loading data', 'Error al cargar datos'));
     } finally {
       setLoading(false);
     }
@@ -63,28 +65,28 @@ export default function AdminStore() {
       });
 
       if (res.ok) {
-        toast.success(editingProduct ? 'Producto actualizado' : 'Producto creado');
+        toast.success(editingProduct ? t('Product updated', 'Producto actualizado') : t('Product created', 'Producto creado'));
         setShowModal(false);
         resetForm();
         loadData();
       } else {
-        toast.error('Error al guardar producto');
+        toast.error(t('Error saving product', 'Error al guardar producto'));
       }
     } catch (error) {
-      toast.error('Error de conexión');
+      toast.error(t('Connection error', 'Error de conexión'));
     }
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('¿Eliminar este producto?')) return;
+    if (!confirm(t('Delete this product?', '¿Eliminar este producto?'))) return;
     try {
       const res = await fetch(`${API_URL}/api/store/products/${id}`, { method: 'DELETE' });
       if (res.ok) {
-        toast.success('Producto eliminado');
+        toast.success(t('Product deleted', 'Producto eliminado'));
         loadData();
       }
     } catch (error) {
-      toast.error('Error al eliminar');
+      toast.error(t('Error deleting', 'Error al eliminar'));
     }
   };
 
@@ -94,11 +96,11 @@ export default function AdminStore() {
         method: 'PUT'
       });
       if (res.ok) {
-        toast.success('Estado actualizado');
+        toast.success(t('Status updated', 'Estado actualizado'));
         loadData();
       }
     } catch (error) {
-      toast.error('Error al actualizar');
+      toast.error(t('Error updating', 'Error al actualizar'));
     }
   };
 
@@ -145,12 +147,12 @@ export default function AdminStore() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Gestión de Tienda</h1>
-          <p className="text-slate-600">Administra productos y órdenes de la tienda</p>
+          <h1 className="text-2xl font-bold text-slate-900">{t('Store Management', 'Gestión de Tienda')}</h1>
+          <p className="text-slate-600">{t('Manage products and store orders', 'Administra productos y órdenes de la tienda')}</p>
         </div>
         {activeTab === 'products' && (
           <Button onClick={() => { resetForm(); setShowModal(true); }} className="bg-sky-600 hover:bg-sky-700" data-testid="add-product-btn">
-            <Plus className="h-4 w-4 mr-2" /> Agregar Producto
+            <Plus className="h-4 w-4 mr-2" /> {t('Add Product', 'Agregar Producto')}
           </Button>
         )}
       </div>
@@ -164,7 +166,7 @@ export default function AdminStore() {
           }`}
         >
           <Package className="h-4 w-4 inline mr-2" />
-          Productos ({products.length})
+          {t('Products', 'Productos')} ({products.length})
         </button>
         <button
           onClick={() => setActiveTab('orders')}
@@ -173,7 +175,7 @@ export default function AdminStore() {
           }`}
         >
           <DollarSign className="h-4 w-4 inline mr-2" />
-          Órdenes ({orders.length})
+          {t('Orders', 'Órdenes')} ({orders.length})
         </button>
       </div>
 
@@ -187,7 +189,7 @@ export default function AdminStore() {
           <div className="relative max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
             <Input
-              placeholder="Buscar productos..."
+              placeholder={t('Search products...', 'Buscar productos...')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10"
@@ -200,7 +202,7 @@ export default function AdminStore() {
               <div key={product.id} className="bg-white rounded-xl border border-slate-200 p-4" data-testid={`admin-product-${product.id}`}>
                 <div className="flex items-start justify-between mb-3">
                   <span className={`px-2 py-1 text-xs font-medium rounded-full ${product.is_active ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-600'}`}>
-                    {product.is_active ? 'Activo' : 'Inactivo'}
+                    {product.is_active ? t('Active', 'Activo') : t('Inactive', 'Inactivo')}
                   </span>
                   <div className="flex gap-1">
                     <button onClick={() => openEdit(product)} className="p-1 text-slate-400 hover:text-sky-600">
@@ -215,7 +217,7 @@ export default function AdminStore() {
                 <p className="text-sm text-slate-600 mb-2 line-clamp-2">{product.description}</p>
                 <div className="flex items-center justify-between">
                   <span className="text-lg font-bold text-sky-600">${product.price.toFixed(2)}</span>
-                  <span className="text-sm text-slate-500">Stock: {product.stock}</span>
+                  <span className="text-sm text-slate-500">{t('Stock', 'Stock')}: {product.stock}</span>
                 </div>
                 <span className="inline-block mt-2 px-2 py-1 bg-slate-100 text-slate-600 text-xs rounded-full">
                   {product.category}
@@ -231,14 +233,14 @@ export default function AdminStore() {
             <table className="w-full">
               <thead className="bg-slate-50">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Orden</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Email</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Items</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Total</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Pago</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Estado</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Fecha</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Acciones</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t('Order', 'Orden')}</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t('Email', 'Email')}</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t('Items', 'Items')}</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t('Total', 'Total')}</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t('Payment', 'Pago')}</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t('Status', 'Estado')}</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t('Date', 'Fecha')}</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t('Actions', 'Acciones')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -269,12 +271,12 @@ export default function AdminStore() {
                         onChange={(e) => updateOrderStatus(order.id, e.target.value)}
                         className="text-sm border border-slate-200 rounded px-2 py-1"
                       >
-                        <option value="pending">Pendiente</option>
-                        <option value="confirmed">Confirmado</option>
-                        <option value="processing">Procesando</option>
-                        <option value="shipped">Enviado</option>
-                        <option value="delivered">Entregado</option>
-                        <option value="cancelled">Cancelado</option>
+                        <option value="pending">{t('Pending', 'Pendiente')}</option>
+                        <option value="confirmed">{t('Confirmed', 'Confirmado')}</option>
+                        <option value="processing">{t('Processing', 'Procesando')}</option>
+                        <option value="shipped">{t('Shipped', 'Enviado')}</option>
+                        <option value="delivered">{t('Delivered', 'Entregado')}</option>
+                        <option value="cancelled">{t('Cancelled', 'Cancelado')}</option>
                       </select>
                     </td>
                   </tr>
@@ -291,14 +293,14 @@ export default function AdminStore() {
           <div className="absolute inset-0 bg-black/50" onClick={() => setShowModal(false)} />
           <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold">{editingProduct ? 'Editar Producto' : 'Nuevo Producto'}</h2>
+              <h2 className="text-xl font-bold">{editingProduct ? t('Edit Product', 'Editar Producto') : t('New Product', 'Nuevo Producto')}</h2>
               <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600">
                 <X className="h-5 w-5" />
               </button>
             </div>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <Label htmlFor="name">Nombre</Label>
+                <Label htmlFor="name">{t('Name', 'Nombre')}</Label>
                 <Input
                   id="name"
                   value={formData.name}
@@ -307,7 +309,7 @@ export default function AdminStore() {
                 />
               </div>
               <div>
-                <Label htmlFor="description">Descripción</Label>
+                <Label htmlFor="description">{t('Description', 'Descripción')}</Label>
                 <textarea
                   id="description"
                   value={formData.description}
@@ -318,7 +320,7 @@ export default function AdminStore() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="price">Precio ($)</Label>
+                  <Label htmlFor="price">{t('Price ($)', 'Precio ($)')}</Label>
                   <Input
                     id="price"
                     type="number"
@@ -329,7 +331,7 @@ export default function AdminStore() {
                   />
                 </div>
                 <div>
-                  <Label htmlFor="stock">Stock</Label>
+                  <Label htmlFor="stock">{t('Stock', 'Stock')}</Label>
                   <Input
                     id="stock"
                     type="number"
@@ -340,18 +342,18 @@ export default function AdminStore() {
                 </div>
               </div>
               <div>
-                <Label htmlFor="category">Categoría</Label>
+                <Label htmlFor="category">{t('Category', 'Categoría')}</Label>
                 <select
                   id="category"
                   value={formData.category}
                   onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                   className="w-full px-3 py-2 border border-slate-200 rounded-md"
                 >
-                  <option value="accesorios">Accesorios</option>
-                  <option value="detergentes">Detergentes</option>
-                  <option value="suavizantes">Suavizantes</option>
-                  <option value="quitamanchas">Quitamanchas</option>
-                  <option value="packs">Packs</option>
+                  <option value="accesorios">{t('Accessories', 'Accesorios')}</option>
+                  <option value="detergentes">{t('Detergents', 'Detergentes')}</option>
+                  <option value="suavizantes">{t('Fabric Softeners', 'Suavizantes')}</option>
+                  <option value="quitamanchas">{t('Stain Removers', 'Quitamanchas')}</option>
+                  <option value="packs">{t('Packs', 'Packs')}</option>
                 </select>
               </div>
               <div className="flex items-center gap-2">
@@ -362,14 +364,14 @@ export default function AdminStore() {
                   onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
                   className="rounded border-slate-300"
                 />
-                <Label htmlFor="is_active" className="cursor-pointer">Producto activo</Label>
+                <Label htmlFor="is_active" className="cursor-pointer">{t('Active product', 'Producto activo')}</Label>
               </div>
               <div className="flex gap-2 pt-4">
                 <Button type="button" variant="outline" onClick={() => setShowModal(false)} className="flex-1">
-                  Cancelar
+                  {t('Cancel', 'Cancelar')}
                 </Button>
                 <Button type="submit" className="flex-1 bg-sky-600 hover:bg-sky-700">
-                  {editingProduct ? 'Actualizar' : 'Crear'}
+                  {editingProduct ? t('Update', 'Actualizar') : t('Create', 'Crear')}
                 </Button>
               </div>
             </form>

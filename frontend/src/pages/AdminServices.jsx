@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { toast } from "sonner";
 import { Plus, Edit2, Trash2, Search } from "lucide-react";
+import { useLocale } from "../context/LocaleContext";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -22,13 +23,14 @@ const emptyForm = {
 };
 
 const priceUnitLabels = {
-  per_lb: "Por libra",
-  per_order: "Por orden",
-  per_month: "Por mes",
-  per_item: "Por pieza"
+  per_lb: "Per pound",
+  per_order: "Per order",
+  per_month: "Per month",
+  per_item: "Per item"
 };
 
 export default function AdminServices() {
+  const { t } = useLocale();
   const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -47,7 +49,7 @@ export default function AdminServices() {
       });
       setServices(res.data);
     } catch (error) {
-      toast.error("Error cargando servicios");
+      toast.error(t("Error loading services", "Error cargando servicios"));
     } finally {
       setLoading(false);
     }
@@ -82,28 +84,28 @@ export default function AdminServices() {
       };
       if (editingService) {
         await axios.put(`${API}/services/${editingService.id}`, payload);
-        toast.success("Servicio actualizado");
+        toast.success(t("Service updated", "Servicio actualizado"));
       } else {
         await axios.post(`${API}/services`, payload);
-        toast.success("Servicio creado");
+        toast.success(t("Service created", "Servicio creado"));
       }
       setDialogOpen(false);
       setEditingService(null);
       setForm(emptyForm);
       fetchServices(search);
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Error guardando servicio");
+      toast.error(error.response?.data?.detail || t("Error saving service", "Error guardando servicio"));
     }
   };
 
   const handleDelete = async (id) => {
-    if (!confirm("¿Eliminar este servicio?")) return;
+    if (!confirm(t("Delete this service?", "¿Eliminar este servicio?"))) return;
     try {
       await axios.delete(`${API}/services/${id}`);
-      toast.success("Servicio eliminado");
+      toast.success(t("Service deleted", "Servicio eliminado"));
       fetchServices(search);
     } catch (error) {
-      toast.error("Error eliminando servicio");
+      toast.error(t("Error deleting service", "Error eliminando servicio"));
     }
   };
 
@@ -117,19 +119,21 @@ export default function AdminServices() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Servicios</h1>
-          <p className="text-slate-600">Gestiona servicios, precios y estado</p>
+          <h1 className="text-2xl font-bold text-slate-900">{t("Services", "Servicios")}</h1>
+          <p className="text-slate-600">
+            {t("Manage services, pricing, and status", "Gestiona servicios, precios y estado")}
+          </p>
         </div>
         <Button onClick={() => openDialog()}>
           <Plus className="h-4 w-4 mr-2" />
-          Nuevo servicio
+          {t("New Service", "Nuevo servicio")}
         </Button>
       </div>
 
       <div className="relative max-w-md">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
         <Input
-          placeholder="Buscar servicios..."
+          placeholder={t("Search services...", "Buscar servicios...")}
           value={search}
           onChange={handleSearch}
           className="pl-10"
@@ -141,22 +145,22 @@ export default function AdminServices() {
           <table className="w-full">
             <thead className="bg-slate-50">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Servicio</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Categoría</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Precio</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Estado</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Orden</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Acciones</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t("Service", "Servicio")}</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t("Category", "Categoría")}</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t("Price", "Precio")}</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t("Status", "Estado")}</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">{t("Order", "Orden")}</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">{t("Actions", "Acciones")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
               {loading ? (
                 <tr>
-                  <td colSpan="6" className="px-4 py-6 text-center text-slate-500">Cargando...</td>
+                  <td colSpan="6" className="px-4 py-6 text-center text-slate-500">{t("Loading...", "Cargando...")}</td>
                 </tr>
               ) : services.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="px-4 py-6 text-center text-slate-500">Sin servicios</td>
+                  <td colSpan="6" className="px-4 py-6 text-center text-slate-500">{t("No services", "Sin servicios")}</td>
                 </tr>
               ) : (
                 services.map((service) => (
@@ -164,11 +168,11 @@ export default function AdminServices() {
                     <td className="px-4 py-3 text-sm font-medium text-slate-900">{service.name}</td>
                     <td className="px-4 py-3 text-sm text-slate-600">{service.category || "—"}</td>
                     <td className="px-4 py-3 text-sm text-slate-600">
-                      {service.price != null ? `$${service.price}` : "—"} {service.price_unit ? `(${priceUnitLabels[service.price_unit] || service.price_unit})` : ""}
+                      {service.price != null ? `$${service.price}` : "—"} {service.price_unit ? `(${t(priceUnitLabels[service.price_unit], priceUnitLabels[service.price_unit])})` : ""}
                     </td>
                     <td className="px-4 py-3 text-sm">
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${service.is_active ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500"}`}>
-                        {service.is_active ? "Activo" : "Inactivo"}
+                        {service.is_active ? t("Active", "Activo") : t("Inactive", "Inactivo")}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-600 text-right">{service.sort_order ?? 0}</td>
@@ -193,20 +197,20 @@ export default function AdminServices() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{editingService ? "Editar servicio" : "Nuevo servicio"}</DialogTitle>
+            <DialogTitle>{editingService ? t("Edit Service", "Editar servicio") : t("New Service", "Nuevo servicio")}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid md:grid-cols-2 gap-4">
               <div>
-                <Label>Nombre</Label>
+                <Label>{t("Name", "Nombre")}</Label>
                 <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
               </div>
               <div>
-                <Label>Categoría</Label>
+                <Label>{t("Category", "Categoría")}</Label>
                 <Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} />
               </div>
               <div>
-                <Label>Precio</Label>
+                <Label>{t("Price", "Precio")}</Label>
                 <Input
                   type="number"
                   step="0.01"
@@ -215,21 +219,21 @@ export default function AdminServices() {
                 />
               </div>
               <div>
-                <Label>Unidad de precio</Label>
+                <Label>{t("Price Unit", "Unidad de precio")}</Label>
                 <Select value={form.price_unit} onValueChange={(value) => setForm({ ...form, price_unit: value })}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Selecciona unidad" />
+                    <SelectValue placeholder={t("Select unit", "Selecciona unidad")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="per_lb">Por libra</SelectItem>
-                    <SelectItem value="per_order">Por orden</SelectItem>
-                    <SelectItem value="per_month">Por mes</SelectItem>
-                    <SelectItem value="per_item">Por pieza</SelectItem>
+                    <SelectItem value="per_lb">{t("Per pound", "Por libra")}</SelectItem>
+                    <SelectItem value="per_order">{t("Per order", "Por orden")}</SelectItem>
+                    <SelectItem value="per_month">{t("Per month", "Por mes")}</SelectItem>
+                    <SelectItem value="per_item">{t("Per item", "Por pieza")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div>
-                <Label>Orden</Label>
+                <Label>{t("Order", "Orden")}</Label>
                 <Input
                   type="number"
                   value={form.sort_order}
@@ -237,28 +241,28 @@ export default function AdminServices() {
                 />
               </div>
               <div>
-                <Label>Estado</Label>
+                <Label>{t("Status", "Estado")}</Label>
                 <Select value={form.is_active ? "active" : "inactive"} onValueChange={(value) => setForm({ ...form, is_active: value === "active" })}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Selecciona estado" />
+                    <SelectValue placeholder={t("Select status", "Selecciona estado")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="active">Activo</SelectItem>
-                    <SelectItem value="inactive">Inactivo</SelectItem>
+                    <SelectItem value="active">{t("Active", "Activo")}</SelectItem>
+                    <SelectItem value="inactive">{t("Inactive", "Inactivo")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
             <div>
-              <Label>Descripción</Label>
+              <Label>{t("Description", "Descripción")}</Label>
               <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={4} />
             </div>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
-                Cancelar
+                {t("Cancel", "Cancelar")}
               </Button>
               <Button type="submit">
-                {editingService ? "Guardar cambios" : "Crear servicio"}
+                {editingService ? t("Save Changes", "Guardar cambios") : t("Create Service", "Crear servicio")}
               </Button>
             </div>
           </form>

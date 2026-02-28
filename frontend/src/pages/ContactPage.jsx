@@ -18,34 +18,39 @@ import {
 } from "lucide-react";
 import PublicNav from "../components/PublicNav";
 import PublicFooter from "../components/PublicFooter";
+import { useLocale } from "../context/LocaleContext";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
-const FAQItem = ({ question, answer }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  return (
-    <div className="border-b border-slate-200 last:border-0">
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full py-4 flex items-center justify-between text-left"
-      >
-        <span className="font-semibold text-slate-900 pr-4">{question}</span>
-        {isOpen ? (
-          <ChevronUp className="h-5 w-5 text-sky-600 flex-shrink-0" />
-        ) : (
-          <ChevronDown className="h-5 w-5 text-slate-400 flex-shrink-0" />
-        )}
-      </button>
-      {isOpen && (
-        <div className="pb-4 text-slate-600 animate-fade-in">
-          {answer}
-        </div>
-      )}
-    </div>
-  );
-};
-
+// Mover FAQItem dentro del componente para acceder a t()
 export default function ContactPage() {
+  const { t } = useLocale();
+
+  // Componente FAQ interno
+  const FAQItem = ({ questionEn, questionEs, answerEn, answerEs }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    return (
+      <div className="border-b border-slate-200 last:border-0">
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className="w-full py-4 flex items-center justify-between text-left"
+        >
+          <span className="font-semibold text-slate-900 pr-4">{t(questionEn, questionEs)}</span>
+          {isOpen ? (
+            <ChevronUp className="h-5 w-5 text-sky-600 flex-shrink-0" />
+          ) : (
+            <ChevronDown className="h-5 w-5 text-slate-400 flex-shrink-0" />
+          )}
+        </button>
+        {isOpen && (
+          <div className="pb-4 text-slate-600 animate-fade-in">
+            {t(answerEn, answerEs)}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({
     name: "",
@@ -69,7 +74,7 @@ export default function ContactPage() {
       toast.success(res.data.message);
       setForm({ name: "", email: "", phone: "", subject: "", contact_method: "", message: "" });
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Error sending message");
+      toast.error(error.response?.data?.detail || t("Error sending message", "Error al enviar mensaje"));
     } finally {
       setSubmitting(false);
     }
@@ -82,13 +87,17 @@ export default function ContactPage() {
       {/* Hero Section */}
       <section className="pt-24 pb-16 bg-gradient-to-b from-sky-50 to-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-        <h1
-  className="text-4xl sm:text-5xl font-bold text-slate-900 mb-6 mt-12"
-  style={{ fontFamily: "'Playfair Display', serif" }}
->    Contact Us!
+          <h1
+            className="text-4xl sm:text-5xl font-bold text-slate-900 mb-6 mt-12"
+            style={{ fontFamily: "'Playfair Display', serif" }}
+          >
+            {t("Contact Us!", "¡Contáctanos!")}
           </h1>
           <p className="text-lg text-slate-600 max-w-2xl mx-auto">
-            Let's take care of your laundry, so you can focus on what matters most.
+            {t(
+              "Let's take care of your laundry, so you can focus on what matters most.",
+              "Nos encargamos de tu lavandería para que tú puedas concentrarte en lo que realmente importa."
+            )}
           </p>
         </div>
       </section>
@@ -97,9 +106,14 @@ export default function ContactPage() {
       <section className="py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
-            <p className="text-xl text-sky-600 font-semibold mb-2">Clean • Bright • Trusted</p>
+            <p className="text-xl text-sky-600 font-semibold mb-2">
+              {t("Clean • Bright • Trusted", "Limpio • Brillante • Confiable")}
+            </p>
             <p className="text-slate-600 max-w-2xl mx-auto">
-              If you have any questions, need help scheduling a pickup, or want to customize your laundry preferences, we're here to help. Contact us by phone or email and our team will respond as soon as possible.
+              {t(
+                "If you have any questions, need help scheduling a pickup, or want to customize your laundry preferences, we're here to help. Contact us by phone or email and our team will respond as soon as possible.",
+                "Si tienes alguna pregunta, necesitas ayuda para programar una recogida o deseas personalizar tus preferencias de lavandería, estamos aquí para ayudarte. Contáctanos por teléfono o correo electrónico y nuestro equipo responderá lo antes posible."
+              )}
             </p>
           </div>
 
@@ -113,7 +127,7 @@ export default function ContactPage() {
                       <Mail className="h-6 w-6 text-sky-600" />
                     </div>
                     <div>
-                      <p className="font-semibold text-slate-900">Email</p>
+                      <p className="font-semibold text-slate-900">{t("Email", "Correo")}</p>
                       <a href="mailto:info@venturafreshlaundry.com" className="text-sky-600 hover:underline">
                         info@venturafreshlaundry.com
                       </a>
@@ -124,7 +138,7 @@ export default function ContactPage() {
                       <Phone className="h-6 w-6 text-sky-600" />
                     </div>
                     <div>
-                      <p className="font-semibold text-slate-900">Phone / Text</p>
+                      <p className="font-semibold text-slate-900">{t("Phone / Text", "Teléfono / Mensaje")}</p>
                       <a href="tel:+18058368872" className="text-sky-600 hover:underline">
                         +1 (805) 836-8872
                       </a>
@@ -135,7 +149,7 @@ export default function ContactPage() {
                       <MapPin className="h-6 w-6 text-sky-600" />
                     </div>
                     <div>
-                      <p className="font-semibold text-slate-900">Address</p>
+                      <p className="font-semibold text-slate-900">{t("Address", "Dirección")}</p>
                       <p className="text-slate-600">5722 Telephone Rd #5, Ventura, CA 93003</p>
                     </div>
                   </div>
@@ -144,8 +158,8 @@ export default function ContactPage() {
                       <Clock className="h-6 w-6 text-sky-600" />
                     </div>
                     <div>
-                      <p className="font-semibold text-slate-900">Hours</p>
-                      <p className="text-slate-600">Monday - Sunday</p>
+                      <p className="font-semibold text-slate-900">{t("Hours", "Horario")}</p>
+                      <p className="text-slate-600">{t("Monday - Sunday", "Lunes - Domingo")}</p>
                       <p className="text-slate-600">7:00 AM - 10:00 PM</p>
                     </div>
                   </div>
@@ -170,12 +184,12 @@ export default function ContactPage() {
             {/* Contact Form */}
             <div>
               <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-8 shadow-lg border border-slate-100">
-                <h3 className="text-xl font-bold text-slate-900 mb-6">Send us a message</h3>
+                <h3 className="text-xl font-bold text-slate-900 mb-6">{t("Send us a message", "Envíanos un mensaje")}</h3>
                 
                 <div className="space-y-4">
                   <div className="grid sm:grid-cols-2 gap-4">
                     <div>
-                      <Label className="text-slate-700">Full Name *</Label>
+                      <Label className="text-slate-700">{t("Full Name *", "Nombre Completo *")}</Label>
                       <Input 
                         value={form.name}
                         onChange={(e) => setForm({...form, name: e.target.value})}
@@ -185,7 +199,7 @@ export default function ContactPage() {
                       />
                     </div>
                     <div>
-                      <Label className="text-slate-700">Email *</Label>
+                      <Label className="text-slate-700">{t("Email *", "Correo *")}</Label>
                       <Input 
                         type="email"
                         value={form.email}
@@ -199,50 +213,50 @@ export default function ContactPage() {
 
                   <div className="grid sm:grid-cols-2 gap-4">
                     <div>
-                      <Label className="text-slate-700">Phone</Label>
+                      <Label className="text-slate-700">{t("Phone", "Teléfono")}</Label>
                       <Input 
                         value={form.phone}
                         onChange={(e) => setForm({...form, phone: e.target.value})}
                         className="mt-1"
-                        placeholder="+1 (___) ___-____"
+                        placeholder={t("+1 (___) ___-____", "+1 (___) ___-____")}
                       />
                     </div>
                     <div>
-                      <Label className="text-slate-700">Best way to contact you</Label>
+                      <Label className="text-slate-700">{t("Best way to contact you", "Mejor forma de contactarte")}</Label>
                       <Select value={form.contact_method} onValueChange={(v) => setForm({...form, contact_method: v})}>
                         <SelectTrigger className="mt-1">
-                          <SelectValue placeholder="Select an option" />
+                          <SelectValue placeholder={t("Select an option", "Selecciona una opción")} />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="email">Email</SelectItem>
-                          <SelectItem value="phone">Phone Call</SelectItem>
-                          <SelectItem value="text">Text Message</SelectItem>
+                          <SelectItem value="email">{t("Email", "Correo")}</SelectItem>
+                          <SelectItem value="phone">{t("Phone Call", "Llamada")}</SelectItem>
+                          <SelectItem value="text">{t("Text Message", "Mensaje de texto")}</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                   </div>
 
                   <div>
-                    <Label className="text-slate-700">Subject *</Label>
+                    <Label className="text-slate-700">{t("Subject *", "Asunto *")}</Label>
                     <Input 
                       value={form.subject}
                       onChange={(e) => setForm({...form, subject: e.target.value})}
                       required
                       className="mt-1"
-                      placeholder="How can we help?"
+                      placeholder={t("How can we help?", "¿Cómo podemos ayudarte?")}
                       data-testid="contact-subject-input"
                     />
                   </div>
 
                   <div>
-                    <Label className="text-slate-700">Message *</Label>
+                    <Label className="text-slate-700">{t("Message *", "Mensaje *")}</Label>
                     <Textarea 
                       value={form.message}
                       onChange={(e) => setForm({...form, message: e.target.value})}
                       required
                       className="mt-1"
                       rows={5}
-                      placeholder="Tell us more about your inquiry..."
+                      placeholder={t("Tell us more about your inquiry...", "Cuéntanos más sobre tu consulta...")}
                       data-testid="contact-message-input"
                     />
                   </div>
@@ -253,9 +267,9 @@ export default function ContactPage() {
                     disabled={submitting}
                     data-testid="contact-submit-btn"
                   >
-                    {submitting ? "Sending..." : (
+                    {submitting ? t("Sending...", "Enviando...") : (
                       <>
-                        Submit <Send className="ml-2 h-4 w-4" />
+                        {t("Submit", "Enviar")} <Send className="ml-2 h-4 w-4" />
                       </>
                     )}
                   </Button>
@@ -269,40 +283,58 @@ export default function ContactPage() {
       {/* Tagline */}
       <section className="py-12 bg-sky-50">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-2xl md:text-3xl font-bold text-slate-900 mb-2">Simplify your days.</h2>
-          <p className="text-lg text-slate-600">We'll take care of the laundry.</p>
+          <h2 className="text-2xl md:text-3xl font-bold text-slate-900 mb-2">
+            {t("Simplify your days.", "Simplifica tus días.")}
+          </h2>
+          <p className="text-lg text-slate-600">
+            {t("We'll take care of the laundry.", "Nosotros nos encargamos de la lavandería.")}
+          </p>
         </div>
       </section>
 
       {/* FAQ Section */}
       <section className="py-20">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-bold text-slate-900 mb-8 text-center">Frequently Asked Questions</h2>
+          <h2 className="text-3xl font-bold text-slate-900 mb-8 text-center">
+            {t("Frequently Asked Questions", "Preguntas Frecuentes")}
+          </h2>
           
           <div className="bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-slate-100">
             <FAQItem 
-              question="What services do you offer?"
-              answer="We offer self-service laundry, professional wash & fold, and pickup & delivery services across Ventura County. We handle everything from everyday clothes to delicate items with care."
+              questionEn="What services do you offer?"
+              questionEs="¿Qué servicios ofrecen?"
+              answerEn="We offer self-service laundry, professional wash & fold, and pickup & delivery services across Ventura County. We handle everything from everyday clothes to delicate items with care."
+              answerEs="Ofrecemos servicio de lavandería de autoservicio, lavado y doblado profesional, y servicios de recogida y entrega en todo el condado de Ventura. Manejamos todo, desde ropa de uso diario hasta prendas delicadas con cuidado."
             />
             <FAQItem 
-              question="How do I get started?"
-              answer="Simply fill out the contact form above, call/text us at (805) 836-8872, or schedule a pickup directly. We'll confirm your pickup time and any special instructions you have."
+              questionEn="How do I get started?"
+              questionEs="¿Cómo empiezo?"
+              answerEn="Simply fill out the contact form above, call/text us at (805) 836-8872, or schedule a pickup directly. We'll confirm your pickup time and any special instructions you have."
+              answerEs="Simplemente completa el formulario de contacto de arriba, llámanos o envíanos un mensaje al (805) 836-8872, o programa una recogida directamente. Confirmaremos tu horario de recogida y cualquier instrucción especial que tengas."
             />
             <FAQItem 
-              question="What makes you different?"
-              answer="We focus on personalized service - your preferences are saved and followed every time. Plus, you get real-time text updates so you always know where your laundry is."
+              questionEn="What makes you different?"
+              questionEs="¿Qué los hace diferentes?"
+              answerEn="We focus on personalized service - your preferences are saved and followed every time. Plus, you get real-time text updates so you always know where your laundry is."
+              answerEs="Nos enfocamos en el servicio personalizado: tus preferencias se guardan y se siguen cada vez. Además, recibes actualizaciones por mensaje de texto en tiempo real para que siempre sepas dónde está tu ropa."
             />
             <FAQItem 
-              question="How can I contact you?"
-              answer="Call or text us at (805) 836-8872, email info@venturafreshlaundry.com, visit us at 5722 Telephone Rd #5, Ventura, CA 93003, or use the contact form above."
+              questionEn="How can I contact you?"
+              questionEs="¿Cómo puedo contactarlos?"
+              answerEn="Call or text us at (805) 836-8872, email info@venturafreshlaundry.com, visit us at 5722 Telephone Rd #5, Ventura, CA 93003, or use the contact form above."
+              answerEs="Llámanos o envíanos un mensaje al (805) 836-8872, escríbenos a info@venturafreshlaundry.com, visítanos en 5722 Telephone Rd #5, Ventura, CA 93003, o usa el formulario de contacto de arriba."
             />
             <FAQItem 
-              question="What's your pricing model?"
-              answer="We charge by the pound for wash & fold services, with pickup and delivery included for orders over a minimum weight. Contact us for commercial pricing tailored to your business needs."
+              questionEn="What's your pricing model?"
+              questionEs="¿Cómo es su modelo de precios?"
+              answerEn="We charge by the pound for wash & fold services, with pickup and delivery included for orders over a minimum weight. Contact us for commercial pricing tailored to your business needs."
+              answerEs="Cobramos por libra para los servicios de lavado y doblado, con recogida y entrega incluida para pedidos que superen un peso mínimo. Contáctanos para obtener precios comerciales adaptados a las necesidades de tu negocio."
             />
             <FAQItem 
-              question="What's it like to work with you?"
-              answer="Working with us is simple and hassle-free. You schedule a pickup, we collect your laundry, clean it to your exact preferences, and deliver it back to you clean and folded. You'll receive updates at every step."
+              questionEn="What's it like to work with you?"
+              questionEs="¿Cómo es trabajar con ustedes?"
+              answerEn="Working with us is simple and hassle-free. You schedule a pickup, we collect your laundry, clean it to your exact preferences, and deliver it back to you clean and folded. You'll receive updates at every step."
+              answerEs="Trabajar con nosotros es simple y sin complicaciones. Programa una recogida, recogemos tu ropa, la lavamos según tus preferencias exactas y te la devolvemos limpia y doblada. Recibirás actualizaciones en cada paso."
             />
           </div>
         </div>

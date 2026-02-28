@@ -16,6 +16,7 @@ import {
 import { Truck, CheckCircle } from "lucide-react";
 import PublicNav from "../components/PublicNav";
 import PublicFooter from "../components/PublicFooter";
+import { useLocale } from "../context/LocaleContext";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -30,6 +31,7 @@ const getErrorMessage = (error) => {
 };
 
 export default function SchedulePickup() {
+  const { t, locale } = useLocale();
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
@@ -74,15 +76,15 @@ export default function SchedulePickup() {
 
     // Validaciones simples (porque Select no siempre “respeta” required como un input nativo)
     if (!form.contact_method) {
-      toast.error("Please select the best way to contact you.");
+      toast.error(t("Please select the best way to contact you.", "Por favor selecciona la mejor forma de contactarte."));
       return;
     }
     if (!form.service_type) {
-      toast.error("Please select a service type.");
+      toast.error(t("Please select a service type.", "Por favor selecciona un tipo de servicio."));
       return;
     }
     if (!form.pickup_time) {
-      toast.error("Please select a preferred time window.");
+      toast.error(t("Please select a preferred time window.", "Por favor selecciona un horario preferido."));
       return;
     }
 
@@ -110,7 +112,7 @@ export default function SchedulePickup() {
         notes: `Preferred contact: ${form.contact_method}\n${form.notes?.trim() || ""}`.trim(),
       });
 
-      toast.success(res.data?.message || "Request submitted!");
+      toast.success(res.data?.message || t("Request submitted!", "¡Solicitud enviada!"));
       setSubmitted(true);
     } catch (error) {
       toast.error(getErrorMessage(error));
@@ -124,7 +126,7 @@ export default function SchedulePickup() {
       <div className="min-h-screen bg-white">
         <PublicNav />
 
-        {/* 👇 pt-40 para que no choque con el nav absolute */}
+        {/* pt-40 para que no choque con el nav absolute */}
         <section className="pt-40 pb-20">
           <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
             <div className="h-20 w-20 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-6">
@@ -132,12 +134,14 @@ export default function SchedulePickup() {
             </div>
 
             <h1 className="text-3xl font-bold text-slate-900 mb-4">
-              Request Submitted!
+              {t("Request Submitted!", "¡Solicitud enviada!")}
             </h1>
 
             <p className="text-lg text-slate-600 mb-8">
-              Thank you for scheduling a pickup. Our team will reach out to
-              confirm your pickup time and service preferences.
+              {t(
+                "Thank you for scheduling a pickup. Our team will reach out to confirm your pickup time and service preferences.",
+                "Gracias por programar una recogida. Nuestro equipo se comunicará para confirmar tu horario de recogida y preferencias de servicio."
+              )}
             </p>
 
             <Button
@@ -147,7 +151,7 @@ export default function SchedulePickup() {
               }}
               className="bg-sky-500 hover:bg-sky-600 text-white rounded-full px-8"
             >
-              Schedule Another Pickup
+              {t("Schedule Another Pickup", "Programar otra recogida")}
             </Button>
           </div>
         </section>
@@ -161,7 +165,7 @@ export default function SchedulePickup() {
     <div className="min-h-screen bg-white">
       <PublicNav />
 
-      {/* 👇 pt-40 para que el hero quede abajo del nav absolute */}
+      {/* pt-40 para que el hero quede abajo del nav absolute */}
       <section className="pt-40 pb-8 bg-gradient-to-b from-sky-50 to-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <div className="h-16 w-16 rounded-full bg-sky-100 flex items-center justify-center mx-auto mb-6">
@@ -172,12 +176,14 @@ export default function SchedulePickup() {
             className="text-4xl sm:text-5xl font-bold text-slate-900 mb-4"
             style={{ fontFamily: "'Playfair Display', serif" }}
           >
-            Your Pick-up Begins Here!
+            {t("Your Pick-up Begins Here!", "¡Tu recogida comienza aquí!")}
           </h1>
 
           <p className="text-lg text-slate-600 max-w-2xl mx-auto">
-            Provide your information below and our team will reach out to confirm
-            your pickup time and service preferences.
+            {t(
+              "Provide your information below and our team will reach out to confirm your pickup time and service preferences.",
+              "Proporciona tu información a continuación y nuestro equipo se comunicará para confirmar tu horario de recogida y preferencias de servicio."
+            )}
           </p>
         </div>
       </section>
@@ -190,15 +196,15 @@ export default function SchedulePickup() {
             className="bg-white rounded-2xl p-6 md:p-8 shadow-lg border border-slate-100"
           >
             <h2 className="text-2xl font-bold text-slate-900 mb-6">
-              Let&apos;s Work Together
+              {t("Let's Work Together", "Trabajemos juntos")}
             </h2>
 
             {/* Name */}
             <div className="mb-6">
-              <h3 className="font-semibold text-slate-900 mb-3">Name</h3>
+              <h3 className="font-semibold text-slate-900 mb-3">{t("Name", "Nombre")}</h3>
               <div className="grid sm:grid-cols-2 gap-4">
                 <div>
-                  <Label className="text-slate-600 text-sm">First Name *</Label>
+                  <Label className="text-slate-600 text-sm">{t("First Name *", "Nombre *")}</Label>
                   <Input
                     value={form.first_name}
                     onChange={(e) =>
@@ -210,7 +216,7 @@ export default function SchedulePickup() {
                   />
                 </div>
                 <div>
-                  <Label className="text-slate-600 text-sm">Last Name *</Label>
+                  <Label className="text-slate-600 text-sm">{t("Last Name *", "Apellido *")}</Label>
                   <Input
                     value={form.last_name}
                     onChange={(e) =>
@@ -226,20 +232,20 @@ export default function SchedulePickup() {
 
             {/* Email */}
             <div className="mb-6">
-              <h3 className="font-semibold text-slate-900 mb-3">Email *</h3>
+              <h3 className="font-semibold text-slate-900 mb-3">{t("Email *", "Correo *")}</h3>
               <Input
                 type="email"
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
                 required
-                placeholder="your@email.com"
+                placeholder={t("your@email.com", "tu@correo.com")}
                 data-testid="pickup-email"
               />
             </div>
 
             {/* Phone */}
             <div className="mb-6">
-              <h3 className="font-semibold text-slate-900 mb-3">Phone *</h3>
+              <h3 className="font-semibold text-slate-900 mb-3">{t("Phone *", "Teléfono *")}</h3>
               <Input
                 value={form.phone}
                 onChange={(e) => setForm({ ...form, phone: e.target.value })}
@@ -252,30 +258,30 @@ export default function SchedulePickup() {
             {/* Contact Method */}
             <div className="mb-6">
               <Label className="font-semibold text-slate-900">
-                Best way to contact you *
+                {t("Best way to contact you *", "Mejor forma de contactarte *")}
               </Label>
               <Select
                 value={form.contact_method}
                 onValueChange={(v) => setForm({ ...form, contact_method: v })}
               >
                 <SelectTrigger className="mt-2">
-                  <SelectValue placeholder="Select an option" />
+                  <SelectValue placeholder={t("Select an option", "Selecciona una opción")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="phone">Phone Call</SelectItem>
-                  <SelectItem value="text">Text Message</SelectItem>
-                  <SelectItem value="email">Email</SelectItem>
+                  <SelectItem value="phone">{t("Phone Call", "Llamada telefónica")}</SelectItem>
+                  <SelectItem value="text">{t("Text Message", "Mensaje de texto")}</SelectItem>
+                  <SelectItem value="email">{t("Email", "Correo")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             {/* Address */}
             <div className="mb-6">
-              <h3 className="font-semibold text-slate-900 mb-3">Address *</h3>
+              <h3 className="font-semibold text-slate-900 mb-3">{t("Address *", "Dirección *")}</h3>
               <div className="space-y-4">
                 <div>
                   <Label className="text-slate-600 text-sm">
-                    Address Line 1 *
+                    {t("Address Line 1 *", "Dirección línea 1 *")}
                   </Label>
                   <Input
                     value={form.address_line1}
@@ -284,26 +290,26 @@ export default function SchedulePickup() {
                     }
                     required
                     className="mt-1"
-                    placeholder="Street address"
+                    placeholder={t("Street address", "Dirección")}
                     data-testid="pickup-address1"
                   />
                 </div>
 
                 <div>
-                  <Label className="text-slate-600 text-sm">Address Line 2</Label>
+                  <Label className="text-slate-600 text-sm">{t("Address Line 2", "Dirección línea 2")}</Label>
                   <Input
                     value={form.address_line2}
                     onChange={(e) =>
                       setForm({ ...form, address_line2: e.target.value })
                     }
                     className="mt-1"
-                    placeholder="Apt, Suite, Unit, etc. (optional)"
+                    placeholder={t("Apt, Suite, Unit, etc. (optional)", "Apto, Suite, Unidad, etc. (opcional)")}
                   />
                 </div>
 
                 <div className="grid sm:grid-cols-3 gap-4">
                   <div>
-                    <Label className="text-slate-600 text-sm">City *</Label>
+                    <Label className="text-slate-600 text-sm">{t("City *", "Ciudad *")}</Label>
                     <Input
                       value={form.city}
                       onChange={(e) => setForm({ ...form, city: e.target.value })}
@@ -313,7 +319,7 @@ export default function SchedulePickup() {
                     />
                   </div>
                   <div>
-                    <Label className="text-slate-600 text-sm">State *</Label>
+                    <Label className="text-slate-600 text-sm">{t("State *", "Estado *")}</Label>
                     <Input
                       value={form.state}
                       onChange={(e) =>
@@ -321,12 +327,12 @@ export default function SchedulePickup() {
                       }
                       required
                       className="mt-1"
-                      placeholder="CA"
+                      placeholder={t("CA", "CA")}
                       data-testid="pickup-state"
                     />
                   </div>
                   <div>
-                    <Label className="text-slate-600 text-sm">ZIP Code *</Label>
+                    <Label className="text-slate-600 text-sm">{t("ZIP Code *", "Código postal *")}</Label>
                     <Input
                       value={form.zip_code}
                       onChange={(e) =>
@@ -344,47 +350,50 @@ export default function SchedulePickup() {
             {/* Laundry Preferences */}
             <div className="mb-6">
               <h3 className="font-semibold text-slate-900 mb-3">
-                Laundry Preferences (Optional)
+                {t("Laundry Preferences (Optional)", "Preferencias de lavandería (Opcional)")}
               </h3>
               <Textarea
                 value={form.notes}
                 onChange={(e) => setForm({ ...form, notes: e.target.value })}
                 rows={3}
-                placeholder="Detergent type, folding style, hang dry items, special instructions, etc."
+                placeholder={t(
+                  "Detergent type, folding style, hang dry items, special instructions, etc.",
+                  "Tipo de detergente, estilo de doblado, prendas para secar al aire, instrucciones especiales, etc."
+                )}
               />
             </div>
 
             {/* Service Type */}
             <div className="mb-6">
               <Label className="font-semibold text-slate-900">
-                Type of service *
+                {t("Type of service *", "Tipo de servicio *")}
               </Label>
               <Select
                 value={form.service_type}
                 onValueChange={(v) => setForm({ ...form, service_type: v })}
               >
                 <SelectTrigger className="mt-2">
-                  <SelectValue placeholder="Select an option" />
+                  <SelectValue placeholder={t("Select an option", "Selecciona una opción")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="pickup_delivery">Pickup & Delivery</SelectItem>
-                  <SelectItem value="commercial">Commercial / B2B</SelectItem>
+                  <SelectItem value="pickup_delivery">{t("Pickup & Delivery", "Recogida y Entrega")}</SelectItem>
+                  <SelectItem value="commercial">{t("Commercial / B2B", "Comercial / B2B")}</SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-xs text-slate-500 mt-2">
-                ¿Necesitas Wash & Fold?{" "}
+                {t("Need Wash & Fold?", "¿Necesitas Wash & Fold?")}{" "}
                 <Link to="/wash-fold" className="text-sky-600 hover:underline" data-testid="wash-fold-form-link">
-                  Ir al formulario
+                  {t("Go to form", "Ir al formulario")}
                 </Link>
               </p>
             </div>
 
             {/* Pickup Date & Time */}
             <div className="mb-8">
-              <h3 className="font-semibold text-slate-900 mb-3">Pickup Schedule</h3>
+              <h3 className="font-semibold text-slate-900 mb-3">{t("Pickup Schedule", "Horario de recogida")}</h3>
               <div className="grid sm:grid-cols-2 gap-4">
                 <div>
-                  <Label className="text-slate-600 text-sm">Preferred Date</Label>
+                  <Label className="text-slate-600 text-sm">{t("Preferred Date", "Fecha preferida")}</Label>
                   <Input
                     type="date"
                     value={form.pickup_date}
@@ -397,20 +406,20 @@ export default function SchedulePickup() {
                 </div>
 
                 <div>
-                  <Label className="text-slate-600 text-sm">Preferred Time *</Label>
+                  <Label className="text-slate-600 text-sm">{t("Preferred Time *", "Hora preferida *")}</Label>
                   <Select
                     value={form.pickup_time}
                     onValueChange={(v) => setForm({ ...form, pickup_time: v })}
                   >
                     <SelectTrigger className="mt-1">
-                      <SelectValue placeholder="Select time window" />
+                      <SelectValue placeholder={t("Select time window", "Selecciona horario")} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="8am-12pm">8:00 AM - 12:00 PM</SelectItem>
-                      <SelectItem value="2pm-6pm">2:00 PM - 6:00 PM</SelectItem>
+                      <SelectItem value="8am-12pm">{t("8:00 AM - 12:00 PM", "8:00 AM - 12:00 PM")}</SelectItem>
+                      <SelectItem value="2pm-6pm">{t("2:00 PM - 6:00 PM", "2:00 PM - 6:00 PM")}</SelectItem>
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-slate-500 mt-1">Pacific Time</p>
+                  <p className="text-xs text-slate-500 mt-1">{t("Pacific Time", "Hora del Pacífico")}</p>
                 </div>
               </div>
             </div>
@@ -421,7 +430,7 @@ export default function SchedulePickup() {
               disabled={submitting}
               data-testid="pickup-submit-btn"
             >
-              {submitting ? "Submitting..." : "Submit"}
+              {submitting ? t("Submitting...", "Enviando...") : t("Submit", "Enviar")}
             </Button>
           </form>
         </div>

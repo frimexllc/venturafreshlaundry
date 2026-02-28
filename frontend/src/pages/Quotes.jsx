@@ -9,16 +9,9 @@ import { Textarea } from "../components/ui/textarea";
 import { toast } from "sonner";
 import { Plus, Building2, MoreHorizontal, Eye, Phone, Mail } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "../components/ui/dropdown-menu";
+import { useLocale } from "../context/LocaleContext";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
-
-const statusLabels = {
-  new: { label: "Nueva", class: "badge-pending" },
-  sent: { label: "Enviada", class: "badge-processing" },
-  negotiating: { label: "Negociando", class: "badge-processing" },
-  won: { label: "Ganada", class: "badge-completed" },
-  lost: { label: "Perdida", class: "badge-cancelled" }
-};
 
 const emptyForm = {
   company_name: "",
@@ -32,6 +25,7 @@ const emptyForm = {
 };
 
 export default function Quotes() {
+  const { t, locale } = useLocale();
   const [quotes, setQuotes] = useState([]);
   const [statusFilter, setStatusFilter] = useState("all");
   const [loading, setLoading] = useState(true);
@@ -39,6 +33,15 @@ export default function Quotes() {
   const [form, setForm] = useState(emptyForm);
   const [submitting, setSubmitting] = useState(false);
   const [viewQuote, setViewQuote] = useState(null);
+
+  // Status labels with translation
+  const statusLabels = {
+    new: { label: t("New", "Nueva"), class: "badge-pending" },
+    sent: { label: t("Sent", "Enviada"), class: "badge-processing" },
+    negotiating: { label: t("Negotiating", "Negociando"), class: "badge-processing" },
+    won: { label: t("Won", "Ganada"), class: "badge-completed" },
+    lost: { label: t("Lost", "Perdida"), class: "badge-cancelled" }
+  };
 
   useEffect(() => {
     fetchQuotes();
@@ -50,7 +53,7 @@ export default function Quotes() {
       const res = await axios.get(`${API}/quotes`, { params });
       setQuotes(res.data);
     } catch (error) {
-      toast.error("Error cargando cotizaciones");
+      toast.error(t("Error loading quotes", "Error cargando cotizaciones"));
     } finally {
       setLoading(false);
     }
@@ -66,12 +69,12 @@ export default function Quotes() {
         estimated_lbs_per_week: form.estimated_lbs_per_week ? parseFloat(form.estimated_lbs_per_week) : null
       };
       await axios.post(`${API}/quotes`, data);
-      toast.success("Cotización creada");
+      toast.success(t("Quote created", "Cotización creada"));
       setDialogOpen(false);
       setForm(emptyForm);
       fetchQuotes();
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Error creando cotización");
+      toast.error(error.response?.data?.detail || t("Error creating quote", "Error creando cotización"));
     } finally {
       setSubmitting(false);
     }
@@ -80,26 +83,26 @@ export default function Quotes() {
   const updateStatus = async (quoteId, newStatus) => {
     try {
       await axios.put(`${API}/quotes/${quoteId}`, { status: newStatus });
-      toast.success("Estado actualizado");
+      toast.success(t("Status updated", "Estado actualizado"));
       fetchQuotes();
     } catch (error) {
-      toast.error("Error actualizando estado");
+      toast.error(t("Error updating status", "Error actualizando estado"));
     }
   };
 
   const convertToLead = async (quoteId) => {
     try {
       await axios.post(`${API}/quotes/${quoteId}/convert-to-lead`);
-      toast.success("Cotización convertida a lead");
+      toast.success(t("Quote converted to lead", "Cotización convertida a lead"));
       fetchQuotes();
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Error convirtiendo a lead");
+      toast.error(error.response?.data?.detail || t("Error converting to lead", "Error convirtiendo a lead"));
     }
   };
 
   const formatDate = (dateStr) => {
     if (!dateStr) return "-";
-    return new Date(dateStr).toLocaleDateString("es-MX", {
+    return new Date(dateStr).toLocaleDateString(locale === "es" ? "es-ES" : "en-US", {
       month: "short",
       day: "numeric",
       year: "numeric"
@@ -110,23 +113,23 @@ export default function Quotes() {
     <div data-testid="quotes-page" className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Cotizaciones B2B</h1>
-          <p className="text-slate-500 mt-1">Pipeline de clientes comerciales</p>
+          <h1 className="text-2xl font-bold text-slate-900">{t("B2B Quotes", "Cotizaciones B2B")}</h1>
+          <p className="text-slate-500 mt-1">{t("Commercial client pipeline", "Pipeline de clientes comerciales")}</p>
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
             <Button className="btn-primary" data-testid="add-quote-btn">
               <Plus className="h-4 w-4 mr-2" />
-              Nueva Cotización
+              {t("New Quote", "Nueva Cotización")}
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-lg">
+          <DialogContent className="sm:max-w-lg bg-white" style={{ backgroundColor: 'white', opacity: 1 }}>
             <DialogHeader>
-              <DialogTitle>Nueva Cotización B2B</DialogTitle>
+              <DialogTitle>{t("New B2B Quote", "Nueva Cotización B2B")}</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4 mt-4">
               <div>
-                <Label>Empresa *</Label>
+                <Label>{t("Company *", "Empresa *")}</Label>
                 <Input
                   value={form.company_name}
                   onChange={(e) => setForm({ ...form, company_name: e.target.value })}
@@ -137,7 +140,7 @@ export default function Quotes() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Contacto *</Label>
+                  <Label>{t("Contact *", "Contacto *")}</Label>
                   <Input
                     value={form.contact_name}
                     onChange={(e) => setForm({ ...form, contact_name: e.target.value })}
@@ -147,19 +150,19 @@ export default function Quotes() {
                   />
                 </div>
                 <div>
-                  <Label>Industria</Label>
+                  <Label>{t("Industry", "Industria")}</Label>
                   <Input
                     value={form.industry}
                     onChange={(e) => setForm({ ...form, industry: e.target.value })}
                     className="mt-1.5"
-                    placeholder="Ej: Hotelería, Restaurantes"
+                    placeholder={t("e.g. Hospitality, Restaurants", "Ej: Hotelería, Restaurantes")}
                     data-testid="quote-industry-input"
                   />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Email</Label>
+                  <Label>{t("Email", "Email")}</Label>
                   <Input
                     type="email"
                     value={form.email}
@@ -169,7 +172,7 @@ export default function Quotes() {
                   />
                 </div>
                 <div>
-                  <Label>Teléfono</Label>
+                  <Label>{t("Phone", "Teléfono")}</Label>
                   <Input
                     value={form.phone}
                     onChange={(e) => setForm({ ...form, phone: e.target.value })}
@@ -179,7 +182,7 @@ export default function Quotes() {
                 </div>
               </div>
               <div>
-                <Label>Libras Estimadas por Semana</Label>
+                <Label>{t("Estimated lbs per week", "Libras Estimadas por Semana")}</Label>
                 <Input
                   type="number"
                   value={form.estimated_lbs_per_week}
@@ -189,18 +192,18 @@ export default function Quotes() {
                 />
               </div>
               <div>
-                <Label>Necesidades del Servicio</Label>
+                <Label>{t("Service needs", "Necesidades del Servicio")}</Label>
                 <Textarea
                   value={form.service_needs}
                   onChange={(e) => setForm({ ...form, service_needs: e.target.value })}
                   className="mt-1.5"
                   rows={2}
-                  placeholder="Describa las necesidades específicas..."
+                  placeholder={t("Describe specific needs...", "Describa las necesidades específicas...")}
                   data-testid="quote-needs-input"
                 />
               </div>
               <div>
-                <Label>Notas</Label>
+                <Label>{t("Notes", "Notas")}</Label>
                 <Textarea
                   value={form.notes}
                   onChange={(e) => setForm({ ...form, notes: e.target.value })}
@@ -211,10 +214,10 @@ export default function Quotes() {
               </div>
               <div className="flex justify-end gap-3 pt-4">
                 <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
-                  Cancelar
+                  {t("Cancel", "Cancelar")}
                 </Button>
                 <Button type="submit" className="btn-primary" disabled={submitting} data-testid="quote-submit-btn">
-                  {submitting ? "Creando..." : "Crear Cotización"}
+                  {submitting ? t("Creating...", "Creando...") : t("Create Quote", "Crear Cotización")}
                 </Button>
               </div>
             </form>
@@ -233,16 +236,16 @@ export default function Quotes() {
             className={statusFilter === status ? "bg-sky-600 hover:bg-sky-700" : ""}
             data-testid={`filter-quote-${status}`}
           >
-            {status === "all" ? "Todas" : statusLabels[status]?.label || status}
+            {status === "all" ? t("All", "Todas") : statusLabels[status]?.label || status}
           </Button>
         ))}
       </div>
 
       {/* Quote Detail Dialog */}
       <Dialog open={!!viewQuote} onOpenChange={() => setViewQuote(null)}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg bg-white" style={{ backgroundColor: 'white', opacity: 1 }}>
           <DialogHeader>
-            <DialogTitle>Cotización {viewQuote?.quote_number}</DialogTitle>
+            <DialogTitle>{t("Quote", "Cotización")} {viewQuote?.quote_number}</DialogTitle>
           </DialogHeader>
           {viewQuote && (
             <div className="space-y-4 mt-4">
@@ -252,42 +255,42 @@ export default function Quotes() {
                 </div>
                 <div>
                   <p className="font-semibold text-lg">{viewQuote.company_name}</p>
-                  <p className="text-sm text-slate-500">{viewQuote.industry || "Sin industria"}</p>
+                  <p className="text-sm text-slate-500">{viewQuote.industry || t("No industry", "Sin industria")}</p>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm text-slate-500">Contacto</p>
+                  <p className="text-sm text-slate-500">{t("Contact", "Contacto")}</p>
                   <p className="font-medium">{viewQuote.contact_name}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-slate-500">Estado</p>
+                  <p className="text-sm text-slate-500">{t("Status", "Estado")}</p>
                   <span className={statusLabels[viewQuote.status]?.class}>{statusLabels[viewQuote.status]?.label}</span>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm text-slate-500">Email</p>
+                  <p className="text-sm text-slate-500">{t("Email", "Email")}</p>
                   <p className="font-medium">{viewQuote.email || "-"}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-slate-500">Teléfono</p>
+                  <p className="text-sm text-slate-500">{t("Phone", "Teléfono")}</p>
                   <p className="font-medium">{viewQuote.phone || "-"}</p>
                 </div>
               </div>
               <div>
-                <p className="text-sm text-slate-500">Lbs/Semana Estimadas</p>
+                <p className="text-sm text-slate-500">{t("Estimated lbs/week", "Lbs/Semana Estimadas")}</p>
                 <p className="font-medium">{viewQuote.estimated_lbs_per_week || "-"}</p>
               </div>
               {viewQuote.service_needs && (
                 <div>
-                  <p className="text-sm text-slate-500">Necesidades</p>
+                  <p className="text-sm text-slate-500">{t("Needs", "Necesidades")}</p>
                   <p className="font-medium">{viewQuote.service_needs}</p>
                 </div>
               )}
               {viewQuote.notes && (
                 <div>
-                  <p className="text-sm text-slate-500">Notas</p>
+                  <p className="text-sm text-slate-500">{t("Notes", "Notas")}</p>
                   <p className="font-medium">{viewQuote.notes}</p>
                 </div>
               )}
@@ -302,22 +305,22 @@ export default function Quotes() {
           <table className="w-full">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">Cotización</th>
-                <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">Empresa</th>
-                <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">Contacto</th>
-                <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">Lbs/Semana</th>
-                <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">Estado</th>
+                <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">{t("Quote", "Cotización")}</th>
+                <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">{t("Company", "Empresa")}</th>
+                <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">{t("Contact", "Contacto")}</th>
+                <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">{t("Lbs/Week", "Lbs/Semana")}</th>
+                <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">{t("Status", "Estado")}</th>
                 <th className="text-right text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-8 text-slate-500">Cargando...</td>
+                  <td colSpan={6} className="text-center py-8 text-slate-500">{t("Loading...", "Cargando...")}</td>
                 </tr>
               ) : quotes.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-8 text-slate-500">No hay cotizaciones</td>
+                  <td colSpan={6} className="text-center py-8 text-slate-500">{t("No quotes", "No hay cotizaciones")}</td>
                 </tr>
               ) : (
                 quotes.map((quote) => (
@@ -333,7 +336,7 @@ export default function Quotes() {
                         </div>
                         <div>
                           <p className="font-medium text-slate-900">{quote.company_name}</p>
-                          <p className="text-xs text-slate-400">{quote.industry || "Sin industria"}</p>
+                          <p className="text-xs text-slate-400">{quote.industry || t("No industry", "Sin industria")}</p>
                         </div>
                       </div>
                     </td>
@@ -366,26 +369,26 @@ export default function Quotes() {
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => setViewQuote(quote)}>
                             <Eye className="h-4 w-4 mr-2" />
-                            Ver detalles
+                            {t("View details", "Ver detalles")}
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           {quote.status === "new" && (
                             <DropdownMenuItem onClick={() => updateStatus(quote.id, "sent")}>
-                              Marcar Enviada
+                              {t("Mark as Sent", "Marcar Enviada")}
                             </DropdownMenuItem>
                           )}
                           {quote.status === "sent" && (
                             <DropdownMenuItem onClick={() => updateStatus(quote.id, "negotiating")}>
-                              Marcar Negociando
+                              {t("Mark as Negotiating", "Marcar Negociando")}
                             </DropdownMenuItem>
                           )}
                           {['new', 'sent', 'negotiating'].includes(quote.status) && (
                             <>
                               <DropdownMenuItem onClick={() => updateStatus(quote.id, "won")} className="text-emerald-600">
-                                Marcar Ganada
+                                {t("Mark as Won", "Marcar Ganada")}
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => updateStatus(quote.id, "lost")} className="text-red-600">
-                                Marcar Perdida
+                                {t("Mark as Lost", "Marcar Perdida")}
                               </DropdownMenuItem>
                             </>
                           )}
@@ -397,7 +400,7 @@ export default function Quotes() {
                                 data-testid={`quote-convert-lead-${quote.id}`}
                                 className="text-emerald-600"
                               >
-                                Convertir a Lead
+                                {t("Convert to Lead", "Convertir a Lead")}
                               </DropdownMenuItem>
                             </>
                           )}

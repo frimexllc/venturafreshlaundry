@@ -40,7 +40,7 @@ export default function AuditLog() {
       const res = await axios.get(`${API}/audit-logs`, { params });
       setLogs(res.data);
     } catch (error) {
-      toast.error("Error cargando audit log");
+      toast.error("Error loading audit log");
     } finally {
       setLoading(false);
     }
@@ -49,7 +49,7 @@ export default function AuditLog() {
   const formatDate = (dateStr) => {
     if (!dateStr) return "-";
     const date = new Date(dateStr);
-    return date.toLocaleDateString("es-MX", {
+    return date.toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
       hour: "2-digit",
@@ -67,22 +67,22 @@ export default function AuditLog() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Audit Log</h1>
-          <p className="text-slate-500 mt-1">Historial de eventos del sistema</p>
+          <p className="text-slate-500 mt-1">System event history</p>
         </div>
         <div className="flex items-center gap-3">
           <Select value={entityFilter} onValueChange={setEntityFilter}>
             <SelectTrigger className="w-[180px]" data-testid="audit-entity-filter">
-              <SelectValue placeholder="Filtrar por entidad" />
+              <SelectValue placeholder="Filter by entity" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todas las entidades</SelectItem>
-              <SelectItem value="customer">Clientes</SelectItem>
-              <SelectItem value="order">Órdenes</SelectItem>
-              <SelectItem value="quote">Cotizaciones</SelectItem>
+              <SelectItem value="all">All entities</SelectItem>
+              <SelectItem value="customer">Customers</SelectItem>
+              <SelectItem value="order">Orders</SelectItem>
+              <SelectItem value="quote">Quotes</SelectItem>
               <SelectItem value="lead">Leads</SelectItem>
               <SelectItem value="ticket">Tickets</SelectItem>
               <SelectItem value="ingest">Ingest</SelectItem>
-              <SelectItem value="user">Usuarios</SelectItem>
+              <SelectItem value="user">Users</SelectItem>
             </SelectContent>
           </Select>
           <Button variant="outline" onClick={fetchLogs} data-testid="refresh-audit-btn">
@@ -100,7 +100,7 @@ export default function AuditLog() {
         ) : logs.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-slate-500">
             <ClipboardList className="h-12 w-12 mb-3 text-slate-300" />
-            <p>No hay eventos registrados</p>
+            <p>No events recorded</p>
           </div>
         ) : (
           <div className="divide-y divide-slate-100">

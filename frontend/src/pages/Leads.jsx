@@ -9,42 +9,53 @@ import { Textarea } from "../components/ui/textarea";
 import { toast } from "sonner";
 import { Plus, UserPlus, MoreHorizontal, ArrowRight, Mail, Phone } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "../components/ui/dropdown-menu";
+import { useLocale } from "../context/LocaleContext";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
-const statusLabels = {
-  new: { label: "Nuevo", class: "badge-pending" },
-  contacted: { label: "Contactado", class: "badge-processing" },
-  qualified: { label: "Calificado", class: "badge-processing" },
-  converted: { label: "Convertido", class: "badge-completed" },
-  lost: { label: "Perdido", class: "badge-cancelled" }
-};
-
-const sourceLabels = {
-  website: "Sitio Web",
-  referral: "Referido",
-  social: "Redes Sociales",
-  walk_in: "Walk-in",
-  b2b_quote: "Cotización B2B",
-  other: "Otro"
-};
-
-const emptyForm = {
-  name: "",
-  email: "",
-  phone: "",
-  source: "website",
-  interest_type: "",
-  notes: ""
-};
-
 export default function Leads() {
+  const { t } = useLocale();
   const [leads, setLeads] = useState([]);
   const [statusFilter, setStatusFilter] = useState("all");
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    source: "website",
+    interest_type: "",
+    notes: ""
+  });
   const [submitting, setSubmitting] = useState(false);
+
+  // Status labels with translation
+  const statusLabels = {
+    new: { label: t("New", "Nuevo"), class: "badge-pending" },
+    contacted: { label: t("Contacted", "Contactado"), class: "badge-processing" },
+    qualified: { label: t("Qualified", "Calificado"), class: "badge-processing" },
+    converted: { label: t("Converted", "Convertido"), class: "badge-completed" },
+    lost: { label: t("Lost", "Perdido"), class: "badge-cancelled" }
+  };
+
+  // Source labels with translation
+  const sourceLabels = {
+    website: t("Website", "Sitio Web"),
+    referral: t("Referral", "Referido"),
+    social: t("Social Media", "Redes Sociales"),
+    walk_in: t("Walk-in", "Walk-in"),
+    b2b_quote: t("B2B Quote", "Cotización B2B"),
+    other: t("Other", "Otro")
+  };
+
+  const emptyForm = {
+    name: "",
+    email: "",
+    phone: "",
+    source: "website",
+    interest_type: "",
+    notes: ""
+  };
 
   useEffect(() => {
     fetchLeads();
@@ -56,7 +67,7 @@ export default function Leads() {
       const res = await axios.get(`${API}/leads`, { params });
       setLeads(res.data);
     } catch (error) {
-      toast.error("Error cargando leads");
+      toast.error(t("Error loading leads", "Error cargando leads"));
     } finally {
       setLoading(false);
     }
@@ -68,12 +79,12 @@ export default function Leads() {
 
     try {
       await axios.post(`${API}/leads`, form);
-      toast.success("Lead creado");
+      toast.success(t("Lead created", "Lead creado"));
       setDialogOpen(false);
       setForm(emptyForm);
       fetchLeads();
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Error creando lead");
+      toast.error(error.response?.data?.detail || t("Error creating lead", "Error creando lead"));
     } finally {
       setSubmitting(false);
     }
@@ -82,26 +93,26 @@ export default function Leads() {
   const updateStatus = async (leadId, newStatus) => {
     try {
       await axios.put(`${API}/leads/${leadId}`, { status: newStatus });
-      toast.success("Estado actualizado");
+      toast.success(t("Status updated", "Estado actualizado"));
       fetchLeads();
     } catch (error) {
-      toast.error("Error actualizando estado");
+      toast.error(t("Error updating status", "Error actualizando estado"));
     }
   };
 
   const convertToCustomer = async (leadId) => {
     try {
       await axios.post(`${API}/leads/${leadId}/convert`);
-      toast.success("Lead convertido a cliente");
+      toast.success(t("Lead converted to customer", "Lead convertido a cliente"));
       fetchLeads();
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Error convirtiendo lead");
+      toast.error(error.response?.data?.detail || t("Error converting lead", "Error convirtiendo lead"));
     }
   };
 
   const formatDate = (dateStr) => {
     if (!dateStr) return "-";
-    return new Date(dateStr).toLocaleDateString("es-MX", {
+    return new Date(dateStr).toLocaleDateString(t("en-US", "es-MX"), {
       month: "short",
       day: "numeric",
       year: "numeric"
@@ -112,23 +123,23 @@ export default function Leads() {
     <div data-testid="leads-page" className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Leads</h1>
-          <p className="text-slate-500 mt-1">Prospectos y clientes potenciales</p>
+          <h1 className="text-2xl font-bold text-slate-900">{t("Leads", "Leads")}</h1>
+          <p className="text-slate-500 mt-1">{t("Prospects and potential customers", "Prospectos y clientes potenciales")}</p>
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
             <Button className="btn-primary" data-testid="add-lead-btn">
               <Plus className="h-4 w-4 mr-2" />
-              Nuevo Lead
+              {t("New Lead", "Nuevo Lead")}
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-md">
+          <DialogContent className="sm:max-w-md bg-white" style={{ backgroundColor: 'white', opacity: 1 }}>
             <DialogHeader>
-              <DialogTitle>Nuevo Lead</DialogTitle>
+              <DialogTitle>{t("New Lead", "Nuevo Lead")}</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4 mt-4">
               <div>
-                <Label>Nombre *</Label>
+                <Label>{t("Name *", "Nombre *")}</Label>
                 <Input
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -139,7 +150,7 @@ export default function Leads() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Email</Label>
+                  <Label>{t("Email", "Email")}</Label>
                   <Input
                     type="email"
                     value={form.email}
@@ -149,7 +160,7 @@ export default function Leads() {
                   />
                 </div>
                 <div>
-                  <Label>Teléfono</Label>
+                  <Label>{t("Phone", "Teléfono")}</Label>
                   <Input
                     value={form.phone}
                     onChange={(e) => setForm({ ...form, phone: e.target.value })}
@@ -160,33 +171,33 @@ export default function Leads() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Fuente</Label>
+                  <Label>{t("Source", "Fuente")}</Label>
                   <Select value={form.source} onValueChange={(v) => setForm({ ...form, source: v })}>
                     <SelectTrigger className="mt-1.5" data-testid="lead-source-select">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="website">Sitio Web</SelectItem>
-                      <SelectItem value="referral">Referido</SelectItem>
-                      <SelectItem value="social">Redes Sociales</SelectItem>
-                      <SelectItem value="walk_in">Walk-in</SelectItem>
-                      <SelectItem value="other">Otro</SelectItem>
+                      <SelectItem value="website">{t("Website", "Sitio Web")}</SelectItem>
+                      <SelectItem value="referral">{t("Referral", "Referido")}</SelectItem>
+                      <SelectItem value="social">{t("Social Media", "Redes Sociales")}</SelectItem>
+                      <SelectItem value="walk_in">{t("Walk-in", "Walk-in")}</SelectItem>
+                      <SelectItem value="other">{t("Other", "Otro")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div>
-                  <Label>Interés</Label>
+                  <Label>{t("Interest", "Interés")}</Label>
                   <Input
                     value={form.interest_type}
                     onChange={(e) => setForm({ ...form, interest_type: e.target.value })}
                     className="mt-1.5"
-                    placeholder="Ej: Pickup, Wash & Fold"
+                    placeholder={t("e.g. Pickup, Wash & Fold", "Ej: Pickup, Wash & Fold")}
                     data-testid="lead-interest-input"
                   />
                 </div>
               </div>
               <div>
-                <Label>Notas</Label>
+                <Label>{t("Notes", "Notas")}</Label>
                 <Textarea
                   value={form.notes}
                   onChange={(e) => setForm({ ...form, notes: e.target.value })}
@@ -197,10 +208,10 @@ export default function Leads() {
               </div>
               <div className="flex justify-end gap-3 pt-4">
                 <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
-                  Cancelar
+                  {t("Cancel", "Cancelar")}
                 </Button>
                 <Button type="submit" className="btn-primary" disabled={submitting} data-testid="lead-submit-btn">
-                  {submitting ? "Creando..." : "Crear Lead"}
+                  {submitting ? t("Creating...", "Creando...") : t("Create Lead", "Crear Lead")}
                 </Button>
               </div>
             </form>
@@ -219,7 +230,7 @@ export default function Leads() {
             className={statusFilter === status ? "bg-sky-600 hover:bg-sky-700" : ""}
             data-testid={`filter-lead-${status}`}
           >
-            {status === "all" ? "Todos" : statusLabels[status]?.label || status}
+            {status === "all" ? t("All", "Todos") : statusLabels[status]?.label || status}
           </Button>
         ))}
       </div>
@@ -230,22 +241,22 @@ export default function Leads() {
           <table className="w-full">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">Lead</th>
-                <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">Contacto</th>
-                <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">Fuente</th>
-                <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">Interés</th>
-                <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">Estado</th>
+                <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">{t("Lead", "Lead")}</th>
+                <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">{t("Contact", "Contacto")}</th>
+                <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">{t("Source", "Fuente")}</th>
+                <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">{t("Interest", "Interés")}</th>
+                <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">{t("Status", "Estado")}</th>
                 <th className="text-right text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-8 text-slate-500">Cargando...</td>
+                  <td colSpan={6} className="text-center py-8 text-slate-500">{t("Loading...", "Cargando...")}</td>
                 </tr>
               ) : leads.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-8 text-slate-500">No hay leads</td>
+                  <td colSpan={6} className="text-center py-8 text-slate-500">{t("No leads", "No hay leads")}</td>
                 </tr>
               ) : (
                 leads.map((lead) => (
@@ -298,12 +309,12 @@ export default function Leads() {
                         <DropdownMenuContent align="end">
                           {lead.status === "new" && (
                             <DropdownMenuItem onClick={() => updateStatus(lead.id, "contacted")}>
-                              Marcar Contactado
+                              {t("Mark Contacted", "Marcar Contactado")}
                             </DropdownMenuItem>
                           )}
                           {lead.status === "contacted" && (
                             <DropdownMenuItem onClick={() => updateStatus(lead.id, "qualified")}>
-                              Marcar Calificado
+                              {t("Mark Qualified", "Marcar Calificado")}
                             </DropdownMenuItem>
                           )}
                           {["new", "contacted", "qualified"].includes(lead.status) && (
@@ -311,10 +322,10 @@ export default function Leads() {
                               <DropdownMenuSeparator />
                               <DropdownMenuItem onClick={() => convertToCustomer(lead.id)} className="text-emerald-600">
                                 <ArrowRight className="h-4 w-4 mr-2" />
-                                Convertir a Cliente
+                                {t("Convert to Customer", "Convertir a Cliente")}
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => updateStatus(lead.id, "lost")} className="text-red-600">
-                                Marcar Perdido
+                                {t("Mark Lost", "Marcar Perdido")}
                               </DropdownMenuItem>
                             </>
                           )}

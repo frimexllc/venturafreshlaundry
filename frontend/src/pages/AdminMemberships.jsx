@@ -7,6 +7,7 @@ import { Textarea } from "../components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { toast } from "sonner";
 import { Plus, Edit2, Trash2 } from "lucide-react";
+import { useLocale } from "../context/LocaleContext";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -21,6 +22,7 @@ const emptyPlan = {
 };
 
 export default function AdminMemberships() {
+  const { t } = useLocale();
   const [section, setSection] = useState(null);
   const [plans, setPlans] = useState([]);
   const [signups, setSignups] = useState([]);
@@ -44,7 +46,7 @@ export default function AdminMemberships() {
       const customersRes = await axios.get(`${API}/memberships/customers`, { params: { search: searchValue || undefined } });
       setMembershipCustomers(customersRes.data);
     } catch (error) {
-      toast.error("Error cargando clientes con membresía");
+      toast.error(t("Error loading membership customers", "Error cargando clientes con membresía"));
     } finally {
       setLoadingCustomers(false);
     }
@@ -64,7 +66,7 @@ export default function AdminMemberships() {
       setSignups(signupsRes.data);
       loadCustomers(customerSearch);
     } catch (error) {
-      toast.error("Error cargando membresías");
+      toast.error(t("Error loading memberships", "Error cargando membresías"));
     } finally {
       setLoading(false);
       setLoadingSignups(false);
@@ -90,10 +92,10 @@ export default function AdminMemberships() {
         contact_phone: section.contact_phone || null,
         is_active: section.is_active
       });
-      toast.success("Sección actualizada");
+      toast.success(t("Section updated", "Sección actualizada"));
       loadData();
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Error actualizando sección");
+      toast.error(error.response?.data?.detail || t("Error updating section", "Error actualizando sección"));
     } finally {
       setSavingSection(false);
     }
@@ -135,59 +137,59 @@ export default function AdminMemberships() {
     try {
       if (editingPlan) {
         await axios.put(`${API}/memberships/plans/${editingPlan.id}`, payload);
-        toast.success("Plan actualizado");
+        toast.success(t("Plan updated", "Plan actualizado"));
       } else {
         await axios.post(`${API}/memberships/plans`, payload);
-        toast.success("Plan creado");
+        toast.success(t("Plan created", "Plan creado"));
       }
       setPlanDialogOpen(false);
       setEditingPlan(null);
       setPlanForm(emptyPlan);
       loadData();
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Error guardando plan");
+      toast.error(error.response?.data?.detail || t("Error saving plan", "Error guardando plan"));
     }
   };
 
   const deletePlan = async (id) => {
-    if (!confirm("¿Eliminar este plan?")) return;
+    if (!confirm(t("Delete this plan?", "¿Eliminar este plan?"))) return;
     try {
       await axios.delete(`${API}/memberships/plans/${id}`);
-      toast.success("Plan eliminado");
+      toast.success(t("Plan deleted", "Plan eliminado"));
       loadData();
     } catch (error) {
-      toast.error("Error eliminando plan");
+      toast.error(t("Error deleting plan", "Error eliminando plan"));
     }
   };
 
   const updateSignupStatus = async (signupId, status) => {
     try {
       await axios.put(`${API}/memberships/signups/${signupId}`, { status });
-      toast.success("Solicitud actualizada");
+      toast.success(t("Signup updated", "Solicitud actualizada"));
       loadData();
     } catch (error) {
-      toast.error("Error actualizando solicitud");
+      toast.error(t("Error updating signup", "Error actualizando solicitud"));
     }
   };
 
   const convertSignup = async (signupId) => {
-    if (!confirm("¿Convertir esta solicitud en cliente?")) return;
+    if (!confirm(t("Convert this signup into a customer?", "¿Convertir esta solicitud en cliente?"))) return;
     try {
       await axios.post(`${API}/memberships/signups/${signupId}/convert`);
-      toast.success("Cliente creado/actualizado");
+      toast.success(t("Customer created/updated", "Cliente creado/actualizado"));
       loadData();
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Error convirtiendo solicitud");
+      toast.error(error.response?.data?.detail || t("Error converting signup", "Error convirtiendo solicitud"));
     }
   };
 
   const updateMembershipCustomer = async (customerId, payload) => {
     try {
       await axios.put(`${API}/memberships/customers/${customerId}`, payload);
-      toast.success("Cliente actualizado");
+      toast.success(t("Customer updated", "Cliente actualizado"));
       loadData();
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Error actualizando cliente");
+      toast.error(error.response?.data?.detail || t("Error updating customer", "Error actualizando cliente"));
     }
   };
 
@@ -201,73 +203,75 @@ export default function AdminMemberships() {
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Membresías</h1>
-          <p className="text-slate-600">Gestiona el bloque de planes y su contenido</p>
+          <h1 className="text-2xl font-bold text-slate-900">{t("Memberships", "Membresías")}</h1>
+          <p className="text-slate-600">
+            {t("Manage the plans block and its content", "Gestiona el bloque de planes y su contenido")}
+          </p>
         </div>
         <Button onClick={() => openPlanDialog()}>
           <Plus className="h-4 w-4 mr-2" />
-          Nuevo plan
+          {t("New Plan", "Nuevo plan")}
         </Button>
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
-        <h2 className="text-lg font-semibold text-slate-900">Sección</h2>
+        <h2 className="text-lg font-semibold text-slate-900">{t("Section", "Sección")}</h2>
         {loading || !section ? (
-          <p className="text-slate-500">Cargando...</p>
+          <p className="text-slate-500">{t("Loading...", "Cargando...")}</p>
         ) : (
           <>
             <div className="grid md:grid-cols-2 gap-4">
               <div>
-                <Label>Título</Label>
+                <Label>{t("Heading", "Título")}</Label>
                 <Input value={section.heading || ""} onChange={(e) => updateSectionField("heading", e.target.value)} />
               </div>
               <div>
-                <Label>Subtítulo</Label>
+                <Label>{t("Subheading", "Subtítulo")}</Label>
                 <Input value={section.subheading || ""} onChange={(e) => updateSectionField("subheading", e.target.value)} />
               </div>
               <div>
-                <Label>Título especial</Label>
+                <Label>{t("Special Title", "Título especial")}</Label>
                 <Input value={section.special_title || ""} onChange={(e) => updateSectionField("special_title", e.target.value)} />
               </div>
               <div>
-                <Label>Teléfono</Label>
+                <Label>{t("Phone", "Teléfono")}</Label>
                 <Input value={section.contact_phone || ""} onChange={(e) => updateSectionField("contact_phone", e.target.value)} />
               </div>
               <div>
-                <Label>Botón CTA</Label>
+                <Label>{t("CTA Button", "Botón CTA")}</Label>
                 <Input value={section.cta_button_label || ""} onChange={(e) => updateSectionField("cta_button_label", e.target.value)} />
               </div>
               <div>
-                <Label>URL CTA</Label>
+                <Label>{t("CTA URL", "URL CTA")}</Label>
                 <Input value={section.cta_button_url || ""} onChange={(e) => updateSectionField("cta_button_url", e.target.value)} />
               </div>
               <div>
-                <Label>Título ayuda</Label>
+                <Label>{t("Help Title", "Título ayuda")}</Label>
                 <Input value={section.cta_title || ""} onChange={(e) => updateSectionField("cta_title", e.target.value)} />
               </div>
               <div>
-                <Label>Activo</Label>
+                <Label>{t("Active", "Activo")}</Label>
                 <select
                   className="w-full h-10 rounded-md border border-slate-200 px-3 text-sm"
                   value={section.is_active ? "active" : "inactive"}
                   onChange={(e) => updateSectionField("is_active", e.target.value === "active")}
                 >
-                  <option value="active">Activo</option>
-                  <option value="inactive">Inactivo</option>
+                  <option value="active">{t("Active", "Activo")}</option>
+                  <option value="inactive">{t("Inactive", "Inactivo")}</option>
                 </select>
               </div>
             </div>
             <div>
-              <Label>Texto especial</Label>
+              <Label>{t("Special Text", "Texto especial")}</Label>
               <Textarea value={section.special_text || ""} onChange={(e) => updateSectionField("special_text", e.target.value)} rows={3} />
             </div>
             <div>
-              <Label>Texto ayuda</Label>
+              <Label>{t("Help Text", "Texto ayuda")}</Label>
               <Textarea value={section.cta_text || ""} onChange={(e) => updateSectionField("cta_text", e.target.value)} rows={3} />
             </div>
             <div className="flex justify-end">
               <Button onClick={saveSection} disabled={savingSection}>
-                {savingSection ? "Guardando..." : "Guardar sección"}
+                {savingSection ? t("Saving...", "Guardando...") : t("Save Section", "Guardar sección")}
               </Button>
             </div>
           </>
@@ -279,30 +283,30 @@ export default function AdminMemberships() {
           <table className="w-full">
             <thead className="bg-slate-50">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Plan</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Precio</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Popular</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Activo</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Orden</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Acciones</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t("Plan", "Plan")}</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t("Price", "Precio")}</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t("Popular", "Popular")}</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t("Active", "Activo")}</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">{t("Order", "Orden")}</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">{t("Actions", "Acciones")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
               {loading ? (
                 <tr>
-                  <td colSpan="6" className="px-4 py-6 text-center text-slate-500">Cargando...</td>
+                  <td colSpan="6" className="px-4 py-6 text-center text-slate-500">{t("Loading...", "Cargando...")}</td>
                 </tr>
               ) : plans.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="px-4 py-6 text-center text-slate-500">Sin planes</td>
+                  <td colSpan="6" className="px-4 py-6 text-center text-slate-500">{t("No plans", "Sin planes")}</td>
                 </tr>
               ) : (
                 plans.map((plan) => (
                   <tr key={plan.id} className="hover:bg-slate-50">
                     <td className="px-4 py-3 text-sm font-medium text-slate-900">{plan.name}</td>
                     <td className="px-4 py-3 text-sm text-slate-600">{plan.price}</td>
-                    <td className="px-4 py-3 text-sm text-slate-600">{plan.is_popular ? "Sí" : "No"}</td>
-                    <td className="px-4 py-3 text-sm text-slate-600">{plan.is_active ? "Activo" : "Inactivo"}</td>
+                    <td className="px-4 py-3 text-sm text-slate-600">{plan.is_popular ? t("Yes", "Sí") : t("No", "No")}</td>
+                    <td className="px-4 py-3 text-sm text-slate-600">{plan.is_active ? t("Active", "Activo") : t("Inactive", "Inactivo")}</td>
                     <td className="px-4 py-3 text-sm text-slate-600 text-right">{plan.sort_order ?? 0}</td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
@@ -324,29 +328,29 @@ export default function AdminMemberships() {
 
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="px-4 py-4 border-b border-slate-200">
-          <h2 className="text-lg font-semibold text-slate-900">Solicitudes de membresía</h2>
+          <h2 className="text-lg font-semibold text-slate-900">{t("Membership Signups", "Solicitudes de membresía")}</h2>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-slate-50">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Cliente</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Plan</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Frecuencia</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Lbs</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Contacto</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Estado</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Acciones</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t("Customer", "Cliente")}</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t("Plan", "Plan")}</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t("Frequency", "Frecuencia")}</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t("Lbs", "Lbs")}</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t("Contact", "Contacto")}</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t("Status", "Estado")}</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">{t("Actions", "Acciones")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
               {loadingSignups ? (
                 <tr>
-                  <td colSpan="7" className="px-4 py-6 text-center text-slate-500">Cargando...</td>
+                  <td colSpan="7" className="px-4 py-6 text-center text-slate-500">{t("Loading...", "Cargando...")}</td>
                 </tr>
               ) : signups.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="px-4 py-6 text-center text-slate-500">Sin solicitudes</td>
+                  <td colSpan="7" className="px-4 py-6 text-center text-slate-500">{t("No signups", "Sin solicitudes")}</td>
                 </tr>
               ) : (
                 signups.map((signup) => (
@@ -365,15 +369,15 @@ export default function AdminMemberships() {
                         value={signup.status}
                         onChange={(e) => updateSignupStatus(signup.id, e.target.value)}
                       >
-                        <option value="new">Nuevo</option>
-                        <option value="contacted">Contactado</option>
-                        <option value="converted">Convertido</option>
-                        <option value="cancelled">Cancelado</option>
+                        <option value="new">{t("New", "Nuevo")}</option>
+                        <option value="contacted">{t("Contacted", "Contactado")}</option>
+                        <option value="converted">{t("Converted", "Convertido")}</option>
+                        <option value="cancelled">{t("Cancelled", "Cancelado")}</option>
                       </select>
                     </td>
                     <td className="px-4 py-3 text-right">
                       <Button size="sm" onClick={() => convertSignup(signup.id)} disabled={signup.status === "converted"}>
-                        Convertir
+                        {t("Convert", "Convertir")}
                       </Button>
                     </td>
                   </tr>
@@ -386,9 +390,9 @@ export default function AdminMemberships() {
 
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="px-4 py-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <h2 className="text-lg font-semibold text-slate-900">Clientes con membresía</h2>
+          <h2 className="text-lg font-semibold text-slate-900">{t("Membership Customers", "Clientes con membresía")}</h2>
           <Input
-            placeholder="Buscar cliente..."
+            placeholder={t("Search customer...", "Buscar cliente...")}
             value={customerSearch}
             onChange={handleCustomerSearch}
             className="sm:max-w-xs"
@@ -398,21 +402,21 @@ export default function AdminMemberships() {
           <table className="w-full">
             <thead className="bg-slate-50">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Cliente</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Email</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Plan</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Estado</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Inicio</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t("Customer", "Cliente")}</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t("Email", "Email")}</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t("Plan", "Plan")}</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t("Status", "Estado")}</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t("Start Date", "Fecha de inicio")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
               {loadingCustomers ? (
                 <tr>
-                  <td colSpan="5" className="px-4 py-6 text-center text-slate-500">Cargando...</td>
+                  <td colSpan="5" className="px-4 py-6 text-center text-slate-500">{t("Loading...", "Cargando...")}</td>
                 </tr>
               ) : membershipCustomers.length === 0 ? (
                 <tr>
-                  <td colSpan="5" className="px-4 py-6 text-center text-slate-500">Sin clientes</td>
+                  <td colSpan="5" className="px-4 py-6 text-center text-slate-500">{t("No customers", "Sin clientes")}</td>
                 </tr>
               ) : (
                 membershipCustomers.map((customer) => (
@@ -425,7 +429,7 @@ export default function AdminMemberships() {
                         value={customer.membership_plan || ""}
                         onChange={(e) => updateMembershipCustomer(customer.id, { membership_plan: e.target.value })}
                       >
-                        <option value="">Sin plan</option>
+                        <option value="">{t("No plan", "Sin plan")}</option>
                         {plans.map((plan) => (
                           <option key={plan.id} value={plan.name}>{plan.name}</option>
                         ))}
@@ -437,13 +441,15 @@ export default function AdminMemberships() {
                         value={customer.membership_status || ""}
                         onChange={(e) => updateMembershipCustomer(customer.id, { membership_status: e.target.value })}
                       >
-                        <option value="">Sin estado</option>
-                        <option value="active">Activo</option>
-                        <option value="paused">Pausado</option>
-                        <option value="cancelled">Cancelado</option>
+                        <option value="">{t("No status", "Sin estado")}</option>
+                        <option value="active">{t("Active", "Activo")}</option>
+                        <option value="paused">{t("Paused", "Pausado")}</option>
+                        <option value="cancelled">{t("Cancelled", "Cancelado")}</option>
                       </select>
                     </td>
-                    <td className="px-4 py-3 text-sm text-slate-600">{customer.membership_start_date ? new Date(customer.membership_start_date).toLocaleDateString() : "—"}</td>
+                    <td className="px-4 py-3 text-sm text-slate-600">
+                      {customer.membership_start_date ? new Date(customer.membership_start_date).toLocaleDateString() : "—"}
+                    </td>
                   </tr>
                 ))
               )}
@@ -455,24 +461,24 @@ export default function AdminMemberships() {
       <Dialog open={planDialogOpen} onOpenChange={setPlanDialogOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{editingPlan ? "Editar plan" : "Nuevo plan"}</DialogTitle>
+            <DialogTitle>{editingPlan ? t("Edit plan", "Editar plan") : t("New plan", "Nuevo plan")}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handlePlanSubmit} className="space-y-4">
             <div className="grid md:grid-cols-2 gap-4">
               <div>
-                <Label>Nombre</Label>
+                <Label>{t("Name", "Nombre")}</Label>
                 <Input value={planForm.name} onChange={(e) => setPlanForm({ ...planForm, name: e.target.value })} required />
               </div>
               <div>
-                <Label>Precio</Label>
+                <Label>{t("Price", "Precio")}</Label>
                 <Input value={planForm.price} onChange={(e) => setPlanForm({ ...planForm, price: e.target.value })} required />
               </div>
               <div>
-                <Label>Imagen (URL)</Label>
+                <Label>{t("Image (URL)", "Imagen (URL)")}</Label>
                 <Input value={planForm.image_url} onChange={(e) => setPlanForm({ ...planForm, image_url: e.target.value })} />
               </div>
               <div>
-                <Label>Orden</Label>
+                <Label>{t("Order", "Orden")}</Label>
                 <Input
                   type="number"
                   value={planForm.sort_order}
@@ -480,38 +486,38 @@ export default function AdminMemberships() {
                 />
               </div>
               <div>
-                <Label>Popular</Label>
+                <Label>{t("Popular", "Popular")}</Label>
                 <select
                   className="w-full h-10 rounded-md border border-slate-200 px-3 text-sm"
                   value={planForm.is_popular ? "yes" : "no"}
                   onChange={(e) => setPlanForm({ ...planForm, is_popular: e.target.value === "yes" })}
                 >
-                  <option value="yes">Sí</option>
-                  <option value="no">No</option>
+                  <option value="yes">{t("Yes", "Sí")}</option>
+                  <option value="no">{t("No", "No")}</option>
                 </select>
               </div>
               <div>
-                <Label>Activo</Label>
+                <Label>{t("Active", "Activo")}</Label>
                 <select
                   className="w-full h-10 rounded-md border border-slate-200 px-3 text-sm"
                   value={planForm.is_active ? "active" : "inactive"}
                   onChange={(e) => setPlanForm({ ...planForm, is_active: e.target.value === "active" })}
                 >
-                  <option value="active">Activo</option>
-                  <option value="inactive">Inactivo</option>
+                  <option value="active">{t("Active", "Activo")}</option>
+                  <option value="inactive">{t("Inactive", "Inactivo")}</option>
                 </select>
               </div>
             </div>
             <div>
-              <Label>Características (una por línea)</Label>
+              <Label>{t("Features (one per line)", "Características (una por línea)")}</Label>
               <Textarea value={planForm.features} onChange={(e) => setPlanForm({ ...planForm, features: e.target.value })} rows={6} />
             </div>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={() => setPlanDialogOpen(false)}>
-                Cancelar
+                {t("Cancel", "Cancelar")}
               </Button>
               <Button type="submit">
-                {editingPlan ? "Guardar cambios" : "Crear plan"}
+                {editingPlan ? t("Save changes", "Guardar cambios") : t("Create plan", "Crear plan")}
               </Button>
             </div>
           </form>

@@ -19,10 +19,12 @@ import {
   UserPlus,
   HeadphonesIcon
 } from "lucide-react";
+import { useLocale } from "../context/LocaleContext";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 export default function Settings() {
+  const { t } = useLocale();
   const [notificationSettings, setNotificationSettings] = useState(null);
   const [loading, setLoading] = useState(true);
   const [testEmail, setTestEmail] = useState("");
@@ -72,7 +74,7 @@ export default function Settings() {
         notify_self_service: transitions.self_service?.notify_status || "ready"
       });
     } catch (error) {
-      toast.error("Error cargando reglas de negocio");
+      toast.error(t("Error loading business rules", "Error cargando reglas de negocio"));
     } finally {
       setLoadingRules(false);
     }
@@ -97,15 +99,15 @@ export default function Settings() {
       };
       setRulesText(JSON.stringify(payload, null, 2));
     } catch (error) {
-      toast.error("JSON inválido");
+      toast.error(t("Invalid JSON", "JSON inválido"));
       return;
     }
     setSavingRules(true);
     try {
       await axios.put(`${API}/settings/rules`, { rules: payload });
-      toast.success("Reglas actualizadas");
+      toast.success(t("Rules updated", "Reglas actualizadas"));
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Error guardando reglas");
+      toast.error(error.response?.data?.detail || t("Error saving rules", "Error guardando reglas"));
     } finally {
       setSavingRules(false);
     }
@@ -137,9 +139,9 @@ export default function Settings() {
       document.body.appendChild(link);
       link.click();
       link.remove();
-      toast.success(`${type}.csv descargado`);
+      toast.success(t("{type}.csv downloaded", "{type}.csv descargado").replace("{type}", type));
     } catch (error) {
-      toast.error(`Error exportando ${type}`);
+      toast.error(t("Error exporting {type}", "Error exportando {type}").replace("{type}", type));
     }
   };
 
@@ -151,12 +153,12 @@ export default function Settings() {
         params: { to_email: testEmail }
       });
       if (res.data.status === "success") {
-        toast.success("Email de prueba enviado");
+        toast.success(t("Test email sent", "Email de prueba enviado"));
       } else {
-        toast.error(res.data.message || "Error enviando email");
+        toast.error(res.data.message || t("Error sending email", "Error enviando email"));
       }
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Error enviando email");
+      toast.error(error.response?.data?.detail || t("Error sending email", "Error enviando email"));
     } finally {
       setSending(false);
     }
@@ -170,12 +172,12 @@ export default function Settings() {
         params: { to_phone: testPhone }
       });
       if (res.data.status === "success") {
-        toast.success("SMS de prueba enviado");
+        toast.success(t("Test SMS sent", "SMS de prueba enviado"));
       } else {
-        toast.error(res.data.message || "Error enviando SMS");
+        toast.error(res.data.message || t("Error sending SMS", "Error enviando SMS"));
       }
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Error enviando SMS");
+      toast.error(error.response?.data?.detail || t("Error sending SMS", "Error enviando SMS"));
     } finally {
       setSending(false);
     }
@@ -184,8 +186,8 @@ export default function Settings() {
   return (
     <div data-testid="settings-page" className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Configuración</h1>
-        <p className="text-slate-500 mt-1">Notificaciones y exportación de datos</p>
+        <h1 className="text-2xl font-bold text-slate-900">{t("Settings", "Configuración")}</h1>
+        <p className="text-slate-500 mt-1">{t("Notifications and data export", "Notificaciones y exportación de datos")}</p>
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6">
@@ -196,8 +198,8 @@ export default function Settings() {
               <SettingsIcon className="h-5 w-5 text-sky-600" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-slate-900">Notificaciones</h2>
-              <p className="text-sm text-slate-500">Estado de los servicios de notificación</p>
+              <h2 className="text-lg font-semibold text-slate-900">{t("Notifications", "Notificaciones")}</h2>
+              <p className="text-sm text-slate-500">{t("Notification services status", "Estado de los servicios de notificación")}</p>
             </div>
           </div>
 
@@ -213,19 +215,19 @@ export default function Settings() {
                 <div className="flex items-center gap-3">
                   <Mail className="h-5 w-5 text-slate-600" />
                   <div>
-                    <p className="font-medium text-slate-900">Email (Resend)</p>
-                    <p className="text-xs text-slate-500">Notificaciones por correo electrónico</p>
+                    <p className="font-medium text-slate-900">{t("Email (Resend)", "Email (Resend)")}</p>
+                    <p className="text-xs text-slate-500">{t("Email notifications", "Notificaciones por correo electrónico")}</p>
                   </div>
                 </div>
                 {notificationSettings?.email_enabled ? (
                   <div className="flex items-center gap-2 text-emerald-600">
                     <CheckCircle2 className="h-5 w-5" />
-                    <span className="text-sm font-medium">Activo</span>
+                    <span className="text-sm font-medium">{t("Active", "Activo")}</span>
                   </div>
                 ) : (
                   <div className="flex items-center gap-2 text-slate-400">
                     <XCircle className="h-5 w-5" />
-                    <span className="text-sm font-medium">No configurado</span>
+                    <span className="text-sm font-medium">{t("Not configured", "No configurado")}</span>
                   </div>
                 )}
               </div>
@@ -235,19 +237,19 @@ export default function Settings() {
                 <div className="flex items-center gap-3">
                   <MessageSquare className="h-5 w-5 text-slate-600" />
                   <div>
-                    <p className="font-medium text-slate-900">SMS (Twilio)</p>
-                    <p className="text-xs text-slate-500">Notificaciones por mensaje de texto</p>
+                    <p className="font-medium text-slate-900">{t("SMS (Twilio)", "SMS (Twilio)")}</p>
+                    <p className="text-xs text-slate-500">{t("Text message notifications", "Notificaciones por mensaje de texto")}</p>
                   </div>
                 </div>
                 {notificationSettings?.sms_enabled ? (
                   <div className="flex items-center gap-2 text-emerald-600">
                     <CheckCircle2 className="h-5 w-5" />
-                    <span className="text-sm font-medium">Activo</span>
+                    <span className="text-sm font-medium">{t("Active", "Activo")}</span>
                   </div>
                 ) : (
                   <div className="flex items-center gap-2 text-slate-400">
                     <XCircle className="h-5 w-5" />
-                    <span className="text-sm font-medium">No configurado</span>
+                    <span className="text-sm font-medium">{t("Not configured", "No configurado")}</span>
                   </div>
                 )}
               </div>
@@ -255,11 +257,11 @@ export default function Settings() {
               {/* Test Email */}
               {notificationSettings?.email_enabled && (
                 <div className="pt-4 border-t border-slate-200">
-                  <Label className="text-slate-700">Probar Email</Label>
+                  <Label className="text-slate-700">{t("Test Email", "Probar Email")}</Label>
                   <div className="flex gap-2 mt-2">
                     <Input
                       type="email"
-                      placeholder="email@ejemplo.com"
+                      placeholder={t("email@example.com", "email@ejemplo.com")}
                       value={testEmail}
                       onChange={(e) => setTestEmail(e.target.value)}
                       className="flex-1"
@@ -280,7 +282,7 @@ export default function Settings() {
               {/* Test SMS */}
               {notificationSettings?.sms_enabled && (
                 <div className="pt-4 border-t border-slate-200">
-                  <Label className="text-slate-700">Probar SMS</Label>
+                  <Label className="text-slate-700">{t("Test SMS", "Probar SMS")}</Label>
                   <div className="flex gap-2 mt-2">
                     <Input
                       type="tel"
@@ -306,7 +308,8 @@ export default function Settings() {
               {!notificationSettings?.email_enabled && !notificationSettings?.sms_enabled && (
                 <div className="p-4 bg-amber-50 rounded-lg border border-amber-100">
                   <p className="text-sm text-amber-800">
-                    <strong>Para activar notificaciones:</strong> Configura las variables de entorno RESEND_API_KEY y/o TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER en el archivo .env del backend.
+                    <strong>{t("To activate notifications:", "Para activar notificaciones:")}</strong>{" "}
+                    {t("Configure the environment variables RESEND_API_KEY and/or TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER in the backend .env file.", "Configura las variables de entorno RESEND_API_KEY y/o TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER en el archivo .env del backend.")}
                   </p>
                 </div>
               )}
@@ -321,8 +324,8 @@ export default function Settings() {
               <Download className="h-5 w-5 text-emerald-600" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-slate-900">Exportar Datos</h2>
-              <p className="text-sm text-slate-500">Descargar datos en formato CSV</p>
+              <h2 className="text-lg font-semibold text-slate-900">{t("Export Data", "Exportar Datos")}</h2>
+              <p className="text-sm text-slate-500">{t("Download data in CSV format", "Descargar datos en formato CSV")}</p>
             </div>
           </div>
 
@@ -335,7 +338,7 @@ export default function Settings() {
             >
               <div className="flex items-center gap-3">
                 <Users className="h-5 w-5 text-slate-500" />
-                <span>Exportar Clientes</span>
+                <span>{t("Export Customers", "Exportar Clientes")}</span>
               </div>
               <Download className="h-4 w-4 text-slate-400" />
             </Button>
@@ -348,7 +351,7 @@ export default function Settings() {
             >
               <div className="flex items-center gap-3">
                 <ShoppingBag className="h-5 w-5 text-slate-500" />
-                <span>Exportar Órdenes</span>
+                <span>{t("Export Orders", "Exportar Órdenes")}</span>
               </div>
               <Download className="h-4 w-4 text-slate-400" />
             </Button>
@@ -361,7 +364,7 @@ export default function Settings() {
             >
               <div className="flex items-center gap-3">
                 <FileText className="h-5 w-5 text-slate-500" />
-                <span>Exportar Cotizaciones</span>
+                <span>{t("Export Quotes", "Exportar Cotizaciones")}</span>
               </div>
               <Download className="h-4 w-4 text-slate-400" />
             </Button>
@@ -374,7 +377,7 @@ export default function Settings() {
             >
               <div className="flex items-center gap-3">
                 <UserPlus className="h-5 w-5 text-slate-500" />
-                <span>Exportar Leads</span>
+                <span>{t("Export Leads", "Exportar Leads")}</span>
               </div>
               <Download className="h-4 w-4 text-slate-400" />
             </Button>
@@ -387,7 +390,7 @@ export default function Settings() {
             >
               <div className="flex items-center gap-3">
                 <HeadphonesIcon className="h-5 w-5 text-slate-500" />
-                <span>Exportar Tickets</span>
+                <span>{t("Export Tickets", "Exportar Tickets")}</span>
               </div>
               <Download className="h-4 w-4 text-slate-400" />
             </Button>
@@ -397,31 +400,31 @@ export default function Settings() {
 
       {/* API Keys Info */}
       <div className="dashboard-card p-6">
-        <h2 className="text-lg font-semibold text-slate-900 mb-4">Configuración de APIs</h2>
+        <h2 className="text-lg font-semibold text-slate-900 mb-4">{t("API Configuration", "Configuración de APIs")}</h2>
         <div className="grid md:grid-cols-2 gap-6">
           <div>
-            <h3 className="font-medium text-slate-900 mb-2">Email (Resend)</h3>
+            <h3 className="font-medium text-slate-900 mb-2">{t("Email (Resend)", "Email (Resend)")}</h3>
             <p className="text-sm text-slate-600 mb-3">
-              Para habilitar notificaciones por email, necesitas una cuenta en Resend.
+              {t("To enable email notifications, you need a Resend account.", "Para habilitar notificaciones por email, necesitas una cuenta en Resend.")}
             </p>
             <ol className="text-sm text-slate-600 space-y-1 list-decimal list-inside">
-              <li>Regístrate en <a href="https://resend.com" target="_blank" rel="noopener noreferrer" className="text-sky-600 hover:underline">resend.com</a></li>
-              <li>Crea un API Key en el dashboard</li>
-              <li>Agrega RESEND_API_KEY y SENDER_EMAIL al archivo .env</li>
-              <li>Reinicia el backend</li>
+              <li>{t("Sign up at", "Regístrate en")} <a href="https://resend.com" target="_blank" rel="noopener noreferrer" className="text-sky-600 hover:underline">resend.com</a></li>
+              <li>{t("Create an API Key in the dashboard", "Crea un API Key en el dashboard")}</li>
+              <li>{t("Add RESEND_API_KEY and SENDER_EMAIL to the .env file", "Agrega RESEND_API_KEY y SENDER_EMAIL al archivo .env")}</li>
+              <li>{t("Restart the backend", "Reinicia el backend")}</li>
             </ol>
           </div>
           
           <div>
-            <h3 className="font-medium text-slate-900 mb-2">SMS (Twilio)</h3>
+            <h3 className="font-medium text-slate-900 mb-2">{t("SMS (Twilio)", "SMS (Twilio)")}</h3>
             <p className="text-sm text-slate-600 mb-3">
-              Para habilitar notificaciones por SMS, necesitas una cuenta en Twilio.
+              {t("To enable SMS notifications, you need a Twilio account.", "Para habilitar notificaciones por SMS, necesitas una cuenta en Twilio.")}
             </p>
             <ol className="text-sm text-slate-600 space-y-1 list-decimal list-inside">
-              <li>Regístrate en <a href="https://twilio.com" target="_blank" rel="noopener noreferrer" className="text-sky-600 hover:underline">twilio.com</a></li>
-              <li>Obtén tu Account SID, Auth Token y Phone Number</li>
-              <li>Agrega las variables al archivo .env</li>
-              <li>Reinicia el backend</li>
+              <li>{t("Sign up at", "Regístrate en")} <a href="https://twilio.com" target="_blank" rel="noopener noreferrer" className="text-sky-600 hover:underline">twilio.com</a></li>
+              <li>{t("Get your Account SID, Auth Token and Phone Number", "Obtén tu Account SID, Auth Token y Phone Number")}</li>
+              <li>{t("Add the variables to the .env file", "Agrega las variables al archivo .env")}</li>
+              <li>{t("Restart the backend", "Reinicia el backend")}</li>
             </ol>
           </div>
         </div>
@@ -430,15 +433,15 @@ export default function Settings() {
       <div className="dashboard-card p-6 space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-slate-900">Reglas de negocio</h2>
-            <p className="text-sm text-slate-500">Editar reglas operativas del sistema</p>
+            <h2 className="text-lg font-semibold text-slate-900">{t("Business Rules", "Reglas de negocio")}</h2>
+            <p className="text-sm text-slate-500">{t("Edit system operational rules", "Editar reglas operativas del sistema")}</p>
           </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => setShowAdvanced((prev) => !prev)}>
-              {showAdvanced ? "Ocultar JSON" : "Mostrar JSON"}
+              {showAdvanced ? t("Hide JSON", "Ocultar JSON") : t("Show JSON", "Mostrar JSON")}
             </Button>
             <Button onClick={handleSaveRules} disabled={savingRules || loadingRules || slaInvalid}>
-              {savingRules ? "Guardando..." : "Guardar"}
+              {savingRules ? t("Saving...", "Guardando...") : t("Save", "Guardar")}
             </Button>
           </div>
         </div>
@@ -455,7 +458,7 @@ export default function Settings() {
               notify_self_service: "ready"
             })}
           >
-            Preset estándar
+            {t("Standard preset", "Preset estándar")}
           </Button>
           <Button
             variant="outline"
@@ -469,15 +472,15 @@ export default function Settings() {
               notify_self_service: "ready"
             })}
           >
-            Preset rápido
+            {t("Fast preset", "Preset rápido")}
           </Button>
         </div>
         {slaInvalid && (
-          <div className="text-xs text-amber-600">SLA debe ser mayor a 0</div>
+          <div className="text-xs text-amber-600">{t("SLA must be greater than 0", "SLA debe ser mayor a 0")}</div>
         )}
         <div className="grid md:grid-cols-3 gap-4">
           <div>
-            <Label>SLA Pickup & Delivery (h)</Label>
+            <Label>{t("SLA Pickup & Delivery (h)", "SLA Pickup & Delivery (h)")}</Label>
             <Input
               type="number"
               value={rulesForm.sla_pickup_delivery}
@@ -485,7 +488,7 @@ export default function Settings() {
             />
           </div>
           <div>
-            <Label>SLA Wash & Fold (h)</Label>
+            <Label>{t("SLA Wash & Fold (h)", "SLA Wash & Fold (h)")}</Label>
             <Input
               type="number"
               value={rulesForm.sla_wash_fold}
@@ -493,7 +496,7 @@ export default function Settings() {
             />
           </div>
           <div>
-            <Label>SLA Self Service (h)</Label>
+            <Label>{t("SLA Self Service (h)", "SLA Self Service (h)")}</Label>
             <Input
               type="number"
               value={rulesForm.sla_self_service}
@@ -501,39 +504,39 @@ export default function Settings() {
             />
           </div>
           <div>
-            <Label>Notificación Pickup & Delivery</Label>
+            <Label>{t("Notification Pickup & Delivery", "Notificación Pickup & Delivery")}</Label>
             <select
               className="w-full h-9 rounded-md border border-slate-200 px-2 text-sm"
               value={rulesForm.notify_pickup_delivery}
               onChange={(e) => setRulesForm({ ...rulesForm, notify_pickup_delivery: e.target.value })}
             >
-              <option value="out_for_delivery">En camino</option>
-              <option value="ready">Lista</option>
-              <option value="delivered">Entregada</option>
+              <option value="out_for_delivery">{t("Out for delivery", "En camino")}</option>
+              <option value="ready">{t("Ready", "Lista")}</option>
+              <option value="delivered">{t("Delivered", "Entregada")}</option>
             </select>
           </div>
           <div>
-            <Label>Notificación Wash & Fold</Label>
+            <Label>{t("Notification Wash & Fold", "Notificación Wash & Fold")}</Label>
             <select
               className="w-full h-9 rounded-md border border-slate-200 px-2 text-sm"
               value={rulesForm.notify_wash_fold}
               onChange={(e) => setRulesForm({ ...rulesForm, notify_wash_fold: e.target.value })}
             >
-              <option value="ready">Lista</option>
-              <option value="out_for_delivery">En camino</option>
-              <option value="delivered">Entregada</option>
+              <option value="ready">{t("Ready", "Lista")}</option>
+              <option value="out_for_delivery">{t("Out for delivery", "En camino")}</option>
+              <option value="delivered">{t("Delivered", "Entregada")}</option>
             </select>
           </div>
           <div>
-            <Label>Notificación Self Service</Label>
+            <Label>{t("Notification Self Service", "Notificación Self Service")}</Label>
             <select
               className="w-full h-9 rounded-md border border-slate-200 px-2 text-sm"
               value={rulesForm.notify_self_service}
               onChange={(e) => setRulesForm({ ...rulesForm, notify_self_service: e.target.value })}
             >
-              <option value="ready">Lista</option>
-              <option value="out_for_delivery">En camino</option>
-              <option value="delivered">Entregada</option>
+              <option value="ready">{t("Ready", "Lista")}</option>
+              <option value="out_for_delivery">{t("Out for delivery", "En camino")}</option>
+              <option value="delivered">{t("Delivered", "Entregada")}</option>
             </select>
           </div>
         </div>
@@ -542,7 +545,7 @@ export default function Settings() {
             rows={10}
             value={rulesText}
             onChange={(e) => setRulesText(e.target.value)}
-            placeholder="JSON de reglas"
+            placeholder={t("Rules JSON", "JSON de reglas")}
             disabled={loadingRules}
           />
         )}

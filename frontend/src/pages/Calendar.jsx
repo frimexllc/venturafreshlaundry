@@ -6,7 +6,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/
 import { toast } from "sonner";
 import { ChevronLeft, ChevronRight, CalendarDays, Clock, MapPin, User, Truck } from "lucide-react";
 import { format, startOfMonth, endOfMonth, addMonths, subMonths, parseISO, isValid } from "date-fns";
-import { es } from "date-fns/locale";
+import { es, enUS } from "date-fns/locale";
+import { useLocale } from "../context/LocaleContext";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -20,29 +21,34 @@ const statusColors = {
   cancelled: "bg-slate-400"
 };
 
-const statusLabels = {
-  new: "Nueva",
-  processing: "Procesando",
-  ready: "Lista",
-  out_for_delivery: "En camino",
-  delivered: "Entregada",
-  completed: "Completada",
-  cancelled: "Cancelada"
-};
-
-const serviceLabels = {
+const serviceTypeLabels = {
   pickup_delivery: "Pickup & Delivery",
   wash_fold: "Wash & Fold",
   self_service: "Self Service"
 };
 
 export default function CalendarPage() {
+  const { locale, t } = useLocale();
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [dayEvents, setDayEvents] = useState([]);
+
+  // Define status labels with translation
+  const statusLabels = {
+    new: t("New", "Nueva"),
+    processing: t("Processing", "Procesando"),
+    ready: t("Ready", "Lista"),
+    out_for_delivery: t("Out for delivery", "En camino"),
+    delivered: t("Delivered", "Entregada"),
+    completed: t("Completed", "Completada"),
+    cancelled: t("Cancelled", "Cancelada")
+  };
+
+  // Choose date-fns locale based on current language
+  const dateFnsLocale = locale === "es" ? es : enUS;
 
   useEffect(() => {
     fetchEvents();
@@ -111,19 +117,31 @@ export default function CalendarPage() {
     );
   };
 
+  // Format date for the side panel (e.g., "March 15, 2025" or "15 de marzo, 2025")
+  const formatSelectedDate = (date) => {
+    if (!date) return "";
+    if (locale === "es") {
+      return format(date, "d 'de' MMMM, yyyy", { locale: dateFnsLocale });
+    } else {
+      return format(date, "MMMM d, yyyy", { locale: dateFnsLocale });
+    }
+  };
+
   return (
     <div data-testid="calendar-page" className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Calendario</h1>
-          <p className="text-slate-500 mt-1">Vista de pickups y entregas programadas</p>
+          <h1 className="text-2xl font-bold text-slate-900">{t("Calendar", "Calendario")}</h1>
+          <p className="text-slate-500 mt-1">
+            {t("Pickups and deliveries schedule view", "Vista de pickups y entregas programadas")}
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={handlePrevMonth}>
             <ChevronLeft className="h-4 w-4" />
           </Button>
           <Button variant="outline" size="sm" onClick={handleToday}>
-            Hoy
+            {t("Today", "Hoy")}
           </Button>
           <Button variant="outline" size="sm" onClick={handleNextMonth}>
             <ChevronRight className="h-4 w-4" />
@@ -146,7 +164,7 @@ export default function CalendarPage() {
         <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-4">
           <div className="text-center mb-4">
             <h2 className="text-xl font-semibold text-slate-900 capitalize">
-              {format(currentMonth, "MMMM yyyy", { locale: es })}
+              {format(currentMonth, "MMMM yyyy", { locale: dateFnsLocale })}
             </h2>
           </div>
           
@@ -187,10 +205,7 @@ export default function CalendarPage() {
           <div className="flex items-center gap-2 mb-4">
             <CalendarDays className="h-5 w-5 text-sky-600" />
             <h3 className="font-semibold text-slate-900">
-              {selectedDate 
-                ? format(selectedDate, "d 'de' MMMM, yyyy", { locale: es })
-                : "Selecciona una fecha"
-              }
+              {selectedDate ? formatSelectedDate(selectedDate) : t("Select a date", "Selecciona una fecha")}
             </h3>
           </div>
 
@@ -225,22 +240,22 @@ export default function CalendarPage() {
             ) : (
               <div className="text-center py-8 text-slate-500">
                 <CalendarDays className="h-12 w-12 mx-auto mb-3 text-slate-300" />
-                <p>No hay pickups programados</p>
+                <p>{t("No pickups scheduled", "No hay pickups programados")}</p>
               </div>
             )
           ) : (
             <div className="text-center py-8 text-slate-500">
-              <p>Haz clic en una fecha para ver los pickups</p>
+              <p>{t("Click on a date to see pickups", "Haz clic en una fecha para ver los pickups")}</p>
             </div>
           )}
         </div>
       </div>
 
       {/* Event Detail Dialog */}
-      <Dialog open={!!selectedEvent} onOpenChange={() => setSelectedEvent(null)}>
-        <DialogContent>
+     <Dialog open={!!selectedEvent} onOpenChange={() => setSelectedEvent(null)}>
+        <DialogContent className="bg-white"> {/* <-- forzar fondo blanco */}
           <DialogHeader>
-            <DialogTitle>Orden {selectedEvent?.order_number}</DialogTitle>
+            <DialogTitle>{t("Order", "Orden")} {selectedEvent?.order_number}</DialogTitle>
           </DialogHeader>
           {selectedEvent && (
             <div className="space-y-4 mt-4">
@@ -253,7 +268,7 @@ export default function CalendarPage() {
                 <div className="flex items-start gap-2">
                   <User className="h-4 w-4 text-slate-400 mt-0.5" />
                   <div>
-                    <p className="text-xs text-slate-500">Cliente</p>
+                    <p className="text-xs text-slate-500">{t("Customer", "Cliente")}</p>
                     <p className="font-medium text-sm">{selectedEvent.customer_name}</p>
                   </div>
                 </div>
@@ -261,8 +276,8 @@ export default function CalendarPage() {
                 <div className="flex items-start gap-2">
                   <Truck className="h-4 w-4 text-slate-400 mt-0.5" />
                   <div>
-                    <p className="text-xs text-slate-500">Servicio</p>
-                    <p className="font-medium text-sm">{serviceLabels[selectedEvent.service_type]}</p>
+                    <p className="text-xs text-slate-500">{t("Service", "Servicio")}</p>
+                    <p className="font-medium text-sm">{serviceTypeLabels[selectedEvent.service_type]}</p>
                   </div>
                 </div>
               </div>
@@ -270,7 +285,7 @@ export default function CalendarPage() {
               <div className="flex items-start gap-2">
                 <CalendarDays className="h-4 w-4 text-slate-400 mt-0.5" />
                 <div>
-                  <p className="text-xs text-slate-500">Fecha y Hora</p>
+                  <p className="text-xs text-slate-500">{t("Date and Time", "Fecha y Hora")}</p>
                   <p className="font-medium text-sm">
                     {selectedEvent.date} {selectedEvent.time && `• ${selectedEvent.time}`}
                   </p>
@@ -281,7 +296,7 @@ export default function CalendarPage() {
                 <div className="flex items-start gap-2">
                   <MapPin className="h-4 w-4 text-slate-400 mt-0.5" />
                   <div>
-                    <p className="text-xs text-slate-500">Dirección</p>
+                    <p className="text-xs text-slate-500">{t("Address", "Dirección")}</p>
                     <p className="font-medium text-sm">{selectedEvent.address}</p>
                   </div>
                 </div>
@@ -292,7 +307,7 @@ export default function CalendarPage() {
                   className="w-full btn-primary"
                   onClick={() => window.location.href = `/admin/orders`}
                 >
-                  Ver Orden Completa
+                  {t("View Full Order", "Ver Orden Completa")}
                 </Button>
               </div>
             </div>

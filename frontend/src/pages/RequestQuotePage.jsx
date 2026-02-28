@@ -9,48 +9,50 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { CheckCircle, Building2, Briefcase, Truck, Hotel } from "lucide-react";
 import PublicNav from "../components/PublicNav";
 import PublicFooter from "../components/PublicFooter";
+import { useLocale } from "../context/LocaleContext";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 const BUSINESS_TYPES = [
-  { value: "hotel", label: "Hotel / Hospitality" },
-  { value: "airbnb", label: "Airbnb / Vacation Rental" },
-  { value: "restaurant", label: "Restaurant / Food Service" },
-  { value: "healthcare", label: "Healthcare / Medical" },
-  { value: "fitness", label: "Gym / Fitness Center" },
-  { value: "spa", label: "Spa / Salon" },
-  { value: "property_management", label: "Property Management" },
-  { value: "corporate", label: "Corporate Office" },
-  { value: "manufacturing", label: "Manufacturing / Industrial" },
-  { value: "retail", label: "Retail" },
-  { value: "other", label: "Other" }
+  { value: "hotel", labelEn: "Hotel / Hospitality", labelEs: "Hotel / Hospitalidad" },
+  { value: "airbnb", labelEn: "Airbnb / Vacation Rental", labelEs: "Airbnb / Alquiler vacacional" },
+  { value: "restaurant", labelEn: "Restaurant / Food Service", labelEs: "Restaurante / Servicio de alimentos" },
+  { value: "healthcare", labelEn: "Healthcare / Medical", labelEs: "Salud / Médico" },
+  { value: "fitness", labelEn: "Gym / Fitness Center", labelEs: "Gimnasio / Centro de fitness" },
+  { value: "spa", labelEn: "Spa / Salon", labelEs: "Spa / Salón" },
+  { value: "property_management", labelEn: "Property Management", labelEs: "Administración de propiedades" },
+  { value: "corporate", labelEn: "Corporate Office", labelEs: "Oficina corporativa" },
+  { value: "manufacturing", labelEn: "Manufacturing / Industrial", labelEs: "Manufactura / Industrial" },
+  { value: "retail", labelEn: "Retail", labelEs: "Venta al por menor" },
+  { value: "other", labelEn: "Other", labelEs: "Otro" }
 ];
 
 const SERVICE_TYPES = [
-  { value: "wash_fold", label: "Wash & Fold" },
-  { value: "dry_cleaning", label: "Dry Cleaning" },
-  { value: "linens", label: "Linens & Towels" },
-  { value: "uniforms", label: "Uniforms" },
-  { value: "full_service", label: "Full Service (All of the above)" }
+  { value: "wash_fold", labelEn: "Wash & Fold", labelEs: "Lavado y Doblado" },
+  { value: "dry_cleaning", labelEn: "Dry Cleaning", labelEs: "Lavado en seco" },
+  { value: "linens", labelEn: "Linens & Towels", labelEs: "Ropa de cama y toallas" },
+  { value: "uniforms", labelEn: "Uniforms", labelEs: "Uniformes" },
+  { value: "full_service", labelEn: "Full Service (All of the above)", labelEs: "Servicio completo (todo lo anterior)" }
 ];
 
 const FREQUENCY_OPTIONS = [
-  { value: "daily", label: "Daily" },
-  { value: "twice_week", label: "Twice a Week" },
-  { value: "weekly", label: "Weekly" },
-  { value: "biweekly", label: "Biweekly" },
-  { value: "monthly", label: "Monthly" },
-  { value: "on_demand", label: "On Demand" }
+  { value: "daily", labelEn: "Daily", labelEs: "Diario" },
+  { value: "twice_week", labelEn: "Twice a Week", labelEs: "Dos veces por semana" },
+  { value: "weekly", labelEn: "Weekly", labelEs: "Semanal" },
+  { value: "biweekly", labelEn: "Biweekly", labelEs: "Quincenal" },
+  { value: "monthly", labelEn: "Monthly", labelEs: "Mensual" },
+  { value: "on_demand", labelEn: "On Demand", labelEs: "Bajo demanda" }
 ];
 
 const CONTACT_METHODS = [
-  { value: "phone", label: "Phone Call" },
-  { value: "text", label: "Text Message" },
-  { value: "email", label: "Email" },
-  { value: "whatsapp", label: "WhatsApp" }
+  { value: "phone", labelEn: "Phone Call", labelEs: "Llamada telefónica" },
+  { value: "text", labelEn: "Text Message", labelEs: "Mensaje de texto" },
+  { value: "email", labelEn: "Email", labelEs: "Correo electrónico" },
+  { value: "whatsapp", labelEn: "WhatsApp", labelEs: "WhatsApp" }
 ];
 
 export default function RequestQuotePage() {
+  const { t, locale } = useLocale();
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [form, setForm] = useState({
@@ -85,7 +87,7 @@ export default function RequestQuotePage() {
     const required = ['first_name', 'last_name', 'email', 'phone', 'address_line1', 'city', 'state', 'zip_code', 'service_type', 'has_membership', 'business_type', 'laundry_frequency', 'estimated_lbs', 'best_date', 'best_time'];
     const missing = required.filter(f => !form[f]);
     if (missing.length > 0) {
-      toast.error("Please fill all required fields");
+      toast.error(t("Please fill all required fields", "Por favor completa todos los campos obligatorios"));
       return;
     }
 
@@ -114,10 +116,10 @@ export default function RequestQuotePage() {
       };
 
       const res = await axios.post(`${API}/public/b2b-quote`, payload);
-      toast.success(res.data.message || "Quote request submitted successfully!");
+      toast.success(res.data.message || t("Quote request submitted successfully!", "¡Solicitud de cotización enviada con éxito!"));
       setSubmitted(true);
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Error submitting request");
+      toast.error(error.response?.data?.detail || t("Error submitting request", "Error al enviar la solicitud"));
     } finally {
       setSubmitting(false);
     }
@@ -132,9 +134,14 @@ export default function RequestQuotePage() {
             <div className="h-20 w-20 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-6">
               <CheckCircle className="h-10 w-10 text-green-600" />
             </div>
-            <h1 className="text-3xl font-bold text-slate-900 mb-4">Quote Request Received!</h1>
+            <h1 className="text-3xl font-bold text-slate-900 mb-4">
+              {t("Quote Request Received!", "¡Solicitud de cotización recibida!")}
+            </h1>
             <p className="text-lg text-slate-600 mb-8">
-              Thank you for your interest in our commercial laundry services. Our team will review your requirements and contact you within 24-48 hours with a customized quote.
+              {t(
+                "Thank you for your interest in our commercial laundry services. Our team will review your requirements and contact you within 24-48 hours with a customized quote.",
+                "Gracias por tu interés en nuestros servicios de lavandería comercial. Nuestro equipo revisará tus requisitos y se pondrá en contacto contigo dentro de 24-48 horas con una cotización personalizada."
+              )}
             </p>
             <Button 
               onClick={() => {
@@ -149,7 +156,7 @@ export default function RequestQuotePage() {
               }}
               className="bg-sky-500 hover:bg-sky-600 text-white rounded-full px-8"
             >
-              Submit Another Request
+              {t("Submit Another Request", "Enviar otra solicitud")}
             </Button>
           </div>
         </section>
@@ -162,8 +169,8 @@ export default function RequestQuotePage() {
     <div className="min-h-screen bg-white">
       <PublicNav />
 
-      {/* Hero Section */}
-      <section className="pt-24 pb-8 bg-gradient-to-b from-slate-900 to-slate-800">
+      {/* Hero Section - Aumentado pt-32 para evitar superposición con el nav */}
+      <section className="pt-32 pb-8 bg-gradient-to-b from-slate-900 to-slate-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <div className="flex justify-center gap-4 mb-6">
             <div className="h-14 w-14 rounded-xl bg-sky-500/20 flex items-center justify-center">
@@ -177,13 +184,16 @@ export default function RequestQuotePage() {
             </div>
           </div>
           <h1 className="text-4xl sm:text-5xl font-bold text-white mb-4" style={{ fontFamily: "'Playfair Display', serif" }}>
-            Commercial Laundry Services
+            {t("Commercial Laundry Services", "Servicios de lavandería comercial")}
           </h1>
           <p className="text-xl text-slate-300 max-w-3xl mx-auto mb-4">
-            Reliable commercial laundry services for growing businesses
+            {t("Reliable commercial laundry services for growing businesses", "Servicios de lavandería comercial confiables para negocios en crecimiento")}
           </p>
           <p className="text-slate-400 max-w-2xl mx-auto">
-            Streamline your operations with reliable commercial laundry service. Provide your information below and our team will contact you to prepare a customized quote based on your volume, service requirements, and logistics needs.
+            {t(
+              "Streamline your operations with reliable commercial laundry service. Provide your information below and our team will contact you to prepare a customized quote based on your volume, service requirements, and logistics needs.",
+              "Optimiza tus operaciones con un servicio de lavandería comercial confiable. Proporciona tu información a continuación y nuestro equipo se pondrá en contacto contigo para preparar una cotización personalizada según tu volumen, requisitos de servicio y necesidades logísticas."
+            )}
           </p>
         </div>
       </section>
@@ -197,12 +207,12 @@ export default function RequestQuotePage() {
             <div className="mb-8">
               <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
                 <span className="h-8 w-8 rounded-full bg-sky-100 text-sky-600 flex items-center justify-center text-sm font-bold">1</span>
-                Contact Information
+                {t("Contact Information", "Información de contacto")}
               </h2>
               
               <div className="grid md:grid-cols-2 gap-4">
                 <div>
-                  <Label>First Name *</Label>
+                  <Label>{t("First Name *", "Nombre *")}</Label>
                   <Input
                     value={form.first_name}
                     onChange={(e) => setForm({...form, first_name: e.target.value})}
@@ -211,7 +221,7 @@ export default function RequestQuotePage() {
                   />
                 </div>
                 <div>
-                  <Label>Last Name *</Label>
+                  <Label>{t("Last Name *", "Apellido *")}</Label>
                   <Input
                     value={form.last_name}
                     onChange={(e) => setForm({...form, last_name: e.target.value})}
@@ -223,7 +233,7 @@ export default function RequestQuotePage() {
 
               <div className="grid md:grid-cols-2 gap-4 mt-4">
                 <div>
-                  <Label>Email *</Label>
+                  <Label>{t("Email *", "Correo *")}</Label>
                   <Input
                     type="email"
                     value={form.email}
@@ -233,7 +243,7 @@ export default function RequestQuotePage() {
                   />
                 </div>
                 <div>
-                  <Label>Phone *</Label>
+                  <Label>{t("Phone *", "Teléfono *")}</Label>
                   <Input
                     type="tel"
                     value={form.phone}
@@ -247,24 +257,26 @@ export default function RequestQuotePage() {
 
               <div className="grid md:grid-cols-2 gap-4 mt-4">
                 <div>
-                  <Label>Best way to contact you</Label>
+                  <Label>{t("Best way to contact you", "Mejor forma de contactarte")}</Label>
                   <Select value={form.contact_method} onValueChange={(v) => setForm({...form, contact_method: v})}>
                     <SelectTrigger className="mt-1">
-                      <SelectValue placeholder="Select an option" />
+                      <SelectValue placeholder={t("Select an option", "Selecciona una opción")} />
                     </SelectTrigger>
                     <SelectContent>
                       {CONTACT_METHODS.map(m => (
-                        <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                        <SelectItem key={m.value} value={m.value}>
+                          {t(m.labelEn, m.labelEs)}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div>
-                  <Label>Job Title / Role</Label>
+                  <Label>{t("Job Title / Role", "Cargo / Rol")}</Label>
                   <Input
                     value={form.job_title}
                     onChange={(e) => setForm({...form, job_title: e.target.value})}
-                    placeholder="e.g., Operations Manager"
+                    placeholder={t("e.g., Operations Manager", "ej. Gerente de operaciones")}
                     className="mt-1"
                   />
                 </div>
@@ -278,7 +290,7 @@ export default function RequestQuotePage() {
                     onChange={(e) => setForm({...form, subscribe_newsletter: e.target.checked})}
                     className="rounded border-slate-300"
                   />
-                  <span className="text-sm text-slate-600">Sign up for news and updates</span>
+                  <span className="text-sm text-slate-600">{t("Sign up for news and updates", "Suscríbete para recibir noticias y actualizaciones")}</span>
                 </label>
               </div>
             </div>
@@ -287,12 +299,12 @@ export default function RequestQuotePage() {
             <div className="mb-8">
               <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
                 <span className="h-8 w-8 rounded-full bg-sky-100 text-sky-600 flex items-center justify-center text-sm font-bold">2</span>
-                Business Address
+                {t("Business Address", "Dirección comercial")}
               </h2>
               
               <div className="space-y-4">
                 <div>
-                  <Label>Address Line 1 *</Label>
+                  <Label>{t("Address Line 1 *", "Dirección línea 1 *")}</Label>
                   <Input
                     value={form.address_line1}
                     onChange={(e) => setForm({...form, address_line1: e.target.value})}
@@ -301,17 +313,17 @@ export default function RequestQuotePage() {
                   />
                 </div>
                 <div>
-                  <Label>Address Line 2</Label>
+                  <Label>{t("Address Line 2", "Dirección línea 2")}</Label>
                   <Input
                     value={form.address_line2}
                     onChange={(e) => setForm({...form, address_line2: e.target.value})}
-                    placeholder="Suite, Unit, Building (optional)"
+                    placeholder={t("Suite, Unit, Building (optional)", "Suite, Unidad, Edificio (opcional)")}
                     className="mt-1"
                   />
                 </div>
                 <div className="grid md:grid-cols-3 gap-4">
                   <div>
-                    <Label>City *</Label>
+                    <Label>{t("City *", "Ciudad *")}</Label>
                     <Input
                       value={form.city}
                       onChange={(e) => setForm({...form, city: e.target.value})}
@@ -320,7 +332,7 @@ export default function RequestQuotePage() {
                     />
                   </div>
                   <div>
-                    <Label>State *</Label>
+                    <Label>{t("State *", "Estado *")}</Label>
                     <Input
                       value={form.state}
                       onChange={(e) => setForm({...form, state: e.target.value})}
@@ -329,7 +341,7 @@ export default function RequestQuotePage() {
                     />
                   </div>
                   <div>
-                    <Label>ZIP Code *</Label>
+                    <Label>{t("ZIP Code *", "Código postal *")}</Label>
                     <Input
                       value={form.zip_code}
                       onChange={(e) => setForm({...form, zip_code: e.target.value})}
@@ -345,12 +357,12 @@ export default function RequestQuotePage() {
             <div className="mb-8">
               <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
                 <span className="h-8 w-8 rounded-full bg-sky-100 text-sky-600 flex items-center justify-center text-sm font-bold">3</span>
-                Business Information
+                {t("Business Information", "Información comercial")}
               </h2>
               
               <div className="grid md:grid-cols-2 gap-4">
                 <div>
-                  <Label>Company Legal Name</Label>
+                  <Label>{t("Company Legal Name", "Nombre legal de la empresa")}</Label>
                   <Input
                     value={form.company_legal_name}
                     onChange={(e) => setForm({...form, company_legal_name: e.target.value})}
@@ -358,7 +370,7 @@ export default function RequestQuotePage() {
                   />
                 </div>
                 <div>
-                  <Label>DBA / Trade Name (if different)</Label>
+                  <Label>{t("DBA / Trade Name (if different)", "Nombre comercial / DBA (si es diferente)")}</Label>
                   <Input
                     value={form.dba_name}
                     onChange={(e) => setForm({...form, dba_name: e.target.value})}
@@ -369,28 +381,30 @@ export default function RequestQuotePage() {
 
               <div className="grid md:grid-cols-2 gap-4 mt-4">
                 <div>
-                  <Label>Business Type / Industry *</Label>
+                  <Label>{t("Business Type / Industry *", "Tipo de negocio / Industria *")}</Label>
                   <Select value={form.business_type} onValueChange={(v) => setForm({...form, business_type: v})}>
                     <SelectTrigger className="mt-1">
-                      <SelectValue placeholder="Select an option" />
+                      <SelectValue placeholder={t("Select an option", "Selecciona una opción")} />
                     </SelectTrigger>
                     <SelectContent>
                       {BUSINESS_TYPES.map(t => (
-                        <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                        <SelectItem key={t.value} value={t.value}>
+                          {locale === "es" ? t.labelEs : t.labelEn}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div>
-                  <Label>Do you have an active membership? *</Label>
+                  <Label>{t("Do you have an active membership? *", "¿Tienes una membresía activa? *")}</Label>
                   <Select value={form.has_membership} onValueChange={(v) => setForm({...form, has_membership: v})}>
                     <SelectTrigger className="mt-1">
-                      <SelectValue placeholder="Select an option" />
+                      <SelectValue placeholder={t("Select an option", "Selecciona una opción")} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="yes">Yes</SelectItem>
-                      <SelectItem value="no">No</SelectItem>
-                      <SelectItem value="interested">Interested in learning more</SelectItem>
+                      <SelectItem value="yes">{t("Yes", "Sí")}</SelectItem>
+                      <SelectItem value="no">{t("No", "No")}</SelectItem>
+                      <SelectItem value="interested">{t("Interested in learning more", "Interesado en conocer más")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -401,32 +415,36 @@ export default function RequestQuotePage() {
             <div className="mb-8">
               <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
                 <span className="h-8 w-8 rounded-full bg-sky-100 text-sky-600 flex items-center justify-center text-sm font-bold">4</span>
-                Service Requirements
+                {t("Service Requirements", "Requisitos del servicio")}
               </h2>
               
               <div className="grid md:grid-cols-2 gap-4">
                 <div>
-                  <Label>Type of Service *</Label>
+                  <Label>{t("Type of Service *", "Tipo de servicio *")}</Label>
                   <Select value={form.service_type} onValueChange={(v) => setForm({...form, service_type: v})}>
                     <SelectTrigger className="mt-1">
-                      <SelectValue placeholder="Select an option" />
+                      <SelectValue placeholder={t("Select an option", "Selecciona una opción")} />
                     </SelectTrigger>
                     <SelectContent>
                       {SERVICE_TYPES.map(s => (
-                        <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                        <SelectItem key={s.value} value={s.value}>
+                          {locale === "es" ? s.labelEs : s.labelEn}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div>
-                  <Label>Expected Laundry Frequency *</Label>
+                  <Label>{t("Expected Laundry Frequency *", "Frecuencia esperada de lavandería *")}</Label>
                   <Select value={form.laundry_frequency} onValueChange={(v) => setForm({...form, laundry_frequency: v})}>
                     <SelectTrigger className="mt-1">
-                      <SelectValue placeholder="Select an option" />
+                      <SelectValue placeholder={t("Select an option", "Selecciona una opción")} />
                     </SelectTrigger>
                     <SelectContent>
                       {FREQUENCY_OPTIONS.map(f => (
-                        <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
+                        <SelectItem key={f.value} value={f.value}>
+                          {locale === "es" ? f.labelEs : f.labelEn}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -434,13 +452,13 @@ export default function RequestQuotePage() {
               </div>
 
               <div className="mt-4">
-                <Label>Estimated Average Pounds per Pick-up *</Label>
+                <Label>{t("Estimated Average Pounds per Pick-up *", "Libras promedio estimadas por recogida *")}</Label>
                 <Input
                   type="number"
                   min="1"
                   value={form.estimated_lbs}
                   onChange={(e) => setForm({...form, estimated_lbs: e.target.value})}
-                  placeholder="e.g., 100"
+                  placeholder={t("e.g., 100", "ej. 100")}
                   required
                   className="mt-1"
                 />
@@ -451,12 +469,12 @@ export default function RequestQuotePage() {
             <div className="mb-8">
               <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
                 <span className="h-8 w-8 rounded-full bg-sky-100 text-sky-600 flex items-center justify-center text-sm font-bold">5</span>
-                Best Time to Reach You
+                {t("Best Time to Reach You", "Mejor momento para contactarte")}
               </h2>
               
               <div className="grid md:grid-cols-2 gap-4">
                 <div>
-                  <Label>Best Date *</Label>
+                  <Label>{t("Best Date *", "Mejor fecha *")}</Label>
                   <Input
                     type="date"
                     value={form.best_date}
@@ -466,7 +484,7 @@ export default function RequestQuotePage() {
                   />
                 </div>
                 <div>
-                  <Label>Best Time (Pacific Time) *</Label>
+                  <Label>{t("Best Time (Pacific Time) *", "Mejor hora (hora del Pacífico) *")}</Label>
                   <Input
                     type="time"
                     value={form.best_time}
@@ -478,11 +496,11 @@ export default function RequestQuotePage() {
               </div>
 
               <div className="mt-4">
-                <Label>Additional Notes</Label>
+                <Label>{t("Additional Notes", "Notas adicionales")}</Label>
                 <Textarea
                   value={form.additional_notes}
                   onChange={(e) => setForm({...form, additional_notes: e.target.value})}
-                  placeholder="Any specific requirements or questions?"
+                  placeholder={t("Any specific requirements or questions?", "¿Requisitos o preguntas específicas?")}
                   className="mt-1"
                   rows={3}
                 />
@@ -496,10 +514,10 @@ export default function RequestQuotePage() {
                 disabled={submitting}
                 className="w-full bg-sky-600 hover:bg-sky-700 text-white rounded-full h-12 text-lg"
               >
-                {submitting ? "Submitting..." : "SUBMIT QUOTE REQUEST"}
+                {submitting ? t("Submitting...", "Enviando...") : t("SUBMIT QUOTE REQUEST", "ENVIAR SOLICITUD DE COTIZACIÓN")}
               </Button>
               <p className="text-center text-sm text-slate-500 mt-3">
-                By submitting this form, you agree to be contacted by our team.
+                {t("By submitting this form, you agree to be contacted by our team.", "Al enviar este formulario, aceptas ser contactado por nuestro equipo.")}
               </p>
             </div>
           </form>

@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { User, Mail, MapPin, Package, LogOut, Calendar, Clock } from "lucide-react";
 import PublicNav from "../components/PublicNav";
 import PublicFooter from "../components/PublicFooter";
+import { useLocale } from "../context/LocaleContext";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -23,17 +24,8 @@ const statusColors = {
   cancelled: "bg-red-100 text-red-700",
 };
 
-const statusLabels = {
-  new: "New",
-  processing: "Processing",
-  ready: "Ready",
-  out_for_delivery: "Out for Delivery",
-  delivered: "Delivered",
-  completed: "Completed",
-  cancelled: "Cancelled",
-};
-
 export default function CustomerAccount() {
+  const { t, locale } = useLocale();
   const navigate = useNavigate();
   const [customer, setCustomer] = useState(null);
   const [orders, setOrders] = useState([]);
@@ -51,6 +43,17 @@ export default function CustomerAccount() {
   });
   const [preferencesMeta, setPreferencesMeta] = useState({ updated_at: null, version: null });
   const [preferencesLoading, setPreferencesLoading] = useState(true);
+
+  // Status labels with translation
+  const statusLabels = {
+    new: t("New", "Nueva"),
+    processing: t("Processing", "Procesando"),
+    ready: t("Ready", "Lista"),
+    out_for_delivery: t("Out for Delivery", "En camino"),
+    delivered: t("Delivered", "Entregada"),
+    completed: t("Completed", "Completada"),
+    cancelled: t("Cancelled", "Cancelada"),
+  };
 
   useEffect(() => {
     const token = localStorage.getItem("customer_token");
@@ -107,7 +110,7 @@ export default function CustomerAccount() {
       setPreferencesMeta({ updated_at: data.updated_at || null, version: data.version || null });
     } catch (error) {
       if (error.response?.status !== 404) {
-        toast.error("No se pudieron cargar las preferencias");
+        toast.error(t("Could not load preferences", "No se pudieron cargar las preferencias"));
       }
     } finally {
       setPreferencesLoading(false);
@@ -117,7 +120,7 @@ export default function CustomerAccount() {
   const handleLogout = () => {
     localStorage.removeItem("customer_token");
     localStorage.removeItem("customer_data");
-    toast.success("Signed out successfully");
+    toast.success(t("Signed out successfully", "Sesión cerrada correctamente"));
     navigate("/account/login");
   };
 
@@ -128,10 +131,10 @@ export default function CustomerAccount() {
       const res = await axios.post(`${API}/customer/preferences`, preferences, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      toast.success("Preferencias guardadas");
+      toast.success(t("Preferences saved", "Preferencias guardadas"));
       setPreferencesMeta({ updated_at: res.data.updated_at || null, version: res.data.version || null });
     } catch (error) {
-      toast.error(error.response?.data?.detail || "No se pudieron guardar las preferencias");
+      toast.error(error.response?.data?.detail || t("Could not save preferences", "No se pudieron guardar las preferencias"));
     }
   };
 
@@ -142,7 +145,7 @@ export default function CustomerAccount() {
       await axios.delete(`${API}/customer/preferences`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      toast.success("Preferencias eliminadas");
+      toast.success(t("Preferences deleted", "Preferencias eliminadas"));
       setPreferences({
         detergent_type: "",
         water_temperature: "",
@@ -156,8 +159,19 @@ export default function CustomerAccount() {
       });
       setPreferencesMeta({ updated_at: null, version: null });
     } catch (error) {
-      toast.error(error.response?.data?.detail || "No se pudieron eliminar las preferencias");
+      toast.error(error.response?.data?.detail || t("Could not delete preferences", "No se pudieron eliminar las preferencias"));
     }
+  };
+
+  // Helper to format date based on locale
+  const formatDate = (dateString) => {
+    if (!dateString) return "";
+    const date = new Date(dateString);
+    return date.toLocaleDateString(locale === "es" ? "es-ES" : "en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
   };
 
   if (loading) {
@@ -188,7 +202,7 @@ export default function CustomerAccount() {
                 </div>
                 <div>
                   <h1 className="text-2xl font-bold text-slate-900">
-                    Hi, {customer?.name?.split(" ")[0] || "Customer"}
+                    {t("Hi, {name}", "Hola, {name}").replace("{name}", customer?.name?.split(" ")[0] || t("Customer", "Cliente"))}
                   </h1>
                   <p className="text-slate-500 text-sm">{customer?.email}</p>
                 </div>
@@ -201,7 +215,7 @@ export default function CustomerAccount() {
                 data-testid="customer-logout-btn"
               >
                 <LogOut className="h-4 w-4 mr-2" />
-                Sign out
+                {t("Sign out", "Cerrar sesión")}
               </Button>
             </div>
           </div>
@@ -209,12 +223,14 @@ export default function CustomerAccount() {
           <div className="bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-slate-100 mb-6" data-testid="customer-preferences-card">
             <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
               <div>
-                <h2 className="text-xl font-bold text-slate-900">Preferencias de lavandería</h2>
-                <p className="text-slate-500 text-sm">Estas preferencias se aplicarán automáticamente a tus próximas órdenes.</p>
+                <h2 className="text-xl font-bold text-slate-900">{t("Laundry preferences", "Preferencias de lavandería")}</h2>
+                <p className="text-slate-500 text-sm">
+                  {t("These preferences will be automatically applied to your next orders.", "Estas preferencias se aplicarán automáticamente a tus próximas órdenes.")}
+                </p>
               </div>
               {preferencesMeta.updated_at && (
                 <span className="text-xs text-slate-500" data-testid="customer-preferences-updated">
-                  Actualizado: {new Date(preferencesMeta.updated_at).toLocaleDateString()}
+                  {t("Updated", "Actualizado")}: {formatDate(preferencesMeta.updated_at)}
                 </span>
               )}
             </div>
@@ -227,112 +243,112 @@ export default function CustomerAccount() {
               <div className="space-y-4">
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
-                    <Label>Detergente preferido</Label>
+                    <Label>{t("Preferred detergent", "Detergente preferido")}</Label>
                     <Select value={preferences.detergent_type} onValueChange={(value) => setPreferences({ ...preferences, detergent_type: value })}>
                       <SelectTrigger className="mt-1" data-testid="customer-pref-detergent">
-                        <SelectValue placeholder="Selecciona detergente" />
+                        <SelectValue placeholder={t("Select detergent", "Selecciona detergente")} />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="hypoallergenic">Hipoalergénico</SelectItem>
-                        <SelectItem value="free_clear">Sin fragancia</SelectItem>
-                        <SelectItem value="lavender">Lavanda</SelectItem>
-                        <SelectItem value="standard">Estándar</SelectItem>
+                        <SelectItem value="hypoallergenic">{t("Hypoallergenic", "Hipoalergénico")}</SelectItem>
+                        <SelectItem value="free_clear">{t("Free & Clear", "Sin fragancia")}</SelectItem>
+                        <SelectItem value="lavender">{t("Lavender", "Lavanda")}</SelectItem>
+                        <SelectItem value="standard">{t("Standard", "Estándar")}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div>
-                    <Label>Temperatura de lavado</Label>
+                    <Label>{t("Water temperature", "Temperatura de lavado")}</Label>
                     <Select value={preferences.water_temperature} onValueChange={(value) => setPreferences({ ...preferences, water_temperature: value })}>
                       <SelectTrigger className="mt-1" data-testid="customer-pref-temperature">
-                        <SelectValue placeholder="Selecciona temperatura" />
+                        <SelectValue placeholder={t("Select temperature", "Selecciona temperatura")} />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="cold">Fría</SelectItem>
-                        <SelectItem value="warm">Tibia</SelectItem>
-                        <SelectItem value="hot">Caliente</SelectItem>
+                        <SelectItem value="cold">{t("Cold", "Fría")}</SelectItem>
+                        <SelectItem value="warm">{t("Warm", "Tibia")}</SelectItem>
+                        <SelectItem value="hot">{t("Hot", "Caliente")}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div>
-                    <Label>Suavizante</Label>
+                    <Label>{t("Fabric softener", "Suavizante")}</Label>
                     <Select value={preferences.fabric_softener} onValueChange={(value) => setPreferences({ ...preferences, fabric_softener: value })}>
                       <SelectTrigger className="mt-1" data-testid="customer-pref-softener">
-                        <SelectValue placeholder="Selecciona suavizante" />
+                        <SelectValue placeholder={t("Select softener", "Selecciona suavizante")} />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="none">Sin suavizante</SelectItem>
-                        <SelectItem value="light">Ligero</SelectItem>
-                        <SelectItem value="standard">Estándar</SelectItem>
-                        <SelectItem value="extra">Extra</SelectItem>
+                        <SelectItem value="none">{t("None", "Sin suavizante")}</SelectItem>
+                        <SelectItem value="light">{t("Light", "Ligero")}</SelectItem>
+                        <SelectItem value="standard">{t("Standard", "Estándar")}</SelectItem>
+                        <SelectItem value="extra">{t("Extra", "Extra")}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div>
-                    <Label>Estilo de doblado</Label>
+                    <Label>{t("Folding style", "Estilo de doblado")}</Label>
                     <Select value={preferences.folding_style} onValueChange={(value) => setPreferences({ ...preferences, folding_style: value })}>
                       <SelectTrigger className="mt-1" data-testid="customer-pref-folding">
-                        <SelectValue placeholder="Selecciona estilo" />
+                        <SelectValue placeholder={t("Select style", "Selecciona estilo")} />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="standard">Estándar</SelectItem>
-                        <SelectItem value="konmari">KonMari</SelectItem>
-                        <SelectItem value="stacked">Apilado premium</SelectItem>
+                        <SelectItem value="standard">{t("Standard", "Estándar")}</SelectItem>
+                        <SelectItem value="konmari">{t("KonMari", "KonMari")}</SelectItem>
+                        <SelectItem value="stacked">{t("Premium stacked", "Apilado premium")}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                 </div>
 
                 <div>
-                  <Label>Colgado / prendas especiales</Label>
+                  <Label>{t("Hanging / special items", "Colgado / prendas especiales")}</Label>
                   <Input
                     value={preferences.hanging_instructions}
                     onChange={(e) => setPreferences({ ...preferences, hanging_instructions: e.target.value })}
                     className="mt-1"
-                    placeholder="Ej. Camisas en gancho"
+                    placeholder={t("e.g. Shirts on hangers", "Ej. Camisas en gancho")}
                     data-testid="customer-pref-hanging"
                   />
                 </div>
 
                 <div>
-                  <Label>Alergias o sensibilidades</Label>
+                  <Label>{t("Allergies or sensitivities", "Alergias o sensibilidades")}</Label>
                   <Textarea
                     value={preferences.allergies}
                     onChange={(e) => setPreferences({ ...preferences, allergies: e.target.value })}
                     className="mt-1"
-                    placeholder="Ej. Sin fragancias"
+                    placeholder={t("e.g. No fragrances", "Ej. Sin fragancias")}
                     data-testid="customer-pref-allergies"
                   />
                 </div>
 
                 <div>
-                  <Label>Notas adicionales</Label>
+                  <Label>{t("Additional notes", "Notas adicionales")}</Label>
                   <Textarea
                     value={preferences.special_instructions}
                     onChange={(e) => setPreferences({ ...preferences, special_instructions: e.target.value })}
                     className="mt-1"
-                    placeholder="Instrucciones especiales"
+                    placeholder={t("Special instructions", "Instrucciones especiales")}
                     data-testid="customer-pref-notes"
                   />
                 </div>
 
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
-                    <Label>Horario preferido de pickup</Label>
+                    <Label>{t("Preferred pickup time", "Horario preferido de pickup")}</Label>
                     <Input
                       value={preferences.pickup_time_preference}
                       onChange={(e) => setPreferences({ ...preferences, pickup_time_preference: e.target.value })}
                       className="mt-1"
-                      placeholder="Ej. 8am - 12pm"
+                      placeholder={t("e.g. 8am - 12pm", "Ej. 8am - 12pm")}
                       data-testid="customer-pref-pickup-time"
                     />
                   </div>
                   <div>
-                    <Label>Puerta / Código de acceso</Label>
+                    <Label>{t("Gate / Access code", "Puerta / Código de acceso")}</Label>
                     <Input
                       value={preferences.gate_code}
                       onChange={(e) => setPreferences({ ...preferences, gate_code: e.target.value })}
                       className="mt-1"
-                      placeholder="Ej. 1234#"
+                      placeholder={t("e.g. 1234#", "Ej. 1234#")}
                       data-testid="customer-pref-gate"
                     />
                   </div>
@@ -340,10 +356,10 @@ export default function CustomerAccount() {
 
                 <div className="flex flex-wrap gap-3 pt-2">
                   <Button onClick={handleSavePreferences} className="bg-sky-600 hover:bg-sky-700" data-testid="customer-preferences-save">
-                    Guardar preferencias
+                    {t("Save preferences", "Guardar preferencias")}
                   </Button>
                   <Button variant="outline" onClick={handleDeletePreferences} data-testid="customer-preferences-delete">
-                    Eliminar preferencias
+                    {t("Delete preferences", "Eliminar preferencias")}
                   </Button>
                 </div>
               </div>
@@ -355,11 +371,11 @@ export default function CustomerAccount() {
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
                 <Package className="h-5 w-5 text-sky-600" />
-                Orders
+                {t("Orders", "Órdenes")}
               </h2>
               <Link to="/schedule-pickup">
                 <Button className="bg-sky-500 hover:bg-sky-600 text-white rounded-full text-sm">
-                  New Pickup
+                  {t("New Pickup", "Nueva recogida")}
                 </Button>
               </Link>
             </div>
@@ -369,10 +385,10 @@ export default function CustomerAccount() {
                 <div className="h-16 w-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
                   <Package className="h-8 w-8 text-slate-400" />
                 </div>
-                <p className="text-slate-600 mb-4">No orders yet</p>
+                <p className="text-slate-600 mb-4">{t("No orders yet", "Aún no tienes órdenes")}</p>
                 <Link to="/schedule-pickup">
                   <Button className="bg-sky-500 hover:bg-sky-600 text-white rounded-full">
-                    Schedule Your First Pickup
+                    {t("Schedule Your First Pickup", "Programa tu primera recogida")}
                   </Button>
                 </Link>
               </div>
@@ -441,27 +457,27 @@ export default function CustomerAccount() {
             <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
               <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2 mb-4">
                 <MapPin className="h-5 w-5 text-sky-600" />
-                Address
+                {t("Address", "Dirección")}
               </h2>
               {customer?.address ? (
                 <p className="text-slate-600">{customer.address}</p>
               ) : (
-                <p className="text-slate-400 italic">No address saved</p>
+                <p className="text-slate-400 italic">{t("No address saved", "No hay dirección guardada")}</p>
               )}
             </div>
 
             <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
               <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2 mb-4">
                 <Mail className="h-5 w-5 text-sky-600" />
-                Profile
+                {t("Profile", "Perfil")}
               </h2>
               <div className="space-y-2 text-sm">
                 <p className="text-slate-600">
-                  <span className="font-medium">Email:</span> {customer?.email}
+                  <span className="font-medium">{t("Email", "Correo")}:</span> {customer?.email}
                 </p>
                 {customer?.phone && (
                   <p className="text-slate-600">
-                    <span className="font-medium">Phone:</span> {customer.phone}
+                    <span className="font-medium">{t("Phone", "Teléfono")}:</span> {customer.phone}
                   </p>
                 )}
               </div>

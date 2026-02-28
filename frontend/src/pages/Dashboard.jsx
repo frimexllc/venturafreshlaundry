@@ -21,6 +21,7 @@ import {
 import { toast } from "sonner";
 import { createNotificationsSocket } from "../utils/notificationsSocket";
 import { Button } from "../components/ui/button";
+import { useLocale } from "../context/LocaleContext";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -42,7 +43,7 @@ const StatCard = ({ icon: Icon, label, value, color, subtext, onClick }) => (
   </div>
 );
 
-const ActivityItem = ({ event }) => {
+const ActivityItem = ({ event, t }) => {
   const getEventColor = (type) => {
     if (type.includes("CREATED")) return "bg-emerald-500";
     if (type.includes("UPDATED")) return "bg-sky-500";
@@ -62,10 +63,10 @@ const ActivityItem = ({ event }) => {
     const minutes = Math.floor(diff / 60000);
     const hours = Math.floor(diff / 3600000);
     
-    if (minutes < 1) return "Now";
-    if (minutes < 60) return `${minutes}m ago`;
-    if (hours < 24) return `${hours}h ago`;
-    return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    if (minutes < 1) return t("Now", "Ahora");
+    if (minutes < 60) return t("{minutes}m ago", "hace {minutes}m").replace("{minutes}", minutes);
+    if (hours < 24) return t("{hours}h ago", "hace {hours}h").replace("{hours}", hours);
+    return date.toLocaleDateString(t("en-US", "es-ES"), { month: "short", day: "numeric" });
   };
 
   return (
@@ -115,6 +116,7 @@ const SuggestionCard = ({ suggestion }) => {
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const { t, locale } = useLocale();
   const [stats, setStats] = useState(null);
   const [activity, setActivity] = useState([]);
   const [briefing, setBriefing] = useState(null);
@@ -136,7 +138,7 @@ export default function Dashboard() {
     }
 
     const handleNotification = (payload) => {
-      const message = payload?.message || "Actualización recibida";
+      const message = payload?.message || t("Update received", "Actualización recibida");
       toast.info(message);
       fetchData();
     };
@@ -154,7 +156,7 @@ export default function Dashboard() {
       socket.off("notification", handleNotification);
       socket.disconnect();
     };
-  }, []);
+  }, [t]);
 
   const fetchData = async () => {
     try {
@@ -189,10 +191,10 @@ export default function Dashboard() {
   };
 
   const realtimeLabel = realtimeStatus === "connected"
-    ? "Tiempo real: conectado"
+    ? t("Realtime: connected", "Tiempo real: conectado")
     : realtimeStatus === "disabled"
-      ? "Tiempo real: sin configurar"
-      : "Tiempo real: desconectado";
+      ? t("Realtime: not configured", "Tiempo real: sin configurar")
+      : t("Realtime: disconnected", "Tiempo real: desconectado");
   const realtimeClass = realtimeStatus === "connected"
     ? "bg-emerald-100 text-emerald-700"
     : realtimeStatus === "disabled"
@@ -213,9 +215,9 @@ export default function Dashboard() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">
-            Welcome back, {user?.name?.split(' ')[0] || 'Admin'}!
+            {t("Welcome back, {name}!", "Bienvenido de nuevo, {name}!").replace("{name}", user?.name?.split(' ')[0] || t("Admin", "Admin"))}
           </h1>
-          <p className="text-slate-500 mt-1">Here's what's happening today</p>
+          <p className="text-slate-500 mt-1">{t("Here's what's happening today", "Esto es lo que está pasando hoy")}</p>
         </div>
         <div className="flex items-center gap-3">
           <span className={`px-3 py-1 rounded-full text-xs font-semibold ${realtimeClass}`} data-testid="dashboard-realtime-status">
@@ -228,7 +230,7 @@ export default function Dashboard() {
             data-testid="dashboard-refresh-btn"
           >
             <RefreshCw className={`h-4 w-4 mr-2 ${briefingLoading ? 'animate-spin' : ''}`} />
-            Refresh
+            {t("Refresh", "Actualizar")}
           </Button>
         </div>
       </div>
@@ -242,17 +244,17 @@ export default function Dashboard() {
             </div>
             <div>
               <h2 className="font-semibold text-slate-900 flex items-center gap-2">
-                AI Business Assistant
+                {t("AI Business Assistant", "Asistente de Negocios IA")}
                 <Sparkles className="h-4 w-4 text-amber-500" />
               </h2>
-              <p className="text-sm text-slate-500">Powered by Groq • llama-3.3-70b</p>
+              <p className="text-sm text-slate-500">{t("Powered by Groq • llama-3.3-70b", "Desarrollado por Groq • llama-3.3-70b")}</p>
             </div>
           </div>
           
           {briefingLoading ? (
             <div className="flex items-center gap-3 py-8">
               <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-sky-600"></div>
-              <span className="text-slate-600">Analyzing your business data...</span>
+              <span className="text-slate-600">{t("Analyzing your business data...", "Analizando tus datos de negocio...")}</span>
             </div>
           ) : briefing?.briefing ? (
             <div className="prose prose-slate prose-sm max-w-none">
@@ -262,7 +264,7 @@ export default function Dashboard() {
             </div>
           ) : (
             <p className="text-slate-500 py-4">
-              Unable to generate briefing. Click refresh to try again.
+              {t("Unable to generate briefing. Click refresh to try again.", "No se pudo generar el briefing. Haz clic en actualizar para intentarlo de nuevo.")}
             </p>
           )}
         </div>
@@ -272,7 +274,7 @@ export default function Dashboard() {
           <div className="border-t border-sky-100 bg-white/50 p-4">
             <h3 className="font-medium text-slate-900 mb-3 flex items-center gap-2">
               <Zap className="h-4 w-4 text-amber-500" />
-              Action Items
+              {t("Action Items", "Elementos de acción")}
             </h3>
             <div className="space-y-2">
               {suggestions.slice(0, 4).map((suggestion, idx) => (
@@ -287,26 +289,26 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           icon={Users}
-          label="Total Customers"
+          label={t("Total Customers", "Total de clientes")}
           value={stats?.total_customers || 0}
           color="bg-sky-100 text-sky-600"
         />
         <StatCard
           icon={ShoppingBag}
-          label="Orders Today"
+          label={t("Orders Today", "Órdenes de hoy")}
           value={stats?.orders_today || 0}
           color="bg-emerald-100 text-emerald-600"
-          subtext={`${stats?.pending_orders || 0} pending`}
+          subtext={t("{count} pending", "{count} pendientes").replace("{count}", stats?.pending_orders || 0)}
         />
         <StatCard
           icon={HeadphonesIcon}
-          label="Open Tickets"
+          label={t("Open Tickets", "Tickets abiertos")}
           value={stats?.open_tickets || 0}
           color="bg-amber-100 text-amber-600"
         />
         <StatCard
           icon={DollarSign}
-          label="Monthly Revenue"
+          label={t("Monthly Revenue", "Ingresos del mes")}
           value={`$${(stats?.revenue_this_month || 0).toLocaleString()}`}
           color="bg-purple-100 text-purple-600"
         />
@@ -316,19 +318,19 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <StatCard
           icon={FileText}
-          label="Active Quotes"
+          label={t("Active Quotes", "Cotizaciones activas")}
           value={stats?.active_quotes || 0}
           color="bg-blue-100 text-blue-600"
         />
         <StatCard
           icon={UserPlus}
-          label="New Leads"
+          label={t("New Leads", "Nuevos leads")}
           value={stats?.new_leads || 0}
           color="bg-indigo-100 text-indigo-600"
         />
         <StatCard
           icon={TrendingUp}
-          label="Active Members"
+          label={t("Active Members", "Miembros activos")}
           value={stats?.active_members || 0}
           color="bg-rose-100 text-rose-600"
         />
@@ -341,16 +343,16 @@ export default function Dashboard() {
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-semibold text-slate-900 flex items-center gap-2">
               <Clock className="h-5 w-5 text-slate-400" />
-              Recent Activity
+              {t("Recent Activity", "Actividad reciente")}
             </h2>
           </div>
           <div className="divide-y divide-slate-100">
             {activity.length > 0 ? (
               activity.slice(0, 8).map((event, idx) => (
-                <ActivityItem key={idx} event={event} />
+                <ActivityItem key={idx} event={event} t={t} />
               ))
             ) : (
-              <p className="text-slate-500 py-4 text-center">No recent activity</p>
+              <p className="text-slate-500 py-4 text-center">{t("No recent activity", "Sin actividad reciente")}</p>
             )}
           </div>
         </div>
@@ -360,31 +362,31 @@ export default function Dashboard() {
           <div className="bg-white rounded-xl border border-slate-200 p-6">
             <h2 className="font-semibold text-slate-900 mb-4 flex items-center gap-2">
               <Bot className="h-5 w-5 text-sky-600" />
-              Business Overview
+              {t("Business Overview", "Resumen del negocio")}
             </h2>
             <div className="grid grid-cols-2 gap-4">
               <div className="p-3 bg-slate-50 rounded-lg">
-                <p className="text-xs text-slate-500">New Orders</p>
+                <p className="text-xs text-slate-500">{t("New Orders", "Nuevas órdenes")}</p>
                 <p className="text-xl font-bold text-slate-900">{briefing.data.orders_new}</p>
               </div>
               <div className="p-3 bg-slate-50 rounded-lg">
-                <p className="text-xs text-slate-500">Processing</p>
+                <p className="text-xs text-slate-500">{t("Processing", "Procesando")}</p>
                 <p className="text-xl font-bold text-slate-900">{briefing.data.orders_processing}</p>
               </div>
               <div className="p-3 bg-slate-50 rounded-lg">
-                <p className="text-xs text-slate-500">Ready</p>
+                <p className="text-xs text-slate-500">{t("Ready", "Listas")}</p>
                 <p className="text-xl font-bold text-slate-900">{briefing.data.orders_ready}</p>
               </div>
               <div className="p-3 bg-slate-50 rounded-lg">
-                <p className="text-xs text-slate-500">Out for Delivery</p>
+                <p className="text-xs text-slate-500">{t("Out for Delivery", "En camino")}</p>
                 <p className="text-xl font-bold text-slate-900">{briefing.data.orders_out_delivery}</p>
               </div>
               <div className="p-3 bg-green-50 rounded-lg col-span-2">
-                <p className="text-xs text-green-600">Total Revenue</p>
+                <p className="text-xs text-green-600">{t("Total Revenue", "Ingresos totales")}</p>
                 <p className="text-xl font-bold text-green-700">${briefing.data.total_revenue?.toFixed(2) || '0.00'}</p>
               </div>
               <div className="p-3 bg-orange-50 rounded-lg col-span-2">
-                <p className="text-xs text-orange-600">Pending Payments</p>
+                <p className="text-xs text-orange-600">{t("Pending Payments", "Pagos pendientes")}</p>
                 <p className="text-xl font-bold text-orange-700">${briefing.data.pending_revenue?.toFixed(2) || '0.00'}</p>
               </div>
             </div>

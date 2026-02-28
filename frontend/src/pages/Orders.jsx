@@ -9,18 +9,9 @@ import { Textarea } from "../components/ui/textarea";
 import { toast } from "sonner";
 import { Plus, Search, Calendar, Truck, MoreHorizontal, Eye, CheckCircle, Download } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "../components/ui/dropdown-menu";
+import { useLocale } from "../context/LocaleContext";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
-
-const statusLabels = {
-  new: { label: "Nueva", class: "badge-pending" },
-  processing: { label: "Procesando", class: "badge-processing" },
-  ready: { label: "Lista", class: "badge-processing" },
-  out_for_delivery: { label: "En camino", class: "badge-processing" },
-  delivered: { label: "Entregada", class: "badge-completed" },
-  completed: { label: "Completada", class: "badge-completed" },
-  cancelled: { label: "Cancelada", class: "badge-cancelled" }
-};
 
 const normalizeStatus = (status) =>
   (status || "")
@@ -28,9 +19,6 @@ const normalizeStatus = (status) =>
     .trim()
     .toLowerCase()
     .replace(/\s+/g, "_");
-
-const getStatusMeta = (status) =>
-  statusLabels[normalizeStatus(status)] || { label: status || "-", class: "badge-pending" };
 
 const serviceLabels = {
   pickup_delivery: "Pickup & Delivery",
@@ -40,17 +28,17 @@ const serviceLabels = {
 };
 
 const preferenceLabels = {
-  detergent_type: "Detergente",
-  water_temperature: "Temperatura de agua",
-  fabric_softener: "Suavizante",
-  folding_style: "Doblado",
-  hanging_instructions: "Colgar prendas",
-  allergies: "Alergias",
-  special_instructions: "Instrucciones especiales",
-  pickup_time_preference: "Horario preferido",
-  gate_code: "Código de acceso",
-  hang_dry_items: "Secado al aire",
-  fragrance_preference: "Fragancia"
+  detergent_type: "Detergent",
+  water_temperature: "Water temperature",
+  fabric_softener: "Fabric softener",
+  folding_style: "Folding style",
+  hanging_instructions: "Hanging instructions",
+  allergies: "Allergies",
+  special_instructions: "Special instructions",
+  pickup_time_preference: "Preferred time",
+  gate_code: "Gate code",
+  hang_dry_items: "Hang dry items",
+  fragrance_preference: "Fragrance"
 };
 
 const emptyForm = {
@@ -66,6 +54,7 @@ const emptyForm = {
 };
 
 export default function Orders() {
+  const { t, locale } = useLocale();
   const [orders, setOrders] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [statusFilter, setStatusFilter] = useState("all");
@@ -81,6 +70,49 @@ export default function Orders() {
   const [exportingQr, setExportingQr] = useState(false);
   const [qrStatusFilter, setQrStatusFilter] = useState("");
   const [qrServiceFilter, setQrServiceFilter] = useState("");
+
+  // Status labels with translation
+  const statusLabels = {
+    new: { label: t("New", "Nueva"), class: "badge-pending" },
+    processing: { label: t("Processing", "Procesando"), class: "badge-processing" },
+    ready: { label: t("Ready", "Lista"), class: "badge-processing" },
+    out_for_delivery: { label: t("Out for delivery", "En camino"), class: "badge-processing" },
+    delivered: { label: t("Delivered", "Entregada"), class: "badge-completed" },
+    completed: { label: t("Completed", "Completada"), class: "badge-completed" },
+    cancelled: { label: t("Cancelled", "Cancelada"), class: "badge-cancelled" }
+  };
+
+  const getStatusMeta = (status) =>
+    statusLabels[normalizeStatus(status)] || { label: status || "-", class: "badge-pending" };
+
+  // Translate preference labels dynamically
+  const getPreferenceLabel = (key) => {
+    const map = {
+      detergent_type: t("Detergent", "Detergente"),
+      water_temperature: t("Water temperature", "Temperatura de agua"),
+      fabric_softener: t("Fabric softener", "Suavizante"),
+      folding_style: t("Folding style", "Estilo de doblado"),
+      hanging_instructions: t("Hanging instructions", "Instrucciones de colgado"),
+      allergies: t("Allergies", "Alergias"),
+      special_instructions: t("Special instructions", "Instrucciones especiales"),
+      pickup_time_preference: t("Preferred time", "Horario preferido"),
+      gate_code: t("Gate code", "Código de acceso"),
+      hang_dry_items: t("Hang dry items", "Secado al aire"),
+      fragrance_preference: t("Fragrance", "Fragancia")
+    };
+    return map[key] || key;
+  };
+
+  // Translate service labels
+  const getServiceLabel = (key) => {
+    const map = {
+      pickup_delivery: t("Pickup & Delivery", "Recogida y Entrega"),
+      wash_fold: t("Wash & Fold", "Lavado y Doblado"),
+      self_service: t("Self Service", "Autoservicio"),
+      commercial: t("Commercial / B2B", "Comercial / B2B")
+    };
+    return map[key] || key;
+  };
 
   useEffect(() => {
     fetchOrders();
@@ -102,7 +134,7 @@ export default function Orders() {
       const res = await axios.get(`${API}/orders`, { params });
       setOrders(res.data);
     } catch (error) {
-      toast.error("Error cargando órdenes");
+      toast.error(t("Error loading orders", "Error cargando órdenes"));
     } finally {
       setLoading(false);
     }
@@ -127,12 +159,12 @@ export default function Orders() {
         estimated_lbs: form.estimated_lbs ? parseFloat(form.estimated_lbs) : null
       };
       await axios.post(`${API}/orders`, data);
-      toast.success("Orden creada");
+      toast.success(t("Order created", "Orden creada"));
       setDialogOpen(false);
       setForm(emptyForm);
       fetchOrders();
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Error creando orden");
+      toast.error(error.response?.data?.detail || t("Error creating order", "Error creando orden"));
     } finally {
       setSubmitting(false);
     }
@@ -141,20 +173,20 @@ export default function Orders() {
   const updateStatus = async (orderId, newStatus) => {
     try {
       await axios.patch(`${API}/orders/${orderId}/status?status=${newStatus}`);
-      toast.success("Estado actualizado");
+      toast.success(t("Status updated", "Estado actualizado"));
       fetchOrders();
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Error actualizando estado");
+      toast.error(error.response?.data?.detail || t("Error updating status", "Error actualizando estado"));
     }
   };
 
   const updatePaymentStatus = async (orderId, newStatus) => {
     try {
       await axios.patch(`${API}/orders/${orderId}/payment-status?status=${newStatus}`);
-      toast.success("Estado de pago actualizado");
+      toast.success(t("Payment status updated", "Estado de pago actualizado"));
       fetchOrders();
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Error actualizando estado de pago");
+      toast.error(error.response?.data?.detail || t("Error updating payment status", "Error actualizando estado de pago"));
     }
   };
 
@@ -168,11 +200,11 @@ export default function Orders() {
       };
       const res = await axios.put(`${API}/orders/${viewOrder.id}`, payload);
       const updated = res.data;
-      toast.success("Libras actualizadas");
+      toast.success(t("Weights updated", "Libras actualizadas"));
       setViewOrder(updated);
       setOrders((prev) => prev.map((order) => (order.id === updated.id ? { ...order, ...updated } : order)));
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Error actualizando libras");
+      toast.error(error.response?.data?.detail || t("Error updating weights", "Error actualizando libras"));
     } finally {
       setSavingWeights(false);
     }
@@ -188,15 +220,15 @@ export default function Orders() {
       document.body.appendChild(link);
       link.click();
       link.remove();
-      toast.success("QR descargado");
+      toast.success(t("QR downloaded", "QR descargado"));
     } catch (error) {
-      toast.error("Error descargando QR");
+      toast.error(t("Error downloading QR", "Error descargando QR"));
     }
   };
 
   const handleExportQrBatch = async () => {
     if (!qrStartDate || !qrEndDate) {
-      toast.error("Selecciona un rango de fechas");
+      toast.error(t("Select a date range", "Selecciona un rango de fechas"));
       return;
     }
     setExportingQr(true);
@@ -219,9 +251,9 @@ export default function Orders() {
       document.body.appendChild(link);
       link.click();
       link.remove();
-      toast.success("QRs descargados");
+      toast.success(t("QRs downloaded", "QRs descargados"));
     } catch (error) {
-      toast.error("Error exportando QRs");
+      toast.error(t("Error exporting QRs", "Error exportando QRs"));
     } finally {
       setExportingQr(false);
     }
@@ -229,7 +261,7 @@ export default function Orders() {
 
   const formatDate = (dateStr) => {
     if (!dateStr) return "-";
-    return new Date(dateStr).toLocaleDateString("es-MX", {
+    return new Date(dateStr).toLocaleDateString(locale === "es" ? "es-ES" : "en-US", {
       month: "short",
       day: "numeric",
       year: "numeric"
@@ -276,29 +308,29 @@ export default function Orders() {
   };
 
   return (
-    <div data-testid="orders-page" className="space-y-6">
+    <div data-testid="orders-page" className="space-y-6 bg-white">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Órdenes</h1>
-          <p className="text-slate-500 mt-1">Gestiona pickups y entregas</p>
+          <h1 className="text-2xl font-bold text-slate-900">{t("Orders", "Órdenes")}</h1>
+          <p className="text-slate-500 mt-1">{t("Manage pickups and deliveries", "Gestiona pickups y entregas")}</p>
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
             <Button className="btn-primary" data-testid="add-order-btn">
               <Plus className="h-4 w-4 mr-2" />
-              Nueva Orden
+              {t("New Order", "Nueva Orden")}
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-lg">
+          <DialogContent className="sm:max-w-lg bg-white" style={{ backgroundColor: 'white', opacity: 1 }}>
             <DialogHeader>
-              <DialogTitle>Nueva Orden</DialogTitle>
+              <DialogTitle>{t("New Order", "Nueva Orden")}</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4 mt-4">
               <div>
-                <Label>Cliente *</Label>
+                <Label>{t("Customer *", "Cliente *")}</Label>
                 <Select value={form.customer_id} onValueChange={(v) => setForm({ ...form, customer_id: v })}>
                   <SelectTrigger className="mt-1.5" data-testid="order-customer-select">
-                    <SelectValue placeholder="Seleccionar cliente" />
+                    <SelectValue placeholder={t("Select customer", "Seleccionar cliente")} />
                   </SelectTrigger>
                   <SelectContent>
                     {customers.map((c) => (
@@ -308,21 +340,21 @@ export default function Orders() {
                 </Select>
               </div>
               <div>
-                <Label>Tipo de Servicio *</Label>
+                <Label>{t("Service Type *", "Tipo de Servicio *")}</Label>
                 <Select value={form.service_type} onValueChange={(v) => setForm({ ...form, service_type: v })}>
                   <SelectTrigger className="mt-1.5" data-testid="order-service-select">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="pickup_delivery">Pickup & Delivery</SelectItem>
-                    <SelectItem value="wash_fold">Wash & Fold</SelectItem>
-                    <SelectItem value="self_service">Self Service</SelectItem>
+                    <SelectItem value="pickup_delivery">{t("Pickup & Delivery", "Pickup & Delivery")}</SelectItem>
+                    <SelectItem value="wash_fold">{t("Wash & Fold", "Wash & Fold")}</SelectItem>
+                    <SelectItem value="self_service">{t("Self Service", "Self Service")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Fecha de Pickup</Label>
+                  <Label>{t("Pickup Date", "Fecha de Pickup")}</Label>
                   <Input
                     type="date"
                     value={form.pickup_date}
@@ -332,10 +364,10 @@ export default function Orders() {
                   />
                 </div>
                 <div>
-                  <Label>Ventana de Tiempo</Label>
+                  <Label>{t("Time Window", "Ventana de Tiempo")}</Label>
                   <Select value={form.pickup_time_window} onValueChange={(v) => setForm({ ...form, pickup_time_window: v })}>
                     <SelectTrigger className="mt-1.5" data-testid="order-time-select">
-                      <SelectValue placeholder="Seleccionar" />
+                      <SelectValue placeholder={t("Select", "Seleccionar")} />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="8am-10am">8am - 10am</SelectItem>
@@ -348,17 +380,17 @@ export default function Orders() {
                 </div>
               </div>
               <div>
-                <Label>Dirección de Pickup</Label>
+                <Label>{t("Pickup Address", "Dirección de Pickup")}</Label>
                 <Input
                   value={form.pickup_address}
                   onChange={(e) => setForm({ ...form, pickup_address: e.target.value })}
                   className="mt-1.5"
-                  placeholder="Se usará la dirección del cliente si está vacío"
+                  placeholder={t("Uses customer address if empty", "Se usará la dirección del cliente si está vacío")}
                   data-testid="order-pickup-address-input"
                 />
               </div>
               <div>
-                <Label>Dirección de Entrega</Label>
+                <Label>{t("Delivery Address", "Dirección de Entrega")}</Label>
                 <Input
                   value={form.delivery_address}
                   onChange={(e) => setForm({ ...form, delivery_address: e.target.value })}
@@ -368,7 +400,7 @@ export default function Orders() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Libras Estimadas</Label>
+                  <Label>{t("Estimated Lbs", "Libras Estimadas")}</Label>
                   <Input
                     type="number"
                     value={form.estimated_lbs}
@@ -378,7 +410,7 @@ export default function Orders() {
                   />
                 </div>
                 <div>
-                  <Label>Gate Code</Label>
+                  <Label>{t("Gate Code", "Gate Code")}</Label>
                   <Input
                     value={form.gate_code}
                     onChange={(e) => setForm({ ...form, gate_code: e.target.value })}
@@ -388,7 +420,7 @@ export default function Orders() {
                 </div>
               </div>
               <div>
-                <Label>Notas</Label>
+                <Label>{t("Notes", "Notas")}</Label>
                 <Textarea
                   value={form.notes}
                   onChange={(e) => setForm({ ...form, notes: e.target.value })}
@@ -399,10 +431,10 @@ export default function Orders() {
               </div>
               <div className="flex justify-end gap-3 pt-4">
                 <Button type="button" variant="outline" onClick={() => setDialogOpen(false)} data-testid="order-cancel-btn">
-                  Cancelar
+                  {t("Cancel", "Cancelar")}
                 </Button>
                 <Button type="submit" className="btn-primary" disabled={submitting || !form.customer_id} data-testid="order-submit-btn">
-                  {submitting ? "Creando..." : "Crear Orden"}
+                  {submitting ? t("Creating...", "Creando...") : t("Create Order", "Crear Orden")}
                 </Button>
               </div>
             </form>
@@ -421,108 +453,108 @@ export default function Orders() {
             className={statusFilter === status ? "bg-sky-600 hover:bg-sky-700" : ""}
             data-testid={`filter-${status}`}
           >
-            {status === "all" ? "Todas" : statusLabels[status]?.label || status}
+            {status === "all" ? t("All", "Todas") : statusLabels[status]?.label || status}
           </Button>
         ))}
       </div>
 
       <div className="flex flex-col lg:flex-row gap-3 items-start lg:items-end">
         <div>
-          <Label>Inicio</Label>
+          <Label>{t("Start", "Inicio")}</Label>
           <Input type="date" value={qrStartDate} onChange={(e) => setQrStartDate(e.target.value)} data-testid="qr-start-date" />
         </div>
         <div>
-          <Label>Fin</Label>
+          <Label>{t("End", "Fin")}</Label>
           <Input type="date" value={qrEndDate} onChange={(e) => setQrEndDate(e.target.value)} data-testid="qr-end-date" />
         </div>
         <div>
-          <Label>Estado</Label>
+          <Label>{t("Status", "Estado")}</Label>
           <select
             className="h-9 rounded-md border border-slate-200 px-2 text-sm"
             value={qrStatusFilter}
             onChange={(e) => setQrStatusFilter(e.target.value)}
             data-testid="qr-status-filter"
           >
-            <option value="">Todos</option>
-            <option value="new">Nueva</option>
-            <option value="processing">Procesando</option>
-            <option value="ready">Lista</option>
-            <option value="out_for_delivery">En camino</option>
-            <option value="delivered">Entregada</option>
-            <option value="completed">Completada</option>
-            <option value="cancelled">Cancelada</option>
+            <option value="">{t("All", "Todos")}</option>
+            <option value="new">{t("New", "Nueva")}</option>
+            <option value="processing">{t("Processing", "Procesando")}</option>
+            <option value="ready">{t("Ready", "Lista")}</option>
+            <option value="out_for_delivery">{t("Out for delivery", "En camino")}</option>
+            <option value="delivered">{t("Delivered", "Entregada")}</option>
+            <option value="completed">{t("Completed", "Completada")}</option>
+            <option value="cancelled">{t("Cancelled", "Cancelada")}</option>
           </select>
         </div>
         <div>
-          <Label>Servicio</Label>
+          <Label>{t("Service", "Servicio")}</Label>
           <select
             className="h-9 rounded-md border border-slate-200 px-2 text-sm"
             value={qrServiceFilter}
             onChange={(e) => setQrServiceFilter(e.target.value)}
             data-testid="qr-service-filter"
           >
-            <option value="">Todos</option>
-            <option value="pickup_delivery">Pickup & Delivery</option>
-            <option value="wash_fold">Wash & Fold</option>
-            <option value="self_service">Self Service</option>
+            <option value="">{t("All", "Todos")}</option>
+            <option value="pickup_delivery">{t("Pickup & Delivery", "Pickup & Delivery")}</option>
+            <option value="wash_fold">{t("Wash & Fold", "Wash & Fold")}</option>
+            <option value="self_service">{t("Self Service", "Self Service")}</option>
           </select>
         </div>
         <Button variant="outline" onClick={handleExportQrBatch} disabled={exportingQr} data-testid="qr-export-button">
           <Download className="h-4 w-4 mr-2" />
-          {exportingQr ? "Exportando..." : "Exportar Tickets"}
+          {exportingQr ? t("Exporting...", "Exportando...") : t("Export Tickets", "Exportar Tickets")}
         </Button>
       </div>
 
       {/* Order Detail Dialog */}
       <Dialog open={!!viewOrder} onOpenChange={() => setViewOrder(null)}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg bg-white" style={{ backgroundColor: 'white', opacity: 1 }}>
           <DialogHeader>
-            <DialogTitle>Orden <span data-testid="order-detail-number">{formatOrderNumber(viewOrder)}</span></DialogTitle>
+            <DialogTitle>{t("Order", "Orden")} <span data-testid="order-detail-number">{formatOrderNumber(viewOrder)}</span></DialogTitle>
             <DialogDescription data-testid="order-detail-description">
-              Detalle de la orden y preferencias de lavado.
+              {t("Order details and laundry preferences.", "Detalle de la orden y preferencias de lavado.")}
             </DialogDescription>
           </DialogHeader>
           {viewOrder && (
             <div className="space-y-4 mt-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm text-slate-500">Cliente</p>
+                  <p className="text-sm text-slate-500">{t("Customer", "Cliente")}</p>
                   <p className="font-medium" data-testid="order-detail-customer">{viewOrder.customer_name}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-slate-500">Servicio</p>
-                  <p className="font-medium" data-testid="order-detail-service">{serviceLabels[viewOrder.service_type] || viewOrder.service_type || "-"}</p>
+                  <p className="text-sm text-slate-500">{t("Service", "Servicio")}</p>
+                  <p className="font-medium" data-testid="order-detail-service">{getServiceLabel(viewOrder.service_type) || viewOrder.service_type || "-"}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-slate-500">Fecha Pickup</p>
+                  <p className="text-sm text-slate-500">{t("Pickup Date", "Fecha Pickup")}</p>
                   <p className="font-medium" data-testid="order-detail-pickup-date">{formatDate(viewOrder.pickup_date)}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-slate-500">Horario</p>
+                  <p className="text-sm text-slate-500">{t("Time Window", "Ventana de tiempo")}</p>
                   <p className="font-medium" data-testid="order-detail-pickup-window">{viewOrder.pickup_time_window || "-"}</p>
                 </div>
               </div>
               <div>
-                <p className="text-sm text-slate-500">Dirección Pickup</p>
+                <p className="text-sm text-slate-500">{t("Pickup Address", "Dirección Pickup")}</p>
                 <p className="font-medium" data-testid="order-detail-pickup-address">{viewOrder.pickup_address || "-"}</p>
               </div>
               <div>
-                <p className="text-sm text-slate-500">Dirección Entrega</p>
+                <p className="text-sm text-slate-500">{t("Delivery Address", "Dirección Entrega")}</p>
                 <p className="font-medium" data-testid="order-detail-delivery-address">{viewOrder.delivery_address || "-"}</p>
               </div>
               {viewOrder.notes && (
                 <div>
-                  <p className="text-sm text-slate-500">Notas</p>
+                  <p className="text-sm text-slate-500">{t("Notes", "Notas")}</p>
                   <p className="font-medium" data-testid="order-detail-notes">{viewOrder.notes}</p>
                 </div>
               )}
               <div className="border-t pt-3" data-testid="order-preferences-section">
-                <p className="text-sm text-slate-500">Preferencias de lavado</p>
+                <p className="text-sm text-slate-500">{t("Laundry preferences", "Preferencias de lavado")}</p>
                 {viewOrder.preferences_snapshot ? (
                   <div className="grid grid-cols-2 gap-3 mt-2">
-                    {Object.entries(preferenceLabels).map(([key, label]) => (
+                    {Object.entries(preferenceLabels).map(([key]) => (
                       <div key={key}>
-                        <p className="text-xs text-slate-500">{label}</p>
+                        <p className="text-xs text-slate-500">{getPreferenceLabel(key)}</p>
                         <p className="font-medium" data-testid={`order-pref-${key}`}>
                           {renderPreferenceValue(viewOrder.preferences_snapshot?.[key])}
                         </p>
@@ -531,16 +563,16 @@ export default function Orders() {
                   </div>
                 ) : (
                   <p className="text-sm font-medium text-slate-600 mt-1" data-testid="order-pref-empty">
-                    Sin preferencias registradas
+                    {t("No preferences recorded", "Sin preferencias registradas")}
                   </p>
                 )}
                 <p className="text-xs text-slate-500 mt-2" data-testid="order-pref-id">
-                  PREF: {viewOrder.preferences_id || "N/A"}
+                  {t("PREF:", "PREF:")} {viewOrder.preferences_id || "N/A"}
                 </p>
               </div>
               <div className="grid grid-cols-3 gap-4 pt-2 border-t">
                 <div>
-                  <p className="text-sm text-slate-500">Est. Lbs</p>
+                  <p className="text-sm text-slate-500">{t("Est. Lbs", "Est. Lbs")}</p>
                   <Input
                     type="number"
                     step="0.1"
@@ -551,7 +583,7 @@ export default function Orders() {
                   />
                 </div>
                 <div>
-                  <p className="text-sm text-slate-500">Actual Lbs</p>
+                  <p className="text-sm text-slate-500">{t("Actual Lbs", "Actual Lbs")}</p>
                   <Input
                     type="number"
                     step="0.1"
@@ -562,13 +594,13 @@ export default function Orders() {
                   />
                 </div>
                 <div>
-                  <p className="text-sm text-slate-500">Diferencia</p>
+                  <p className="text-sm text-slate-500">{t("Difference", "Diferencia")}</p>
                   <p className="font-medium" data-testid="order-detail-lbs-delta">{getWeightDelta()}</p>
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
                 <div>
-                  <p className="text-sm text-slate-500">Total</p>
+                  <p className="text-sm text-slate-500">{t("Total", "Total")}</p>
                   <p className="font-medium" data-testid="order-detail-total">{viewOrder.total_amount ? `$${viewOrder.total_amount}` : "-"}</p>
                 </div>
                 <div className="flex items-end justify-end">
@@ -579,14 +611,14 @@ export default function Orders() {
                     disabled={savingWeights}
                     data-testid="order-save-lbs"
                   >
-                    {savingWeights ? "Guardando..." : "Guardar libras"}
+                    {savingWeights ? t("Saving...", "Guardando...") : t("Save lbs", "Guardar libras")}
                   </Button>
                 </div>
               </div>
               <div className="flex justify-end">
                 <Button variant="outline" size="sm" onClick={() => handleDownloadQr(viewOrder)} data-testid="order-detail-download-qr">
                   <Download className="h-4 w-4 mr-2" />
-                  Descargar Ticket
+                  {t("Download Ticket", "Descargar Ticket")}
                 </Button>
               </div>
             </div>
@@ -600,23 +632,23 @@ export default function Orders() {
           <table className="w-full">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">Orden</th>
-                <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">Cliente</th>
-                <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">Servicio</th>
-                <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">Pickup</th>
-                <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">Estado</th>
-                <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">Pago</th>
+                <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">{t("Order", "Orden")}</th>
+                <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">{t("Customer", "Cliente")}</th>
+                <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">{t("Service", "Servicio")}</th>
+                <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">{t("Pickup", "Pickup")}</th>
+                <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">{t("Status", "Estado")}</th>
+                <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">{t("Payment", "Pago")}</th>
                 <th className="text-right text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-8 text-slate-500">Cargando...</td>
+                  <td colSpan={7} className="text-center py-8 text-slate-500">{t("Loading...", "Cargando...")}</td>
                 </tr>
               ) : orders.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-8 text-slate-500">No hay órdenes</td>
+                  <td colSpan={7} className="text-center py-8 text-slate-500">{t("No orders", "No hay órdenes")}</td>
                 </tr>
               ) : (
                 orders.map((order) => {
@@ -636,7 +668,7 @@ export default function Orders() {
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2">
                           <Truck className="h-4 w-4 text-slate-400" />
-                          <span className="text-sm" data-testid={`order-service-${order.id}`}>{serviceLabels[order.service_type] || order.service_type || "-"}</span>
+                          <span className="text-sm" data-testid={`order-service-${order.id}`}>{getServiceLabel(order.service_type) || order.service_type || "-"}</span>
                         </div>
                       </td>
                       <td className="px-6 py-4">
@@ -655,7 +687,7 @@ export default function Orders() {
                       </td>
                       <td className="px-6 py-4">
                         <span className={paymentIsPaid ? "badge-completed" : "badge-pending"} data-testid={`order-payment-${order.id}`}>
-                          {paymentIsPaid ? "Pagado" : "Pendiente"}
+                          {paymentIsPaid ? t("Paid", "Pagado") : t("Pending", "Pendiente")}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right">
@@ -668,42 +700,42 @@ export default function Orders() {
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem data-testid={`order-view-${order.id}`} onClick={() => setViewOrder(order)}>
                               <Eye className="h-4 w-4 mr-2" />
-                              Ver detalles
+                              {t("View details", "Ver detalles")}
                             </DropdownMenuItem>
                             <DropdownMenuItem data-testid={`order-download-qr-${order.id}`} onClick={() => handleDownloadQr(order)}>
                               <Download className="h-4 w-4 mr-2" />
-                              Descargar Ticket
+                              {t("Download Ticket", "Descargar Ticket")}
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             {/* Status updates */}
                             {normalizedStatus === "new" && (
                               <DropdownMenuItem data-testid={`order-status-processing-${order.id}`} onClick={() => updateStatus(order.id, "processing")}>
                                 <CheckCircle className="h-4 w-4 mr-2" />
-                                Marcar Procesando
+                                {t("Mark as Processing", "Marcar Procesando")}
                               </DropdownMenuItem>
                             )}
                             {normalizedStatus === "processing" && (
                               <DropdownMenuItem data-testid={`order-status-ready-${order.id}`} onClick={() => updateStatus(order.id, "ready")}>
                                 <CheckCircle className="h-4 w-4 mr-2" />
-                                Marcar Lista
+                                {t("Mark as Ready", "Marcar Lista")}
                               </DropdownMenuItem>
                             )}
                             {normalizedStatus === "ready" && (
                               <DropdownMenuItem data-testid={`order-status-out-delivery-${order.id}`} onClick={() => updateStatus(order.id, "out_for_delivery")}>
                                 <Truck className="h-4 w-4 mr-2" />
-                                En camino
+                                {t("Out for delivery", "En camino")}
                               </DropdownMenuItem>
                             )}
                             {normalizedStatus === "out_for_delivery" && (
                               <DropdownMenuItem data-testid={`order-status-delivered-${order.id}`} onClick={() => updateStatus(order.id, "delivered")}>
                                 <CheckCircle className="h-4 w-4 mr-2" />
-                                Marcar Entregada
+                                {t("Mark as Delivered", "Marcar Entregada")}
                               </DropdownMenuItem>
                             )}
                             {normalizedStatus === "delivered" && (
                               <DropdownMenuItem data-testid={`order-status-completed-${order.id}`} onClick={() => updateStatus(order.id, "completed")}>
                                 <CheckCircle className="h-4 w-4 mr-2" />
-                                Completar Orden
+                                {t("Complete Order", "Completar Orden")}
                               </DropdownMenuItem>
                             )}
                             <DropdownMenuSeparator />
@@ -711,20 +743,20 @@ export default function Orders() {
                             {!paymentIsPaid && (
                               <DropdownMenuItem data-testid={`order-payment-paid-${order.id}`} onClick={() => updatePaymentStatus(order.id, "paid")}>
                                 <CheckCircle className="h-4 w-4 mr-2 text-green-600" />
-                                Marcar como Pagado
+                                {t("Mark as Paid", "Marcar como Pagado")}
                               </DropdownMenuItem>
                             )}
                             {paymentIsPaid && (
                               <DropdownMenuItem data-testid={`order-payment-pending-${order.id}`} onClick={() => updatePaymentStatus(order.id, "pending")}>
                                 <CheckCircle className="h-4 w-4 mr-2 text-orange-600" />
-                                Marcar como Pendiente
+                                {t("Mark as Pending", "Marcar como Pendiente")}
                               </DropdownMenuItem>
                             )}
                             <DropdownMenuSeparator />
                             {normalizedStatus !== "cancelled" && (
                               <DropdownMenuItem data-testid={`order-status-cancel-${order.id}`} onClick={() => updateStatus(order.id, "cancelled")} className="text-red-600">
                                 <CheckCircle className="h-4 w-4 mr-2" />
-                                Cancelar Orden
+                                {t("Cancel Order", "Cancelar Orden")}
                               </DropdownMenuItem>
                             )}
                           </DropdownMenuContent>

@@ -15,6 +15,7 @@ import {
 import { Package, CheckCircle } from "lucide-react";
 import PublicNav from "../components/PublicNav";
 import PublicFooter from "../components/PublicFooter";
+import { useLocale } from "../context/LocaleContext";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -22,12 +23,13 @@ const getErrorMessage = (error) => {
   const detail = error.response?.data?.detail;
   if (typeof detail === "string") return detail;
   if (Array.isArray(detail)) {
-    return detail.map((d) => d.msg || d.message || JSON.stringify(d)).join(", \ ");
+    return detail.map((d) => d.msg || d.message || JSON.stringify(d)).join(", ");
   }
   return "Error submitting request";
 };
 
 export default function WashFoldRequest() {
+  const { t, locale } = useLocale();
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
@@ -69,11 +71,11 @@ export default function WashFoldRequest() {
     e.preventDefault();
 
     if (!form.contact_method) {
-      toast.error("Please select the best way to contact you.");
+      toast.error(t("Please select the best way to contact you.", "Por favor selecciona la mejor forma de contactarte."));
       return;
     }
     if (!form.dropoff_time) {
-      toast.error("Please select a preferred drop-off window.");
+      toast.error(t("Please select a preferred drop-off window.", "Por favor selecciona un horario preferido de entrega."));
       return;
     }
 
@@ -86,7 +88,7 @@ export default function WashFoldRequest() {
         form.city.trim(),
         form.state.trim(),
         form.zip_code.trim()
-      ].filter(Boolean).join(", \ ");
+      ].filter(Boolean).join(", ");
 
       const res = await axios.post(`${API}/public/wash-fold-request`, {
         name: fullName,
@@ -99,7 +101,7 @@ export default function WashFoldRequest() {
         notes: form.notes?.trim() || ""
       });
 
-      toast.success(res.data?.message || "Request submitted!");
+      toast.success(res.data?.message || t("Request submitted!", "¡Solicitud enviada!"));
       setSubmitted(true);
     } catch (error) {
       toast.error(getErrorMessage(error));
@@ -120,11 +122,14 @@ export default function WashFoldRequest() {
             </div>
 
             <h1 className="text-3xl font-bold text-slate-900 mb-4">
-              Request Submitted!
+              {t("Request Submitted!", "¡Solicitud enviada!")}
             </h1>
 
             <p className="text-lg text-slate-600 mb-8">
-              Thank you for your Wash & Fold request. Our team will reach out to confirm the details.
+              {t(
+                "Thank you for your Wash & Fold request. Our team will reach out to confirm the details.",
+                "Gracias por tu solicitud de Wash & Fold. Nuestro equipo se comunicará para confirmar los detalles."
+              )}
             </p>
 
             <Button
@@ -134,7 +139,7 @@ export default function WashFoldRequest() {
               }}
               className="bg-sky-500 hover:bg-sky-600 text-white rounded-full px-8"
             >
-              Submit Another Request
+              {t("Submit Another Request", "Enviar otra solicitud")}
             </Button>
           </div>
         </section>
@@ -158,11 +163,14 @@ export default function WashFoldRequest() {
             className="text-4xl sm:text-5xl font-bold text-slate-900 mb-4"
             style={{ fontFamily: "'Playfair Display', serif" }}
           >
-            Wash & Fold Drop-Off
+            {t("Wash & Fold Drop-Off", "Wash & Fold - Entrega")}
           </h1>
 
           <p className="text-lg text-slate-600 max-w-2xl mx-auto">
-            Tell us how you want your clothes handled and we’ll confirm your drop-off window.
+            {t(
+              "Tell us how you want your clothes handled and we’ll confirm your drop-off window.",
+              "Cuéntanos cómo quieres que manejen tu ropa y confirmaremos tu horario de entrega."
+            )}
           </p>
         </div>
       </section>
@@ -174,14 +182,14 @@ export default function WashFoldRequest() {
             className="bg-white rounded-2xl p-6 md:p-8 shadow-lg border border-slate-100"
           >
             <h2 className="text-2xl font-bold text-slate-900 mb-6">
-              Wash & Fold Details
+              {t("Wash & Fold Details", "Detalles de Wash & Fold")}
             </h2>
 
             <div className="mb-6">
-              <h3 className="font-semibold text-slate-900 mb-3">Name</h3>
+              <h3 className="font-semibold text-slate-900 mb-3">{t("Name", "Nombre")}</h3>
               <div className="grid sm:grid-cols-2 gap-4">
                 <div>
-                  <Label className="text-slate-600 text-sm">First Name *</Label>
+                  <Label className="text-slate-600 text-sm">{t("First Name *", "Nombre *")}</Label>
                   <Input
                     value={form.first_name}
                     onChange={(e) => setForm({ ...form, first_name: e.target.value })}
@@ -191,7 +199,7 @@ export default function WashFoldRequest() {
                   />
                 </div>
                 <div>
-                  <Label className="text-slate-600 text-sm">Last Name *</Label>
+                  <Label className="text-slate-600 text-sm">{t("Last Name *", "Apellido *")}</Label>
                   <Input
                     value={form.last_name}
                     onChange={(e) => setForm({ ...form, last_name: e.target.value })}
@@ -204,19 +212,19 @@ export default function WashFoldRequest() {
             </div>
 
             <div className="mb-6">
-              <h3 className="font-semibold text-slate-900 mb-3">Email *</h3>
+              <h3 className="font-semibold text-slate-900 mb-3">{t("Email *", "Correo *")}</h3>
               <Input
                 type="email"
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
                 required
-                placeholder="your@email.com"
+                placeholder={t("your@email.com", "tu@correo.com")}
                 data-testid="washfold-email"
               />
             </div>
 
             <div className="mb-6">
-              <h3 className="font-semibold text-slate-900 mb-3">Phone *</h3>
+              <h3 className="font-semibold text-slate-900 mb-3">{t("Phone *", "Teléfono *")}</h3>
               <Input
                 value={form.phone}
                 onChange={(e) => setForm({ ...form, phone: e.target.value })}
@@ -228,49 +236,49 @@ export default function WashFoldRequest() {
 
             <div className="mb-6">
               <Label className="font-semibold text-slate-900">
-                Best way to contact you *
+                {t("Best way to contact you *", "Mejor forma de contactarte *")}
               </Label>
               <Select
                 value={form.contact_method}
                 onValueChange={(v) => setForm({ ...form, contact_method: v })}
               >
                 <SelectTrigger className="mt-2" data-testid="washfold-contact-method">
-                  <SelectValue placeholder="Select an option" />
+                  <SelectValue placeholder={t("Select an option", "Selecciona una opción")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="phone">Phone Call</SelectItem>
-                  <SelectItem value="text">Text Message</SelectItem>
-                  <SelectItem value="email">Email</SelectItem>
+                  <SelectItem value="phone">{t("Phone Call", "Llamada telefónica")}</SelectItem>
+                  <SelectItem value="text">{t("Text Message", "Mensaje de texto")}</SelectItem>
+                  <SelectItem value="email">{t("Email", "Correo")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             <div className="mb-6">
-              <h3 className="font-semibold text-slate-900 mb-3">Address *</h3>
+              <h3 className="font-semibold text-slate-900 mb-3">{t("Address *", "Dirección *")}</h3>
               <div className="space-y-4">
                 <div>
-                  <Label className="text-slate-600 text-sm">Address Line 1 *</Label>
+                  <Label className="text-slate-600 text-sm">{t("Address Line 1 *", "Dirección línea 1 *")}</Label>
                   <Input
                     value={form.address_line1}
                     onChange={(e) => setForm({ ...form, address_line1: e.target.value })}
                     required
                     className="mt-1"
-                    placeholder="Street address"
+                    placeholder={t("Street address", "Dirección")}
                     data-testid="washfold-address1"
                   />
                 </div>
                 <div>
-                  <Label className="text-slate-600 text-sm">Address Line 2</Label>
+                  <Label className="text-slate-600 text-sm">{t("Address Line 2", "Dirección línea 2")}</Label>
                   <Input
                     value={form.address_line2}
                     onChange={(e) => setForm({ ...form, address_line2: e.target.value })}
                     className="mt-1"
-                    placeholder="Apt, Suite, Unit, etc. (optional)"
+                    placeholder={t("Apt, Suite, Unit, etc. (optional)", "Apto, Suite, Unidad, etc. (opcional)")}
                   />
                 </div>
                 <div className="grid sm:grid-cols-3 gap-4">
                   <div>
-                    <Label className="text-slate-600 text-sm">City *</Label>
+                    <Label className="text-slate-600 text-sm">{t("City *", "Ciudad *")}</Label>
                     <Input
                       value={form.city}
                       onChange={(e) => setForm({ ...form, city: e.target.value })}
@@ -280,18 +288,18 @@ export default function WashFoldRequest() {
                     />
                   </div>
                   <div>
-                    <Label className="text-slate-600 text-sm">State *</Label>
+                    <Label className="text-slate-600 text-sm">{t("State *", "Estado *")}</Label>
                     <Input
                       value={form.state}
                       onChange={(e) => setForm({ ...form, state: e.target.value })}
                       required
                       className="mt-1"
-                      placeholder="CA"
+                      placeholder={t("CA", "CA")}
                       data-testid="washfold-state"
                     />
                   </div>
                   <div>
-                    <Label className="text-slate-600 text-sm">ZIP Code *</Label>
+                    <Label className="text-slate-600 text-sm">{t("ZIP Code *", "Código postal *")}</Label>
                     <Input
                       value={form.zip_code}
                       onChange={(e) => setForm({ ...form, zip_code: e.target.value })}
@@ -305,10 +313,10 @@ export default function WashFoldRequest() {
             </div>
 
             <div className="mb-6">
-              <h3 className="font-semibold text-slate-900 mb-3">Drop-Off Schedule</h3>
+              <h3 className="font-semibold text-slate-900 mb-3">{t("Drop-Off Schedule", "Horario de entrega")}</h3>
               <div className="grid sm:grid-cols-2 gap-4">
                 <div>
-                  <Label className="text-slate-600 text-sm">Preferred Date</Label>
+                  <Label className="text-slate-600 text-sm">{t("Preferred Date", "Fecha preferida")}</Label>
                   <Input
                     type="date"
                     value={form.dropoff_date}
@@ -319,32 +327,35 @@ export default function WashFoldRequest() {
                   />
                 </div>
                 <div>
-                  <Label className="text-slate-600 text-sm">Preferred Time *</Label>
+                  <Label className="text-slate-600 text-sm">{t("Preferred Time *", "Hora preferida *")}</Label>
                   <Select
                     value={form.dropoff_time}
                     onValueChange={(v) => setForm({ ...form, dropoff_time: v })}
                   >
                     <SelectTrigger className="mt-1" data-testid="washfold-dropoff-time">
-                      <SelectValue placeholder="Select time window" />
+                      <SelectValue placeholder={t("Select time window", "Selecciona horario")} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="8am-12pm">8:00 AM - 12:00 PM</SelectItem>
-                      <SelectItem value="12pm-4pm">12:00 PM - 4:00 PM</SelectItem>
-                      <SelectItem value="2pm-6pm">2:00 PM - 6:00 PM</SelectItem>
+                      <SelectItem value="8am-12pm">{t("8:00 AM - 12:00 PM", "8:00 AM - 12:00 PM")}</SelectItem>
+                      <SelectItem value="12pm-4pm">{t("12:00 PM - 4:00 PM", "12:00 PM - 4:00 PM")}</SelectItem>
+                      <SelectItem value="2pm-6pm">{t("2:00 PM - 6:00 PM", "2:00 PM - 6:00 PM")}</SelectItem>
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-slate-500 mt-1">Pacific Time</p>
+                  <p className="text-xs text-slate-500 mt-1">{t("Pacific Time", "Hora del Pacífico")}</p>
                 </div>
               </div>
             </div>
 
             <div className="mb-8">
-              <h3 className="font-semibold text-slate-900 mb-3">Laundry Preferences</h3>
+              <h3 className="font-semibold text-slate-900 mb-3">{t("Laundry Preferences", "Preferencias de lavandería")}</h3>
               <Textarea
                 value={form.notes}
                 onChange={(e) => setForm({ ...form, notes: e.target.value })}
                 rows={3}
-                placeholder="Detergent type, folding style, hang dry items, special instructions, etc."
+                placeholder={t(
+                  "Detergent type, folding style, hang dry items, special instructions, etc.",
+                  "Tipo de detergente, estilo de doblado, prendas para secar al aire, instrucciones especiales, etc."
+                )}
                 data-testid="washfold-notes"
               />
             </div>
@@ -355,7 +366,7 @@ export default function WashFoldRequest() {
               disabled={submitting}
               data-testid="washfold-submit-btn"
             >
-              {submitting ? "Submitting..." : "Submit Wash & Fold Request"}
+              {submitting ? t("Submitting...", "Enviando...") : t("Submit Wash & Fold Request", "Enviar solicitud de Wash & Fold")}
             </Button>
           </form>
         </div>

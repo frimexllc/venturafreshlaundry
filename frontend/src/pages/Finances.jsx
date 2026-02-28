@@ -16,6 +16,7 @@ import {
   ArrowUpRight,
   ArrowDownRight
 } from "lucide-react";
+import { useLocale } from "../context/LocaleContext";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -31,6 +32,7 @@ const defaultSummary = {
 };
 
 export default function Finances() {
+  const { t, locale } = useLocale();
   const [summary, setSummary] = useState(defaultSummary);
   const [transactions, setTransactions] = useState([]);
   const [loadingSummary, setLoadingSummary] = useState(true);
@@ -54,7 +56,7 @@ export default function Finances() {
       });
       setSummary({ ...defaultSummary, ...res.data });
     } catch (error) {
-      toast.error("Error cargando resumen financiero");
+      toast.error(t("Error loading financial summary", "Error cargando resumen financiero"));
       setSummary(defaultSummary);
     } finally {
       setLoadingSummary(false);
@@ -86,7 +88,7 @@ export default function Finances() {
 
       setTransactions(filtered);
     } catch (error) {
-      toast.error("Error cargando transacciones");
+      toast.error(t("Error loading transactions", "Error cargando transacciones"));
       setTransactions([]);
     } finally {
       setLoadingTransactions(false);
@@ -107,7 +109,7 @@ export default function Finances() {
 
   const formatDate = (dateStr) => {
     if (!dateStr) return "-";
-    return new Date(dateStr).toLocaleDateString("es-MX", {
+    return new Date(dateStr).toLocaleDateString(locale === 'es' ? 'es-ES' : 'en-US', {
       month: "short",
       day: "numeric",
       year: "numeric"
@@ -121,11 +123,18 @@ export default function Finances() {
 
   const exportToCSV = () => {
     if (!transactions.length) {
-      toast.error("No hay transacciones para exportar");
+      toast.error(t("No transactions to export", "No hay transacciones para exportar"));
       return;
     }
 
-    const headers = ["Fecha", "Tipo", "Referencia", "Cliente", "Monto", "Estado"];
+    const headers = [
+      t("Date", "Fecha"),
+      t("Type", "Tipo"),
+      t("Reference", "Referencia"),
+      t("Customer", "Cliente"),
+      t("Amount", "Monto"),
+      t("Status", "Estado")
+    ];
     const rows = transactions.map((transaction) => [
       formatDate(transaction.created_at),
       transaction.payment_type || "service",
@@ -140,31 +149,31 @@ export default function Finances() {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `finanzas-${dateRange.start}-a-${dateRange.end}.csv`;
+    a.download = `finances-${dateRange.start}-to-${dateRange.end}.csv`;
     a.click();
-    toast.success("Reporte exportado");
+    toast.success(t("Report exported", "Reporte exportado"));
   };
 
   return (
-    <div data-testid="finances-page" className="space-y-6">
+    <div data-testid="finances-page" className="space-y-6 bg-white">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2" data-testid="finances-title">
             <DollarSign className="h-7 w-7 text-green-600" />
-            Finanzas
+            {t("Finances", "Finanzas")}
           </h1>
           <p className="text-slate-500 mt-1" data-testid="finances-subtitle">
-            Resumen financiero y movimientos del periodo
+            {t("Financial summary and transactions for the period", "Resumen financiero y movimientos del periodo")}
           </p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={refreshAll} data-testid="finances-refresh-button">
             <RefreshCw className="h-4 w-4 mr-2" />
-            Actualizar
+            {t("Refresh", "Actualizar")}
           </Button>
           <Button onClick={exportToCSV} className="bg-green-600 hover:bg-green-700" data-testid="finances-export-button">
             <Download className="h-4 w-4 mr-2" />
-            Exportar CSV
+            {t("Export CSV", "Exportar CSV")}
           </Button>
         </div>
       </div>
@@ -172,7 +181,7 @@ export default function Finances() {
       <div className="bg-white rounded-xl border border-slate-200 p-4" data-testid="finances-filters">
         <div className="flex flex-wrap gap-4 items-end">
           <div>
-            <Label>Inicio</Label>
+            <Label>{t("Start", "Inicio")}</Label>
             <Input
               type="date"
               value={dateRange.start}
@@ -182,7 +191,7 @@ export default function Finances() {
             />
           </div>
           <div>
-            <Label>Fin</Label>
+            <Label>{t("End", "Fin")}</Label>
             <Input
               type="date"
               value={dateRange.end}
@@ -192,16 +201,16 @@ export default function Finances() {
             />
           </div>
           <div>
-            <Label>Pago</Label>
+            <Label>{t("Payment", "Pago")}</Label>
             <select
               className="h-9 rounded-md border border-slate-200 px-3 text-sm mt-1 w-full"
               value={paymentFilter}
               onChange={(e) => setPaymentFilter(e.target.value)}
               data-testid="finances-payment-filter"
             >
-              <option value="all">Todos</option>
-              <option value="paid">Pagados</option>
-              <option value="pending">Pendientes</option>
+              <option value="all">{t("All", "Todos")}</option>
+              <option value="paid">{t("Paid", "Pagados")}</option>
+              <option value="pending">{t("Pending", "Pendientes")}</option>
             </select>
           </div>
           <Button
@@ -215,7 +224,7 @@ export default function Finances() {
             }}
             data-testid="finances-this-month"
           >
-            Este mes
+            {t("This month", "Este mes")}
           </Button>
           <Button
             variant="outline"
@@ -229,7 +238,7 @@ export default function Finances() {
             }}
             data-testid="finances-last-month"
           >
-            Mes pasado
+            {t("Last month", "Mes pasado")}
           </Button>
         </div>
       </div>
@@ -244,7 +253,7 @@ export default function Finances() {
             <div className="bg-white rounded-xl border border-slate-200 p-6" data-testid="finances-total-revenue-card">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-slate-500">Ingresos totales</p>
+                  <p className="text-sm text-slate-500">{t("Total Revenue", "Ingresos totales")}</p>
                   <p className="text-2xl font-bold text-slate-900 mt-1" data-testid="finances-total-revenue">
                     {formatCurrency(summary.total_revenue)}
                   </p>
@@ -255,14 +264,14 @@ export default function Finances() {
               </div>
               <div className="flex items-center gap-1 mt-3 text-sm text-green-600">
                 <TrendingUp className="h-4 w-4" />
-                <span>Total del periodo</span>
+                <span>{t("Period total", "Total del periodo")}</span>
               </div>
             </div>
 
             <div className="bg-white rounded-xl border border-slate-200 p-6" data-testid="finances-membership-revenue-card">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-slate-500">Ingresos membresías</p>
+                  <p className="text-sm text-slate-500">{t("Membership Revenue", "Ingresos membresías")}</p>
                   <p className="text-2xl font-bold text-slate-900 mt-1" data-testid="finances-membership-revenue">
                     {formatCurrency(summary.membership_revenue)}
                   </p>
@@ -273,14 +282,14 @@ export default function Finances() {
               </div>
               <div className="flex items-center gap-1 mt-3 text-sm text-slate-500">
                 <ArrowUpRight className="h-4 w-4" />
-                <span>{summary.total_memberships} membresías pagadas</span>
+                <span>{t("{count} paid memberships", "{count} membresías pagadas").replace("{count}", summary.total_memberships)}</span>
               </div>
             </div>
 
             <div className="bg-white rounded-xl border border-slate-200 p-6" data-testid="finances-paid-orders-card">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-slate-500">Órdenes pagadas</p>
+                  <p className="text-sm text-slate-500">{t("Paid Orders", "Órdenes pagadas")}</p>
                   <p className="text-2xl font-bold text-slate-900 mt-1" data-testid="finances-paid-orders">
                     {summary.paid_orders}
                   </p>
@@ -291,14 +300,14 @@ export default function Finances() {
               </div>
               <div className="flex items-center gap-1 mt-3 text-sm text-slate-500">
                 <ShoppingBag className="h-4 w-4" />
-                <span>de {summary.total_orders} órdenes</span>
+                <span>{t("of {total} orders", "de {total} órdenes").replace("{total}", summary.total_orders)}</span>
               </div>
             </div>
 
             <div className="bg-white rounded-xl border border-slate-200 p-6" data-testid="finances-pending-orders-card">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-slate-500">Órdenes pendientes</p>
+                  <p className="text-sm text-slate-500">{t("Pending Orders", "Órdenes pendientes")}</p>
                   <p className="text-2xl font-bold text-orange-600 mt-1" data-testid="finances-pending-orders">
                     {summary.pending_orders}
                   </p>
@@ -309,14 +318,14 @@ export default function Finances() {
               </div>
               <div className="flex items-center gap-1 mt-3 text-sm text-orange-600">
                 <ArrowDownRight className="h-4 w-4" />
-                <span>Por cobrar</span>
+                <span>{t("To be collected", "Por cobrar")}</span>
               </div>
             </div>
 
             <div className="bg-white rounded-xl border border-slate-200 p-6" data-testid="finances-avg-order-card">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-slate-500">Ticket promedio</p>
+                  <p className="text-sm text-slate-500">{t("Average Order Value", "Ticket promedio")}</p>
                   <p className="text-2xl font-bold text-slate-900 mt-1" data-testid="finances-avg-order-value">
                     {formatCurrency(summary.avg_order_value)}
                   </p>
@@ -327,14 +336,14 @@ export default function Finances() {
               </div>
               <div className="flex items-center gap-1 mt-3 text-sm text-slate-500">
                 <Users className="h-4 w-4" />
-                <span>{summary.total_orders} órdenes</span>
+                <span>{t("{count} orders", "{count} órdenes").replace("{count}", summary.total_orders)}</span>
               </div>
             </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="bg-white rounded-xl border border-slate-200 p-6" data-testid="finances-revenue-breakdown">
-              <h3 className="font-semibold text-slate-900 mb-4">Distribución de ingresos</h3>
+              <h3 className="font-semibold text-slate-900 mb-4">{t("Revenue Breakdown", "Distribución de ingresos")}</h3>
               <div className="space-y-4">
                 <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
                   <div className="flex items-center gap-3">
@@ -342,8 +351,8 @@ export default function Finances() {
                       <ShoppingBag className="h-5 w-5 text-sky-600" />
                     </div>
                     <div>
-                      <p className="font-medium text-slate-900">Servicios</p>
-                      <p className="text-sm text-slate-500">{summary.paid_orders} órdenes pagadas</p>
+                      <p className="font-medium text-slate-900">{t("Services", "Servicios")}</p>
+                      <p className="text-sm text-slate-500">{t("{count} paid orders", "{count} órdenes pagadas").replace("{count}", summary.paid_orders)}</p>
                     </div>
                   </div>
                   <p className="font-bold text-slate-900" data-testid="finances-order-revenue">
@@ -356,8 +365,8 @@ export default function Finances() {
                       <Users className="h-5 w-5 text-purple-600" />
                     </div>
                     <div>
-                      <p className="font-medium text-slate-900">Membresías</p>
-                      <p className="text-sm text-slate-500">{summary.total_memberships} activas</p>
+                      <p className="font-medium text-slate-900">{t("Memberships", "Membresías")}</p>
+                      <p className="text-sm text-slate-500">{t("{count} active", "{count} activas").replace("{count}", summary.total_memberships)}</p>
                     </div>
                   </div>
                   <p className="font-bold text-slate-900" data-testid="finances-membership-breakdown">
@@ -368,24 +377,24 @@ export default function Finances() {
             </div>
 
             <div className="bg-white rounded-xl border border-slate-200 p-6" data-testid="finances-period-summary">
-              <h3 className="font-semibold text-slate-900 mb-4">Resumen del periodo</h3>
+              <h3 className="font-semibold text-slate-900 mb-4">{t("Period Summary", "Resumen del periodo")}</h3>
               <div className="space-y-3">
                 <div className="flex justify-between items-center py-2 border-b border-slate-100">
-                  <span className="text-slate-600">Rango</span>
+                  <span className="text-slate-600">{t("Range", "Rango")}</span>
                   <span className="font-medium" data-testid="finances-date-range">{formatDate(dateRange.start)} - {formatDate(dateRange.end)}</span>
                 </div>
                 <div className="flex justify-between items-center py-2 border-b border-slate-100">
-                  <span className="text-slate-600">Órdenes</span>
+                  <span className="text-slate-600">{t("Orders", "Órdenes")}</span>
                   <span className="font-medium" data-testid="finances-total-orders">{summary.total_orders}</span>
                 </div>
                 <div className="flex justify-between items-center py-2 border-b border-slate-100">
-                  <span className="text-slate-600">Conversión</span>
+                  <span className="text-slate-600">{t("Conversion", "Conversión")}</span>
                   <span className="font-medium" data-testid="finances-conversion-rate">
                     {summary.total_orders > 0 ? Math.round((summary.paid_orders / summary.total_orders) * 100) : 0}%
                   </span>
                 </div>
                 <div className="flex justify-between items-center py-2">
-                  <span className="text-slate-600 font-semibold">Total</span>
+                  <span className="text-slate-600 font-semibold">{t("Total", "Total")}</span>
                   <span className="font-bold text-green-600" data-testid="finances-period-total">{formatCurrency(summary.total_revenue)}</span>
                 </div>
               </div>
@@ -397,7 +406,7 @@ export default function Finances() {
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden" data-testid="finances-transactions-table">
         <div className="px-6 py-4 border-b border-slate-100 bg-slate-50">
           <h3 className="font-semibold text-slate-900">
-            Transacciones ({transactions.length})
+            {t("Transactions ({count})", "Transacciones ({count})").replace("{count}", transactions.length)}
           </h3>
         </div>
         {loadingTransactions ? (
@@ -409,19 +418,19 @@ export default function Finances() {
             <table className="w-full">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">Fecha</th>
-                  <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">Tipo</th>
-                  <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">Referencia</th>
-                  <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">Cliente</th>
-                  <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">Monto</th>
-                  <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">Estado</th>
+                  <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">{t("Date", "Fecha")}</th>
+                  <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">{t("Type", "Tipo")}</th>
+                  <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">{t("Reference", "Referencia")}</th>
+                  <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">{t("Customer", "Cliente")}</th>
+                  <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">{t("Amount", "Monto")}</th>
+                  <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-6 py-3">{t("Status", "Estado")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {transactions.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="text-center py-8 text-slate-500" data-testid="finances-no-transactions">
-                      No hay transacciones en este periodo
+                      {t("No transactions in this period", "No hay transacciones en este periodo")}
                     </td>
                   </tr>
                 ) : (
@@ -461,7 +470,7 @@ export default function Finances() {
                             }`}
                             data-testid={`transaction-status-${transaction.id}`}
                           >
-                            {paymentStatus === "paid" ? "Pagado" : "Pendiente"}
+                            {paymentStatus === "paid" ? t("Paid", "Pagado") : t("Pending", "Pendiente")}
                           </span>
                         </td>
                       </tr>

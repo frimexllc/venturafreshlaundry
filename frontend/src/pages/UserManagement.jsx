@@ -16,11 +16,13 @@ import {
   AlertTriangle
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { useLocale } from "../context/LocaleContext";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 export default function UserManagement() {
   const { user: currentUser } = useAuth();
+  const { t } = useLocale();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -43,7 +45,7 @@ export default function UserManagement() {
       const res = await axios.get(`${API}/admin/users`);
       setUsers(res.data);
     } catch (error) {
-      toast.error("Error loading users");
+      toast.error(t("Error loading users", "Error cargando usuarios"));
     } finally {
       setLoading(false);
     }
@@ -52,19 +54,19 @@ export default function UserManagement() {
   const handleCreateUser = async (e) => {
     e.preventDefault();
     if (!newUser.name || !newUser.email || !newUser.password) {
-      toast.error("Please fill all required fields");
+      toast.error(t("Please fill all required fields", "Por favor completa todos los campos obligatorios"));
       return;
     }
     
     setCreating(true);
     try {
       await axios.post(`${API}/admin/users`, newUser);
-      toast.success("User created successfully");
+      toast.success(t("User created successfully", "Usuario creado exitosamente"));
       setShowCreateModal(false);
       setNewUser({ name: "", email: "", password: "", role: "operator" });
       fetchUsers();
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Error creating user");
+      toast.error(error.response?.data?.detail || t("Error creating user", "Error creando usuario"));
     } finally {
       setCreating(false);
     }
@@ -73,22 +75,22 @@ export default function UserManagement() {
   const handleUpdateRole = async (userId, newRole) => {
     try {
       await axios.put(`${API}/admin/users/${userId}/role`, { role: newRole });
-      toast.success("Role updated successfully");
+      toast.success(t("Role updated successfully", "Rol actualizado exitosamente"));
       setEditingUser(null);
       fetchUsers();
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Error updating role");
+      toast.error(error.response?.data?.detail || t("Error updating role", "Error actualizando rol"));
     }
   };
 
   const handleDeleteUser = async (userId) => {
     try {
       await axios.delete(`${API}/admin/users/${userId}`);
-      toast.success("User deleted successfully");
+      toast.success(t("User deleted successfully", "Usuario eliminado exitosamente"));
       setDeleteConfirm(null);
       fetchUsers();
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Error deleting user");
+      toast.error(error.response?.data?.detail || t("Error deleting user", "Error eliminando usuario"));
     }
   };
 
@@ -99,7 +101,9 @@ export default function UserManagement() {
   };
 
   const getRoleLabel = (role) => {
-    return role === "admin" ? "Administrator" : "Operator";
+    return role === "admin" 
+      ? t("Administrator", "Administrador") 
+      : t("Operator", "Operador");
   };
 
   if (loading) {
@@ -117,13 +121,15 @@ export default function UserManagement() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
             <Users className="h-7 w-7 text-sky-600" />
-            User Management
+            {t("User Management", "Gestión de Usuarios")}
           </h1>
-          <p className="text-slate-600">Manage system users and their permissions</p>
+          <p className="text-slate-600">
+            {t("Manage system users and their permissions", "Gestiona usuarios del sistema y sus permisos")}
+          </p>
         </div>
         <Button onClick={() => setShowCreateModal(true)} className="bg-sky-600 hover:bg-sky-700">
           <UserPlus className="h-4 w-4 mr-2" />
-          Add User
+          {t("Add User", "Agregar Usuario")}
         </Button>
       </div>
 
@@ -131,25 +137,25 @@ export default function UserManagement() {
       <div className="bg-white rounded-xl border border-slate-200 p-4">
         <h3 className="font-semibold text-slate-900 mb-3 flex items-center gap-2">
           <Shield className="h-5 w-5 text-slate-600" />
-          Role Permissions
+          {t("Role Permissions", "Permisos de Rol")}
         </h3>
         <div className="grid md:grid-cols-2 gap-4">
           <div className="p-3 rounded-lg bg-purple-50 border border-purple-200">
-            <h4 className="font-medium text-purple-800 mb-2">Administrator</h4>
+            <h4 className="font-medium text-purple-800 mb-2">{t("Administrator", "Administrador")}</h4>
             <ul className="text-sm text-purple-700 space-y-1">
-              <li>• Full access to all system features</li>
-              <li>• Manage users and permissions</li>
-              <li>• Access financial reports and settings</li>
-              <li>• Configure services and memberships</li>
+              <li>• {t("Full access to all system features", "Acceso completo a todas las funciones del sistema")}</li>
+              <li>• {t("Manage users and permissions", "Gestionar usuarios y permisos")}</li>
+              <li>• {t("Access financial reports and settings", "Acceder a reportes financieros y configuración")}</li>
+              <li>• {t("Configure services and memberships", "Configurar servicios y membresías")}</li>
             </ul>
           </div>
           <div className="p-3 rounded-lg bg-sky-50 border border-sky-200">
-            <h4 className="font-medium text-sky-800 mb-2">Operator</h4>
+            <h4 className="font-medium text-sky-800 mb-2">{t("Operator", "Operador")}</h4>
             <ul className="text-sm text-sky-700 space-y-1">
-              <li>• View and update order status</li>
-              <li>• Access operator dashboard</li>
-              <li>• View customer information (limited)</li>
-              <li>• No access to financial data or settings</li>
+              <li>• {t("View and update order status", "Ver y actualizar estado de órdenes")}</li>
+              <li>• {t("Access operator dashboard", "Acceder al panel del operador")}</li>
+              <li>• {t("View customer information (limited)", "Ver información de clientes (limitada)")}</li>
+              <li>• {t("No access to financial data or settings", "Sin acceso a datos financieros ni configuración")}</li>
             </ul>
           </div>
         </div>
@@ -159,14 +165,14 @@ export default function UserManagement() {
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-100 bg-slate-50">
           <h2 className="font-semibold text-slate-900">
-            System Users ({users.length})
+            {t("System Users", "Usuarios del sistema")} ({users.length})
           </h2>
         </div>
         <div className="divide-y divide-slate-100">
           {users.length === 0 ? (
             <div className="p-8 text-center text-slate-500">
               <Users className="h-12 w-12 mx-auto mb-3 text-slate-300" />
-              <p>No users found</p>
+              <p>{t("No users found", "No se encontraron usuarios")}</p>
             </div>
           ) : (
             users.map((user) => (
@@ -183,7 +189,7 @@ export default function UserManagement() {
                         <span className="font-medium text-slate-900">{user.name}</span>
                         {user.id === currentUser?.id && (
                           <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
-                            You
+                            {t("You", "Tú")}
                           </span>
                         )}
                       </div>
@@ -199,8 +205,8 @@ export default function UserManagement() {
                           defaultValue={user.role}
                           onChange={(e) => handleUpdateRole(user.id, e.target.value)}
                         >
-                          <option value="admin">Administrator</option>
-                          <option value="operator">Operator</option>
+                          <option value="admin">{t("Administrator", "Administrador")}</option>
+                          <option value="operator">{t("Operator", "Operador")}</option>
                         </select>
                         <Button 
                           variant="ghost" 
@@ -246,10 +252,13 @@ export default function UserManagement() {
                   <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
                     <div className="flex items-center gap-2 text-red-700 mb-2">
                       <AlertTriangle className="h-4 w-4" />
-                      <span className="font-medium">Confirm Deletion</span>
+                      <span className="font-medium">{t("Confirm Deletion", "Confirmar Eliminación")}</span>
                     </div>
                     <p className="text-sm text-red-600 mb-3">
-                      Are you sure you want to delete {user.name}? This action cannot be undone.
+                      {t(
+                        "Are you sure you want to delete {name}? This action cannot be undone.",
+                        "¿Estás seguro de que quieres eliminar a {name}? Esta acción no se puede deshacer."
+                      ).replace("{name}", user.name)}
                     </p>
                     <div className="flex gap-2">
                       <Button 
@@ -257,14 +266,14 @@ export default function UserManagement() {
                         variant="destructive"
                         onClick={() => handleDeleteUser(user.id)}
                       >
-                        Delete
+                        {t("Delete", "Eliminar")}
                       </Button>
                       <Button 
                         size="sm" 
                         variant="outline"
                         onClick={() => setDeleteConfirm(null)}
                       >
-                        Cancel
+                        {t("Cancel", "Cancelar")}
                       </Button>
                     </div>
                   </div>
@@ -280,7 +289,7 @@ export default function UserManagement() {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl max-w-md w-full p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-slate-900">Create New User</h3>
+              <h3 className="text-lg font-semibold text-slate-900">{t("Create New User", "Crear Nuevo Usuario")}</h3>
               <Button 
                 variant="ghost" 
                 size="sm"
@@ -292,30 +301,30 @@ export default function UserManagement() {
             
             <form onSubmit={handleCreateUser} className="space-y-4">
               <div>
-                <Label htmlFor="name">Name *</Label>
+                <Label htmlFor="name">{t("Name *", "Nombre *")}</Label>
                 <Input
                   id="name"
                   value={newUser.name}
                   onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
-                  placeholder="John Doe"
+                  placeholder={t("John Doe", "Juan Pérez")}
                   required
                 />
               </div>
               
               <div>
-                <Label htmlFor="email">Email *</Label>
+                <Label htmlFor="email">{t("Email *", "Correo *")}</Label>
                 <Input
                   id="email"
                   type="email"
                   value={newUser.email}
                   onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-                  placeholder="john@example.com"
+                  placeholder={t("john@example.com", "juan@ejemplo.com")}
                   required
                 />
               </div>
               
               <div>
-                <Label htmlFor="password">Password *</Label>
+                <Label htmlFor="password">{t("Password *", "Contraseña *")}</Label>
                 <Input
                   id="password"
                   type="password"
@@ -327,20 +336,20 @@ export default function UserManagement() {
               </div>
               
               <div>
-                <Label htmlFor="role">Role *</Label>
+                <Label htmlFor="role">{t("Role *", "Rol *")}</Label>
                 <select
                   id="role"
                   className="w-full h-9 rounded-md border border-slate-200 px-3 text-sm"
                   value={newUser.role}
                   onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}
                 >
-                  <option value="operator">Operator</option>
-                  <option value="admin">Administrator</option>
+                  <option value="operator">{t("Operator", "Operador")}</option>
+                  <option value="admin">{t("Administrator", "Administrador")}</option>
                 </select>
                 <p className="text-xs text-slate-500 mt-1">
                   {newUser.role === "admin" 
-                    ? "Full access to all system features" 
-                    : "Limited access - order management only"}
+                    ? t("Full access to all system features", "Acceso completo a todas las funciones del sistema")
+                    : t("Limited access - order management only", "Acceso limitado - solo gestión de órdenes")}
                 </p>
               </div>
               
@@ -355,7 +364,7 @@ export default function UserManagement() {
                   ) : (
                     <>
                       <Check className="h-4 w-4 mr-2" />
-                      Create User
+                      {t("Create User", "Crear Usuario")}
                     </>
                   )}
                 </Button>
@@ -364,7 +373,7 @@ export default function UserManagement() {
                   variant="outline"
                   onClick={() => setShowCreateModal(false)}
                 >
-                  Cancel
+                  {t("Cancel", "Cancelar")}
                 </Button>
               </div>
             </form>

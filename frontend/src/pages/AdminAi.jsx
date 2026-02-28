@@ -5,10 +5,12 @@ import { Textarea } from "../components/ui/textarea";
 import { Input } from "../components/ui/input";
 import { toast } from "sonner";
 import { Bot, Send, Sparkles, RefreshCw, CheckCircle, AlertTriangle } from "lucide-react";
+import { useLocale } from "../context/LocaleContext";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 export default function AdminAi() {
+  const { t } = useLocale();
   const [activeTab, setActiveTab] = useState("chat");
   const [prompt, setPrompt] = useState("");
   const [loading, setLoading] = useState(false);
@@ -60,9 +62,8 @@ export default function AdminAi() {
     setLoading(true);
     
     try {
-      // Use the new AI chat endpoint
       const res = await axios.post(`${API}/ai/chat`, { message: userMessage, execute: true });
-      const aiReply = res.data.reply || "I couldn't process that request.";
+      const aiReply = res.data.reply || t("I couldn't process that request.", "No pude procesar esa solicitud.");
       
       setChatHistory(prev => [...prev, { 
         role: "assistant", 
@@ -74,22 +75,21 @@ export default function AdminAi() {
       setReply(aiReply);
       setResults(res.data.results || []);
       
-      // Show action results
       if (res.data.results && res.data.results.length > 0) {
         res.data.results.forEach(r => {
           if (r.ok) {
-            toast.success(r.message || "Action completed");
+            toast.success(r.message || t("Action completed", "Acción completada"));
           } else {
-            toast.error(r.error || "Action failed");
+            toast.error(r.error || t("Action failed", "Acción fallida"));
           }
         });
       }
     } catch (error) {
-      const errorMsg = error.response?.data?.detail || "Error communicating with AI";
+      const errorMsg = error.response?.data?.detail || t("Error communicating with AI", "Error comunicándose con la IA");
       toast.error(errorMsg);
       setChatHistory(prev => [...prev, { 
         role: "assistant", 
-        content: `Error: ${errorMsg}`,
+        content: t("Error: {errorMsg}", "Error: {errorMsg}").replace("{errorMsg}", errorMsg),
         isError: true
       }]);
     } finally {
@@ -104,12 +104,12 @@ export default function AdminAi() {
   };
 
   const quickPrompts = [
-    "Show me today's orders summary",
-    "What orders are ready for delivery?",
-    "Show pending payments",
-    "List open support tickets",
-    "Show new leads this week",
-    "What's the revenue for this month?"
+    t("Show me today's orders summary", "Ver resumen de órdenes de hoy"),
+    t("What orders are ready for delivery?", "¿Qué órdenes están listas para entrega?"),
+    t("Show pending payments", "Mostrar pagos pendientes"),
+    t("List open support tickets", "Listar tickets de soporte abiertos"),
+    t("Show new leads this week", "Mostrar leads nuevos esta semana"),
+    t("What's the revenue for this month?", "¿Cuál es el ingreso de este mes?")
   ];
 
   const loadProposals = async () => {
@@ -123,7 +123,7 @@ export default function AdminAi() {
         setSelectedProposal(updated || null);
       }
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Error cargando propuestas");
+      toast.error(error.response?.data?.detail || t("Error loading proposals", "Error cargando propuestas"));
     } finally {
       setLoadingProposals(false);
     }
@@ -149,51 +149,51 @@ export default function AdminAi() {
   const runPatternScan = async () => {
     try {
       await axios.post(`${API}/ai/patrones/scan`, {});
-      toast.success("Patrones analizados");
+      toast.success(t("Patterns analyzed", "Patrones analizados"));
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Error analizando patrones");
+      toast.error(error.response?.data?.detail || t("Error analyzing patterns", "Error analizando patrones"));
     }
   };
 
   const generateProposals = async () => {
     try {
       await axios.post(`${API}/ai/propuestas/generar`, {});
-      toast.success("Propuestas generadas");
+      toast.success(t("Proposals generated", "Propuestas generadas"));
       loadProposals();
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Error generando propuestas");
+      toast.error(error.response?.data?.detail || t("Error generating proposals", "Error generando propuestas"));
     }
   };
 
   const handleProposalAction = async (action) => {
     if (!selectedProposal) return;
-    let modificaciones = null;
+    let modifications = null;
     if (proposalActionMods.trim()) {
       try {
-        modificaciones = JSON.parse(proposalActionMods);
+        modifications = JSON.parse(proposalActionMods);
       } catch (error) {
-        toast.error("JSON de modificaciones inválido");
+        toast.error(t("Invalid modifications JSON", "JSON de modificaciones inválido"));
         return;
       }
     }
     try {
       await axios.post(`${API}/ai/propuestas/${selectedProposal.id}/accion`, {
         accion: action,
-        modificaciones,
+        modificaciones: modifications,
         comentarios: proposalActionNotes || null
       });
-      toast.success("Acción registrada");
+      toast.success(t("Action recorded", "Acción registrada"));
       setProposalActionNotes("");
       setProposalActionMods("");
       loadProposals();
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Error aplicando acción");
+      toast.error(error.response?.data?.detail || t("Error applying action", "Error aplicando acción"));
     }
   };
 
   const handleImportUpload = async () => {
     if (!importFile) {
-      toast.error("Selecciona un archivo");
+      toast.error(t("Select a file", "Selecciona un archivo"));
       return;
     }
     setLoadingImport(true);
@@ -206,9 +206,9 @@ export default function AdminAi() {
       setImportId(res.data.import_id);
       setImportHeaders(res.data.campos_detectados || []);
       setMappingText("");
-      toast.success("Archivo cargado");
+      toast.success(t("File uploaded", "Archivo cargado"));
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Error subiendo archivo");
+      toast.error(error.response?.data?.detail || t("Error uploading file", "Error subiendo archivo"));
     } finally {
       setLoadingImport(false);
     }
@@ -222,9 +222,9 @@ export default function AdminAi() {
       });
       const mapping = res.data.sugerencias || {};
       setMappingText(JSON.stringify(mapping, null, 2));
-      toast.success("Mapeo sugerido");
+      toast.success(t("Mapping suggested", "Mapeo sugerido"));
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Error sugiriendo mapeo");
+      toast.error(error.response?.data?.detail || t("Error suggesting mapping", "Error sugiriendo mapeo"));
     }
   };
 
@@ -234,16 +234,16 @@ export default function AdminAi() {
     try {
       mapping = mappingText ? JSON.parse(mappingText) : {};
     } catch (error) {
-      toast.error("JSON de mapeo inválido");
+      toast.error(t("Invalid mapping JSON", "JSON de mapeo inválido"));
       return;
     }
     try {
       const res = await axios.post(`${API}/admin/import/${importId}/mapping/confirm`, {
         mapping_campos: mapping
       });
-      toast.success(`Órdenes creadas: ${res.data.ordenes_creadas || 0}`);
+      toast.success(t("Orders created: {count}", "Órdenes creadas: {count}").replace("{count}", res.data.ordenes_creadas || 0));
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Error confirmando mapeo");
+      toast.error(error.response?.data?.detail || t("Error confirming mapping", "Error confirmando mapeo"));
     }
   };
 
@@ -251,11 +251,11 @@ export default function AdminAi() {
     if (!importId) return;
     try {
       const res = await axios.post(`${API}/admin/import/${importId}/plan-recuperacion`);
-      toast.success(`Propuesta creada: ${res.data.propuesta_id}`);
+      toast.success(t("Proposal created: {id}", "Propuesta creada: {id}").replace("{id}", res.data.propuesta_id));
       loadProposals();
-      setActiveTab("propuestas");
+      setActiveTab("proposals");
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Error generando plan");
+      toast.error(error.response?.data?.detail || t("Error generating plan", "Error generando plan"));
     }
   };
 
@@ -283,7 +283,7 @@ export default function AdminAi() {
     } catch (error) {
       setScanResult(null);
       setScanStatus("error");
-      setScanError(error.response?.data?.detail || "QR inválido o ilegible");
+      setScanError(error.response?.data?.detail || t("Invalid or unreadable QR", "QR inválido o ilegible"));
     }
   };
 
@@ -291,7 +291,7 @@ export default function AdminAi() {
     if (!videoRef.current || !canvasRef.current || !scannerActive) return;
     if (!("BarcodeDetector" in window)) {
       setScanStatus("error");
-      setScanError("Escáner no soportado en este navegador");
+      setScanError(t("Scanner not supported in this browser", "Escáner no soportado en este navegador"));
       return;
     }
     const detector = new window.BarcodeDetector({ formats: ["qr_code"] });
@@ -311,7 +311,7 @@ export default function AdminAi() {
         return;
       }
     } catch (error) {
-      setScanError("No se pudo leer el QR");
+      setScanError(t("Could not read QR", "No se pudo leer el QR"));
     }
     rafRef.current = requestAnimationFrame(scanLoop);
   };
@@ -322,7 +322,7 @@ export default function AdminAi() {
     setScanStatus("scanning");
     if (!navigator.mediaDevices?.getUserMedia) {
       setScanStatus("error");
-      setScanError("Cámara no disponible");
+      setScanError(t("Camera not available", "Cámara no disponible"));
       return;
     }
     try {
@@ -342,7 +342,7 @@ export default function AdminAi() {
       rafRef.current = requestAnimationFrame(scanLoop);
     } catch (error) {
       setScanStatus("error");
-      setScanError("No se pudo acceder a la cámara");
+      setScanError(t("Could not access camera", "No se pudo acceder a la cámara"));
     }
   };
 
@@ -354,7 +354,7 @@ export default function AdminAi() {
       await track.applyConstraints({ advanced: [{ torch: !torchEnabled }] });
       setTorchEnabled((prev) => !prev);
     } catch (error) {
-      setScanError("La linterna no está disponible");
+      setScanError(t("Torch not available", "Linterna no disponible"));
     }
   };
 
@@ -362,7 +362,7 @@ export default function AdminAi() {
     if (!file) return;
     if (!("BarcodeDetector" in window)) {
       setScanStatus("error");
-      setScanError("Escáner no soportado en este navegador");
+      setScanError(t("Scanner not supported in this browser", "Escáner no soportado en este navegador"));
       return;
     }
     setScanStatus("scanning");
@@ -384,21 +384,21 @@ export default function AdminAi() {
           return;
         }
         setScanStatus("error");
-        setScanError("No se detectó QR en la imagen");
+        setScanError(t("No QR detected in image", "No se detectó QR en la imagen"));
       } catch (error) {
         setScanStatus("error");
-        setScanError("No se pudo leer la imagen");
+        setScanError(t("Could not read image", "No se pudo leer la imagen"));
       }
     };
     img.onerror = () => {
       setScanStatus("error");
-      setScanError("Imagen inválida");
+      setScanError(t("Invalid image", "Imagen inválida"));
     };
     img.src = URL.createObjectURL(file);
   };
 
   useEffect(() => {
-    if (activeTab === "propuestas") {
+    if (activeTab === "proposals") {
       loadProposals();
     }
   }, [activeTab, proposalStatus]);
@@ -431,19 +431,26 @@ export default function AdminAi() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Asistente IA</h1>
-        <p className="text-slate-600">Solo para administrador. IA colaborativa, propuestas e importación.</p>
+        <h1 className="text-2xl font-bold text-slate-900">{t("AI Assistant", "Asistente IA")}</h1>
+        <p className="text-slate-600">
+          {t("Admin only. Collaborative AI, proposals and import.", "Solo para administrador. IA colaborativa, propuestas e importación.")}
+        </p>
       </div>
 
       <div className="flex items-center gap-2">
-        {["chat", "propuestas", "importacion", "scanner"].map((tab) => (
+        {[
+          { id: "chat", labelEn: "Chat", labelEs: "Chat" },
+          { id: "proposals", labelEn: "Proposals", labelEs: "Propuestas" },
+          { id: "import", labelEn: "Import", labelEs: "Importación" },
+          { id: "scanner", labelEn: "Scanner", labelEs: "Escáner" }
+        ].map((tab) => (
           <Button
-            key={tab}
-            variant={activeTab === tab ? "default" : "outline"}
+            key={tab.id}
+            variant={activeTab === tab.id ? "default" : "outline"}
             size="sm"
-            onClick={() => setActiveTab(tab)}
+            onClick={() => setActiveTab(tab.id)}
           >
-            {tab === "chat" ? "Chat" : tab === "propuestas" ? "Propuestas" : tab === "importacion" ? "Importación" : "Escáner"}
+            {t(tab.labelEn, tab.labelEs)}
           </Button>
         ))}
       </div>
@@ -459,7 +466,7 @@ export default function AdminAi() {
                 </div>
                 <div>
                   <h2 className="font-semibold text-slate-900 flex items-center gap-2">
-                    AI Business Assistant
+                    {t("AI Business Assistant", "Asistente de Negocios IA")}
                     <Sparkles className="h-4 w-4 text-amber-500" />
                   </h2>
                   <p className="text-xs text-slate-500">Groq • llama-3.3-70b</p>
@@ -467,14 +474,14 @@ export default function AdminAi() {
               </div>
               <Button variant="ghost" size="sm" onClick={clearChat}>
                 <RefreshCw className="h-4 w-4 mr-1" />
-                Clear
+                {t("Clear", "Limpiar")}
               </Button>
             </div>
           </div>
           
           {/* Quick prompts */}
           <div className="p-3 border-b border-slate-100 bg-slate-50">
-            <p className="text-xs text-slate-500 mb-2">Quick actions:</p>
+            <p className="text-xs text-slate-500 mb-2">{t("Quick actions:", "Acciones rápidas:")}</p>
             <div className="flex flex-wrap gap-2">
               {quickPrompts.map((qp, idx) => (
                 <button
@@ -493,8 +500,10 @@ export default function AdminAi() {
             {chatHistory.length === 0 ? (
               <div className="text-center py-12 text-slate-400">
                 <Bot className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                <p>Start a conversation with your AI assistant</p>
-                <p className="text-sm mt-1">Ask about orders, customers, revenue, or request actions</p>
+                <p>{t("Start a conversation with your AI assistant", "Inicia una conversación con tu asistente IA")}</p>
+                <p className="text-sm mt-1">
+                  {t("Ask about orders, customers, revenue, or request actions", "Pregunta sobre órdenes, clientes, ingresos o solicita acciones")}
+                </p>
               </div>
             ) : (
               chatHistory.map((msg, idx) => (
@@ -530,7 +539,7 @@ export default function AdminAi() {
                 <div className="bg-slate-100 rounded-xl p-3">
                   <div className="flex items-center gap-2">
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-sky-600"></div>
-                    <span className="text-sm text-slate-500">Thinking...</span>
+                    <span className="text-sm text-slate-500">{t("Thinking...", "Pensando...")}</span>
                   </div>
                 </div>
               </div>
@@ -545,7 +554,7 @@ export default function AdminAi() {
                 rows={2}
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                placeholder="Ask anything... (e.g., 'Show pending orders' or 'Mark order ORD-001 as ready')"
+                placeholder={t("Ask anything... (e.g., 'Show pending orders' or 'Mark order ORD-001 as ready')", "Pregunta algo... (ej. 'Mostrar órdenes pendientes' o 'Marcar orden ORD-001 como lista')")}
                 className="flex-1 resize-none"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
@@ -558,12 +567,14 @@ export default function AdminAi() {
                 <Send className="h-4 w-4" />
               </Button>
             </div>
-            <p className="text-xs text-slate-400 mt-2">Press Enter to send, Shift+Enter for new line</p>
+            <p className="text-xs text-slate-400 mt-2">
+              {t("Press Enter to send, Shift+Enter for new line", "Presiona Enter para enviar, Shift+Enter para nueva línea")}
+            </p>
           </form>
         </div>
       )}
 
-      {activeTab === "propuestas" && (
+      {activeTab === "proposals" && (
         <div className="grid lg:grid-cols-[1.2fr_1fr] gap-6">
           <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
             <div className="flex flex-wrap items-center gap-3">
@@ -572,26 +583,26 @@ export default function AdminAi() {
                 value={proposalStatus}
                 onChange={(e) => setProposalStatus(e.target.value)}
               >
-                <option value="pendiente">Pendientes</option>
-                <option value="aceptada">Aceptadas</option>
-                <option value="rechazada">Rechazadas</option>
-                <option value="modificada">Modificadas</option>
-                <option value="pospuesta">Pospuestas</option>
-                <option value="all">Todas</option>
+                <option value="pendiente">{t("Pending", "Pendiente")}</option>
+                <option value="aceptada">{t("Accepted", "Aceptada")}</option>
+                <option value="rechazada">{t("Rejected", "Rechazada")}</option>
+                <option value="modificada">{t("Modified", "Modificada")}</option>
+                <option value="pospuesta">{t("Postponed", "Pospuesta")}</option>
+                <option value="all">{t("All", "Todas")}</option>
               </select>
               <Button variant="outline" size="sm" onClick={loadProposals} disabled={loadingProposals}>
-                {loadingProposals ? "Cargando..." : "Recargar"}
+                {loadingProposals ? t("Loading...", "Cargando...") : t("Reload", "Recargar")}
               </Button>
               <Button variant="outline" size="sm" onClick={runPatternScan}>
-                Analizar patrones
+                {t("Analyze patterns", "Analizar patrones")}
               </Button>
               <Button size="sm" onClick={generateProposals}>
-                Generar propuestas
+                {t("Generate proposals", "Generar propuestas")}
               </Button>
             </div>
             <div className="space-y-3">
               {proposals.length === 0 ? (
-                <div className="text-sm text-slate-500">Sin propuestas</div>
+                <div className="text-sm text-slate-500">{t("No proposals", "Sin propuestas")}</div>
               ) : (
                 proposals.map((proposal) => (
                   <button
@@ -610,7 +621,7 @@ export default function AdminAi() {
 
           <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
             {!selectedProposal ? (
-              <div className="text-sm text-slate-500">Selecciona una propuesta</div>
+              <div className="text-sm text-slate-500">{t("Select a proposal", "Selecciona una propuesta")}</div>
             ) : (
               <>
                 <div>
@@ -619,110 +630,110 @@ export default function AdminAi() {
                 </div>
                 <p className="text-sm text-slate-700 whitespace-pre-line">{selectedProposal.descripcion}</p>
                 <div className="text-sm text-slate-700">
-                  <div className="font-semibold text-slate-900">Impacto</div>
-                  <pre className="text-xs bg-slate-50 border border-slate-200 rounded-lg p-3 overflow-auto">{JSON.stringify(selectedProposal.impacto_estimado || {}, null, 2)}</pre>
+                  <div className="font-semibold text-slate-900">{t("Impact", "Impacto")}</div>
+                  <pre className="text-xs bg-white border border-slate-200 rounded-lg p-3 overflow-auto">{JSON.stringify(selectedProposal.impacto_estimado || {}, null, 2)}</pre>
                 </div>
                 <div className="text-sm text-slate-700">
-                  <div className="font-semibold text-slate-900">Acción sugerida</div>
-                  <pre className="text-xs bg-slate-50 border border-slate-200 rounded-lg p-3 overflow-auto">{JSON.stringify(selectedProposal.accion_sugerida || {}, null, 2)}</pre>
+                  <div className="font-semibold text-slate-900">{t("Suggested action", "Acción sugerida")}</div>
+                  <pre className="text-xs bg-white border border-slate-200 rounded-lg p-3 overflow-auto">{JSON.stringify(selectedProposal.accion_sugerida || {}, null, 2)}</pre>
                 </div>
                 <div className="text-sm text-slate-700">
-                  <div className="font-semibold text-slate-900">Simulación antes/después</div>
+                  <div className="font-semibold text-slate-900">{t("Before/After simulation", "Simulación antes/después")}</div>
                   <div className="grid md:grid-cols-2 gap-3 text-xs mb-3">
                     <div>
-                      <label className="text-slate-500">Inicio</label>
+                      <label className="text-slate-500">{t("Start", "Inicio")}</label>
                       <Input type="date" value={simulationStartDate} onChange={(e) => setSimulationStartDate(e.target.value)} />
                     </div>
                     <div>
-                      <label className="text-slate-500">Fin</label>
+                      <label className="text-slate-500">{t("End", "Fin")}</label>
                       <Input type="date" value={simulationEndDate} onChange={(e) => setSimulationEndDate(e.target.value)} />
                     </div>
                     <div>
-                      <label className="text-slate-500">Servicio</label>
+                      <label className="text-slate-500">{t("Service", "Servicio")}</label>
                       <select
                         className="w-full h-9 rounded-md border border-slate-200 px-2 text-xs"
                         value={simulationService}
                         onChange={(e) => setSimulationService(e.target.value)}
                       >
-                        <option value="">Todos</option>
-                        <option value="pickup_delivery">Pickup & Delivery</option>
-                        <option value="wash_fold">Wash & Fold</option>
-                        <option value="self_service">Self Service</option>
+                        <option value="">{t("All", "Todos")}</option>
+                        <option value="pickup_delivery">{t("Pickup & Delivery", "Recogida y Entrega")}</option>
+                        <option value="wash_fold">{t("Wash & Fold", "Lavado y Doblado")}</option>
+                        <option value="self_service">{t("Self Service", "Autoservicio")}</option>
                       </select>
                     </div>
                     <div>
-                      <label className="text-slate-500">Estado</label>
+                      <label className="text-slate-500">{t("Status", "Estado")}</label>
                       <select
                         className="w-full h-9 rounded-md border border-slate-200 px-2 text-xs"
                         value={simulationStatus}
                         onChange={(e) => setSimulationStatus(e.target.value)}
                       >
-                        <option value="">Todos</option>
-                        <option value="new">Nueva</option>
-                        <option value="processing">Procesando</option>
-                        <option value="ready">Lista</option>
-                        <option value="out_for_delivery">En camino</option>
-                        <option value="completed">Completada</option>
-                        <option value="cancelled">Cancelada</option>
+                        <option value="">{t("All", "Todos")}</option>
+                        <option value="new">{t("New", "Nueva")}</option>
+                        <option value="processing">{t("Processing", "Procesando")}</option>
+                        <option value="ready">{t("Ready", "Lista")}</option>
+                        <option value="out_for_delivery">{t("Out for delivery", "En camino")}</option>
+                        <option value="completed">{t("Completed", "Completada")}</option>
+                        <option value="cancelled">{t("Cancelled", "Cancelada")}</option>
                       </select>
                     </div>
                   </div>
                   {loadingSimulation ? (
-                    <div className="text-xs text-slate-500">Calculando...</div>
+                    <div className="text-xs text-slate-500">{t("Calculating...", "Calculando...")}</div>
                   ) : simulation ? (
                     <div className="grid grid-cols-2 gap-3 text-xs">
                       <div className="border border-slate-200 rounded-lg p-3">
-                        <div className="text-slate-500 mb-2">Antes</div>
-                        <div>Órdenes: {simulation.before?.ordenes ?? "-"}</div>
-                        <div>Promedio procesamiento (h): {simulation.before?.avg_processing_horas ?? "-"}</div>
-                        <div>Errores validación: {simulation.before?.errores_validacion ?? "-"}</div>
+                        <div className="text-slate-500 mb-2">{t("Before", "Antes")}</div>
+                        <div>{t("Orders", "Órdenes")}: {simulation.before?.ordenes ?? "-"}</div>
+                        <div>{t("Avg processing (h)", "Promedio procesamiento (h)")}: {simulation.before?.avg_processing_horas ?? "-"}</div>
+                        <div>{t("Validation errors", "Errores validación")}: {simulation.before?.errores_validacion ?? "-"}</div>
                       </div>
                       <div className="border border-slate-200 rounded-lg p-3">
-                        <div className="text-slate-500 mb-2">Después</div>
-                        <div>Órdenes: {simulation.after?.ordenes ?? "-"}</div>
-                        <div>Promedio procesamiento (h): {simulation.after?.avg_processing_horas ?? "-"}</div>
-                        <div>Errores validación: {simulation.after?.errores_validacion ?? "-"}</div>
+                        <div className="text-slate-500 mb-2">{t("After", "Después")}</div>
+                        <div>{t("Orders", "Órdenes")}: {simulation.after?.ordenes ?? "-"}</div>
+                        <div>{t("Avg processing (h)", "Promedio procesamiento (h)")}: {simulation.after?.avg_processing_horas ?? "-"}</div>
+                        <div>{t("Validation errors", "Errores validación")}: {simulation.after?.errores_validacion ?? "-"}</div>
                       </div>
                     </div>
                   ) : (
-                    <div className="text-xs text-slate-500">Sin simulación disponible</div>
+                    <div className="text-xs text-slate-500">{t("No simulation available", "Sin simulación disponible")}</div>
                   )}
                 </div>
                 {simulation && (
                   <div className="text-xs text-slate-600 space-y-2">
                     <div className="grid grid-cols-2 gap-3">
                       <div className="border border-slate-200 rounded-lg p-3">
-                        <div className="text-slate-500 mb-2">Impacto real</div>
-                        <div>Errores antes: {simulation.impacto_real?.errores_before ?? "-"}</div>
-                        <div>Errores después: {simulation.impacto_real?.errores_after ?? "-"}</div>
-                        <div>Órdenes antes: {simulation.impacto_real?.ordenes_before ?? "-"}</div>
-                        <div>Órdenes después: {simulation.impacto_real?.ordenes_after ?? "-"}</div>
+                        <div className="text-slate-500 mb-2">{t("Real impact", "Impacto real")}</div>
+                        <div>{t("Errors before", "Errores antes")}: {simulation.impacto_real?.errores_before ?? "-"}</div>
+                        <div>{t("Errors after", "Errores después")}: {simulation.impacto_real?.errores_after ?? "-"}</div>
+                        <div>{t("Orders before", "Órdenes antes")}: {simulation.impacto_real?.ordenes_before ?? "-"}</div>
+                        <div>{t("Orders after", "Órdenes después")}: {simulation.impacto_real?.ordenes_after ?? "-"}</div>
                       </div>
                       <div className="border border-slate-200 rounded-lg p-3">
-                        <div className="text-slate-500 mb-2">Distribución</div>
-                        <div>Servicios: {simulation.por_servicio?.map((s) => `${s._id}:${s.count}`).join(" | ") || "-"}</div>
-                        <div>Estados: {simulation.por_estado?.map((s) => `${s._id}:${s.count}`).join(" | ") || "-"}</div>
+                        <div className="text-slate-500 mb-2">{t("Distribution", "Distribución")}</div>
+                        <div>{t("Services", "Servicios")}: {simulation.por_servicio?.map((s) => `${s._id}:${s.count}`).join(" | ") || "-"}</div>
+                        <div>{t("Statuses", "Estados")}: {simulation.por_estado?.map((s) => `${s._id}:${s.count}`).join(" | ") || "-"}</div>
                       </div>
                     </div>
                   </div>
                 )}
                 <Textarea
                   rows={3}
-                  placeholder="Comentarios"
+                  placeholder={t("Comments", "Comentarios")}
                   value={proposalActionNotes}
                   onChange={(e) => setProposalActionNotes(e.target.value)}
                 />
                 <Textarea
                   rows={4}
-                  placeholder='Modificaciones (JSON) opcional'
+                  placeholder={t("Modifications (JSON) optional", "Modificaciones (JSON) opcional")}
                   value={proposalActionMods}
                   onChange={(e) => setProposalActionMods(e.target.value)}
                 />
                 <div className="flex flex-wrap gap-2">
-                  <Button size="sm" onClick={() => handleProposalAction("aceptar")}>Aceptar</Button>
-                  <Button size="sm" variant="outline" onClick={() => handleProposalAction("modificar")}>Modificar</Button>
-                  <Button size="sm" variant="outline" onClick={() => handleProposalAction("posponer")}>Posponer</Button>
-                  <Button size="sm" variant="destructive" onClick={() => handleProposalAction("rechazar")}>Rechazar</Button>
+                  <Button size="sm" onClick={() => handleProposalAction("aceptar")}>{t("Accept", "Aceptar")}</Button>
+                  <Button size="sm" variant="outline" onClick={() => handleProposalAction("modificar")}>{t("Modify", "Modificar")}</Button>
+                  <Button size="sm" variant="outline" onClick={() => handleProposalAction("posponer")}>{t("Postpone", "Posponer")}</Button>
+                  <Button size="sm" variant="destructive" onClick={() => handleProposalAction("rechazar")}>{t("Reject", "Rechazar")}</Button>
                 </div>
               </>
             )}
@@ -730,15 +741,15 @@ export default function AdminAi() {
         </div>
       )}
 
-      {activeTab === "importacion" && (
+      {activeTab === "import" && (
         <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
           <div className="grid md:grid-cols-[1fr_1fr_auto] gap-4 items-end">
             <div>
-              <label className="text-sm text-slate-600">Archivo</label>
+              <label className="text-sm text-slate-600">{t("File", "Archivo")}</label>
               <Input type="file" onChange={(e) => setImportFile(e.target.files?.[0] || null)} />
             </div>
             <div>
-              <label className="text-sm text-slate-600">Origen</label>
+              <label className="text-sm text-slate-600">{t("Origin", "Origen")}</label>
               <select
                 className="w-full h-9 rounded-md border border-slate-200 px-2 text-sm"
                 value={importOrigin}
@@ -750,21 +761,21 @@ export default function AdminAi() {
               </select>
             </div>
             <Button onClick={handleImportUpload} disabled={loadingImport}>
-              {loadingImport ? "Subiendo..." : "Subir"}
+              {loadingImport ? t("Uploading...", "Subiendo...") : t("Upload", "Subir")}
             </Button>
           </div>
           {importId && (
             <div className="space-y-3">
-              <div className="text-sm text-slate-600">Import ID: {importId}</div>
-              <div className="text-sm text-slate-700">Campos detectados: {importHeaders.join(", ")}</div>
+              <div className="text-sm text-slate-600">{t("Import ID", "ID de importación")}: {importId}</div>
+              <div className="text-sm text-slate-700">{t("Detected fields", "Campos detectados")}: {importHeaders.join(", ")}</div>
               <div className="flex flex-wrap gap-2">
-                <Button variant="outline" size="sm" onClick={handleSuggestMapping}>Sugerir mapeo</Button>
-                <Button size="sm" onClick={handleConfirmMapping}>Confirmar mapeo</Button>
-                <Button variant="outline" size="sm" onClick={handleRecoveryPlan}>Generar plan recuperación</Button>
+                <Button variant="outline" size="sm" onClick={handleSuggestMapping}>{t("Suggest mapping", "Sugerir mapeo")}</Button>
+                <Button size="sm" onClick={handleConfirmMapping}>{t("Confirm mapping", "Confirmar mapeo")}</Button>
+                <Button variant="outline" size="sm" onClick={handleRecoveryPlan}>{t("Generate recovery plan", "Generar plan recuperación")}</Button>
               </div>
               <Textarea
                 rows={6}
-                placeholder="Mapeo en JSON"
+                placeholder={t("Mapping in JSON", "Mapeo en JSON")}
                 value={mappingText}
                 onChange={(e) => setMappingText(e.target.value)}
               />
@@ -777,10 +788,10 @@ export default function AdminAi() {
         <div className="grid lg:grid-cols-[1.2fr_1fr] gap-6">
           <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
             <div className="flex flex-wrap gap-2">
-              <Button onClick={startScanner} disabled={scannerActive}>Iniciar escaneo</Button>
-              <Button variant="outline" onClick={stopScanner} disabled={!scannerActive}>Detener</Button>
+              <Button onClick={startScanner} disabled={scannerActive}>{t("Start scan", "Iniciar escaneo")}</Button>
+              <Button variant="outline" onClick={stopScanner} disabled={!scannerActive}>{t("Stop", "Detener")}</Button>
               <Button variant="outline" onClick={toggleTorch} disabled={!torchAvailable}>
-                {torchEnabled ? "Apagar linterna" : "Encender linterna"}
+                {torchEnabled ? t("Turn off torch", "Apagar linterna") : t("Turn on torch", "Encender linterna")}
               </Button>
             </div>
             <div className="rounded-xl border border-slate-200 overflow-hidden bg-slate-50">
@@ -788,14 +799,14 @@ export default function AdminAi() {
               <canvas ref={canvasRef} className="hidden" />
             </div>
             <div className="text-sm text-slate-600">
-              {scanStatus === "scanning" && "Escaneando..."}
-              {scanStatus === "resolving" && "Procesando QR..."}
-              {scanStatus === "success" && "QR leído correctamente"}
+              {scanStatus === "scanning" && t("Scanning...", "Escaneando...")}
+              {scanStatus === "resolving" && t("Processing QR...", "Procesando QR...")}
+              {scanStatus === "success" && t("QR read successfully", "QR leído correctamente")}
               {scanStatus === "error" && scanError}
             </div>
             <div className="grid md:grid-cols-[1fr_auto] gap-3">
               <Input
-                placeholder="Pega el QR token o payload JSON"
+                placeholder={t("Paste QR token or JSON payload", "Pega el token QR o payload JSON")}
                 value={manualPayload}
                 onChange={(e) => setManualPayload(e.target.value)}
               />
@@ -804,61 +815,61 @@ export default function AdminAi() {
                 onClick={() => resolveQrPayload(manualPayload)}
                 disabled={!manualPayload.trim()}
               >
-                Procesar manual
+                {t("Process manually", "Procesar manual")}
               </Button>
             </div>
             <div>
-              <label className="text-sm text-slate-600">Escanear desde imagen</label>
+              <label className="text-sm text-slate-600">{t("Scan from image", "Escanear desde imagen")}</label>
               <Input type="file" accept="image/*" onChange={(e) => handleScanImage(e.target.files?.[0])} />
             </div>
           </div>
           <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
             {!scanResult ? (
-              <div className="text-sm text-slate-500">Sin datos de orden</div>
+              <div className="text-sm text-slate-500">{t("No order data", "Sin datos de orden")}</div>
             ) : (
               <>
                 <div>
-                  <div className="text-lg font-semibold text-slate-900">Orden {scanResult.order_number}</div>
+                  <div className="text-lg font-semibold text-slate-900">{t("Order", "Orden")} {scanResult.order_number}</div>
                   <div className="text-xs text-slate-500">{scanResult.order_id}</div>
                 </div>
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
-                    <div className="text-slate-500">Servicio</div>
+                    <div className="text-slate-500">{t("Service", "Servicio")}</div>
                     <div className="font-medium">{scanResult.service_type || "-"}</div>
                   </div>
                   <div>
-                    <div className="text-slate-500">Estado</div>
+                    <div className="text-slate-500">{t("Status", "Estado")}</div>
                     <div className="font-medium">{scanResult.status || "-"}</div>
                   </div>
                   <div>
-                    <div className="text-slate-500">Cliente</div>
+                    <div className="text-slate-500">{t("Customer", "Cliente")}</div>
                     <div className="font-medium">{scanResult.customer_name || "-"}</div>
                   </div>
                   <div>
-                    <div className="text-slate-500">Monto</div>
+                    <div className="text-slate-500">{t("Amount", "Monto")}</div>
                     <div className="font-medium">{scanResult.total_amount ? `$${scanResult.total_amount}` : "-"}</div>
                   </div>
                 </div>
                 <div className="text-sm">
-                  <div className="text-slate-500">Dirección</div>
+                  <div className="text-slate-500">{t("Address", "Dirección")}</div>
                   <div className="font-medium">{scanResult.address?.full || "-"}</div>
                 </div>
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
-                    <div className="text-slate-500">Fecha solicitud</div>
+                    <div className="text-slate-500">{t("Request date", "Fecha solicitud")}</div>
                     <div className="font-medium">{scanResult.request_datetime || "-"}</div>
                   </div>
                   <div>
-                    <div className="text-slate-500">Hora pickup</div>
+                    <div className="text-slate-500">{t("Pickup time", "Hora pickup")}</div>
                     <div className="font-medium">{scanResult.pickup_time_window || "-"}</div>
                   </div>
                 </div>
                 <div className="text-sm">
-                  <div className="text-slate-500">Instrucciones</div>
+                  <div className="text-slate-500">{t("Instructions", "Instrucciones")}</div>
                   <div className="font-medium">{scanResult.special_instructions || "-"}</div>
                 </div>
                 <div className="text-sm">
-                  <div className="text-slate-500">Servicios incluidos</div>
+                  <div className="text-slate-500">{t("Included services", "Servicios incluidos")}</div>
                   {Array.isArray(scanResult.items) && scanResult.items.length > 0 ? (
                     <ul className="list-disc list-inside">
                       {scanResult.items.map((item, index) => (
