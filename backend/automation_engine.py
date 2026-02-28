@@ -1018,6 +1018,8 @@ async def get_operator_dashboard():
 
     todays_pickups = [normalize_order(order) for order in todays_pickups]
     ready_for_delivery = [normalize_order(order) for order in ready_for_delivery]
+    wash_fold_dropoffs = [normalize_order(order) for order in wash_fold_dropoffs]
+    wash_fold_ready = [normalize_order(order) for order in wash_fold_ready]
     
     stats = {
         "pickups_remaining_today": len([o for o in todays_pickups if o.get("status") != "PICKED_UP"]),
@@ -1031,6 +1033,8 @@ async def get_operator_dashboard():
         "stats": stats,
         "todays_pickups": todays_pickups,
         "ready_for_delivery": ready_for_delivery,
+        "wash_fold_dropoffs": wash_fold_dropoffs,
+        "wash_fold_ready": wash_fold_ready,
         "urgent_tickets": urgent_tickets
     }
 
