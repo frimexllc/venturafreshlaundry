@@ -116,9 +116,8 @@ RECEIVED → PROCESSING → READY → OUT_FOR_DELIVERY → DELIVERED → COMPLET
 - ✅ Selector de idioma EN/ES persistente en frontend (inglés por defecto).
 - ✅ Tienda: checkout con Stripe y pagos manuales, cálculo de envío por km (OpenRouteService), validación de stock y desactivación automática.
 - ✅ Tienda: notificaciones de compra según preferencia del cliente.
-- ✅ Panel Operador: procesamiento de órdenes de tienda (estado, imprimir, reembolso manual) y gestión de zonas de entrega con mapa.
-- ✅ Finanzas: KPIs + breakdown por métodos de pago y tienda/servicio.
-- ✅ WebSocket: client con upgrade a websocket + polling fallback.
+- ✅ Panel Operador: POS de tienda integrado con selección de productos en modal, checkout rápido y solicitud de pago para órdenes no pagadas.
+- ✅ Zonas de entrega: radio 10km + polígonos con tarifas desde panel operador.
 
 ## Pendientes / Issues
 **P1**
