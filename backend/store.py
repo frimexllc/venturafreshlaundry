@@ -233,6 +233,29 @@ class StoreOrderResponse(BaseModel):
     updated_at: str
 
 
+class DeliveryZoneCreate(BaseModel):
+    name: str
+    type: str  # circle or polygon
+    radius_km: Optional[float] = None
+    center: Optional[List[float]] = None
+    polygon: Optional[List[List[float]]] = None
+    rate_per_km: float
+    min_fee: float
+    max_fee: float
+
+class DeliveryZoneResponse(BaseModel):
+    id: str
+    name: str
+    type: str
+    radius_km: Optional[float] = None
+    center: Optional[List[float]] = None
+    polygon: Optional[List[List[float]]] = None
+    rate_per_km: float
+    min_fee: float
+    max_fee: float
+    created_at: str
+    updated_at: str
+
 # ==================== SEED PRODUCTS ====================
 
 async def seed_products():
