@@ -122,6 +122,8 @@ def calculate_shipping_fee(address: str) -> Dict[str, float]:
     if not distances or distances[0][1] is None:
         raise HTTPException(status_code=400, detail="Unable to calculate distance")
     distance_km = float(distances[0][1])
+    if distance_km > 200:
+        distance_km = distance_km / 1000
     fee = distance_km * rate_per_km
     fee = max(fee, min_fee)
     fee = min(fee, max_fee)
