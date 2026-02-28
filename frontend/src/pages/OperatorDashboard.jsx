@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { 
   Truck, Package, Clock, AlertTriangle, CheckCircle, 
   RefreshCw, Phone, MapPin, MessageSquare, ChevronRight,
-  Calendar, User, Zap, Bot, DollarSign, ShoppingBag, Receipt, RotateCcw
+  Calendar, User, Zap, Bot, DollarSign, ShoppingBag
 } from "lucide-react";
 import { toast } from "sonner";
 import { createNotificationsSocket } from "../utils/notificationsSocket";
