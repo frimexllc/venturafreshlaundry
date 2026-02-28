@@ -1476,6 +1476,18 @@ export default function OperatorDashboard() {
               </span>
             </div>
           </div>
+          <div className="px-6 py-3 bg-white border-b border-slate-100" data-testid="store-orders-steps">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+              <span className="px-2 py-1 rounded-full bg-slate-100">1. {t("Open POS", "Abre POS")}</span>
+              <span className="px-2 py-1 rounded-full bg-slate-100">2. {t("Add products", "Agrega productos")}</span>
+              <span className="px-2 py-1 rounded-full bg-slate-100">3. {t("Collect payment", "Cobrar")}</span>
+            </div>
+            {unpaidStoreOrders.length > 0 && (
+              <div className="mt-2 text-xs text-amber-700" data-testid="store-orders-unpaid-hint">
+                {t("Pending payments available below", "Pagos pendientes disponibles abajo")}
+              </div>
+            )}
+          </div>
           {storeOrdersLoading ? (
             <div className="p-6 text-center text-slate-500" data-testid="store-orders-loading">
               {t("Loading store orders...", "Cargando órdenes...")}
