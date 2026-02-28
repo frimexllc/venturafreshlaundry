@@ -133,7 +133,8 @@ export default function StorePage() {
       setCart(updatedCart);
       toast.success(t('{name} added to cart', '{name} agregado al carrito').replace('{name}', product.name));
     } else {
-      toast.error(t('Error adding to cart', 'Error al agregar al carrito'));
+      const error = await res.json();
+      toast.error(error.detail || t('Error adding to cart', 'Error al agregar al carrito'));
     }
   };
 
