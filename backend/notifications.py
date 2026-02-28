@@ -259,6 +259,26 @@ def build_default_message(
             message = f"Thanks! Your order {order_number} was received{date_str}. We'll notify you when it's ready."
         return {"subject": subject, "message": message + signature}
 
+    if event == "store_order":
+        total_label = f"${order_total:.2f}" if order_total is not None else ""
+        shipping_label = f" (envío ${shipping_fee:.2f})" if shipping_fee is not None else ""
+        subject = (
+            f"Orden de tienda confirmada — {order_number}"
+            if is_spanish
+            else f"Store order confirmed — {order_number}"
+        )
+        if is_spanish:
+            message = (
+                f"¡Gracias por tu compra! Tu orden {order_number} está confirmada. "
+                f"Total: {total_label}{shipping_label}. Te avisaremos cuando esté lista."
+            )
+        else:
+            message = (
+                f"Thanks for your purchase! Your order {order_number} is confirmed. "
+                f"Total: {total_label}{shipping_label}. We'll notify you when it's ready."
+            )
+        return {"subject": subject, "message": message + signature}
+
     # --- Cambios de estado (sin fecha) ---
     status_lower = (status or "").lower().strip()
     # Mapeo de posibles valores a claves internas
