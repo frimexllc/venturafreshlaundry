@@ -63,21 +63,34 @@ export default function StorePage() {
       .finally(() => setLoading(false));
   }, []);
 
-  // Load or create cart
   useEffect(() => {
-    const cartId = localStorage.getItem('cartId');
-    if (cartId) {
-      fetch(`${API_URL}/api/store/cart/${cartId}`)
-        .then(res => {
-          if (res.ok) return res.json();
-          throw new Error('Cart not found');
-        })
-        .then(setCart)
-        .catch(() => {
-          localStorage.removeItem('cartId');
-        });
+    if (!checkoutForm.address || checkoutForm.address.length < 5) {
+      setShippingQuote({ distance_km: null, fee: 0 });
+      return;
     }
-  }, []);
+    const timer = setTimeout(async () => {
+      setShippingLoading(true);
+      try {
+        const res = await fetch(`${API_URL}/api/store/shipping/quote`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ address: checkoutForm.address })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setShippingQuote(data);
+        } else {
+          setShippingQuote({ distance_km: null, fee: 0 });
+        }
+      } catch (error) {
+        setShippingQuote({ distance_km: null, fee: 0 });
+      } finally {
+        setShippingLoading(false);
+      }
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [checkoutForm.address]);
+
 
   const createCart = async () => {
     const res = await fetch(`${API_URL}/api/store/cart`, { method: 'POST' });
