@@ -187,6 +187,7 @@ export default function OperatorDashboard() {
 
     const handleNotification = () => {
       loadDashboard();
+      loadStoreOrders();
     };
 
     socket.on("connect", () => setRealtimeStatus("connected"));
