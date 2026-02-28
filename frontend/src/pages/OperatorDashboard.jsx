@@ -859,7 +859,8 @@ export default function OperatorDashboard() {
             <div className="px-5 py-4 border-b border-slate-100 bg-slate-50">
               <h2 className="font-semibold text-slate-900 flex items-center gap-2">
                 <Package className="h-5 w-5 text-purple-600" />
-                {t("Wash & Fold Drop-Off", "Wash & Fold Drop-Off")} ({washFoldDropoffs.length})
+                {t("Wash & Fold Drop-Off", "Wash & Fold Drop-Off")}
+                <span className="ml-2 text-sm font-semibold text-slate-600" data-testid="pos-washfold-dropoff-count">({washFoldDropoffs.length})</span>
               </h2>
             </div>
             <div className="divide-y divide-slate-100">
