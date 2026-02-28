@@ -83,7 +83,7 @@ def get_ors_client():
 
 
 def geocode_address(client: openrouteservice.Client, address: str):
-    result = client.pelias_search(text=address)
+    result = client.pelias_search(text=address, boundary_country="USA", size=1)
     features = result.get("features", []) if result else []
     if not features:
         raise HTTPException(status_code=400, detail="Unable to geocode address")
