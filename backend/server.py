@@ -1759,7 +1759,134 @@ async def capture_order_payment(
     return {"ok": True, "order_id": order.get("id"), **update_data}
 
 
-@api_router.post("/admin/orders/last-completed/notify")
+@api_router.post("/orders/{order_id}/stripe-checkout", response_model=OrderStripeCheckoutResponse)
+async def create_order_stripe_checkout(
+    order_id: str,
+    data: OrderStripeCheckoutRequest,
+    request: Request,
+    current_user: dict = Depends(require_role([ROLE_OPERATOR]))
+):
+    if not STRIPE_CHECKOUT_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Stripe integration not available")
+    order = await db.orders.find_one({"$or": [{"id": order_id}, {"order_number": order_id}]}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    customer = None
+    if order.get("customer_id"):
+        customer = await db.customers.find_one({"id": order.get("customer_id")}, {"_id": 0})
+
+    amount = calculate_service_amount(order, customer)
+    if amount is None:
+        raise HTTPException(status_code=400, detail="Actual lbs required to calculate payment")
+
+    stripe_api_key = os.environ.get("STRIPE_API_KEY")
+    if not stripe_api_key:
+        raise HTTPException(status_code=500, detail="Payment configuration error")
+
+    host_url = str(request.base_url).rstrip("/")
+    webhook_url = f"{host_url}/api/webhook/stripe"
+    success_url = f"{data.origin_url}/admin/operator?session_id={{CHECKOUT_SESSION_ID}}&order_id={order.get('id')}"
+    cancel_url = f"{data.origin_url}/admin/operator?order_id={order.get('id')}&status=cancelled"
+
+    stripe_checkout = StripeCheckout(api_key=stripe_api_key, webhook_url=webhook_url)
+    session_request = CheckoutSessionRequest(
+        amount=amount,
+        currency="usd",
+        success_url=success_url,
+        cancel_url=cancel_url,
+        metadata={
+            "order_id": order.get("id"),
+            "order_number": order.get("order_number") or "",
+            "type": "service_order"
+        }
+    )
+    session: CheckoutSessionResponse = await stripe_checkout.create_checkout_session(session_request)
+
+    now = datetime.now(timezone.utc).isoformat()
+    payment_doc = {
+        "id": str(uuid.uuid4()),
+        "session_id": session.session_id,
+        "order_id": order.get("id"),
+        "entity_type": "service_order",
+        "amount": amount,
+        "currency": "usd",
+        "status": "initiated",
+        "payment_status": "pending",
+        "metadata": session_request.metadata,
+        "created_at": now,
+        "updated_at": now
+    }
+    await db.payment_transactions.insert_one(payment_doc)
+
+    await db.orders.update_one(
+        {"id": order.get("id")},
+        {
+            "$set": {
+                "total_amount": amount,
+                "payment_status": "pending",
+                "payment_method": "card",
+                "updated_at": now
+            }
+        }
+    )
+
+    return OrderStripeCheckoutResponse(session_id=session.session_id, url=session.url, amount=amount, currency="usd")
+
+
+@api_router.get("/orders/stripe/status/{session_id}")
+async def get_order_stripe_status(
+    session_id: str,
+    request: Request,
+    current_user: dict = Depends(require_role([ROLE_OPERATOR]))
+):
+    if not STRIPE_CHECKOUT_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Stripe integration not available")
+    stripe_api_key = os.environ.get("STRIPE_API_KEY")
+    if not stripe_api_key:
+        raise HTTPException(status_code=500, detail="Payment configuration error")
+
+    host_url = str(request.base_url).rstrip("/")
+    webhook_url = f"{host_url}/api/webhook/stripe"
+    stripe_checkout = StripeCheckout(api_key=stripe_api_key, webhook_url=webhook_url)
+    status: CheckoutStatusResponse = await stripe_checkout.get_checkout_status(session_id)
+
+    transaction = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Payment session not found")
+
+    update_fields = {
+        "status": status.status,
+        "payment_status": status.payment_status,
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.payment_transactions.update_one({"session_id": session_id}, {"$set": update_fields})
+
+    if status.payment_status == "paid" and transaction.get("payment_status") != "paid":
+        order_id = transaction.get("order_id") or status.metadata.get("order_id")
+        if order_id:
+            await db.orders.update_one(
+                {"id": order_id},
+                {
+                    "$set": {
+                        "payment_status": "paid",
+                        "payment_method": "card",
+                        "amount_paid": transaction.get("amount"),
+                        "change_due": 0,
+                        "paid_at": datetime.now(timezone.utc).isoformat(),
+                        "updated_at": datetime.now(timezone.utc).isoformat()
+                    }
+                }
+            )
+
+    return {
+        "status": status.status,
+        "payment_status": status.payment_status,
+        "amount_total": status.amount_total,
+        "currency": status.currency,
+        "metadata": status.metadata
+    }
+
 async def notify_last_completed_order(current_user: dict = Depends(get_current_user)):
     require_admin(current_user)
     last_order = await db.orders.find({"status": "completed"}, {"_id": 0}).sort("updated_at", -1).limit(1).to_list(1)
