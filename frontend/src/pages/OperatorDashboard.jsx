@@ -978,7 +978,8 @@ export default function OperatorDashboard() {
             <div className="px-5 py-4 border-b border-slate-100 bg-emerald-50">
               <h2 className="font-semibold text-slate-900 flex items-center gap-2">
                 <CheckCircle className="h-5 w-5 text-emerald-600" />
-                {t("Wash & Fold — Ready or Delivered", "Wash & Fold — Listas o entregadas")} ({washFoldReady.length})
+                {t("Wash & Fold — Ready or Delivered", "Wash & Fold — Listas o entregadas")}
+                <span className="ml-2 text-sm font-semibold text-slate-600" data-testid="pos-washfold-ready-count">({washFoldReady.length})</span>
               </h2>
             </div>
             <div className="divide-y divide-slate-100">
