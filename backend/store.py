@@ -82,8 +82,21 @@ def get_ors_client():
     return openrouteservice.Client(key=ors_api_key)
 
 
-def geocode_address(client: openrouteservice.Client, address: str):
-    result = client.pelias_search(text=address, boundary_country="USA", size=1)
+def geocode_address(address: str):
+    _, ors_api_key, _, _, _ = get_store_config()
+    response = requests.get(
+        "https://api.openrouteservice.org/geocode/search",
+        params={
+            "api_key": ors_api_key,
+            "text": address,
+            "size": 1,
+            "boundary.country": "USA"
+        },
+        timeout=15
+    )
+    if response.status_code != 200:
+        raise HTTPException(status_code=400, detail="Unable to geocode address")
+    result = response.json()
     features = result.get("features", []) if result else []
     if not features:
         raise HTTPException(status_code=400, detail="Unable to geocode address")
