@@ -640,6 +640,118 @@ async def create_checkout_session(checkout: CheckoutRequest, request: Request):
         raise HTTPException(status_code=500, detail=f"Failed to create checkout session: {str(e)}")
 
 
+@store_router.post("/checkout/manual")
+async def create_manual_checkout(checkout: ManualCheckoutRequest):
+    """Create manual checkout for cash/transfer/other payments"""
+    cart = await db.carts.find_one({"id": checkout.cart_id})
+    if not cart:
+        raise HTTPException(status_code=404, detail="Cart not found")
+    if not cart.get("items"):
+        raise HTTPException(status_code=400, detail="Cart is empty")
+
+    for item in cart["items"]:
+        product = await db.products.find_one({"id": item["product_id"]}, {"_id": 0})
+        if not product:
+            raise HTTPException(status_code=404, detail="Product not found")
+        if not product.get("is_active") or product.get("stock", 0) <= 0:
+            raise HTTPException(status_code=400, detail="Product is out of stock")
+        if product.get("stock", 0) < item["quantity"]:
+            raise HTTPException(status_code=400, detail="Insufficient stock")
+
+    shipping_quote = calculate_shipping_fee(checkout.shipping_address)
+    subtotal = float(cart["total"])
+    shipping_fee = shipping_quote["fee"]
+    shipping_distance_km = shipping_quote["distance_km"]
+    total = round(subtotal + shipping_fee, 2)
+
+    payment_method = normalize_spaces(checkout.payment_method).lower()
+    if payment_method not in ["cash", "transfer", "other"]:
+        raise HTTPException(status_code=400, detail="Invalid payment method")
+
+    now = datetime.now(timezone.utc).isoformat()
+    order_number = f"SO-{datetime.now().strftime('%Y%m%d')}-{str(uuid.uuid4())[:8].upper()}"
+    normalized_email = normalize_email(checkout.customer_email) or checkout.customer_email
+    normalized_phone = normalize_phone(checkout.customer_phone) if checkout.customer_phone else None
+
+    shipping_address = {
+        "address": normalize_spaces(checkout.shipping_address),
+        "apt": normalize_spaces(checkout.shipping_apt) if checkout.shipping_apt else None,
+        "instructions": normalize_spaces(checkout.delivery_instructions) if checkout.delivery_instructions else None
+    }
+
+    order_doc = {
+        "id": str(uuid.uuid4()),
+        "order_number": order_number,
+        "customer_id": cart.get("customer_id"),
+        "customer_name": normalize_spaces(checkout.customer_name),
+        "customer_email": normalized_email,
+        "customer_phone": normalized_phone,
+        "preferred_contact": checkout.preferred_contact,
+        "items": cart["items"],
+        "subtotal": subtotal,
+        "shipping_fee": shipping_fee,
+        "shipping_distance_km": shipping_distance_km,
+        "total": total,
+        "payment_status": "paid",
+        "payment_method": payment_method,
+        "stripe_session_id": None,
+        "shipping_address": shipping_address,
+        "notes": normalize_spaces(checkout.notes) if checkout.notes else None,
+        "status": "confirmed",
+        "created_at": now,
+        "updated_at": now
+    }
+
+    await db.store_orders.insert_one(order_doc)
+    payment_doc = {
+        "id": str(uuid.uuid4()),
+        "session_id": f"manual-{order_doc['id']}",
+        "order_id": order_doc["id"],
+        "order_number": order_number,
+        "amount": total,
+        "currency": "usd",
+        "customer_email": normalized_email,
+        "payment_status": "paid",
+        "metadata": {
+            "cart_id": checkout.cart_id,
+            "items_count": len(cart["items"]),
+            "payment_method": payment_method
+        },
+        "created_at": now,
+        "updated_at": now
+    }
+    await db.payment_transactions.insert_one(payment_doc)
+
+    await apply_stock_deduction(order_doc.get("items", []))
+    customer_snapshot = build_customer_snapshot({
+        "customer_name": order_doc.get("customer_name"),
+        "customer_email": order_doc.get("customer_email"),
+        "customer_phone": order_doc.get("customer_phone"),
+        "preferred_contact": order_doc.get("preferred_contact")
+    })
+    await notify_store_order(customer_snapshot, order_doc)
+
+    await db.carts.update_one(
+        {"id": checkout.cart_id},
+        {
+            "$set": {
+                "items": [],
+                "total": 0.0,
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }
+        }
+    )
+
+    return {
+        "order_id": order_doc["id"],
+        "order_number": order_number,
+        "total": total,
+        "shipping_fee": shipping_fee,
+        "shipping_distance_km": shipping_distance_km,
+        "status": "paid"
+    }
+
+
 @store_router.get("/checkout/status/{session_id}")
 async def get_checkout_status(session_id: str):
     """Get the status of a checkout session"""
