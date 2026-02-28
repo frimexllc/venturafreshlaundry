@@ -7,6 +7,7 @@ import { Label } from "../components/ui/label";
 import { toast } from "sonner";
 import { Droplets, Eye, EyeOff } from "lucide-react";
 import { useLocale } from "../context/LocaleContext";
+import LanguageToggle from "../components/LanguageToggle";
 
 export default function Login() {
   const [isLogin, setIsLogin] = useState(true);
