@@ -213,6 +213,17 @@ export default function OperatorDashboard() {
     return t("Pending", "Pendiente");
   };
 
+  const formatApiError = (detail, fallback) => {
+    if (!detail) return fallback;
+    if (typeof detail === "string") return detail;
+    if (Array.isArray(detail)) {
+      const msg = detail.map((item) => item?.msg || JSON.stringify(item)).join(", ");
+      return msg || fallback;
+    }
+    if (detail?.msg) return detail.msg;
+    return JSON.stringify(detail);
+  };
+
   const loadDashboard = useCallback(async () => {
     try {
       if (document.visibilityState !== "visible" && autoRefresh) {
