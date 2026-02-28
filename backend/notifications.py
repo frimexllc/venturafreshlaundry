@@ -470,9 +470,13 @@ async def build_notification_content(
     pickup_date = order.get("pickup_date") if event in include_date_events else None
     pickup_window = order.get("pickup_time_window") if event in include_date_events else None
 
+    order_total = order.get("total") or order.get("total_amount")
+    shipping_fee = order.get("shipping_fee")
+
     base = build_default_message(
         event, status, order_number, language,
-        pickup_date=pickup_date, pickup_window=pickup_window
+        pickup_date=pickup_date, pickup_window=pickup_window,
+        order_total=order_total, shipping_fee=shipping_fee
     )
 
     context = {
