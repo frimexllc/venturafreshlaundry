@@ -94,6 +94,50 @@ except ImportError:
     logger = logging.getLogger(__name__)
     logger.warning("Store module not available")
 
+# Stripe Checkout integration (service orders)
+try:
+    from emergentintegrations.payments.stripe.checkout import (
+        StripeCheckout,
+        CheckoutSessionResponse,
+        CheckoutStatusResponse,
+        CheckoutSessionRequest,
+    )
+    STRIPE_CHECKOUT_AVAILABLE = True
+except ImportError:
+    STRIPE_CHECKOUT_AVAILABLE = False
+
+    class CheckoutSessionRequest(BaseModel):
+        amount: float
+        currency: str
+        success_url: str
+        cancel_url: str
+        metadata: Optional[Dict[str, str]] = None
+
+    class CheckoutSessionResponse(BaseModel):
+        url: str = ""
+        session_id: str = ""
+
+    class CheckoutStatusResponse(BaseModel):
+        status: str = ""
+        payment_status: str = ""
+        amount_total: int = 0
+        currency: str = ""
+        metadata: Dict[str, str] = {}
+
+    class StripeCheckout:
+        def __init__(self, api_key: str, webhook_url: str):
+            self.api_key = api_key
+            self.webhook_url = webhook_url
+
+        async def create_checkout_session(self, request: CheckoutSessionRequest):
+            raise RuntimeError("Stripe integration not available")
+
+        async def get_checkout_status(self, checkout_session_id: str):
+            raise RuntimeError("Stripe integration not available")
+
+        async def handle_webhook(self, payload: bytes, signature: str):
+            raise RuntimeError("Stripe integration not available")
+
 # Import blog module
 try:
     from blog import blog_router, set_database as set_blog_db
