@@ -114,6 +114,8 @@ RECEIVED → PROCESSING → READY → OUT_FOR_DELIVERY → DELIVERED → COMPLET
 - ✅ Reglas de notificación reducidas (Pickup & Delivery: ready/out for delivery/delivered; Wash & Fold: ready).
 - ✅ Cálculo automático de total al actualizar lbs reales.
 - ✅ Selector de idioma EN/ES persistente en frontend (inglés por defecto).
+- ✅ Tienda: checkout con Stripe y pagos manuales, cálculo de envío por km (OpenRouteService), validación de stock y desactivación automática.
+- ✅ Tienda: notificaciones de compra según preferencia del cliente.
 
 ## Pendientes / Issues
 **P1**
