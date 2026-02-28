@@ -173,7 +173,25 @@ class CartResponse(BaseModel):
 class CheckoutRequest(BaseModel):
     cart_id: str
     origin_url: str
-    customer_email: Optional[str] = None
+    customer_name: str
+    customer_email: str
+    customer_phone: str
+    shipping_address: str
+    shipping_apt: Optional[str] = None
+    delivery_instructions: Optional[str] = None
+    notes: Optional[str] = None
+    preferred_contact: Optional[str] = None
+
+class ManualCheckoutRequest(CheckoutRequest):
+    payment_method: str
+    amount_received: Optional[float] = None
+
+class ShippingQuoteRequest(BaseModel):
+    address: str
+
+class ShippingQuoteResponse(BaseModel):
+    distance_km: float
+    fee: float
 
 class StoreOrderResponse(BaseModel):
     id: str
