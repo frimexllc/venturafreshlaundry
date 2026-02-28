@@ -597,6 +597,11 @@ async def notify_order_created(customer: Dict, order: Dict) -> bool:
     """Notify customer when order is created (includes pickup date)"""
     return await send_preferred_notification(customer, order, "order_created")
 
+
+async def notify_store_order(customer: Dict, order: Dict) -> bool:
+    """Notify customer when store order is confirmed"""
+    return await send_preferred_notification(customer, order, "store_order")
+
 async def notify_order_status_changed(customer: Dict, order: Dict, new_status: str) -> bool:
     """Notify customer when order status changes (no dates)"""
     status_normalized = normalize_status_value(new_status)
