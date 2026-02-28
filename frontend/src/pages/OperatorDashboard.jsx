@@ -285,26 +285,7 @@ export default function OperatorDashboard() {
       const updated = res.data;
       toast.success(t("Payment registered", "Pago registrado"));
       setSelectedOrder((prev) => prev ? { ...prev, ...updated } : prev);
-      setDashboard(prev => {
-        if (!prev) return prev;
-        const updateList = (list) =>
-          list.map((order) =>
-            order.order_id === selectedOrder.order_id
-              ? {
-                  ...order,
-                  payment_status: updated.payment_status,
-                  payment_method: updated.payment_method,
-                  amount_paid: updated.amount_paid,
-                  change_due: updated.change_due
-                }
-              : order
-          );
-        return {
-          ...prev,
-          todays_pickups: updateList(prev.todays_pickups || []),
-          ready_for_delivery: updateList(prev.ready_for_delivery || [])
-        };
-      });
+      await loadDashboard();
     } catch (error) {
       toast.error(error.response?.data?.detail || t("Error registering payment", "Error registrando pago"));
     } finally {
