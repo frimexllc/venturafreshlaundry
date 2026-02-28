@@ -152,6 +152,12 @@ def normalize_preferred_contact(value: str) -> str:
     return "sms"
 
 
+def normalize_status_value(value: Optional[str]) -> str:
+    if not value:
+        return ""
+    return value.strip().lower().replace(" ", "_")
+
+
 def detect_language(customer: Optional[Dict], phone: Optional[str]) -> str:
     if not customer:
         return "es-MX"
