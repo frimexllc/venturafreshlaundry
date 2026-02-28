@@ -113,7 +113,7 @@ export default function OperatorDashboard() {
   const getPaymentMethodLabel = (method) => {
     const map = {
       cash: t("Cash", "Efectivo"),
-      card: t("Card", "Tarjeta"),
+      card: t("Card (Stripe)", "Tarjeta (Stripe)"),
       transfer: t("Transfer", "Transferencia"),
       other: t("Other", "Otro")
     };
