@@ -10,6 +10,7 @@ import os
 import openrouteservice
 from motor.motor_asyncio import AsyncIOMotorClient
 from normalization import normalize_email, normalize_phone, normalize_spaces, normalize_preference_dict
+from notifications import notify_store_order
 
 # Stripe integration
 try:
