@@ -514,7 +514,7 @@ export default function StorePage() {
                         {t("Only {count} left!", "¡Solo quedan {count} unidades!").replace('{count}', product.stock)}
                       </p>
                     )}
-                    {product.stock <= 0 && (
+                    {(product.stock <= 0 || !product.is_active) && (
                       <p className="text-red-600 text-xs mt-2">{t("Out of stock", "Agotado")}</p>
                     )}
                   </div>
