@@ -65,6 +65,9 @@ export default function OperatorDashboard() {
   const [savingPayment, setSavingPayment] = useState(false);
   const [stripeLoading, setStripeLoading] = useState(false);
   const [stripePolling, setStripePolling] = useState(false);
+  const [storeOrders, setStoreOrders] = useState([]);
+  const [storeOrdersLoading, setStoreOrdersLoading] = useState(false);
+  const [storeUpdating, setStoreUpdating] = useState({});
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiReply, setAiReply] = useState("");
   const [aiResults, setAiResults] = useState([]);
