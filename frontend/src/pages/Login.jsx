@@ -50,14 +50,17 @@ export default function Login() {
       {/* Left side - Form */}
       <div className="flex-1 flex items-center justify-center p-8 bg-white">
         <div className="w-full max-w-md animate-fade-in">
-          <div className="flex items-center gap-3 mb-8">
-            <div className="h-12 w-12 rounded-xl bg-sky-100 flex items-center justify-center">
-              <Droplets className="h-7 w-7 text-sky-600" />
+          <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center gap-3">
+              <div className="h-12 w-12 rounded-xl bg-sky-100 flex items-center justify-center">
+                <Droplets className="h-7 w-7 text-sky-600" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-slate-900">Ventura Fresh</h1>
+                <p className="text-sm text-slate-500">{t("Laundry CRM", "CRM de Lavandería")}</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-2xl font-bold text-slate-900">Ventura Fresh</h1>
-              <p className="text-sm text-slate-500">{t("Laundry CRM", "CRM de Lavandería")}</p>
-            </div>
+            <LanguageToggle />
           </div>
 
           <div className="mb-8">
