@@ -1567,7 +1567,12 @@ def should_notify_order_status(order: dict, status_value: str) -> bool:
     status_normalized = normalize_status(status_value)
     if not status_normalized or status_normalized == "new":
         return False
-    return True
+
+    service_type = normalize_status(order.get("service_type") or "pickup_delivery")
+    if service_type in ["wash_fold", "self_service"]:
+        return status_normalized == "ready"
+
+    return status_normalized in ["ready", "out_for_delivery", "delivered"]
 
 @api_router.patch("/orders/{order_id}/status")
 async def update_order_status(order_id: str, status: str, notify: bool = True, current_user: dict = Depends(get_current_user)):
