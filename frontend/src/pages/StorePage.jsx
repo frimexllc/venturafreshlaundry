@@ -46,21 +46,35 @@ export default function StorePage() {
   useEffect(() => {
     const status = searchParams.get('status');
     const sessionId = searchParams.get('session_id');
-    
-    if (status === 'success' && sessionId) {
-      // Verify payment status
+
+    if (sessionId) {
       fetch(`${API_URL}/api/store/checkout/status/${sessionId}`)
-        .then(res => res.json())
+        .then(res => {
+          if (!res.ok) throw new Error('status');
+          return res.json();
+        })
         .then(data => {
           if (data.payment_status === 'paid') {
             toast.success(t('Payment completed successfully!', '¡Pago completado exitosamente!'));
-            // Clear local cart
             localStorage.removeItem('cartId');
             setCart(null);
+          } else if (status === 'cancelled') {
+            toast.error(t('Payment was cancelled', 'El pago fue cancelado'));
+          } else {
+            toast.info(t('Payment pending', 'Pago pendiente'));
           }
         })
-        .catch(console.error);
-    } else if (status === 'cancelled') {
+        .catch(() => {
+          toast.error(t('Unable to verify payment', 'No se pudo verificar pago'));
+        })
+        .finally(() => {
+          const cleanUrl = window.location.pathname;
+          window.history.replaceState({}, '', cleanUrl);
+        });
+      return;
+    }
+
+    if (status === 'cancelled') {
       toast.error(t('Payment was cancelled', 'El pago fue cancelado'));
     }
   }, [searchParams, t]);
