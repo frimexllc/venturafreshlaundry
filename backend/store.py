@@ -1137,6 +1137,126 @@ async def update_order_status(order_id: str, status: str):
     
     return {"message": f"Order status updated to {status}"}
 
+@store_router.post("/orders/{order_id}/payment")
+async def register_store_order_payment(order_id: str, payload: StorePaymentRequest):
+    order = await db.store_orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if (order.get("payment_status") or "").lower() == "paid":
+        raise HTTPException(status_code=400, detail="Order already paid")
+
+    payment_method = normalize_spaces(payload.payment_method).lower()
+    if payment_method not in ["cash", "transfer", "other"]:
+        raise HTTPException(status_code=400, detail="Invalid payment method")
+
+    now = datetime.now(timezone.utc).isoformat()
+    await db.store_orders.update_one(
+        {"id": order_id},
+        {
+            "$set": {
+                "payment_status": "paid",
+                "payment_method": payment_method,
+                "status": "confirmed",
+                "updated_at": now
+            }
+        }
+    )
+
+    payment_doc = {
+        "id": str(uuid.uuid4()),
+        "session_id": f"manual-{order_id}-{str(uuid.uuid4())[:6]}",
+        "order_id": order_id,
+        "order_number": order.get("order_number"),
+        "amount": order.get("total", 0),
+        "currency": "usd",
+        "customer_email": order.get("customer_email"),
+        "payment_status": "paid",
+        "metadata": {
+            "payment_method": payment_method
+        },
+        "created_at": now,
+        "updated_at": now
+    }
+    await db.payment_transactions.insert_one(payment_doc)
+
+    await apply_stock_deduction(order.get("items", []))
+    customer_snapshot = {
+        "name": order.get("customer_name"),
+        "email": order.get("customer_email"),
+        "phone": order.get("customer_phone"),
+        "preferred_contact": order.get("preferred_contact")
+    }
+    order_for_notify = {**order, "payment_method": payment_method, "payment_status": "paid"}
+    await notify_store_order(customer_snapshot, order_for_notify)
+
+    return {"message": "Payment registered"}
+
+
+@store_router.post("/orders/{order_id}/stripe-checkout")
+async def create_store_order_checkout(order_id: str, payload: StoreStripeCheckoutRequest, request: Request):
+    if not STRIPE_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Stripe integration not available")
+    order = await db.store_orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if (order.get("payment_status") or "").lower() == "paid":
+        raise HTTPException(status_code=400, detail="Order already paid")
+
+    stripe_api_key = os.environ.get("STRIPE_API_KEY")
+    if not stripe_api_key:
+        raise HTTPException(status_code=500, detail="Payment configuration error")
+
+    host_url = str(request.base_url).rstrip("/")
+    webhook_url = f"{host_url}/api/webhook/stripe"
+    success_url = f"{payload.origin_url}/admin/operator?store_session_id={{CHECKOUT_SESSION_ID}}&order_id={order_id}"
+    cancel_url = f"{payload.origin_url}/admin/operator?order_id={order_id}&status=cancelled"
+
+    stripe_checkout = StripeCheckout(api_key=stripe_api_key, webhook_url=webhook_url)
+    checkout_request = CheckoutSessionRequest(
+        amount=float(order.get("total", 0)),
+        currency="usd",
+        success_url=success_url,
+        cancel_url=cancel_url,
+        metadata={
+            "order_id": order_id,
+            "order_number": order.get("order_number") or ""
+        }
+    )
+    session: CheckoutSessionResponse = await stripe_checkout.create_checkout_session(checkout_request)
+
+    now = datetime.now(timezone.utc).isoformat()
+    await db.store_orders.update_one(
+        {"id": order_id},
+        {
+            "$set": {
+                "stripe_session_id": session.session_id,
+                "payment_status": "pending",
+                "payment_method": "card",
+                "updated_at": now
+            }
+        }
+    )
+
+    payment_doc = {
+        "id": str(uuid.uuid4()),
+        "session_id": session.session_id,
+        "order_id": order_id,
+        "order_number": order.get("order_number"),
+        "amount": order.get("total", 0),
+        "currency": "usd",
+        "customer_email": order.get("customer_email"),
+        "payment_status": "initiated",
+        "metadata": {
+            "payment_method": "card"
+        },
+        "created_at": now,
+        "updated_at": now
+    }
+    await db.payment_transactions.insert_one(payment_doc)
+
+    return {"session_id": session.session_id, "checkout_url": session.url}
+
+
 @store_router.post("/orders/{order_id}/refund")
 async def refund_store_order(order_id: str):
     order = await db.store_orders.find_one({"id": order_id})
