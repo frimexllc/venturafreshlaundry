@@ -3280,17 +3280,41 @@ async def get_finances_summary(
     paid_signups = [s for s in signups if (s.get("payment_status") or "").lower() == "paid"]
     membership_revenue = sum(parse_amount(s.get("amount")) for s in paid_signups)
 
+    store_orders = await db.store_orders.find(order_query, {"_id": 0}).to_list(5000)
+    paid_store_orders = [o for o in store_orders if (o.get("payment_status") or "").lower() == "paid"]
+    pending_store_orders = [o for o in store_orders if (o.get("payment_status") or "").lower() != "paid"]
+    store_revenue = sum(parse_amount(o.get("total")) for o in paid_store_orders)
+
+    payment_methods = {}
+    def add_payment(method, amount):
+        key = (method or "unknown").lower()
+        payment_methods.setdefault(key, {"count": 0, "amount": 0.0})
+        payment_methods[key]["count"] += 1
+        payment_methods[key]["amount"] += amount
+
+    for order in paid_orders:
+        add_payment(order.get("payment_method"), parse_amount(order.get("total_amount")))
+    for order in paid_store_orders:
+        add_payment(order.get("payment_method"), parse_amount(order.get("total")))
+
+    total_revenue = order_revenue + membership_revenue + store_revenue
+
     return {
         "start_date": start_date,
         "end_date": end_date,
-        "total_revenue": order_revenue + membership_revenue,
+        "total_revenue": total_revenue,
         "order_revenue": order_revenue,
         "membership_revenue": membership_revenue,
+        "store_revenue": store_revenue,
         "total_orders": len(orders),
         "paid_orders": len(paid_orders),
         "pending_orders": len(pending_orders),
+        "store_orders": len(store_orders),
+        "store_paid_orders": len(paid_store_orders),
+        "store_pending_orders": len(pending_store_orders),
         "avg_order_value": avg_order_value,
-        "total_memberships": len(paid_signups)
+        "total_memberships": len(paid_signups),
+        "payment_methods": payment_methods
     }
 
 @api_router.post("/ai/patrones/scan")
