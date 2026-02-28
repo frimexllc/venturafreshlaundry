@@ -522,51 +522,77 @@ async def create_checkout_session(checkout: CheckoutRequest, request: Request):
     """Create Stripe checkout session for cart"""
     if not STRIPE_AVAILABLE:
         raise HTTPException(status_code=503, detail="Stripe integration not available")
-    # Get cart
+
     cart = await db.carts.find_one({"id": checkout.cart_id})
     if not cart:
         raise HTTPException(status_code=404, detail="Cart not found")
-    
+
     if not cart.get("items") or len(cart["items"]) == 0:
         raise HTTPException(status_code=400, detail="Cart is empty")
-    
-    # Get Stripe API key
+
+    for item in cart["items"]:
+        product = await db.products.find_one({"id": item["product_id"]}, {"_id": 0})
+        if not product:
+            raise HTTPException(status_code=404, detail="Product not found")
+        if not product.get("is_active") or product.get("stock", 0) <= 0:
+            raise HTTPException(status_code=400, detail="Product is out of stock")
+        if product.get("stock", 0) < item["quantity"]:
+            raise HTTPException(status_code=400, detail="Insufficient stock")
+
+    shipping_quote = calculate_shipping_fee(checkout.shipping_address)
+    subtotal = float(cart["total"])
+    shipping_fee = shipping_quote["fee"]
+    shipping_distance_km = shipping_quote["distance_km"]
+    total = round(subtotal + shipping_fee, 2)
+
     stripe_api_key = os.environ.get("STRIPE_API_KEY")
     if not stripe_api_key:
         raise HTTPException(status_code=500, detail="Payment configuration error")
-    
-    # Build URLs
+
     host_url = str(request.base_url).rstrip("/")
     webhook_url = f"{host_url}/api/webhook/stripe"
     success_url = f"{checkout.origin_url}/store?session_id={{CHECKOUT_SESSION_ID}}&status=success"
     cancel_url = f"{checkout.origin_url}/store?status=cancelled"
-    
-    # Initialize Stripe checkout
+
     stripe_checkout = StripeCheckout(api_key=stripe_api_key, webhook_url=webhook_url)
-    
-    # Create order first
+
     now = datetime.now(timezone.utc).isoformat()
     order_number = f"SO-{datetime.now().strftime('%Y%m%d')}-{str(uuid.uuid4())[:8].upper()}"
-    
+    normalized_email = normalize_email(checkout.customer_email) or checkout.customer_email
+    normalized_phone = normalize_phone(checkout.customer_phone) if checkout.customer_phone else None
+
+    shipping_address = {
+        "address": normalize_spaces(checkout.shipping_address),
+        "apt": normalize_spaces(checkout.shipping_apt) if checkout.shipping_apt else None,
+        "instructions": normalize_spaces(checkout.delivery_instructions) if checkout.delivery_instructions else None
+    }
+
     order_doc = {
         "id": str(uuid.uuid4()),
         "order_number": order_number,
         "customer_id": cart.get("customer_id"),
-        "customer_email": checkout.customer_email,
+        "customer_name": normalize_spaces(checkout.customer_name),
+        "customer_email": normalized_email,
+        "customer_phone": normalized_phone,
+        "preferred_contact": checkout.preferred_contact,
         "items": cart["items"],
-        "total": cart["total"],
+        "subtotal": subtotal,
+        "shipping_fee": shipping_fee,
+        "shipping_distance_km": shipping_distance_km,
+        "total": total,
         "payment_status": "pending",
+        "payment_method": "card",
         "stripe_session_id": None,
-        "shipping_address": None,
+        "shipping_address": shipping_address,
+        "notes": normalize_spaces(checkout.notes) if checkout.notes else None,
         "status": "pending",
         "created_at": now,
         "updated_at": now
     }
-    
-    # Create checkout session
+
     try:
         checkout_request = CheckoutSessionRequest(
-            amount=float(cart["total"]),
+            amount=float(total),
             currency="usd",
             success_url=success_url,
             cancel_url=cancel_url,
@@ -574,27 +600,22 @@ async def create_checkout_session(checkout: CheckoutRequest, request: Request):
                 "order_id": order_doc["id"],
                 "order_number": order_number,
                 "cart_id": checkout.cart_id,
-                "customer_email": checkout.customer_email or ""
+                "customer_email": normalized_email or ""
             }
         )
-        
         session: CheckoutSessionResponse = await stripe_checkout.create_checkout_session(checkout_request)
-        
-        # Update order with session ID
+
         order_doc["stripe_session_id"] = session.session_id
-        
-        # Save order
         await db.store_orders.insert_one(order_doc)
-        
-        # Create payment transaction record
+
         payment_doc = {
             "id": str(uuid.uuid4()),
             "session_id": session.session_id,
             "order_id": order_doc["id"],
             "order_number": order_number,
-            "amount": cart["total"],
+            "amount": total,
             "currency": "usd",
-            "customer_email": checkout.customer_email,
+            "customer_email": normalized_email,
             "payment_status": "initiated",
             "metadata": {
                 "cart_id": checkout.cart_id,
@@ -604,14 +625,16 @@ async def create_checkout_session(checkout: CheckoutRequest, request: Request):
             "updated_at": now
         }
         await db.payment_transactions.insert_one(payment_doc)
-        
+
         return {
             "checkout_url": session.url,
             "session_id": session.session_id,
             "order_id": order_doc["id"],
-            "order_number": order_number
+            "order_number": order_number,
+            "shipping_fee": shipping_fee,
+            "shipping_distance_km": shipping_distance_km,
+            "total": total
         }
-        
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to create checkout session: {str(e)}")
 
