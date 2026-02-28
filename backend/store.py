@@ -107,7 +107,7 @@ def geocode_address(address: str):
     return coordinates
 
 
-def calculate_shipping_fee(address: str) -> Dict[str, float]:
+async def calculate_shipping_fee(address: str) -> Dict[str, float]:
     store_address, _, rate_per_km, min_fee, max_fee = get_store_config()
     client = get_ors_client()
     origin_coords = geocode_address(store_address)
@@ -124,10 +124,42 @@ def calculate_shipping_fee(address: str) -> Dict[str, float]:
     distance_km = float(distances[0][1])
     if distance_km > 200:
         distance_km = distance_km / 1000
-    fee = distance_km * rate_per_km
-    fee = max(fee, min_fee)
-    fee = min(fee, max_fee)
-    return {"distance_km": round(distance_km, 2), "fee": round(fee, 2)}
+
+    zones = await get_zones_with_defaults(origin_coords)
+    matching = []
+    for zone in zones:
+        zone_type = zone.get("type")
+        if zone_type == "circle":
+            radius = float(zone.get("radius_km") or 0)
+            if radius and haversine_km(origin_coords, destination_coords) <= radius:
+                matching.append(zone)
+        elif zone_type == "polygon":
+            polygon = zone.get("polygon") or []
+            if polygon and point_in_polygon(destination_coords, polygon):
+                matching.append(zone)
+
+    if not matching:
+        raise HTTPException(status_code=400, detail="Address outside delivery zones")
+
+    best_zone = None
+    best_fee = None
+    for zone in matching:
+        z_rate = float(zone.get("rate_per_km") or rate_per_km)
+        z_min = float(zone.get("min_fee") or min_fee)
+        z_max = float(zone.get("max_fee") or max_fee)
+        fee = distance_km * z_rate
+        fee = max(fee, z_min)
+        fee = min(fee, z_max)
+        if best_fee is None or fee < best_fee:
+            best_fee = fee
+            best_zone = zone
+
+    return {
+        "distance_km": round(distance_km, 2),
+        "fee": round(best_fee, 2),
+        "zone_id": best_zone.get("id") if best_zone else None,
+        "zone_name": best_zone.get("name") if best_zone else None
+    }
 
 def haversine_km(coord1: List[float], coord2: List[float]) -> float:
     import math
