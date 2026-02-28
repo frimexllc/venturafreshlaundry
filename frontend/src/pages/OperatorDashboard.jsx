@@ -1180,6 +1180,11 @@ export default function OperatorDashboard() {
                         <option key={method.value} value={method.value}>{getPaymentMethodLabel(method.value)}</option>
                       ))}
                     </select>
+                    {paymentForm.method === "card" && (
+                      <p className="text-xs text-slate-500 mt-2" data-testid="operator-payment-stripe-note">
+                        {t("Card payments open Stripe Checkout", "Los pagos con tarjeta abren Stripe Checkout")}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <p className="text-xs text-slate-500">{t("Amount received", "Monto recibido")}</p>
