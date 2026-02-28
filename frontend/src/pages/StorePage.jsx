@@ -145,7 +145,7 @@ export default function StorePage() {
       toast.success(t('{name} added to cart', '{name} agregado al carrito').replace('{name}', product.name));
     } else {
       const error = await res.json();
-      toast.error(error.detail || t('Error adding to cart', 'Error al agregar al carrito'));
+      toast.error(formatApiError(error.detail, t('Error adding to cart', 'Error al agregar al carrito')));
     }
   };
 
@@ -233,7 +233,7 @@ export default function StorePage() {
         }
       } else {
         const error = await res.json();
-        toast.error(error.detail || t('Error processing payment', 'Error al procesar el pago'));
+        toast.error(formatApiError(error.detail, t('Error processing payment', 'Error al procesar el pago')));
       }
     } catch (error) {
       toast.error(t('Connection error', 'Error de conexión'));
