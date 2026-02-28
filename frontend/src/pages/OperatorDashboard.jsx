@@ -1523,7 +1523,7 @@ export default function OperatorDashboard() {
                         </td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex flex-wrap justify-end gap-2">
-                            {(order.payment_status || "pending") !== "paid"  (order.payment_status || "").toLowerCase() !== "refunded"  (
+                            {(order.payment_status || "pending") !== "paid" && (order.payment_status || "").toLowerCase() !== "refunded" && (
                               <Button
                                 variant="outline"
                                 size="sm"
