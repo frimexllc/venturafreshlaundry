@@ -863,7 +863,12 @@ export default function OperatorDashboard() {
     (order) => (order.payment_status || "pending") !== "paid"
   );
 
-  const selectedOrderCharge = selectedOrder ? calculateServiceCharge(selectedOrder) : null;
+  const storeCartSubtotal = storeCart?.total || 0;
+  const storeShippingFee = storeCheckoutForm.fulfillment_type === "delivery" ? (storeShippingQuote.fee || 0) : 0;
+  const storeOrderTotal = storeCartSubtotal + storeShippingFee;
+  const filteredStoreProducts = storeProducts.filter((product) =>
+    product.name?.toLowerCase().includes(storeSearch.toLowerCase())
+  );
 
   if (loading) {
     return (
