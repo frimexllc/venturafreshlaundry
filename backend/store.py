@@ -446,7 +446,15 @@ async def update_cart_item(cart_id: str, product_id: str, quantity: int):
         raise HTTPException(status_code=404, detail="Cart not found")
     
     items = cart.get("items", [])
-    
+
+    if quantity > 0:
+        product = await db.products.find_one({"id": product_id}, {"_id": 0})
+        if not product:
+            raise HTTPException(status_code=404, detail="Product not found")
+        if not product.get("is_active") or product.get("stock", 0) <= 0:
+            raise HTTPException(status_code=400, detail="Product is out of stock")
+        if product.get("stock", 0) < quantity:
+            raise HTTPException(status_code=400, detail="Insufficient stock")
     if quantity <= 0:
         # Remove item from cart
         items = [i for i in items if i["product_id"] != product_id]
