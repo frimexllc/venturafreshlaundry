@@ -204,9 +204,9 @@ class StoreOrderResponse(BaseModel):
     preferred_contact: Optional[str] = None
     items: List[Dict]
     total: float
-    subtotal: float
-    shipping_fee: float
-    shipping_distance_km: float
+    subtotal: Optional[float] = 0.0
+    shipping_fee: Optional[float] = 0.0
+    shipping_distance_km: Optional[float] = 0.0
     payment_status: str
     payment_method: Optional[str] = None
     stripe_session_id: Optional[str] = None
