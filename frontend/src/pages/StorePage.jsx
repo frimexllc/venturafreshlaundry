@@ -502,11 +502,11 @@ export default function StorePage() {
                       <Button
                         onClick={() => addToCart(product)}
                         className="bg-sky-600 hover:bg-sky-700 text-white rounded-full px-4"
-                        disabled={product.stock <= 0}
+                        disabled={product.stock <= 0 || !product.is_active}
                         data-testid={`add-to-cart-${product.id}`}
                       >
                         <Plus className="h-4 w-4 mr-1" />
-                        {t("Add", "Agregar")}
+                        {product.stock <= 0 || !product.is_active ? t("Unavailable", "No disponible") : t("Add", "Agregar")}
                       </Button>
                     </div>
                     {product.stock <= 5 && product.stock > 0 && (
