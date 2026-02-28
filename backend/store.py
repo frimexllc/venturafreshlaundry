@@ -323,6 +323,8 @@ async def create_product(product: ProductCreate):
         "created_at": now,
         "updated_at": now
     }
+    if product_doc.get("stock", 0) <= 0:
+        product_doc["is_active"] = False
     await db.products.insert_one(product_doc)
     del product_doc["_id"]
     return product_doc
