@@ -656,6 +656,73 @@ async def get_shipping_quote(payload: ShippingQuoteRequest):
     return result
 
 
+@store_router.get("/delivery-zones")
+async def list_delivery_zones():
+    store_address, _, _, _, _ = get_store_config()
+    store_center = geocode_address(store_address)
+    zones = await get_zones_with_defaults(store_center)
+    return {"store_center": store_center, "zones": zones}
+
+
+@store_router.post("/delivery-zones", response_model=DeliveryZoneResponse)
+async def create_delivery_zone(zone: DeliveryZoneCreate):
+    now = datetime.now(timezone.utc).isoformat()
+    if zone.type not in ["circle", "polygon"]:
+        raise HTTPException(status_code=400, detail="Invalid zone type")
+    if zone.type == "circle":
+        if not zone.center or not zone.radius_km:
+            raise HTTPException(status_code=400, detail="Circle requires center and radius")
+    if zone.type == "polygon":
+        if not zone.polygon or len(zone.polygon) < 3:
+            raise HTTPException(status_code=400, detail="Polygon requires at least 3 points")
+
+    zone_doc = {
+        "id": str(uuid.uuid4()),
+        "name": normalize_spaces(zone.name),
+        "type": zone.type,
+        "radius_km": zone.radius_km,
+        "center": zone.center,
+        "polygon": zone.polygon,
+        "rate_per_km": zone.rate_per_km,
+        "min_fee": zone.min_fee,
+        "max_fee": zone.max_fee,
+        "created_at": now,
+        "updated_at": now
+    }
+    await db.delivery_zones.insert_one(zone_doc)
+    return zone_doc
+
+
+@store_router.put("/delivery-zones/{zone_id}", response_model=DeliveryZoneResponse)
+async def update_delivery_zone(zone_id: str, zone: DeliveryZoneCreate):
+    if zone.type not in ["circle", "polygon"]:
+        raise HTTPException(status_code=400, detail="Invalid zone type")
+    update_doc = {
+        "name": normalize_spaces(zone.name),
+        "type": zone.type,
+        "radius_km": zone.radius_km,
+        "center": zone.center,
+        "polygon": zone.polygon,
+        "rate_per_km": zone.rate_per_km,
+        "min_fee": zone.min_fee,
+        "max_fee": zone.max_fee,
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    result = await db.delivery_zones.update_one({"id": zone_id}, {"$set": update_doc})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Zone not found")
+    updated = await db.delivery_zones.find_one({"id": zone_id}, {"_id": 0})
+    return updated
+
+
+@store_router.delete("/delivery-zones/{zone_id}")
+async def delete_delivery_zone(zone_id: str):
+    result = await db.delivery_zones.delete_one({"id": zone_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Zone not found")
+    return {"message": "Zone deleted"}
+
+
 # ==================== CHECKOUT & PAYMENT ENDPOINTS ====================
 
 @store_router.post("/checkout")
