@@ -298,6 +298,7 @@ async def list_products(category: Optional[str] = None, active_only: bool = True
     query = {}
     if active_only:
         query["is_active"] = True
+        query["stock"] = {"$gt": 0}
     if category:
         query["category"] = category
     
