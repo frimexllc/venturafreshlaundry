@@ -648,7 +648,7 @@ async def get_shipping_quote(payload: ShippingQuoteRequest):
     """Calculate shipping fee based on address"""
     if not payload.address:
         raise HTTPException(status_code=400, detail="Address required")
-    result = calculate_shipping_fee(payload.address)
+    result = await calculate_shipping_fee(payload.address)
     return result
 
 
