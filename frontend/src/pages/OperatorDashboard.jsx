@@ -684,7 +684,7 @@ export default function OperatorDashboard() {
     if (!storeSessionId) return;
     const checkStatus = async () => {
       try {
-        const res = await fetch(`${API_URL}/api/store/orders/by-session/${storeSessionId}`);
+        const res = await fetch(`${API_URL}/api/store/checkout/status/${storeSessionId}`);
         if (res.ok) {
           const data = await res.json();
           if (data.payment_status === "paid") {
@@ -692,9 +692,11 @@ export default function OperatorDashboard() {
           } else {
             toast.info(t("Store payment pending", "Pago de tienda pendiente"));
           }
+        } else {
+          toast.error(t("Unable to verify payment", "No se pudo verificar pago"));
         }
       } catch (error) {
-        // ignore
+        toast.error(t("Unable to verify payment", "No se pudo verificar pago"));
       } finally {
         await loadStoreOrders();
         const cleanUrl = window.location.pathname;
