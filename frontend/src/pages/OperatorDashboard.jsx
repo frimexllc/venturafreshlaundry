@@ -338,7 +338,7 @@ export default function OperatorDashboard() {
         await loadStoreOrders();
       } else {
         const error = await res.json();
-        toast.error(error.detail || t("Error updating store order", "Error actualizando orden de tienda"));
+        toast.error(formatApiError(error.detail, t("Error updating store order", "Error actualizando orden de tienda")));
       }
     } catch (error) {
       toast.error(t("Connection error", "Error de conexión"));
@@ -356,7 +356,7 @@ export default function OperatorDashboard() {
         await loadStoreOrders();
       } else {
         const error = await res.json();
-        toast.error(error.detail || t("Refund failed", "Falló el reembolso"));
+        toast.error(formatApiError(error.detail, t("Refund failed", "Falló el reembolso")));
       }
     } catch (error) {
       toast.error(t("Connection error", "Error de conexión"));
@@ -781,7 +781,7 @@ export default function OperatorDashboard() {
         setStoreCart(data);
       } else {
         const error = await res.json();
-        toast.error(error.detail || t("Unable to update cart", "No se pudo actualizar el carrito"));
+        toast.error(formatApiError(error.detail, t("Unable to update cart", "No se pudo actualizar el carrito")));
       }
     } catch (error) {
       toast.error(t("Connection error", "Error de conexión"));
@@ -872,7 +872,7 @@ export default function OperatorDashboard() {
           return;
         }
         const error = await res.json();
-        toast.error(error.detail || t("Stripe checkout failed", "Falló Stripe"));
+        toast.error(formatApiError(error.detail, t("Stripe checkout failed", "Falló Stripe")));
       } else {
         const res = await fetch(`${API_URL}/api/store/orders/${storePaymentOrder.id}/payment`, {
           method: "POST",
