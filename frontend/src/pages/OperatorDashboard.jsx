@@ -62,6 +62,8 @@ export default function OperatorDashboard() {
   const [savingWeights, setSavingWeights] = useState(false);
   const [paymentForm, setPaymentForm] = useState({ method: "cash", amountReceived: "" });
   const [savingPayment, setSavingPayment] = useState(false);
+  const [stripeLoading, setStripeLoading] = useState(false);
+  const [stripePolling, setStripePolling] = useState(false);
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiReply, setAiReply] = useState("");
   const [aiResults, setAiResults] = useState([]);
