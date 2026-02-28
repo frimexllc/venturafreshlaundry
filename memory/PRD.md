@@ -124,7 +124,7 @@ RECEIVED → PROCESSING → READY → OUT_FOR_DELIVERY → DELIVERED → COMPLET
 ## Pendientes / Issues
 **P1**
 - Validar estabilidad de tiempo real (WebSocket/polling) en producción
-- Hacer funcional el panel de Finanzas (UI con KPIs + transacciones + export CSV)
+- Export CSV avanzado con filtros por canal y método de pago
 - Módulo Admin para monitorear estados y errores de mensajes Twilio
 - Verificación de dominio SendGrid/Twilio Trust (DNS) pendiente en proveedor de dominio
 
