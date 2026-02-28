@@ -151,6 +151,21 @@ export default function OperatorDashboard() {
     }
   }, [autoRefresh, t]);
 
+  const loadStoreOrders = useCallback(async () => {
+    setStoreOrdersLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/store/orders`);
+      if (res.ok) {
+        const data = await res.json();
+        setStoreOrders(data || []);
+      }
+    } catch (error) {
+      toast.error(t("Error loading store orders", "Error cargando órdenes de tienda"));
+    } finally {
+      setStoreOrdersLoading(false);
+    }
+  }, [t]);
+
   useEffect(() => {
     loadDashboard();
     const interval = setInterval(() => {
