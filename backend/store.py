@@ -676,7 +676,7 @@ async def create_checkout_session(checkout: CheckoutRequest, request: Request):
         if product.get("stock", 0) < item["quantity"]:
             raise HTTPException(status_code=400, detail="Insufficient stock")
 
-    shipping_quote = calculate_shipping_fee(checkout.shipping_address)
+    shipping_quote = await calculate_shipping_fee(checkout.shipping_address)
     subtotal = float(cart["total"])
     shipping_fee = shipping_quote["fee"]
     shipping_distance_km = shipping_quote["distance_km"]
@@ -794,7 +794,7 @@ async def create_manual_checkout(checkout: ManualCheckoutRequest):
         if product.get("stock", 0) < item["quantity"]:
             raise HTTPException(status_code=400, detail="Insufficient stock")
 
-    shipping_quote = calculate_shipping_fee(checkout.shipping_address)
+    shipping_quote = await calculate_shipping_fee(checkout.shipping_address)
     subtotal = float(cart["total"])
     shipping_fee = shipping_quote["fee"]
     shipping_distance_km = shipping_quote["distance_km"]
