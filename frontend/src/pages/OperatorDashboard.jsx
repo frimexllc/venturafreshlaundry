@@ -91,6 +91,28 @@ export default function OperatorDashboard() {
   const [storeOrders, setStoreOrders] = useState([]);
   const [storeOrdersLoading, setStoreOrdersLoading] = useState(false);
   const [storeUpdating, setStoreUpdating] = useState({});
+  const [storePosOpen, setStorePosOpen] = useState(false);
+  const [storeCart, setStoreCart] = useState(null);
+  const [storeCartLoading, setStoreCartLoading] = useState(false);
+  const [storeProducts, setStoreProducts] = useState([]);
+  const [storeSearch, setStoreSearch] = useState("");
+  const [storeCheckoutForm, setStoreCheckoutForm] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    address: "",
+    apt: "",
+    instructions: "",
+    notes: "",
+    preferred_contact: "sms",
+    payment_method: "card",
+    fulfillment_type: "pickup"
+  });
+  const [storeShippingQuote, setStoreShippingQuote] = useState({ distance_km: null, fee: 0, zone_name: null });
+  const [storeCheckoutLoading, setStoreCheckoutLoading] = useState(false);
+  const [storePaymentOrder, setStorePaymentOrder] = useState(null);
+  const [storePaymentForm, setStorePaymentForm] = useState({ method: "card" });
+  const [storeProcessingPayment, setStoreProcessingPayment] = useState(false);
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiReply, setAiReply] = useState("");
   const [aiResults, setAiResults] = useState([]);
