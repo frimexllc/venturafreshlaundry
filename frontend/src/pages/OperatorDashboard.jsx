@@ -528,6 +528,8 @@ export default function OperatorDashboard() {
     (order) => (order.payment_status || "pending") !== "paid"
   );
 
+  const selectedOrderCharge = selectedOrder ? calculateServiceCharge(selectedOrder) : null;
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
