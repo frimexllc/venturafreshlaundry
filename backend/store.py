@@ -321,6 +321,8 @@ class StoreOrderResponse(BaseModel):
     subtotal: Optional[float] = 0.0
     shipping_fee: Optional[float] = 0.0
     shipping_distance_km: Optional[float] = 0.0
+    delivery_zone_id: Optional[str] = None
+    delivery_zone_name: Optional[str] = None
     payment_status: str
     payment_method: Optional[str] = None
     stripe_session_id: Optional[str] = None
