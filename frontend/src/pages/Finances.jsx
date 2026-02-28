@@ -437,6 +437,27 @@ export default function Finances() {
               </div>
             </div>
           </div>
+
+          <div className="bg-white rounded-xl border border-slate-200 p-6" data-testid="finances-payment-methods">
+            <h3 className="font-semibold text-slate-900 mb-4">{t("Payment methods", "Métodos de pago")}</h3>
+            {Object.keys(summary.payment_methods || {}).length === 0 ? (
+              <p className="text-sm text-slate-500" data-testid="finances-payment-methods-empty">
+                {t("No payment data", "Sin datos de pagos")}
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {Object.entries(summary.payment_methods).map(([method, data]) => (
+                  <div key={method} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg" data-testid={`finances-payment-method-${method}`}>
+                    <div>
+                      <p className="font-medium text-slate-900">{method.toUpperCase()}</p>
+                      <p className="text-sm text-slate-500">{t("{count} payments", "{count} pagos").replace("{count}", data.count)}</p>
+                    </div>
+                    <p className="font-bold text-slate-900">{formatCurrency(data.amount)}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </>
       )}
 
