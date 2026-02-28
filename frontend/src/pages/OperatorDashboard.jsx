@@ -1164,6 +1164,107 @@ export default function OperatorDashboard() {
         </div>
       </div>
 
+      <div className="mt-10 space-y-6">
+        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden" data-testid="store-orders-panel">
+          <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+            <div>
+              <h3 className="font-semibold text-slate-900">{t("Store Orders", "Órdenes tienda")}</h3>
+              <p className="text-sm text-slate-500">{t("Process product purchases", "Procesa compras de productos")}</p>
+            </div>
+            <span className="text-sm font-semibold text-slate-600" data-testid="store-orders-count">
+              {storeOrders.length}
+            </span>
+          </div>
+          {storeOrdersLoading ? (
+            <div className="p-6 text-center text-slate-500" data-testid="store-orders-loading">
+              {t("Loading store orders...", "Cargando órdenes...")}
+            </div>
+          ) : storeOrders.length === 0 ? (
+            <div className="p-6 text-center text-slate-500" data-testid="store-orders-empty">
+              {t("No store orders yet", "Sin órdenes de tienda")}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="bg-slate-50 text-slate-500">
+                  <tr>
+                    <th className="text-left px-4 py-3">{t("Order", "Orden")}</th>
+                    <th className="text-left px-4 py-3">{t("Customer", "Cliente")}</th>
+                    <th className="text-left px-4 py-3">{t("Status", "Estado")}</th>
+                    <th className="text-left px-4 py-3">{t("Payment", "Pago")}</th>
+                    <th className="text-left px-4 py-3">{t("Total", "Total")}</th>
+                    <th className="text-right px-4 py-3">{t("Actions", "Acciones")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {storeOrders.map((order) => {
+                    const nextStatus = getNextStoreStatus(order.status);
+                    return (
+                      <tr key={order.id} className="border-t border-slate-100" data-testid={`store-order-row-${order.id}`}>
+                        <td className="px-4 py-3 font-mono text-slate-900">{order.order_number}</td>
+                        <td className="px-4 py-3">
+                          <div className="text-slate-900">{order.customer_name || t("Customer", "Cliente")}</div>
+                          <div className="text-xs text-slate-500">{order.customer_email || ""}</div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700 text-xs" data-testid={`store-order-status-${order.id}`}>
+                            {getStoreStatusDisplay(order.status)}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="text-slate-900" data-testid={`store-order-payment-${order.id}`}>
+                            {getPaymentStatusLabel(order.payment_status)}
+                          </div>
+                          <div className="text-xs text-slate-500">{order.payment_method || "-"}</div>
+                        </td>
+                        <td className="px-4 py-3 font-semibold" data-testid={`store-order-total-${order.id}`}>
+                          {formatCurrency(order.total)}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex flex-wrap justify-end gap-2">
+                            {nextStatus && (
+                              <Button
+                                size="sm"
+                                onClick={() => updateStoreOrderStatus(order.id, nextStatus)}
+                                disabled={storeUpdating[order.id]}
+                                data-testid={`store-order-next-${order.id}`}
+                              >
+                                {storeUpdating[order.id] ? t("Updating...", "Actualizando...") : t("Move to", "Mover a") + ` ${getStoreStatusDisplay(nextStatus)}`}
+                              </Button>
+                            )}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handlePrintStoreOrder(order)}
+                              data-testid={`store-order-print-${order.id}`}
+                            >
+                              {t("Print", "Imprimir")}
+                            </Button>
+                            {order.payment_status === "paid" && (
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => refundStoreOrder(order.id)}
+                                disabled={storeUpdating[order.id]}
+                                data-testid={`store-order-refund-${order.id}`}
+                              >
+                                {storeUpdating[order.id] ? t("Refunding...", "Reembolsando...") : t("Refund", "Reembolsar")}
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <DeliveryZonesManager />
+      </div>
+
       <Dialog open={!!selectedOrder} onOpenChange={(open) => !open && setSelectedOrder(null)}>
         <DialogContent className="sm:max-w-lg bg-white" style={{ backgroundColor: 'white', opacity: 1 }} data-testid="operator-order-detail-modal">
           <DialogHeader>
