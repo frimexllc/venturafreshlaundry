@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { createNotificationsSocket } from "../utils/notificationsSocket";
+import DeliveryZonesManager from "../components/DeliveryZonesManager";
 import { useLocale } from "../context/LocaleContext";
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
