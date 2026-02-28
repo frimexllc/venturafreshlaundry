@@ -193,7 +193,8 @@ export default function StorePage() {
         shipping_apt: checkoutForm.apt,
         delivery_instructions: checkoutForm.instructions,
         notes: checkoutForm.notes,
-        preferred_contact: checkoutForm.preferred_contact
+        preferred_contact: checkoutForm.preferred_contact,
+        fulfillment_type: "delivery"
       };
 
       const endpoint = checkoutForm.payment_method === 'card'
