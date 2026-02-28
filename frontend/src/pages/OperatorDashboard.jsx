@@ -168,13 +168,15 @@ export default function OperatorDashboard() {
 
   useEffect(() => {
     loadDashboard();
+    loadStoreOrders();
     const interval = setInterval(() => {
       if (autoRefresh) {
         loadDashboard();
+        loadStoreOrders();
       }
     }, 30000);
     return () => clearInterval(interval);
-  }, [loadDashboard]);
+  }, [loadDashboard, loadStoreOrders]);
 
   useEffect(() => {
     const socket = createNotificationsSocket();
