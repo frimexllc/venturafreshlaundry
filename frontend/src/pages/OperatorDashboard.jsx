@@ -501,6 +501,32 @@ export default function OperatorDashboard() {
       ? "bg-slate-100 text-slate-500"
       : "bg-orange-100 text-orange-700";
 
+  const dedupeOrders = (orders) => {
+    const seen = new Set();
+    return orders.filter((order) => {
+      const key = order.order_id || order.id;
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  };
+
+  const pickupOrders = (dashboard?.todays_pickups || []).filter(
+    (order) => !order.service_type || order.service_type === "pickup_delivery"
+  );
+  const pickupDeliveries = (dashboard?.ready_for_delivery || []).filter(
+    (order) => !order.service_type || order.service_type === "pickup_delivery"
+  );
+  const washFoldDropoffs = dashboard?.wash_fold_dropoffs || [];
+  const washFoldReady = dashboard?.wash_fold_ready || [];
+
+  const pickupPaymentQueue = dedupeOrders([...pickupOrders, ...pickupDeliveries]).filter(
+    (order) => (order.payment_status || "pending") !== "paid"
+  );
+  const washFoldPaymentQueue = dedupeOrders([...washFoldDropoffs, ...washFoldReady]).filter(
+    (order) => (order.payment_status || "pending") !== "paid"
+  );
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
