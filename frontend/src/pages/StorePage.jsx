@@ -230,6 +230,8 @@ export default function StorePage() {
   };
 
   const cartItemCount = cart?.items?.reduce((sum, item) => sum + item.quantity, 0) || 0;
+  const shippingFee = shippingQuote.fee || 0;
+  const orderTotal = cart ? cart.total + shippingFee : 0;
 
   return (
     <div className="min-h-screen bg-white">
