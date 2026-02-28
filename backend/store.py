@@ -398,8 +398,9 @@ async def add_to_cart(cart_id: str, item: CartItem):
     product = await db.products.find_one({"id": item.product_id}, {"_id": 0})
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
-    
-    if product["stock"] < item.quantity:
+    if not product.get("is_active") or product.get("stock", 0) = 0:
+        raise HTTPException(status_code=400, detail="Product is out of stock")
+    if product["stock"]  item.quantity:
         raise HTTPException(status_code=400, detail="Insufficient stock")
     
     # Check if product already in cart
