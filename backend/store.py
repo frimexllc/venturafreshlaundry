@@ -506,6 +506,15 @@ async def clear_cart(cart_id: str):
     return {"message": "Cart cleared successfully"}
 
 
+@store_router.post("/shipping/quote", response_model=ShippingQuoteResponse)
+async def get_shipping_quote(payload: ShippingQuoteRequest):
+    """Calculate shipping fee based on address"""
+    if not payload.address:
+        raise HTTPException(status_code=400, detail="Address required")
+    result = calculate_shipping_fee(payload.address)
+    return result
+
+
 # ==================== CHECKOUT & PAYMENT ENDPOINTS ====================
 
 @store_router.post("/checkout")
