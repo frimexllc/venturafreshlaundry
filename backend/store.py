@@ -341,6 +341,8 @@ async def update_product(product_id: str, product: ProductCreate):
         **product.model_dump(),
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
+    if update_data.get("stock", 0) <= 0:
+        update_data["is_active"] = False
     await db.products.update_one({"id": product_id}, {"$set": update_data})
     
     updated = await db.products.find_one({"id": product_id}, {"_id": 0})
