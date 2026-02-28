@@ -806,18 +806,21 @@ async def handle_stripe_webhook(request: Request):
                         {
                             "$set": {
                                 "payment_status": "paid",
+                                "payment_method": "card",
                                 "status": "confirmed",
                                 "updated_at": datetime.now(timezone.utc).isoformat()
                             }
                         }
                     )
                     
-                    # Update product stock
-                    for item in order.get("items", []):
-                        await db.products.update_one(
-                            {"id": item["product_id"]},
-                            {"$inc": {"stock": -item["quantity"]}}
-                        )
+                    await apply_stock_deduction(order.get("items", []))
+                    customer_snapshot = {
+                        "name": order.get("customer_name"),
+                        "email": order.get("customer_email"),
+                        "phone": order.get("customer_phone"),
+                        "preferred_contact": order.get("preferred_contact")
+                    }
+                    await notify_store_order(customer_snapshot, order)
         
         return {"status": "ok", "event_type": webhook_response.event_type}
         
