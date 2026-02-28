@@ -837,7 +837,7 @@ export default function OperatorDashboard() {
                             <RefreshCw className="h-4 w-4 animate-spin" />
                           ) : (
                             <>
-                              {order.action_label || getStatusInfo(order.next_status || getNextStatus(order.status)).label}
+                              {getStatusInfo(order.next_status || getNextStatus(order.status)).label}
                               <ChevronRight className="h-4 w-4 ml-1" />
                             </>
                           )}
@@ -901,7 +901,7 @@ export default function OperatorDashboard() {
                             <RefreshCw className="h-4 w-4 animate-spin" />
                           ) : (
                             <>
-                              {order.action_label || getStatusInfo(order.next_status || getNextStatus(order.status)).label}
+                              {getStatusInfo(order.next_status || getNextStatus(order.status)).label}
                               <ChevronRight className="h-4 w-4 ml-1" />
                             </>
                           )}
@@ -1018,7 +1018,7 @@ export default function OperatorDashboard() {
                             <RefreshCw className="h-4 w-4 animate-spin" />
                           ) : (
                             <>
-                              {order.action_label || getStatusInfo(order.next_status || getNextStatus(order.status)).label}
+                              {getStatusInfo(order.next_status || getNextStatus(order.status)).label}
                               <ChevronRight className="h-4 w-4 ml-1" />
                             </>
                           )}
