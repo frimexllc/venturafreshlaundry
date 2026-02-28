@@ -24,11 +24,16 @@ const defaultSummary = {
   total_revenue: 0,
   order_revenue: 0,
   membership_revenue: 0,
+  store_revenue: 0,
   total_orders: 0,
   paid_orders: 0,
   pending_orders: 0,
+  store_orders: 0,
+  store_paid_orders: 0,
+  store_pending_orders: 0,
   avg_order_value: 0,
-  total_memberships: 0
+  total_memberships: 0,
+  payment_methods: {}
 };
 
 export default function Finances() {
