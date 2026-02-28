@@ -1475,6 +1475,19 @@ export default function OperatorDashboard() {
                         </td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex flex-wrap justify-end gap-2">
+                            {order.payment_status !== "paid" && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setStorePaymentOrder(order);
+                                  setStorePaymentForm({ method: "card" });
+                                }}
+                                data-testid={`store-order-request-payment-${order.id}`}
+                              >
+                                {t("Request payment", "Solicitar pago")}
+                              </Button>
+                            )}
                             {nextStatus && (
                               <Button
                                 size="sm"
