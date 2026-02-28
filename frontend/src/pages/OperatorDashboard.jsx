@@ -612,7 +612,6 @@ export default function OperatorDashboard() {
       window.history.replaceState({}, "", cleanUrl);
     }
   }, [stripePolling]);
-  }, [stripePolling]);
 
   const openStorePos = async () => {
     setStorePosOpen(true);
