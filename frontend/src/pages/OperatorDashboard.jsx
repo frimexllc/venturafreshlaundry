@@ -261,9 +261,15 @@ export default function OperatorDashboard() {
   const handleRegisterPayment = async () => {
     if (!selectedOrder) return;
     const orderPrimaryId = selectedOrder.id || selectedOrder.order_id;
-    if (!selectedOrder.total_amount) {
-      toast.error(t("Add total before charging", "Agrega el total antes de cobrar"));
+    const totalAmount = selectedOrder.total_amount ?? calculateServiceCharge(selectedOrder);
+    if (!totalAmount) {
+      toast.error(t("Set actual lbs to calculate total", "Ingresa lbs reales para calcular"));
       return;
+    }
+    if (!selectedOrder.total_amount) {
+      await axios.put(`${API_URL}/api/orders/${orderPrimaryId}`, {
+        actual_lbs: selectedOrder.actual_lbs
+      });
     }
     if (paymentForm.method === "cash" && paymentForm.amountReceived === "") {
       toast.error(t("Enter amount received", "Ingresa el monto recibido"));
