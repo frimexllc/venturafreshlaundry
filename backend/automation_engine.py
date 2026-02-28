@@ -947,16 +947,28 @@ async def get_operator_dashboard():
     pickup_statuses = ["NEW", "CONFIRMED", "PICKUP_SCHEDULED", "PICKED_UP", "new", "confirmed", "pickup_scheduled", "picked_up"]
     ready_statuses = ["READY", "ready", "OUT_FOR_DELIVERY", "out_for_delivery", "DELIVERED", "delivered"]
     processing_statuses = ["PROCESSING", "processing"]
-    
+    wash_fold_dropoff_statuses = ["NEW", "PROCESSING", "new", "processing"]
+    wash_fold_ready_statuses = ["READY", "DELIVERED", "ready", "delivered"]
+
     todays_pickups = await db.orders.find({
         "pickup_date": today,
         "status": {"$in": pickup_statuses}
     }, {"_id": 0}).sort("pickup_time", 1).to_list(50)
-    
+
     ready_for_delivery = await db.orders.find({
         "status": {"$in": ready_statuses}
     }, {"_id": 0}).to_list(50)
-    
+
+    wash_fold_dropoffs = await db.orders.find({
+        "service_type": {"$in": ["wash_fold"]},
+        "status": {"$in": wash_fold_dropoff_statuses}
+    }, {"_id": 0}).sort("created_at", -1).to_list(50)
+
+    wash_fold_ready = await db.orders.find({
+        "service_type": {"$in": ["wash_fold"]},
+        "status": {"$in": wash_fold_ready_statuses}
+    }, {"_id": 0}).sort("updated_at", -1).to_list(50)
+
     urgent_tickets = await db.tickets.find({
         "status": {"$in": ["OPEN", "open"]},
         "priority": {"$in": ["HIGH", "high"]}
@@ -964,6 +976,8 @@ async def get_operator_dashboard():
 
     todays_pickups = await enrich_orders_with_customers(todays_pickups)
     ready_for_delivery = await enrich_orders_with_customers(ready_for_delivery)
+    wash_fold_dropoffs = await enrich_orders_with_customers(wash_fold_dropoffs)
+    wash_fold_ready = await enrich_orders_with_customers(wash_fold_ready)
 
     def normalize_order(order: Dict):
         status = normalize_status(order.get("status") or order.get("estado_actual"))
