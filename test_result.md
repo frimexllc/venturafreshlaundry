@@ -410,6 +410,21 @@ frontend:
         agent: "testing"
         comment: "✅ TESTED (Feb 28, 2026): Stripe payment button functionality verified. When payment method is set to 'Cash', Stripe button is hidden. When payment method changed to 'Card (Stripe)', button appears with text 'Pay with Stripe' (data-testid: operator-payment-stripe). Button is properly styled with emerald-600 background and only enabled when order has actual lbs set for total calculation. Conditional rendering working correctly based on paymentForm.method === 'card' check."
 
+  - task: "Store Checkout Flow - Cash and Stripe Payment"
+    implemented: true
+    working: true
+    file: "pages/StorePage.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "testing"
+        comment: "Testing store checkout flow as per review request"
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED (Feb 28, 2026): Complete store checkout flow verified at https://laundry-ai-hub.preview.emergentagent.com/store. All test steps passed: 1) Product successfully added to cart (Bolsa de Lavandería Premium - $12.99) ✓, 2) Cart sidebar opens correctly with product displayed ✓, 3) All checkout form fields visible and functional (name, email, phone, address, apt, instructions, notes, preferred contact, payment method) ✓, 4) Required fields filled with test data (Maria Rodriguez, maria.rodriguez@example.com, 787-555-1234, 123 Calle San Juan, San Juan, PR 00901) ✓, 5) Shipping fee calculated and displayed correctly ($6.65 for 4.44 km distance) after address entered ✓, 6) Cash payment flow: payment method dropdown allows selecting 'cash', button text correctly changes to 'Confirm order', order submitted successfully (backend returned 200 OK), cart cleared after submission (badge shows 0 items) ✓, 7) Card/Stripe payment flow: Added product again, filled form with new customer details (Carlos Mendez), selected 'card' payment method, button text correctly displays 'Pay with Stripe', did NOT complete Stripe checkout as instructed ✓. Backend logs confirm successful order creation (POST /api/store/checkout/manual returned 200 OK). No console errors or network errors detected. Evidence: 6 screenshots captured. All functionality working as expected."
+
 metadata:
   created_by: "main_agent"
   version: "1.0"
