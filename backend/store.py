@@ -61,6 +61,79 @@ def set_database(database):
     db = database
 
 
+def get_store_config():
+    store_address = os.environ.get("STORE_ADDRESS")
+    ors_api_key = os.environ.get("ORS_API_KEY")
+    rate_per_km = os.environ.get("SHIPPING_RATE_PER_KM")
+    min_fee = os.environ.get("SHIPPING_MIN_FEE")
+    max_fee = os.environ.get("SHIPPING_MAX_FEE")
+    if not store_address:
+        raise HTTPException(status_code=500, detail="Store address not configured")
+    if not ors_api_key:
+        raise HTTPException(status_code=500, detail="ORS API key not configured")
+    if not rate_per_km or not min_fee or not max_fee:
+        raise HTTPException(status_code=500, detail="Shipping rates not configured")
+    return store_address, ors_api_key, float(rate_per_km), float(min_fee), float(max_fee)
+
+
+def get_ors_client():
+    _, ors_api_key, _, _, _ = get_store_config()
+    return openrouteservice.Client(key=ors_api_key)
+
+
+def geocode_address(client: openrouteservice.Client, address: str):
+    result = client.pelias_search(text=address)
+    features = result.get("features", []) if result else []
+    if not features:
+        raise HTTPException(status_code=400, detail="Unable to geocode address")
+    coordinates = features[0].get("geometry", {}).get("coordinates")
+    if not coordinates or len(coordinates) < 2:
+        raise HTTPException(status_code=400, detail="Unable to geocode address")
+    return coordinates
+
+
+def calculate_shipping_fee(address: str) -> Dict[str, float]:
+    store_address, _, rate_per_km, min_fee, max_fee = get_store_config()
+    client = get_ors_client()
+    origin_coords = geocode_address(client, store_address)
+    destination_coords = geocode_address(client, address)
+    matrix = client.distance_matrix(
+        locations=[origin_coords, destination_coords],
+        profile="driving-car",
+        metrics=["distance"],
+        units="km"
+    )
+    distances = matrix.get("distances") if matrix else None
+    if not distances or distances[0][1] is None:
+        raise HTTPException(status_code=400, detail="Unable to calculate distance")
+    distance_km = float(distances[0][1])
+    fee = distance_km * rate_per_km
+    fee = max(fee, min_fee)
+    fee = min(fee, max_fee)
+    return {"distance_km": round(distance_km, 2), "fee": round(fee, 2)}
+
+
+def build_customer_snapshot(payload: dict) -> Dict:
+    return {
+        "name": payload.get("customer_name"),
+        "email": payload.get("customer_email"),
+        "phone": payload.get("customer_phone"),
+        "preferred_contact": payload.get("preferred_contact")
+    }
+
+
+async def apply_stock_deduction(items: List[Dict]):
+    for item in items:
+        product = await db.products.find_one({"id": item["product_id"]}, {"_id": 0})
+        if not product:
+            continue
+        new_stock = max((product.get("stock", 0) - item.get("quantity", 0)), 0)
+        update_doc = {"stock": new_stock, "updated_at": datetime.now(timezone.utc).isoformat()}
+        if new_stock <= 0:
+            update_doc["is_active"] = False
+        await db.products.update_one({"id": item["product_id"]}, {"$set": update_doc})
+
+
 # ==================== MODELS ====================
 
 class ProductCreate(BaseModel):
