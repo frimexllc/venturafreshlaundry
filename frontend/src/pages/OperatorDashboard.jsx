@@ -201,7 +201,7 @@ export default function OperatorDashboard() {
       socket.off("dashboard", handleNotification);
       socket.disconnect();
     };
-  }, [loadDashboard]);
+  }, [loadDashboard, loadStoreOrders]);
 
   useEffect(() => {
     if (selectedOrder) {
