@@ -933,8 +933,10 @@ async def create_manual_checkout(checkout: ManualCheckoutRequest):
     normalized_email = normalize_email(checkout.customer_email) or checkout.customer_email
     normalized_phone = normalize_phone(checkout.customer_phone) if checkout.customer_phone else None
 
+    store_address, _, _, _, _ = get_store_config()
+    shipping_address_value = checkout.shipping_address if checkout.shipping_address else store_address
     shipping_address = {
-        "address": normalize_spaces(checkout.shipping_address),
+        "address": normalize_spaces(shipping_address_value),
         "apt": normalize_spaces(checkout.shipping_apt) if checkout.shipping_apt else None,
         "instructions": normalize_spaces(checkout.delivery_instructions) if checkout.delivery_instructions else None
     }
