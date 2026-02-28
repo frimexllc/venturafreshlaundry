@@ -1531,6 +1531,249 @@ export default function OperatorDashboard() {
         <DeliveryZonesManager />
       </div>
 
+      <Dialog open={storePosOpen} onOpenChange={(open) => !open ? resetStorePos() : setStorePosOpen(true)}>
+        <DialogContent className="sm:max-w-5xl">
+          <DialogHeader>
+            <DialogTitle>{t("New Store Sale", "Nueva venta en tienda")}</DialogTitle>
+            <DialogDescription>
+              {t("Select products and collect payment quickly.", "Selecciona productos y cobra rápidamente.")}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6" data-testid="store-pos-modal">
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Input
+                  placeholder={t("Search products", "Buscar productos")}
+                  value={storeSearch}
+                  onChange={(e) => setStoreSearch(e.target.value)}
+                  data-testid="store-pos-search"
+                />
+              </div>
+              <div className="border border-slate-200 rounded-xl overflow-hidden">
+                <div className="max-h-[380px] overflow-y-auto divide-y divide-slate-100" data-testid="store-pos-products">
+                  {storeCartLoading ? (
+                    <div className="p-6 text-center text-slate-500">{t("Loading products...", "Cargando productos...")}</div>
+                  ) : filteredStoreProducts.length === 0 ? (
+                    <div className="p-6 text-center text-slate-500">{t("No products found", "No hay productos")}</div>
+                  ) : (
+                    filteredStoreProducts.map((product) => {
+                      const qty = getCartItemQuantity(product.id);
+                      const disabled = product.stock <= 0 || !product.is_active;
+                      return (
+                        <div key={product.id} className="p-4 flex items-center justify-between gap-4" data-testid={`store-pos-product-${product.id}`}>
+                          <div>
+                            <p className="font-semibold text-slate-900">{product.name}</p>
+                            <p className="text-sm text-slate-500">${product.price?.toFixed(2)} · {t("Stock", "Stock")}: {product.stock}</p>
+                            {disabled && <p className="text-xs text-red-500">{t("Unavailable", "No disponible")}</p>}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => updateStoreCartItem(product, qty - 1)}
+                              disabled={qty === 0}
+                              data-testid={`store-pos-minus-${product.id}`}
+                            >
+                              -
+                            </Button>
+                            <span className="w-6 text-center" data-testid={`store-pos-qty-${product.id}`}>{qty}</span>
+                            <Button
+                              size="sm"
+                              onClick={() => updateStoreCartItem(product, qty + 1)}
+                              disabled={disabled}
+                              data-testid={`store-pos-plus-${product.id}`}
+                            >
+                              +
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="space-y-4">
+              <div className="border border-slate-200 rounded-xl p-4" data-testid="store-pos-cart">
+                <h4 className="font-semibold text-slate-900 mb-3">{t("Cart", "Carrito")}</h4>
+                {storeCart?.items?.length ? (
+                  <div className="space-y-2">
+                    {storeCart.items.map((item) => (
+                      <div key={item.product_id} className="flex items-center justify-between text-sm">
+                        <span>{item.name || item.product_name}</span>
+                        <span>{item.quantity} × ${Number(item.price || 0).toFixed(2)}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-500">{t("No items yet", "Sin productos")}</p>
+                )}
+              </div>
+
+              <div className="border border-slate-200 rounded-xl p-4 space-y-3" data-testid="store-pos-customer">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>{t("Name", "Nombre")} *</Label>
+                    <Input
+                      value={storeCheckoutForm.name}
+                      onChange={(e) => setStoreCheckoutForm({ ...storeCheckoutForm, name: e.target.value })}
+                      data-testid="store-pos-name"
+                    />
+                  </div>
+                  <div>
+                    <Label>{t("Phone", "Teléfono")} *</Label>
+                    <Input
+                      value={storeCheckoutForm.phone}
+                      onChange={(e) => setStoreCheckoutForm({ ...storeCheckoutForm, phone: e.target.value })}
+                      data-testid="store-pos-phone"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label>{t("Email", "Email")} *</Label>
+                  <Input
+                    type="email"
+                    value={storeCheckoutForm.email}
+                    onChange={(e) => setStoreCheckoutForm({ ...storeCheckoutForm, email: e.target.value })}
+                    data-testid="store-pos-email"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>{t("Fulfillment", "Entrega")}</Label>
+                    <select
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                      value={storeCheckoutForm.fulfillment_type}
+                      onChange={(e) => setStoreCheckoutForm({ ...storeCheckoutForm, fulfillment_type: e.target.value })}
+                      data-testid="store-pos-fulfillment"
+                    >
+                      <option value="pickup">{t("Pickup", "Recoger en tienda")}</option>
+                      <option value="delivery">{t("Delivery", "Entrega a domicilio")}</option>
+                    </select>
+                  </div>
+                  <div>
+                    <Label>{t("Payment method", "Método de pago")}</Label>
+                    <select
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                      value={storeCheckoutForm.payment_method}
+                      onChange={(e) => setStoreCheckoutForm({ ...storeCheckoutForm, payment_method: e.target.value })}
+                      data-testid="store-pos-payment-method"
+                    >
+                      <option value="card">{t("Card (Stripe)", "Tarjeta (Stripe)")}</option>
+                      <option value="cash">{t("Cash", "Efectivo")}</option>
+                      <option value="transfer">{t("Transfer", "Transferencia")}</option>
+                      <option value="other">{t("Other", "Otro")}</option>
+                    </select>
+                  </div>
+                </div>
+                {storeCheckoutForm.fulfillment_type === "delivery" && (
+                  <div>
+                    <Label>{t("Delivery address", "Dirección de entrega")} *</Label>
+                    <Input
+                      value={storeCheckoutForm.address}
+                      onChange={(e) => setStoreCheckoutForm({ ...storeCheckoutForm, address: e.target.value })}
+                      data-testid="store-pos-address"
+                    />
+                  </div>
+                )}
+                <div>
+                  <Label>{t("Notes", "Notas")}</Label>
+                  <Input
+                    value={storeCheckoutForm.notes}
+                    onChange={(e) => setStoreCheckoutForm({ ...storeCheckoutForm, notes: e.target.value })}
+                    data-testid="store-pos-notes"
+                  />
+                </div>
+              </div>
+
+              <div className="border border-slate-200 rounded-xl p-4 space-y-2" data-testid="store-pos-summary">
+                <div className="flex items-center justify-between text-sm">
+                  <span>{t("Subtotal", "Subtotal")}</span>
+                  <span>${storeCartSubtotal.toFixed(2)}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span>{t("Shipping", "Envío")}</span>
+                  <span>
+                    {storeCheckoutForm.fulfillment_type === "delivery"
+                      ? storeShippingQuote.distance_km
+                        ? `$${storeShippingFee.toFixed(2)} (${storeShippingQuote.distance_km} km)`
+                        : t("Enter address", "Ingresa dirección")
+                      : t("Pickup", "Recoger")}
+                  </span>
+                </div>
+                {storeShippingQuote.zone_name && storeCheckoutForm.fulfillment_type === "delivery" && (
+                  <p className="text-xs text-slate-500" data-testid="store-pos-zone">{storeShippingQuote.zone_name}</p>
+                )}
+                <div className="flex items-center justify-between font-semibold">
+                  <span>{t("Total", "Total")}</span>
+                  <span>${storeOrderTotal.toFixed(2)}</span>
+                </div>
+                <Button
+                  className="w-full bg-sky-600 hover:bg-sky-700"
+                  onClick={handleStoreCheckout}
+                  disabled={storeCheckoutLoading}
+                  data-testid="store-pos-submit"
+                >
+                  {storeCheckoutLoading
+                    ? t("Processing...", "Procesando...")
+                    : storeCheckoutForm.payment_method === "card"
+                      ? t("Pay with Stripe", "Pagar con Stripe")
+                      : t("Confirm order", "Confirmar orden")}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!storePaymentOrder} onOpenChange={(open) => !open && setStorePaymentOrder(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{t("Request payment", "Solicitar pago")}</DialogTitle>
+            <DialogDescription>{storePaymentOrder?.order_number}</DialogDescription>
+          </DialogHeader>
+          {storePaymentOrder && (
+            <div className="space-y-4" data-testid="store-payment-modal">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-slate-600">{t("Total", "Total")}</span>
+                <span className="text-lg font-semibold">{formatCurrency(storePaymentOrder.total)}</span>
+              </div>
+              <div>
+                <Label>{t("Payment method", "Método de pago")}</Label>
+                <select
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                  value={storePaymentForm.method}
+                  onChange={(e) => setStorePaymentForm({ method: e.target.value })}
+                  data-testid="store-payment-method"
+                >
+                  <option value="card">{t("Card (Stripe)", "Tarjeta (Stripe)")}</option>
+                  <option value="cash">{t("Cash", "Efectivo")}</option>
+                  <option value="transfer">{t("Transfer", "Transferencia")}</option>
+                  <option value="other">{t("Other", "Otro")}</option>
+                </select>
+              </div>
+              {storePaymentForm.method === "card" && (
+                <p className="text-xs text-slate-500" data-testid="store-payment-note">
+                  {t("Stripe Checkout will open in a new page", "Stripe Checkout se abrirá en otra página")}
+                </p>
+              )}
+              <Button
+                className="w-full bg-emerald-600 hover:bg-emerald-700"
+                onClick={handleStorePayment}
+                disabled={storeProcessingPayment}
+                data-testid="store-payment-submit"
+              >
+                {storeProcessingPayment
+                  ? t("Processing...", "Procesando...")
+                  : storePaymentForm.method === "card"
+                    ? t("Pay with Stripe", "Pagar con Stripe")
+                    : t("Register payment", "Registrar pago")}
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={!!selectedOrder} onOpenChange={(open) => !open && setSelectedOrder(null)}>
         <DialogContent className="sm:max-w-lg bg-white" style={{ backgroundColor: 'white', opacity: 1 }} data-testid="operator-order-detail-modal">
           <DialogHeader>
