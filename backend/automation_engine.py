@@ -996,6 +996,7 @@ async def get_operator_dashboard():
             "customer_email": order.get("customer_email"),
             "preferred_contact": order.get("preferred_contact"),
             "membership_plan": order.get("membership_plan"),
+            "membership_status": order.get("membership_status"),
             "service_type": order.get("service_type"),
             "pickup_date": order.get("pickup_date"),
             "pickup_time": pickup_time,
