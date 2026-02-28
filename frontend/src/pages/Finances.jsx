@@ -254,7 +254,7 @@ export default function Finances() {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-4">
             <div className="bg-white rounded-xl border border-slate-200 p-6" data-testid="finances-total-revenue-card">
               <div className="flex items-center justify-between">
                 <div>
