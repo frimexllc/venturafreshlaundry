@@ -1449,7 +1449,7 @@ export default function OperatorDashboard() {
               <h3 className="font-semibold text-slate-900">{t("Store Orders", "Órdenes tienda")}</h3>
               <p className="text-sm text-slate-500">{t("Process product purchases", "Procesa compras de productos")}</p>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <Button
                 size="sm"
                 className="bg-sky-600 hover:bg-sky-700"
@@ -1458,6 +1458,19 @@ export default function OperatorDashboard() {
               >
                 {t("New Store Sale", "Nueva venta")}
               </Button>
+              {unpaidStoreOrders.length > 0 && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setStorePaymentOrder(unpaidStoreOrders[0]);
+                    setStorePaymentForm({ method: "card" });
+                  }}
+                  data-testid="store-pos-request-payment"
+                >
+                  {t("Request payment", "Solicitar pago")} ({unpaidStoreOrders.length})
+                </Button>
+              )}
               <span className="text-sm font-semibold text-slate-600" data-testid="store-orders-count">
                 {storeOrders.length}
               </span>
