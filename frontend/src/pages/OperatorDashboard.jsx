@@ -922,7 +922,8 @@ export default function OperatorDashboard() {
             <div className="px-5 py-4 border-b border-slate-100 bg-slate-50">
               <h2 className="font-semibold text-slate-900 flex items-center gap-2">
                 <DollarSign className="h-5 w-5 text-emerald-600" />
-                {t("Wash & Fold — Request Payment", "Wash & Fold — Solicitar pago")} ({washFoldPaymentQueue.length})
+                {t("Wash & Fold — Request Payment", "Wash & Fold — Solicitar pago")}
+                <span className="ml-2 text-sm font-semibold text-slate-600" data-testid="pos-washfold-payment-count">({washFoldPaymentQueue.length})</span>
               </h2>
             </div>
             <div className="divide-y divide-slate-100">
