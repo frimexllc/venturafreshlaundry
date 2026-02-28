@@ -291,6 +291,24 @@ export default function Finances() {
               </div>
             </div>
 
+            <div className="bg-white rounded-xl border border-slate-200 p-6" data-testid="finances-store-revenue-card">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-slate-500">{t("Store Revenue", "Ingresos tienda")}</p>
+                  <p className="text-2xl font-bold text-slate-900 mt-1" data-testid="finances-store-revenue">
+                    {formatCurrency(summary.store_revenue)}
+                  </p>
+                </div>
+                <div className="h-12 w-12 rounded-full bg-amber-100 flex items-center justify-center">
+                  <ShoppingBag className="h-6 w-6 text-amber-600" />
+                </div>
+              </div>
+              <div className="flex items-center gap-1 mt-3 text-sm text-slate-500">
+                <ArrowUpRight className="h-4 w-4" />
+                <span>{t("{count} store orders", "{count} órdenes tienda").replace("{count}", summary.store_paid_orders)}</span>
+              </div>
+            </div>
+
             <div className="bg-white rounded-xl border border-slate-200 p-6" data-testid="finances-paid-orders-card">
               <div className="flex items-center justify-between">
                 <div>
