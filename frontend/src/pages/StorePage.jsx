@@ -170,21 +170,54 @@ export default function StorePage() {
       return;
     }
 
+    if (!checkoutForm.name || !checkoutForm.email || !checkoutForm.phone || !checkoutForm.address) {
+      toast.error(t('Please complete required fields', 'Completa los campos obligatorios'));
+      return;
+    }
+
+    if (!shippingQuote.fee) {
+      toast.error(t('Enter a valid address to calculate shipping', 'Ingresa una dirección válida para calcular el envío'));
+      return;
+    }
+
     setCheckingOut(true);
     try {
-      const res = await fetch(`${API_URL}/api/store/checkout`, {
+      const payload = {
+        cart_id: cart.id,
+        origin_url: window.location.origin,
+        customer_name: checkoutForm.name,
+        customer_email: checkoutForm.email,
+        customer_phone: checkoutForm.phone,
+        shipping_address: checkoutForm.address,
+        shipping_apt: checkoutForm.apt,
+        delivery_instructions: checkoutForm.instructions,
+        notes: checkoutForm.notes,
+        preferred_contact: checkoutForm.preferred_contact
+      };
+
+      const endpoint = checkoutForm.payment_method === 'card'
+        ? `${API_URL}/api/store/checkout`
+        : `${API_URL}/api/store/checkout/manual`;
+
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cart_id: cart.id,
-          origin_url: window.location.origin
-        })
+        body: JSON.stringify(
+          checkoutForm.payment_method === 'card'
+            ? payload
+            : { ...payload, payment_method: checkoutForm.payment_method }
+        )
       });
 
       if (res.ok) {
         const data = await res.json();
-        // Redirect to Stripe checkout
-        window.location.href = data.checkout_url;
+        if (checkoutForm.payment_method === 'card') {
+          window.location.href = data.checkout_url;
+        } else {
+          toast.success(t('Order confirmed. Payment registered.', 'Orden confirmada. Pago registrado.'));
+          localStorage.removeItem('cartId');
+          setCart(null);
+        }
       } else {
         const error = await res.json();
         toast.error(error.detail || t('Error processing payment', 'Error al procesar el pago'));
