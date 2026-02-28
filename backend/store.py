@@ -110,8 +110,8 @@ def geocode_address(address: str):
 def calculate_shipping_fee(address: str) -> Dict[str, float]:
     store_address, _, rate_per_km, min_fee, max_fee = get_store_config()
     client = get_ors_client()
-    origin_coords = geocode_address(client, store_address)
-    destination_coords = geocode_address(client, address)
+    origin_coords = geocode_address(store_address)
+    destination_coords = geocode_address(address)
     matrix = client.distance_matrix(
         locations=[origin_coords, destination_coords],
         profile="driving-car",
