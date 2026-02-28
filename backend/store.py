@@ -673,7 +673,6 @@ async def get_checkout_status(session_id: str):
             if transaction:
                 order_id = transaction.get("order_id")
                 if order_id:
-                    # Check if already processed
                     order = await db.store_orders.find_one({"id": order_id})
                     if order and order.get("payment_status") != "paid":
                         await db.store_orders.update_one(
@@ -681,18 +680,20 @@ async def get_checkout_status(session_id: str):
                             {
                                 "$set": {
                                     "payment_status": "paid",
+                                    "payment_method": "card",
                                     "status": "confirmed",
                                     "updated_at": datetime.now(timezone.utc).isoformat()
                                 }
                             }
                         )
-                        
-                        # Update product stock
-                        for item in order.get("items", []):
-                            await db.products.update_one(
-                                {"id": item["product_id"]},
-                                {"$inc": {"stock": -item["quantity"]}}
-                            )
+                        await apply_stock_deduction(order.get("items", []))
+                        customer_snapshot = {
+                            "name": order.get("customer_name"),
+                            "email": order.get("customer_email"),
+                            "phone": order.get("customer_phone"),
+                            "preferred_contact": order.get("preferred_contact")
+                        }
+                        await notify_store_order(customer_snapshot, order)
         
         return {
             "status": status.status,
