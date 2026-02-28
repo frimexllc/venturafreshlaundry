@@ -1083,6 +1083,53 @@ async def update_order_status(order_id: str, status: str):
     
     return {"message": f"Order status updated to {status}"}
 
+@store_router.post("/orders/{order_id}/refund")
+async def refund_store_order(order_id: str):
+    order = await db.store_orders.find_one({"id": order_id})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if (order.get("payment_status") or "").lower() != "paid":
+        raise HTTPException(status_code=400, detail="Order is not paid")
+
+    now = datetime.now(timezone.utc).isoformat()
+    await db.store_orders.update_one(
+        {"id": order_id},
+        {
+            "$set": {
+                "payment_status": "refunded",
+                "status": "cancelled",
+                "updated_at": now
+            }
+        }
+    )
+
+    refund_doc = {
+        "id": str(uuid.uuid4()),
+        "session_id": f"refund-{order_id}",
+        "order_id": order_id,
+        "order_number": order.get("order_number"),
+        "amount": -abs(order.get("total", 0)),
+        "currency": "usd",
+        "customer_email": order.get("customer_email"),
+        "payment_status": "refunded",
+        "metadata": {"reason": "manual_refund"},
+        "created_at": now,
+        "updated_at": now
+    }
+    await db.payment_transactions.insert_one(refund_doc)
+
+    for item in order.get("items", []):
+        await db.products.update_one(
+            {"id": item.get("product_id")},
+            {
+                "$inc": {"stock": item.get("quantity", 0)},
+                "$set": {"is_active": True, "updated_at": now}
+            }
+        )
+
+    return {"message": "Order refunded"}
+
+
 
 # ==================== WEBHOOK ENDPOINT ====================
 
