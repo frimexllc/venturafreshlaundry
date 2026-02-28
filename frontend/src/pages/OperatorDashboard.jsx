@@ -614,6 +614,32 @@ export default function OperatorDashboard() {
     }
   }, [stripePolling]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const storeSessionId = params.get("store_session_id");
+    if (!storeSessionId) return;
+    const checkStatus = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/store/orders/by-session/${storeSessionId}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.payment_status === "paid") {
+            toast.success(t("Store payment confirmed", "Pago de tienda confirmado"));
+          } else {
+            toast.message(t("Store payment pending", "Pago de tienda pendiente"));
+          }
+        }
+      } catch (error) {
+        // ignore
+      } finally {
+        await loadStoreOrders();
+        const cleanUrl = window.location.pathname;
+        window.history.replaceState({}, "", cleanUrl);
+      }
+    };
+    checkStatus();
+  }, [loadStoreOrders, t]);
+
   const openStorePos = async () => {
     setStorePosOpen(true);
     setStoreCartLoading(true);
