@@ -117,7 +117,7 @@ RECEIVED → PROCESSING → READY → OUT_FOR_DELIVERY → DELIVERED → COMPLET
 - ✅ Tienda: checkout con Stripe y pagos manuales, cálculo de envío por km (OpenRouteService), validación de stock y desactivación automática.
 - ✅ Tienda: notificaciones de compra según preferencia del cliente.
 - ✅ Panel Operador: POS de tienda integrado con selección de productos en modal, checkout rápido y solicitud de pago para órdenes no pagadas.
-- ✅ Panel Operador: flujo POS más intuitivo + fix de error React al agregar productos (mensajes de error normalizados).
+- ✅ POS tienda: fix para errores 422 al actualizar carrito (PUT con query param) + errores API normalizados en UI.
 - ✅ Zonas de entrega: radio 10km + polígonos con tarifas desde panel operador.
 - ✅ Finanzas: KPIs + breakdown por métodos de pago y tienda/servicio.
 - ✅ WebSocket: client con upgrade a websocket + polling fallback.
