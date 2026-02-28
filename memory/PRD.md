@@ -108,6 +108,13 @@ RECEIVED → PROCESSING → READY → OUT_FOR_DELIVERY → DELIVERED → COMPLET
 - ✅ Deployment: se agregó CORS_ORIGINS=* en backend/.env para compatibilidad en producción.
 - ✅ Health check /api/health verificado en preview.
 
+## Cambios recientes (2026-02-28)
+- ✅ Panel Operador POS: 6 cards con flujos separados para Pickup & Delivery y Wash & Fold Drop-Off.
+- ✅ Stripe Checkout en operador (tarjeta) con cálculo automático por lbs y membresía.
+- ✅ Reglas de notificación reducidas (Pickup & Delivery: ready/out for delivery/delivered; Wash & Fold: ready).
+- ✅ Cálculo automático de total al actualizar lbs reales.
+- ✅ Selector de idioma EN/ES persistente en frontend (inglés por defecto).
+
 ## Pendientes / Issues
 **P1**
 - Validar estabilidad de tiempo real (WebSocket/polling) en producción
