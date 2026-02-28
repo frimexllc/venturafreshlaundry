@@ -318,11 +318,130 @@ export default function StorePage() {
                     ))}
                   </div>
 
-                  <div className="mt-6 pt-6 border-t border-slate-200">
-                    <div className="flex justify-between items-center mb-6">
-                      <span className="text-lg font-semibold text-slate-900">{t("Total:", "Total:")}</span>
-                      <span className="text-2xl font-bold text-sky-600">${cart.total.toFixed(2)}</span>
+                  <div className="mt-6 pt-6 border-t border-slate-200 space-y-6">
+                    <div>
+                      <h3 className="text-lg font-semibold text-slate-900">{t("Checkout details", "Detalles de compra")}</h3>
+                      <p className="text-sm text-slate-500">{t("Add shipping and contact info to continue", "Agrega datos de envío y contacto para continuar")}</p>
                     </div>
+
+                    <div className="grid gap-4">
+                      <div>
+                        <label className="text-xs font-medium text-slate-600">{t("Full name", "Nombre completo")} *</label>
+                        <input
+                          value={checkoutForm.name}
+                          onChange={(e) => setCheckoutForm({ ...checkoutForm, name: e.target.value })}
+                          className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                          data-testid="checkout-name"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-slate-600">{t("Email", "Email")} *</label>
+                        <input
+                          type="email"
+                          value={checkoutForm.email}
+                          onChange={(e) => setCheckoutForm({ ...checkoutForm, email: e.target.value })}
+                          className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                          data-testid="checkout-email"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-slate-600">{t("Phone", "Teléfono")} *</label>
+                        <input
+                          value={checkoutForm.phone}
+                          onChange={(e) => setCheckoutForm({ ...checkoutForm, phone: e.target.value })}
+                          className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                          data-testid="checkout-phone"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-slate-600">{t("Shipping address", "Dirección de envío")} *</label>
+                        <input
+                          value={checkoutForm.address}
+                          onChange={(e) => setCheckoutForm({ ...checkoutForm, address: e.target.value })}
+                          className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                          data-testid="checkout-address"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-slate-600">{t("Apartment / Suite", "Apto / Suite")}</label>
+                        <input
+                          value={checkoutForm.apt}
+                          onChange={(e) => setCheckoutForm({ ...checkoutForm, apt: e.target.value })}
+                          className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                          data-testid="checkout-apt"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-slate-600">{t("Delivery instructions", "Instrucciones de entrega")}</label>
+                        <input
+                          value={checkoutForm.instructions}
+                          onChange={(e) => setCheckoutForm({ ...checkoutForm, instructions: e.target.value })}
+                          className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                          data-testid="checkout-instructions"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-slate-600">{t("Notes", "Notas")}</label>
+                        <input
+                          value={checkoutForm.notes}
+                          onChange={(e) => setCheckoutForm({ ...checkoutForm, notes: e.target.value })}
+                          className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                          data-testid="checkout-notes"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="text-xs font-medium text-slate-600">{t("Preferred contact", "Contacto preferido")}</label>
+                          <select
+                            value={checkoutForm.preferred_contact}
+                            onChange={(e) => setCheckoutForm({ ...checkoutForm, preferred_contact: e.target.value })}
+                            className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                            data-testid="checkout-preferred-contact"
+                          >
+                            <option value="sms">SMS</option>
+                            <option value="email">Email</option>
+                            <option value="whatsapp">WhatsApp</option>
+                            <option value="call">{t("Call", "Llamada")}</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-slate-600">{t("Payment method", "Método de pago")}</label>
+                          <select
+                            value={checkoutForm.payment_method}
+                            onChange={(e) => setCheckoutForm({ ...checkoutForm, payment_method: e.target.value })}
+                            className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                            data-testid="checkout-payment-method"
+                          >
+                            <option value="card">{t("Card (Stripe)", "Tarjeta (Stripe)")}</option>
+                            <option value="cash">{t("Cash", "Efectivo")}</option>
+                            <option value="transfer">{t("Transfer", "Transferencia")}</option>
+                            <option value="other">{t("Other", "Otro")}</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-slate-50 rounded-xl p-4 space-y-2" data-testid="checkout-summary">
+                      <div className="flex justify-between text-sm text-slate-600">
+                        <span>{t("Subtotal", "Subtotal")}</span>
+                        <span>${cart.total.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm text-slate-600">
+                        <span>{t("Shipping", "Envío")}</span>
+                        <span>
+                          {shippingLoading
+                            ? t("Calculating...", "Calculando...")
+                            : shippingQuote.distance_km
+                              ? `$${shippingFee.toFixed(2)} (${shippingQuote.distance_km} km)`
+                              : t("Enter address", "Ingresa dirección")}
+                        </span>
+                      </div>
+                      <div className="flex justify-between font-semibold text-slate-900">
+                        <span>{t("Total", "Total")}</span>
+                        <span>${orderTotal.toFixed(2)}</span>
+                      </div>
+                    </div>
+
                     <Button
                       onClick={checkout}
                       disabled={checkingOut}
@@ -334,8 +453,10 @@ export default function StorePage() {
                           <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent" />
                           {t("Processing...", "Procesando...")}
                         </span>
-                      ) : (
+                      ) : checkoutForm.payment_method === "card" ? (
                         t("Pay with Stripe", "Pagar con Stripe")
+                      ) : (
+                        t("Confirm order", "Confirmar orden")
                       )}
                     </Button>
                   </div>
