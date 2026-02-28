@@ -175,7 +175,9 @@ def build_default_message(
     order_number: str,
     language: str,
     pickup_date: Optional[str] = None,
-    pickup_window: Optional[str] = None
+    pickup_window: Optional[str] = None,
+    order_total: Optional[float] = None,
+    shipping_fee: Optional[float] = None
 ) -> dict:
     """
     Build default message subject and body using premium Ventura Fresh Laundry templates.
