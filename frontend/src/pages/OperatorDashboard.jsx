@@ -1175,7 +1175,12 @@ export default function OperatorDashboard() {
                 <div className="grid grid-cols-2 gap-4 mt-2">
                   <div>
                     <p className="text-xs text-slate-500">{t("Total", "Total")}</p>
-                    <p className="font-medium" data-testid="operator-payment-total">{formatCurrency(selectedOrder.total_amount)}</p>
+                    <p className="font-medium" data-testid="operator-payment-total">{formatCurrency(selectedOrder.total_amount ?? selectedOrderCharge)}</p>
+                    <p className="text-xs text-slate-500 mt-1" data-testid="operator-payment-total-note">
+                      {selectedOrderCharge
+                        ? t("Auto-calculated from actual lbs", "Calculado automáticamente según lbs reales")
+                        : t("Set actual lbs to calculate total", "Ingresa lbs reales para calcular")}
+                    </p>
                   </div>
                   <div>
                     <p className="text-xs text-slate-500">{t("Status", "Estado")}</p>
