@@ -197,12 +197,20 @@ class StoreOrderResponse(BaseModel):
     id: str
     order_number: str
     customer_id: Optional[str] = None
+    customer_name: Optional[str] = None
     customer_email: Optional[str] = None
+    customer_phone: Optional[str] = None
+    preferred_contact: Optional[str] = None
     items: List[Dict]
     total: float
+    subtotal: float
+    shipping_fee: float
+    shipping_distance_km: float
     payment_status: str
+    payment_method: Optional[str] = None
     stripe_session_id: Optional[str] = None
     shipping_address: Optional[Dict] = None
+    notes: Optional[str] = None
     status: str
     created_at: str
     updated_at: str
