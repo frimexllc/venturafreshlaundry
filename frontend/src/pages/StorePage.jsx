@@ -31,6 +31,17 @@ export default function StorePage() {
   });
   const [searchParams] = useSearchParams();
 
+  const formatApiError = (detail, fallback) => {
+    if (!detail) return fallback;
+    if (typeof detail === "string") return detail;
+    if (Array.isArray(detail)) {
+      const msg = detail.map((item) => item?.msg || JSON.stringify(item)).join(", ");
+      return msg || fallback;
+    }
+    if (detail?.msg) return detail.msg;
+    return JSON.stringify(detail);
+  };
+
   // Check for payment status on return from Stripe
   useEffect(() => {
     const status = searchParams.get('status');
