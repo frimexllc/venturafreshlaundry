@@ -771,10 +771,22 @@ async def create_checkout_session(checkout: CheckoutRequest, request: Request):
         if product.get("stock", 0) < item["quantity"]:
             raise HTTPException(status_code=400, detail="Insufficient stock")
 
-    shipping_quote = await calculate_shipping_fee(checkout.shipping_address)
+    fulfillment_type = (checkout.fulfillment_type or "delivery").lower()
     subtotal = float(cart["total"])
-    shipping_fee = shipping_quote["fee"]
-    shipping_distance_km = shipping_quote["distance_km"]
+    shipping_fee = 0.0
+    shipping_distance_km = 0.0
+    delivery_zone_id = None
+    delivery_zone_name = None
+
+    if fulfillment_type == "delivery":
+        if not checkout.shipping_address:
+            raise HTTPException(status_code=400, detail="Shipping address required")
+        shipping_quote = await calculate_shipping_fee(checkout.shipping_address)
+        shipping_fee = shipping_quote["fee"]
+        shipping_distance_km = shipping_quote["distance_km"]
+        delivery_zone_id = shipping_quote.get("zone_id")
+        delivery_zone_name = shipping_quote.get("zone_name")
+
     total = round(subtotal + shipping_fee, 2)
 
     stripe_api_key = os.environ.get("STRIPE_API_KEY")
@@ -891,10 +903,22 @@ async def create_manual_checkout(checkout: ManualCheckoutRequest):
         if product.get("stock", 0) < item["quantity"]:
             raise HTTPException(status_code=400, detail="Insufficient stock")
 
-    shipping_quote = await calculate_shipping_fee(checkout.shipping_address)
+    fulfillment_type = (checkout.fulfillment_type or "delivery").lower()
     subtotal = float(cart["total"])
-    shipping_fee = shipping_quote["fee"]
-    shipping_distance_km = shipping_quote["distance_km"]
+    shipping_fee = 0.0
+    shipping_distance_km = 0.0
+    delivery_zone_id = None
+    delivery_zone_name = None
+
+    if fulfillment_type == "delivery":
+        if not checkout.shipping_address:
+            raise HTTPException(status_code=400, detail="Shipping address required")
+        shipping_quote = await calculate_shipping_fee(checkout.shipping_address)
+        shipping_fee = shipping_quote["fee"]
+        shipping_distance_km = shipping_quote["distance_km"]
+        delivery_zone_id = shipping_quote.get("zone_id")
+        delivery_zone_name = shipping_quote.get("zone_name")
+
     total = round(subtotal + shipping_fee, 2)
 
     payment_method = normalize_spaces(checkout.payment_method).lower()
