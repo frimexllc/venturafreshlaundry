@@ -325,6 +325,12 @@ class ShippingQuoteResponse(BaseModel):
     zone_id: Optional[str] = None
     zone_name: Optional[str] = None
 
+class StorePaymentRequest(BaseModel):
+    payment_method: str
+
+class StoreStripeCheckoutRequest(BaseModel):
+    origin_url: str
+
 class StoreOrderResponse(BaseModel):
     id: str
     order_number: str
