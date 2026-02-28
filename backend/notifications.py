@@ -569,9 +569,19 @@ async def notify_order_created(customer: Dict, order: Dict) -> bool:
 
 async def notify_order_status_changed(customer: Dict, order: Dict, new_status: str) -> bool:
     """Notify customer when order status changes (no dates)"""
-    if not new_status:
+    status_normalized = normalize_status_value(new_status)
+    if not status_normalized or status_normalized == "new":
         logger.info("Empty status, no notification needed")
         return False
+
+    service_type = normalize_status_value(order.get("service_type") or "pickup_delivery")
+    if service_type in ["wash_fold", "self_service"]:
+        if status_normalized != "ready":
+            return False
+    else:
+        if status_normalized not in ["ready", "out_for_delivery", "delivered"]:
+            return False
+
     return await send_preferred_notification(customer, order, "status_changed", new_status)
 
 async def notify_pickup_scheduled(customer: Dict, order: Dict) -> bool:
