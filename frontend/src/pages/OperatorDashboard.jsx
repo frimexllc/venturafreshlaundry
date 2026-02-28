@@ -227,20 +227,7 @@ export default function OperatorDashboard() {
       const updated = res.data;
       toast.success(t("Weights updated", "Libras actualizadas"));
       setSelectedOrder((prev) => prev ? { ...prev, ...updated, order_id: prev.order_id, id: prev.id || updated.id } : prev);
-      setDashboard(prev => {
-        if (!prev) return prev;
-        const updateList = (list) =>
-          list.map((order) =>
-            order.order_id === selectedOrder.order_id
-              ? { ...order, estimated_lbs: updated.estimated_lbs, actual_lbs: updated.actual_lbs }
-              : order
-          );
-        return {
-          ...prev,
-          todays_pickups: updateList(prev.todays_pickups || []),
-          ready_for_delivery: updateList(prev.ready_for_delivery || [])
-        };
-      });
+      await loadDashboard();
     } catch (error) {
       toast.error(error.response?.data?.detail || t("Error updating weights", "Error actualizando libras"));
     } finally {
