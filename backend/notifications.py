@@ -486,6 +486,10 @@ async def build_notification_content(
         "customer_name": customer.get("name"),
         "business_name": BUSINESS_NAME
     }
+    if order_total is not None:
+        context["order_total"] = order_total
+    if shipping_fee is not None:
+        context["shipping_fee"] = shipping_fee
     if event in include_date_events:
         if pickup_date:
             context["pickup_date"] = pickup_date
