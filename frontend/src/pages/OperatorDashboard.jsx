@@ -203,22 +203,7 @@ export default function OperatorDashboard() {
       if (res.ok) {
         toast.success(t("Order {id} updated to {status}", "Orden {id} actualizada a {status}")
           .replace("{id}", orderId).replace("{status}", getStatusLabel(newStatus)));
-        setDashboard(prev => {
-          if (!prev) return prev;
-          const updateList = (list) =>
-            list.map((order) =>
-              order.order_id === orderId
-                ? { ...order, status: newStatus, next_status: getNextStatus(newStatus), action_label: null }
-                : order
-            );
-          return {
-            ...prev,
-            todays_pickups: updateList(prev.todays_pickups || []),
-            ready_for_delivery: (prev.ready_for_delivery || []).filter(
-              (order) => !(order.order_id === orderId && newStatus === "OUT_FOR_DELIVERY")
-            )
-          };
-        });
+        await loadDashboard();
       } else {
         toast.error(t("Error updating order", "Error al actualizar orden"));
       }
