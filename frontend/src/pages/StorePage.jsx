@@ -16,6 +16,19 @@ export default function StorePage() {
   const [loading, setLoading] = useState(true);
   const [cartOpen, setCartOpen] = useState(false);
   const [checkingOut, setCheckingOut] = useState(false);
+  const [shippingLoading, setShippingLoading] = useState(false);
+  const [shippingQuote, setShippingQuote] = useState({ distance_km: null, fee: 0 });
+  const [checkoutForm, setCheckoutForm] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    address: "",
+    apt: "",
+    instructions: "",
+    notes: "",
+    preferred_contact: "sms",
+    payment_method: "card"
+  });
   const [searchParams] = useSearchParams();
 
   // Check for payment status on return from Stripe
