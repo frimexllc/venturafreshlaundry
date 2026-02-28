@@ -626,7 +626,7 @@ export default function OperatorDashboard() {
           if (data.payment_status === "paid") {
             toast.success(t("Store payment confirmed", "Pago de tienda confirmado"));
           } else {
-            toast.message(t("Store payment pending", "Pago de tienda pendiente"));
+            toast.info(t("Store payment pending", "Pago de tienda pendiente"));
           }
         }
       } catch (error) {
