@@ -770,10 +770,8 @@ export default function OperatorDashboard() {
           body: JSON.stringify({ product_id: product.id, quantity })
         });
       } else {
-        res = await fetch(endpoint, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ quantity })
+        res = await fetch(`${endpoint}?quantity=${quantity}`, {
+          method: "PUT"
         });
       }
       if (res.ok) {
