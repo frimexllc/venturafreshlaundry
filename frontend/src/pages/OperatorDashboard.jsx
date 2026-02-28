@@ -900,6 +900,10 @@ export default function OperatorDashboard() {
   const filteredStoreProducts = storeProducts.filter((product) =>
     product.name?.toLowerCase().includes(storeSearch.toLowerCase())
   );
+  const unpaidStoreOrders = storeOrders.filter((order) => {
+    const status = (order.payment_status || "pending").toLowerCase();
+    return status !== "paid" && status !== "refunded";
+  });
 
   const selectedOrderCharge = selectedOrder ? calculateServiceCharge(selectedOrder) : null;
 
