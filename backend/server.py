@@ -1562,6 +1562,47 @@ def normalize_payment_method(value: Optional[str]) -> str:
     return mapping.get(normalized, normalized)
 
 
+def is_active_member(order: dict, customer: Optional[dict]) -> bool:
+    status_value = ""
+    if order:
+        status_value = order.get("membership_status") or ""
+    if customer:
+        status_value = customer.get("membership_status") or status_value
+    status_normalized = normalize_spaces(status_value).lower() if status_value else ""
+    if status_normalized in ["inactive", "cancelled", "canceled", "expired"]:
+        return False
+    if status_normalized in ["active", "current", "paid", "yes", "true"]:
+        return True
+    plan = None
+    if order:
+        plan = order.get("membership_plan")
+    if customer and not plan:
+        plan = customer.get("membership_plan")
+    return bool(plan)
+
+
+def calculate_service_amount(order: dict, customer: Optional[dict]) -> Optional[float]:
+    service_type = normalize_status(order.get("service_type") or "pickup_delivery")
+    lbs_value = order.get("actual_lbs")
+    if lbs_value is None:
+        return None
+    try:
+        lbs_value = float(lbs_value)
+    except Exception:
+        return None
+    if lbs_value <= 0:
+        return None
+
+    if service_type == "wash_fold":
+        billable_lbs = max(lbs_value, 10)
+        amount = billable_lbs * 2.25
+    else:
+        rate = 2.50 if is_active_member(order, customer) else 2.75
+        amount = max(lbs_value * rate, 40)
+
+    return round(float(amount), 2)
+
+
 def should_notify_order_status(order: dict, status_value: str) -> bool:
     """Determine if order status change should trigger notification"""
     status_normalized = normalize_status(status_value)
