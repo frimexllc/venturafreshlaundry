@@ -661,8 +661,6 @@ export default function OperatorDashboard() {
               <h2 className="font-semibold text-slate-900 flex items-center gap-2">
                 <Truck className="h-5 w-5 text-sky-600" />
                 {t("Pickup & Delivery — Pickups Today", "Pickup & Delivery — Pickups de hoy")}
-                 
-
                 <span className="ml-2 text-sm font-semibold text-slate-600" data-testid="pos-pickup-today-count">({pickupOrders.length})</span>
               </h2>
             </div>
