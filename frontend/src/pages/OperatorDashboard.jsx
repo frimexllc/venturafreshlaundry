@@ -675,223 +675,384 @@ export default function OperatorDashboard() {
         </div>
       </div>
 
-      {/* Today's Pickups */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50">
-          <h2 className="font-semibold text-slate-900 flex items-center gap-2">
-            <Calendar className="h-5 w-5 text-sky-600" />
-            {t("Today's Pickups", "Pickups de Hoy")} ({dashboard?.todays_pickups?.length || 0})
-          </h2>
-        </div>
-        <div className="divide-y divide-slate-100">
-          {dashboard?.todays_pickups?.length === 0 ? (
-            <div className="p-8 text-center text-slate-500">
-              <Truck className="h-12 w-12 mx-auto mb-3 text-slate-300" />
-              <p>{t("No pickups scheduled for today", "No hay pickups programados para hoy")}</p>
-            </div>
-          ) : (
-            dashboard?.todays_pickups?.map((order) => (
-              <div
-                key={order.order_id}
-                className="p-4 hover:bg-slate-50 transition-colors cursor-pointer"
-                data-testid={`pickup-${order.order_id}`}
-                role="button"
-                onClick={() => setSelectedOrder(order)}
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-mono font-semibold text-slate-900">{formatOrderId(order)}</span>
-                      <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${getStatusInfo(order.status).color}`}>
-                        {getStatusInfo(order.status).label}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-4 text-sm text-slate-600 mb-2">
-                      <span className="flex items-center gap-1">
-                        <User className="h-4 w-4" />
-                        {order.customer_name || t("Customer", "Cliente")}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Clock className="h-4 w-4" />
-                        {order.pickup_time || t("No time", "Sin hora")}
-                      </span>
-                    </div>
-                    <div className="flex items-start gap-1 text-sm text-slate-500">
-                      <MapPin className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                      <span className="line-clamp-1">{order.pickup_address || t("No address", "Sin dirección")}</span>
-                    </div>
-                    <div className="text-xs text-slate-500 mt-1">
-                      {t("Service:", "Servicio:")} {order.service_type || "-"}
-                    </div>
-                    <div className="text-xs text-slate-500 mt-1" data-testid={`operator-payment-${order.order_id}`}>
-                      {t("Payment:", "Pago:")} {getPaymentStatusLabel(order.payment_status)} {order.payment_method ? `(${getPaymentMethodLabel(order.payment_method)})` : ""}
-                    </div>
-                    {order.special_instructions && (
-                      <div className="flex items-start gap-1 text-sm text-amber-600 mt-1">
-                        <MessageSquare className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                        <span className="line-clamp-1">{order.special_instructions}</span>
-                      </div>
-                    )}
-                    {order.gate_code && (
-                      <div className="text-sm font-medium text-purple-600 mt-1">
-                        🔑 {t("Code:", "Código:")} {order.gate_code}
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    {order.customer_phone && (
-                      <a
-                        href={`tel:${order.customer_phone}`}
-                        className="flex items-center gap-1 text-sm text-sky-600 hover:text-sky-700"
-                        onClick={(e) => e.stopPropagation()}
-                        data-testid={`operator-call-${order.order_id}`}
-                      >
-                        <Phone className="h-4 w-4" />
-                        {t("Call", "Llamar")}
-                      </a>
-                    )}
-                    {order.pickup_address && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openMaps(order.pickup_address);
-                        }}
-                        data-testid={`operator-map-${order.order_id}`}
-                      >
-                        <MapPin className="h-4 w-4 mr-2" />
-                        {t("Map", "Mapa")}
-                      </Button>
-                    )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handlePrintTicket(order);
-                      }}
-                      data-testid={`operator-print-${order.order_id}`}
-                    >
-                      {t("Print Ticket", "Imprimir Ticket")}
-                    </Button>
-                    {(order.next_status || getNextStatus(order.status)) && (
-                      <Button
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          updateOrderStatus(order.order_id, order.next_status || getNextStatus(order.status));
-                        }}
-                        disabled={updating[order.order_id]}
-                        className="bg-sky-600 hover:bg-sky-700"
-                        data-testid={`update-${order.order_id}`}
-                      >
-                        {updating[order.order_id] ? (
-                          <RefreshCw className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <>
-                            {order.action_label || getStatusInfo(order.next_status || getNextStatus(order.status)).label}
-                            <ChevronRight className="h-4 w-4 ml-1" />
-                          </>
-                        )}
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
 
-      {/* Ready for Delivery */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-100 bg-emerald-50">
-          <h2 className="font-semibold text-slate-900 flex items-center gap-2" data-testid="operator-delivery-section-title">
-            <CheckCircle className="h-5 w-5 text-emerald-600" />
-            {t("Deliveries Ongoing", "Entregas en curso")} ({dashboard?.ready_for_delivery?.length || 0})
-          </h2>
-        </div>
-        <div className="divide-y divide-slate-100">
-          {dashboard?.ready_for_delivery?.length === 0 ? (
-            <div className="p-8 text-center text-slate-500">
-              <Package className="h-12 w-12 mx-auto mb-3 text-slate-300" />
-              <p data-testid="operator-delivery-empty">{t("No deliveries in progress", "No hay entregas en curso")}</p>
+      {/* POS - Operator */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6" data-testid="operator-pos-grid">
+        <div className="space-y-6">
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden" data-testid="pos-pickup-today-card">
+            <div className="px-5 py-4 border-b border-slate-100 bg-slate-50">
+              <h2 className="font-semibold text-slate-900 flex items-center gap-2">
+                <Truck className="h-5 w-5 text-sky-600" />
+                {t("Pickup & Delivery — Pickups Today", "Pickup & Delivery — Pickups de hoy")} ({pickupOrders.length})
+              </h2>
             </div>
-          ) : (
-            dashboard?.ready_for_delivery?.map((order) => (
-              <div
-                key={order.order_id}
-                className="p-4 hover:bg-slate-50 transition-colors cursor-pointer"
-                data-testid={`delivery-${order.order_id}`}
-                role="button"
-                onClick={() => setSelectedOrder(order)}
-              >
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <span className="font-mono font-semibold text-slate-900">{formatOrderId(order)}</span>
-                    <span className="text-slate-600 ml-2">- {order.customer_name || t("Customer", "Cliente")}</span>
-                    <div className="text-sm text-slate-500 flex items-center gap-1 mt-1">
-                      <MapPin className="h-4 w-4" />
-                      {order.delivery_address || "-"}
-                    </div>
-                    <div className="text-xs text-slate-500 mt-1" data-testid={`operator-delivery-status-${order.order_id}`}>
-                      {t("Status:", "Estado:")} {getStatusInfo(order.status).label}
-                    </div>
-                    <div className="text-xs text-slate-500 mt-1" data-testid={`operator-delivery-payment-${order.order_id}`}>
-                      {t("Payment:", "Pago:")} {getPaymentStatusLabel(order.payment_status)} {order.payment_method ? `(${getPaymentMethodLabel(order.payment_method)})` : ""}
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    {order.delivery_address && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openMaps(order.delivery_address);
-                        }}
-                        data-testid={`operator-delivery-map-${order.order_id}`}
-                      >
-                        <MapPin className="h-4 w-4 mr-2" />
-                        {t("Map", "Mapa")}
-                      </Button>
-                    )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handlePrintTicket(order);
-                      }}
-                      data-testid={`operator-delivery-print-${order.order_id}`}
-                    >
-                      {t("Print Ticket", "Imprimir Ticket")}
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        updateOrderStatus(order.order_id, order.next_status || "OUT_FOR_DELIVERY");
-                      }}
-                      disabled={updating[order.order_id]}
-                      className="bg-emerald-600 hover:bg-emerald-700"
-                      data-testid={`delivery-update-${order.order_id}`}
-                    >
-                      {updating[order.order_id] ? (
-                        <RefreshCw className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <>
-                          {order.action_label || t("Out for Delivery", "Salir a Entregar")}
-                          <Truck className="h-4 w-4 ml-1" />
-                        </>
-                      )}
-                    </Button>
-                  </div>
+            <div className="divide-y divide-slate-100">
+              {pickupOrders.length === 0 ? (
+                <div className="p-6 text-center text-slate-500" data-testid="pos-pickup-today-empty">
+                  <Truck className="h-10 w-10 mx-auto mb-2 text-slate-300" />
+                  <p>{t("No pickups scheduled", "No hay pickups programados")}</p>
                 </div>
-              </div>
-            ))
-          )}
+              ) : (
+                pickupOrders.map((order) => (
+                  <div
+                    key={order.order_id}
+                    className="p-4 hover:bg-slate-50 transition-colors cursor-pointer"
+                    data-testid={`pos-pickup-item-${order.order_id}`}
+                    role="button"
+                    onClick={() => setSelectedOrder(order)}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-mono font-semibold text-slate-900">{formatOrderId(order)}</span>
+                          <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${getStatusInfo(order.status).color}`}>
+                            {getStatusInfo(order.status).label}
+                          </span>
+                        </div>
+                        <div className="text-sm text-slate-600">{order.customer_name || t("Customer", "Cliente")}</div>
+                        <div className="text-xs text-slate-500 mt-1">
+                          {order.pickup_time || t("No time", "Sin hora")} · {order.pickup_address || t("No address", "Sin dirección")}
+                        </div>
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        {(order.next_status || getNextStatus(order.status)) && (
+                          <Button
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              updateOrderStatus(order.order_id, order.next_status || getNextStatus(order.status));
+                            }}
+                            disabled={updating[order.order_id]}
+                            className="bg-sky-600 hover:bg-sky-700"
+                            data-testid={`pos-pickup-update-${order.order_id}`}
+                          >
+                            {updating[order.order_id] ? (
+                              <RefreshCw className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <>
+                                {order.action_label || getStatusInfo(order.next_status || getNextStatus(order.status)).label}
+                                <ChevronRight className="h-4 w-4 ml-1" />
+                              </>
+                            )}
+                          </Button>
+                        )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handlePrintTicket(order);
+                          }}
+                          data-testid={`pos-pickup-print-${order.order_id}`}
+                        >
+                          {t("Print Ticket", "Imprimir Ticket")}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden" data-testid="pos-pickup-payment-card">
+            <div className="px-5 py-4 border-b border-slate-100 bg-slate-50">
+              <h2 className="font-semibold text-slate-900 flex items-center gap-2">
+                <DollarSign className="h-5 w-5 text-emerald-600" />
+                {t("Pickup & Delivery — Request Payment", "Pickup & Delivery — Solicitar pago")} ({pickupPaymentQueue.length})
+              </h2>
+            </div>
+            <div className="divide-y divide-slate-100">
+              {pickupPaymentQueue.length === 0 ? (
+                <div className="p-6 text-center text-slate-500" data-testid="pos-pickup-payment-empty">
+                  <p>{t("No pickup payments pending", "Sin pagos pendientes")}</p>
+                </div>
+              ) : (
+                pickupPaymentQueue.map((order) => {
+                  const amount = calculateServiceCharge(order);
+                  return (
+                    <div
+                      key={order.order_id}
+                      className="p-4 hover:bg-slate-50 transition-colors cursor-pointer"
+                      data-testid={`pos-pickup-payment-${order.order_id}`}
+                      role="button"
+                      onClick={() => setSelectedOrder(order)}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-mono font-semibold text-slate-900">{formatOrderId(order)}</span>
+                            <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${getStatusInfo(order.status).color}`}>
+                              {getStatusInfo(order.status).label}
+                            </span>
+                          </div>
+                          <div className="text-sm text-slate-600">{order.customer_name || t("Customer", "Cliente")}</div>
+                          <div className="text-xs text-slate-500 mt-1">
+                            {t("Charge", "Cobro")}: {amount ? formatCurrency(amount) : t("Set actual lbs", "Ingresa lbs reales")}
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          className="bg-emerald-600 hover:bg-emerald-700"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedOrder(order);
+                          }}
+                          data-testid={`pos-pickup-collect-${order.order_id}`}
+                        >
+                          {t("Collect", "Cobrar")}
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden" data-testid="pos-pickup-delivery-card">
+            <div className="px-5 py-4 border-b border-slate-100 bg-emerald-50">
+              <h2 className="font-semibold text-slate-900 flex items-center gap-2" data-testid="operator-delivery-section-title">
+                <CheckCircle className="h-5 w-5 text-emerald-600" />
+                {t("Pickup & Delivery — Deliveries in progress", "Pickup & Delivery — Entregas en curso")} ({pickupDeliveries.length})
+              </h2>
+            </div>
+            <div className="divide-y divide-slate-100">
+              {pickupDeliveries.length === 0 ? (
+                <div className="p-6 text-center text-slate-500" data-testid="operator-delivery-empty">
+                  <Package className="h-10 w-10 mx-auto mb-2 text-slate-300" />
+                  <p>{t("No deliveries in progress", "No hay entregas en curso")}</p>
+                </div>
+              ) : (
+                pickupDeliveries.map((order) => (
+                  <div
+                    key={order.order_id}
+                    className="p-4 hover:bg-slate-50 transition-colors cursor-pointer"
+                    data-testid={`pos-pickup-delivery-${order.order_id}`}
+                    role="button"
+                    onClick={() => setSelectedOrder(order)}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-mono font-semibold text-slate-900">{formatOrderId(order)}</span>
+                          <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${getStatusInfo(order.status).color}`}>
+                            {getStatusInfo(order.status).label}
+                          </span>
+                        </div>
+                        <div className="text-sm text-slate-600">{order.customer_name || t("Customer", "Cliente")}</div>
+                        <div className="text-xs text-slate-500 mt-1">
+                          {order.delivery_address || order.pickup_address || "-"}
+                        </div>
+                      </div>
+                      {(order.next_status || getNextStatus(order.status)) && (
+                        <Button
+                          size="sm"
+                          className="bg-emerald-600 hover:bg-emerald-700"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            updateOrderStatus(order.order_id, order.next_status || getNextStatus(order.status));
+                          }}
+                          disabled={updating[order.order_id]}
+                          data-testid={`pos-pickup-delivery-update-${order.order_id}`}
+                        >
+                          {updating[order.order_id] ? (
+                            <RefreshCw className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <>
+                              {order.action_label || getStatusInfo(order.next_status || getNextStatus(order.status)).label}
+                              <ChevronRight className="h-4 w-4 ml-1" />
+                            </>
+                          )}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden" data-testid="pos-washfold-dropoff-card">
+            <div className="px-5 py-4 border-b border-slate-100 bg-slate-50">
+              <h2 className="font-semibold text-slate-900 flex items-center gap-2">
+                <Package className="h-5 w-5 text-purple-600" />
+                {t("Wash & Fold Drop-Off", "Wash & Fold Drop-Off")} ({washFoldDropoffs.length})
+              </h2>
+            </div>
+            <div className="divide-y divide-slate-100">
+              {washFoldDropoffs.length === 0 ? (
+                <div className="p-6 text-center text-slate-500" data-testid="pos-washfold-dropoff-empty">
+                  <p>{t("No drop-offs waiting", "Sin entregas pendientes")}</p>
+                </div>
+              ) : (
+                washFoldDropoffs.map((order) => (
+                  <div
+                    key={order.order_id}
+                    className="p-4 hover:bg-slate-50 transition-colors cursor-pointer"
+                    data-testid={`pos-washfold-dropoff-${order.order_id}`}
+                    role="button"
+                    onClick={() => setSelectedOrder(order)}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-mono font-semibold text-slate-900">{formatOrderId(order)}</span>
+                          <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${getStatusInfo(order.status).color}`}>
+                            {getStatusInfo(order.status).label}
+                          </span>
+                        </div>
+                        <div className="text-sm text-slate-600">{order.customer_name || t("Customer", "Cliente")}</div>
+                        <div className="text-xs text-slate-500 mt-1">
+                          {order.pickup_date || t("Drop-off today", "Entrega hoy")}
+                        </div>
+                      </div>
+                      {(order.next_status || getNextStatus(order.status)) && (
+                        <Button
+                          size="sm"
+                          className="bg-purple-600 hover:bg-purple-700"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            updateOrderStatus(order.order_id, order.next_status || getNextStatus(order.status));
+                          }}
+                          disabled={updating[order.order_id]}
+                          data-testid={`pos-washfold-update-${order.order_id}`}
+                        >
+                          {updating[order.order_id] ? (
+                            <RefreshCw className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <>
+                              {order.action_label || getStatusInfo(order.next_status || getNextStatus(order.status)).label}
+                              <ChevronRight className="h-4 w-4 ml-1" />
+                            </>
+                          )}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden" data-testid="pos-washfold-payment-card">
+            <div className="px-5 py-4 border-b border-slate-100 bg-slate-50">
+              <h2 className="font-semibold text-slate-900 flex items-center gap-2">
+                <DollarSign className="h-5 w-5 text-emerald-600" />
+                {t("Wash & Fold — Request Payment", "Wash & Fold — Solicitar pago")} ({washFoldPaymentQueue.length})
+              </h2>
+            </div>
+            <div className="divide-y divide-slate-100">
+              {washFoldPaymentQueue.length === 0 ? (
+                <div className="p-6 text-center text-slate-500" data-testid="pos-washfold-payment-empty">
+                  <p>{t("No wash & fold payments pending", "Sin pagos pendientes")}</p>
+                </div>
+              ) : (
+                washFoldPaymentQueue.map((order) => {
+                  const amount = calculateServiceCharge(order);
+                  return (
+                    <div
+                      key={order.order_id}
+                      className="p-4 hover:bg-slate-50 transition-colors cursor-pointer"
+                      data-testid={`pos-washfold-payment-${order.order_id}`}
+                      role="button"
+                      onClick={() => setSelectedOrder(order)}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-mono font-semibold text-slate-900">{formatOrderId(order)}</span>
+                            <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${getStatusInfo(order.status).color}`}>
+                              {getStatusInfo(order.status).label}
+                            </span>
+                          </div>
+                          <div className="text-sm text-slate-600">{order.customer_name || t("Customer", "Cliente")}</div>
+                          <div className="text-xs text-slate-500 mt-1">
+                            {t("Charge", "Cobro")}: {amount ? formatCurrency(amount) : t("Set actual lbs", "Ingresa lbs reales")}
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          className="bg-emerald-600 hover:bg-emerald-700"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedOrder(order);
+                          }}
+                          data-testid={`pos-washfold-collect-${order.order_id}`}
+                        >
+                          {t("Collect", "Cobrar")}
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden" data-testid="pos-washfold-ready-card">
+            <div className="px-5 py-4 border-b border-slate-100 bg-emerald-50">
+              <h2 className="font-semibold text-slate-900 flex items-center gap-2">
+                <CheckCircle className="h-5 w-5 text-emerald-600" />
+                {t("Wash & Fold — Ready or Delivered", "Wash & Fold — Listas o entregadas")} ({washFoldReady.length})
+              </h2>
+            </div>
+            <div className="divide-y divide-slate-100">
+              {washFoldReady.length === 0 ? (
+                <div className="p-6 text-center text-slate-500" data-testid="pos-washfold-ready-empty">
+                  <p>{t("No wash & fold orders ready", "No hay órdenes listas")}</p>
+                </div>
+              ) : (
+                washFoldReady.map((order) => (
+                  <div
+                    key={order.order_id}
+                    className="p-4 hover:bg-slate-50 transition-colors cursor-pointer"
+                    data-testid={`pos-washfold-ready-${order.order_id}`}
+                    role="button"
+                    onClick={() => setSelectedOrder(order)}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-mono font-semibold text-slate-900">{formatOrderId(order)}</span>
+                          <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${getStatusInfo(order.status).color}`}>
+                            {getStatusInfo(order.status).label}
+                          </span>
+                        </div>
+                        <div className="text-sm text-slate-600">{order.customer_name || t("Customer", "Cliente")}</div>
+                        <div className="text-xs text-slate-500 mt-1">
+                          {t("Payment", "Pago")}: {getPaymentStatusLabel(order.payment_status)}
+                        </div>
+                      </div>
+                      {(order.next_status || getNextStatus(order.status)) && (
+                        <Button
+                          size="sm"
+                          className="bg-emerald-600 hover:bg-emerald-700"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            updateOrderStatus(order.order_id, order.next_status || getNextStatus(order.status));
+                          }}
+                          disabled={updating[order.order_id]}
+                          data-testid={`pos-washfold-ready-update-${order.order_id}`}
+                        >
+                          {updating[order.order_id] ? (
+                            <RefreshCw className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <>
+                              {order.action_label || getStatusInfo(order.next_status || getNextStatus(order.status)).label}
+                              <ChevronRight className="h-4 w-4 ml-1" />
+                            </>
+                          )}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
