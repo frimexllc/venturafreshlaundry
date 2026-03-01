@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { ShoppingBag, Plus, Minus, Trash2, ShoppingCart, Check, X } from "lucide-react";
@@ -32,6 +32,44 @@ export default function StorePage() {
   });
   const [searchParams] = useSearchParams();
 
+  const pollCheckoutStatus = useCallback(async (sessionId, attempt = 0) => {
+    const maxAttempts = 8;
+
+    try {
+      const res = await fetch(`${API_URL}/api/store/checkout/status/${sessionId}`);
+      if (!res.ok) throw new Error('status');
+
+      const data = await res.json();
+      const paymentStatus = (data?.payment_status || '').toLowerCase();
+      const checkoutStatus = (data?.status || '').toLowerCase();
+
+      if (paymentStatus === 'paid') {
+        toast.success(t('Payment completed successfully!', '¡Pago completado exitosamente!'));
+        localStorage.removeItem('cartId');
+        setCart(null);
+        return;
+      }
+
+      if (checkoutStatus === 'expired') {
+        toast.error(t('Payment session expired', 'La sesión de pago expiró'));
+        return;
+      }
+
+      if (attempt >= maxAttempts) {
+        toast.info(t('Payment pending, refresh in a moment', 'Pago pendiente, actualiza en un momento'));
+        return;
+      }
+
+      setTimeout(() => pollCheckoutStatus(sessionId, attempt + 1), 2000);
+    } catch (error) {
+      if (attempt >= maxAttempts) {
+        toast.error(t('Unable to verify payment', 'No se pudo verificar pago'));
+        return;
+      }
+      setTimeout(() => pollCheckoutStatus(sessionId, attempt + 1), 2000);
+    }
+  }, [t]);
+
   const formatApiError = (detail, fallback) => {
     if (!detail) return fallback;
     if (typeof detail === "string") return detail;
@@ -49,36 +87,16 @@ export default function StorePage() {
     const sessionId = searchParams.get('session_id');
 
     if (sessionId) {
-      fetch(`${API_URL}/api/store/checkout/status/${sessionId}`)
-        .then(res => {
-          if (!res.ok) throw new Error('status');
-          return res.json();
-        })
-        .then(data => {
-          if (data.payment_status === 'paid') {
-            toast.success(t('Payment completed successfully!', '¡Pago completado exitosamente!'));
-            localStorage.removeItem('cartId');
-            setCart(null);
-          } else if (status === 'cancelled') {
-            toast.error(t('Payment was cancelled', 'El pago fue cancelado'));
-          } else {
-            toast.info(t('Payment pending', 'Pago pendiente'));
-          }
-        })
-        .catch(() => {
-          toast.error(t('Unable to verify payment', 'No se pudo verificar pago'));
-        })
-        .finally(() => {
-          const cleanUrl = window.location.pathname;
-          window.history.replaceState({}, '', cleanUrl);
-        });
+      pollCheckoutStatus(sessionId);
+      const cleanUrl = window.location.pathname;
+      window.history.replaceState({}, '', cleanUrl);
       return;
     }
 
     if (status === 'cancelled') {
       toast.error(t('Payment was cancelled', 'El pago fue cancelado'));
     }
-  }, [searchParams, t]);
+  }, [pollCheckoutStatus, searchParams, t]);
 
   // Load products
   useEffect(() => {
