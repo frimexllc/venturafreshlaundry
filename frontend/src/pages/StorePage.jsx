@@ -106,8 +106,9 @@ export default function StorePage() {
   }, []);
 
   useEffect(() => {
-    if (!checkoutForm.address || checkoutForm.address.length < 5) {
+    if (!checkoutForm.address || checkoutForm.address.length < 6) {
       setShippingQuote({ distance_km: null, fee: 0 });
+      setShippingError("");
       return;
     }
     const timer = setTimeout(async () => {
@@ -121,17 +122,21 @@ export default function StorePage() {
         if (res.ok) {
           const data = await res.json();
           setShippingQuote(data);
+          setShippingError("");
         } else {
+          const error = await res.json();
           setShippingQuote({ distance_km: null, fee: 0 });
+          setShippingError(formatApiError(error.detail, t("Unable to calculate shipping", "No se pudo calcular envío")));
         }
       } catch (error) {
         setShippingQuote({ distance_km: null, fee: 0 });
+        setShippingError(t("Unable to calculate shipping", "No se pudo calcular envío"));
       } finally {
         setShippingLoading(false);
       }
     }, 600);
     return () => clearTimeout(timer);
-  }, [checkoutForm.address]);
+  }, [checkoutForm.address, t]);
 
 
   const createCart = async () => {
