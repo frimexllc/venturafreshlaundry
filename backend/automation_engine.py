@@ -944,40 +944,36 @@ async def get_operator_dashboard():
     """
     now = datetime.now(timezone.utc)
     today = now.strftime("%Y-%m-%d")
-    pickup_statuses = ["NEW", "CONFIRMED", "PICKUP_SCHEDULED", "PICKED_UP", "PROCESSING", "READY", "new", "confirmed", "pickup_scheduled", "picked_up", "processing", "ready"]
-    ready_statuses = ["PROCESSING", "processing", "READY", "ready", "OUT_FOR_DELIVERY", "out_for_delivery", "DELIVERED", "delivered"]
-    processing_statuses = ["PROCESSING", "processing"]
-    wash_fold_dropoff_statuses = ["NEW", "PROCESSING", "new", "processing"]
-    wash_fold_ready_statuses = ["READY", "DELIVERED", "ready", "delivered"]
 
-    todays_pickups = await db.orders.find({
-        "pickup_date": today,
-        "status": {"$in": pickup_statuses}
-    }, {"_id": 0}).sort("pickup_time", 1).to_list(50)
+    terminal_statuses = ["COMPLETED", "CANCELLED", "completed", "cancelled"]
+    pickup_delivery_statuses = {"PROCESSING", "READY", "OUT_FOR_DELIVERY", "DELIVERED"}
+    wash_fold_ready_statuses = {"READY", "DELIVERED", "OUT_FOR_DELIVERY"}
+    processing_statuses = {"PROCESSING"}
+    wash_fold_service_types = {
+        "wash_fold",
+        "wash_fold_dropoff",
+        "wash-fold",
+        "wash fold",
+        "wash_and_fold",
+        "wash&fold"
+    }
 
-    ready_for_delivery = await db.orders.find({
-        "status": {"$in": ready_statuses}
-    }, {"_id": 0}).to_list(50)
-
-    wash_fold_dropoffs = await db.orders.find({
-        "service_type": {"$in": ["wash_fold", "wash_fold_dropoff"]},
-        "status": {"$in": wash_fold_dropoff_statuses}
-    }, {"_id": 0}).sort("created_at", -1).to_list(50)
-
-    wash_fold_ready = await db.orders.find({
-        "service_type": {"$in": ["wash_fold", "wash_fold_dropoff"]},
-        "status": {"$in": wash_fold_ready_statuses}
-    }, {"_id": 0}).sort("updated_at", -1).to_list(50)
+    active_orders = await db.orders.find(
+        {"status": {"$nin": terminal_statuses}},
+        {"_id": 0}
+    ).sort("updated_at", -1).to_list(500)
 
     urgent_tickets = await db.tickets.find({
         "status": {"$in": ["OPEN", "open"]},
         "priority": {"$in": ["HIGH", "high"]}
     }, {"_id": 0}).to_list(20)
 
-    todays_pickups = await enrich_orders_with_customers(todays_pickups)
-    ready_for_delivery = await enrich_orders_with_customers(ready_for_delivery)
-    wash_fold_dropoffs = await enrich_orders_with_customers(wash_fold_dropoffs)
-    wash_fold_ready = await enrich_orders_with_customers(wash_fold_ready)
+    active_orders = await enrich_orders_with_customers(active_orders)
+
+    def normalize_service_type(service_type: Optional[str]) -> str:
+        if not service_type:
+            return "pickup_delivery"
+        return str(service_type).strip().lower()
 
     def normalize_order(order: Dict):
         status = normalize_status(order.get("status") or order.get("estado_actual"))
@@ -1016,14 +1012,45 @@ async def get_operator_dashboard():
             "created_at": order.get("created_at")
         }
 
-    todays_pickups = [normalize_order(order) for order in todays_pickups]
-    ready_for_delivery = [normalize_order(order) for order in ready_for_delivery]
-    wash_fold_dropoffs = [normalize_order(order) for order in wash_fold_dropoffs]
-    wash_fold_ready = [normalize_order(order) for order in wash_fold_ready]
+    normalized_orders = [normalize_order(order) for order in active_orders]
+
+    todays_pickups = []
+    ready_for_delivery = []
+    wash_fold_dropoffs = []
+    wash_fold_ready = []
+
+    for order in normalized_orders:
+        status = normalize_status(order.get("status")) or "NEW"
+        service_type = normalize_service_type(order.get("service_type"))
+        is_wash_fold = service_type in wash_fold_service_types
+
+        if is_wash_fold:
+            if status in wash_fold_ready_statuses:
+                wash_fold_ready.append(order)
+            else:
+                wash_fold_dropoffs.append(order)
+            continue
+
+        if status in pickup_delivery_statuses:
+            ready_for_delivery.append(order)
+        else:
+            todays_pickups.append(order)
+
+    pickups_remaining_today = len([
+        order for order in normalized_orders
+        if normalize_service_type(order.get("service_type")) not in wash_fold_service_types
+        and order.get("pickup_date") == today
+        and normalize_status(order.get("status")) not in {"PICKED_UP", "COMPLETED", "CANCELLED"}
+    ])
+
+    orders_in_processing = len([
+        order for order in normalized_orders
+        if normalize_status(order.get("status")) in processing_statuses
+    ])
     
     stats = {
-        "pickups_remaining_today": len([o for o in todays_pickups if o.get("status") != "PICKED_UP"]),
-        "orders_in_processing": await db.orders.count_documents({"status": {"$in": processing_statuses}}),
+        "pickups_remaining_today": pickups_remaining_today,
+        "orders_in_processing": orders_in_processing,
         "orders_ready": len(ready_for_delivery),
         "urgent_tickets": len(urgent_tickets)
     }
