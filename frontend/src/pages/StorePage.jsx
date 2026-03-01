@@ -18,6 +18,7 @@ export default function StorePage() {
   const [checkingOut, setCheckingOut] = useState(false);
   const [shippingLoading, setShippingLoading] = useState(false);
   const [shippingQuote, setShippingQuote] = useState({ distance_km: null, fee: 0 });
+  const [shippingError, setShippingError] = useState("");
   const [checkoutForm, setCheckoutForm] = useState({
     name: "",
     email: "",
