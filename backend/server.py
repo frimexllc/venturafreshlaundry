@@ -1621,7 +1621,7 @@ def should_notify_order_status(order: dict, status_value: str) -> bool:
 
     service_type = normalize_status(order.get("service_type") or "pickup_delivery")
     if service_type in ["wash_fold", "self_service"]:
-        return status_normalized == "ready"
+        return status_normalized in ["processing", "ready", "completed", "cancelled"]
 
     return status_normalized in ["ready", "out_for_delivery", "delivered"]
 
