@@ -63,6 +63,44 @@ def set_database(database):
     db = database
 
 
+PAID_PAYMENT_STATUSES = {"paid", "succeeded", "complete", "completed"}
+
+
+def resolve_public_base_url(request: Request) -> str:
+    app_url = os.environ.get("APP_URL")
+    if app_url:
+        return app_url.rstrip("/")
+
+    forwarded_host = request.headers.get("x-forwarded-host")
+    if forwarded_host:
+        proto = request.headers.get("x-forwarded-proto", "https")
+        host = forwarded_host.split(",")[0].strip()
+        if host:
+            return f"{proto}://{host}"
+
+    return str(request.base_url).rstrip("/")
+
+
+def normalize_payment_status(payment_status: Optional[str], session_status: Optional[str] = None) -> str:
+    raw_payment = (payment_status or "").strip().lower()
+    raw_session = (session_status or "").strip().lower()
+
+    if raw_payment in PAID_PAYMENT_STATUSES or raw_session in {"complete", "completed"}:
+        return "paid"
+
+    if raw_payment in {"expired", "failed", "canceled", "cancelled"}:
+        return raw_payment
+
+    if not raw_payment or raw_payment in {"unpaid", "open", "pending", "processing", "requires_action", "requires_payment_method"}:
+        return "pending"
+
+    return raw_payment
+
+
+def is_paid(payment_status: Optional[str], session_status: Optional[str] = None) -> bool:
+    return normalize_payment_status(payment_status, session_status) == "paid"
+
+
 def get_store_config():
     store_address = os.environ.get("STORE_ADDRESS")
     ors_api_key = os.environ.get("ORS_API_KEY")
