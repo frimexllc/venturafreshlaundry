@@ -852,7 +852,7 @@ async def create_checkout_session(checkout: CheckoutRequest, request: Request):
     if not stripe_api_key:
         raise HTTPException(status_code=500, detail="Payment configuration error")
 
-    host_url = str(request.base_url).rstrip("/")
+    host_url = resolve_public_base_url(request)
     webhook_url = f"{host_url}/api/webhook/stripe"
     success_url = f"{checkout.origin_url}/store?session_id={{CHECKOUT_SESSION_ID}}&status=success"
     cancel_url = f"{checkout.origin_url}/store?status=cancelled"
@@ -1265,7 +1265,7 @@ async def create_store_order_checkout(order_id: str, payload: StoreStripeCheckou
     if not stripe_api_key:
         raise HTTPException(status_code=500, detail="Payment configuration error")
 
-    host_url = str(request.base_url).rstrip("/")
+    host_url = resolve_public_base_url(request)
     webhook_url = f"{host_url}/api/webhook/stripe"
     success_url = f"{payload.origin_url}/admin/operator?store_session_id={{CHECKOUT_SESSION_ID}}&order_id={order_id}"
     cancel_url = f"{payload.origin_url}/admin/operator?order_id={order_id}&status=cancelled"
@@ -1374,7 +1374,7 @@ async def handle_stripe_webhook(request: Request):
     if not stripe_api_key:
         raise HTTPException(status_code=500, detail="Payment configuration error")
     
-    host_url = str(request.base_url).rstrip("/")
+    host_url = resolve_public_base_url(request)
     webhook_url = f"{host_url}/api/webhook/stripe"
     stripe_checkout = StripeCheckout(api_key=stripe_api_key, webhook_url=webhook_url)
     
@@ -1482,7 +1482,7 @@ async def create_membership_checkout(checkout: MembershipCheckoutRequest, reques
         raise HTTPException(status_code=500, detail="Payment configuration error")
     
     # Build URLs
-    host_url = str(request.base_url).rstrip("/")
+    host_url = resolve_public_base_url(request)
     webhook_url = f"{host_url}/api/webhook/stripe"
     success_url = f"{checkout.origin_url}/membership?session_id={{CHECKOUT_SESSION_ID}}&status=success"
     cancel_url = f"{checkout.origin_url}/membership?status=cancelled"
@@ -1735,7 +1735,7 @@ async def create_service_checkout(checkout: ServiceCheckoutRequest, request: Req
         raise HTTPException(status_code=500, detail="Payment configuration error")
     
     # Build URLs
-    host_url = str(request.base_url).rstrip("/")
+    host_url = resolve_public_base_url(request)
     webhook_url = f"{host_url}/api/webhook/stripe"
     success_url = f"{checkout.origin_url}/services?session_id={{CHECKOUT_SESSION_ID}}&status=success"
     cancel_url = f"{checkout.origin_url}/services?status=cancelled"
