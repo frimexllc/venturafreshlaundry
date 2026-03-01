@@ -188,7 +188,7 @@ export default function WashFoldRequest() {
             className="text-4xl sm:text-5xl font-bold text-slate-900 mb-4"
             style={{ fontFamily: "'Playfair Display', serif" }}
           >
-            {t("Wash & Fold Drop-Off", "Wash & Fold - Entrega")}
+            {t("Wash & Fold Drop-Off", "Wash & Fold - Entrega en tienda")}
           </h1>
 
           <p className="text-lg text-slate-600 max-w-2xl mx-auto">
