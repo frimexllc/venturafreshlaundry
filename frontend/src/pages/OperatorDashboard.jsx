@@ -1514,7 +1514,7 @@ export default function OperatorDashboard() {
             <div className="px-5 py-4 border-b border-slate-100 bg-emerald-50">
               <h2 className="font-semibold text-slate-900 flex items-center gap-2">
                 <CheckCircle className="h-5 w-5 text-emerald-600" />
-                {t("Wash & Fold — Ready or Delivered", "Wash & Fold — Listas o entregadas")}
+                {t("Wash & Fold — Ready for customer pickup", "Wash & Fold — Lista para recoger en tienda")}
                 <span className="ml-2 text-sm font-semibold text-slate-600" data-testid="pos-washfold-ready-count">({washFoldReady.length})</span>
               </h2>
             </div>
@@ -1867,6 +1867,9 @@ export default function OperatorDashboard() {
                       onChange={(e) => setStoreCheckoutForm({ ...storeCheckoutForm, address: e.target.value })}
                       data-testid="store-pos-address"
                     />
+                    <p className="text-xs text-slate-500 mt-1" data-testid="store-pos-address-format-help">
+                      {t("Format: street + number, city, state, ZIP", "Formato: calle y número, ciudad, estado, ZIP")}
+                    </p>
                   </div>
                 )}
                 <div>
@@ -1890,7 +1893,7 @@ export default function OperatorDashboard() {
                     {storeCheckoutForm.fulfillment_type === "delivery"
                       ? storeShippingQuote.distance_km
                         ? `$${storeShippingFee.toFixed(2)} (${storeShippingQuote.distance_km} km)`
-                        : t("Enter address", "Ingresa dirección")
+                        : t("Enter full address (street, city, state, ZIP)", "Ingresa dirección completa (calle, ciudad, estado, ZIP)")
                       : t("Pickup", "Recoger")}
                   </span>
                 </div>
