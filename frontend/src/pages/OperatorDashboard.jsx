@@ -493,9 +493,30 @@ export default function OperatorDashboard() {
     }
   };
 
-  const getNextStatus = (currentStatus) => {
+  const isWashFoldService = (serviceType) => {
+    const normalized = (serviceType || "").toString().trim().toLowerCase();
+    return ["wash_fold", "wash_fold_dropoff", "wash-fold", "wash fold", "wash_and_fold", "wash&fold"].includes(normalized);
+  };
+
+  const getNextStatus = (currentStatus, serviceType) => {
+    const normalizedStatus = (currentStatus || "").toString().toUpperCase();
+
+    if (isWashFoldService(serviceType)) {
+      const washFoldFlow = {
+        NEW: "PROCESSING",
+        CONFIRMED: "PROCESSING",
+        PICKUP_SCHEDULED: "PROCESSING",
+        PICKED_UP: "PROCESSING",
+        PROCESSING: "READY",
+        READY: "COMPLETED",
+        OUT_FOR_DELIVERY: "COMPLETED",
+        DELIVERED: "COMPLETED"
+      };
+      return washFoldFlow[normalizedStatus] || null;
+    }
+
     const statusOrder = ["NEW", "CONFIRMED", "PICKUP_SCHEDULED", "PICKED_UP", "PROCESSING", "READY", "OUT_FOR_DELIVERY", "DELIVERED", "COMPLETED"];
-    const currentIndex = statusOrder.indexOf(currentStatus);
+    const currentIndex = statusOrder.indexOf(normalizedStatus);
     if (currentIndex < statusOrder.length - 1) {
       return statusOrder[currentIndex + 1];
     }
