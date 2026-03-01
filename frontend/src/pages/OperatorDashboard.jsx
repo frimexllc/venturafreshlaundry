@@ -900,10 +900,12 @@ export default function OperatorDashboard() {
     if (!storePosOpen) return;
     if (storeCheckoutForm.fulfillment_type !== "delivery") {
       setStoreShippingQuote({ distance_km: null, fee: 0, zone_name: null });
+      setStoreShippingError("");
       return;
     }
-    if (!storeCheckoutForm.address) {
+    if (!storeCheckoutForm.address || storeCheckoutForm.address.trim().length < 6) {
       setStoreShippingQuote({ distance_km: null, fee: 0, zone_name: null });
+      setStoreShippingError("");
       return;
     }
     const timer = setTimeout(async () => {
@@ -916,11 +918,15 @@ export default function OperatorDashboard() {
         if (res.ok) {
           const data = await res.json();
           setStoreShippingQuote(data);
+          setStoreShippingError("");
         } else {
+          const error = await res.json();
           setStoreShippingQuote({ distance_km: null, fee: 0, zone_name: null });
+          setStoreShippingError(formatApiError(error.detail, t("Unable to calculate shipping", "No se pudo calcular envío")));
         }
       } catch (error) {
         setStoreShippingQuote({ distance_km: null, fee: 0, zone_name: null });
+        setStoreShippingError(t("Unable to calculate shipping", "No se pudo calcular envío"));
       }
     }, 600);
     return () => clearTimeout(timer);
