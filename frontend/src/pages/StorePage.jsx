@@ -469,10 +469,11 @@ export default function StorePage() {
                               : t("Enter address", "Ingresa dirección")}
                         </span>
                       </div>
-                      <div className="flex justify-between font-semibold text-slate-900">
-                        <span>{t("Total", "Total")}</span>
-                        <span>${orderTotal.toFixed(2)}</span>
-                      </div>
+                      {shippingError && (
+                        <p className="text-xs text-red-600 mt-2" data-testid="checkout-shipping-error">
+                          {shippingError}
+                        </p>
+                      )}
                     </div>
 
                     <Button
