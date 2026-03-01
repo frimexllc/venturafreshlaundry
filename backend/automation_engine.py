@@ -944,8 +944,8 @@ async def get_operator_dashboard():
     """
     now = datetime.now(timezone.utc)
     today = now.strftime("%Y-%m-%d")
-    pickup_statuses = ["NEW", "CONFIRMED", "PICKUP_SCHEDULED", "PICKED_UP", "new", "confirmed", "pickup_scheduled", "picked_up"]
-    ready_statuses = ["READY", "ready", "OUT_FOR_DELIVERY", "out_for_delivery", "DELIVERED", "delivered"]
+    pickup_statuses = ["NEW", "CONFIRMED", "PICKUP_SCHEDULED", "PICKED_UP", "PROCESSING", "READY", "new", "confirmed", "pickup_scheduled", "picked_up", "processing", "ready"]
+    ready_statuses = ["PROCESSING", "processing", "READY", "ready", "OUT_FOR_DELIVERY", "out_for_delivery", "DELIVERED", "delivered"]
     processing_statuses = ["PROCESSING", "processing"]
     wash_fold_dropoff_statuses = ["NEW", "PROCESSING", "new", "processing"]
     wash_fold_ready_statuses = ["READY", "DELIVERED", "ready", "delivered"]
