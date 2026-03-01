@@ -165,9 +165,14 @@ export default function StorePage() {
 
   const createCart = async () => {
     const res = await fetch(`${API_URL}/api/store/cart`, { method: 'POST' });
+    if (!res.ok) {
+      toast.error(t('Unable to create cart', 'No se pudo crear el carrito'));
+      return null;
+    }
     const newCart = await res.json();
     if (!newCart || !Array.isArray(newCart.items)) {
-      throw new Error('Invalid cart response');
+      toast.error(t('Invalid cart data', 'Datos de carrito inválidos'));
+      return null;
     }
     localStorage.setItem('cartId', newCart.id);
     setCart(newCart);
@@ -175,60 +180,76 @@ export default function StorePage() {
   };
 
   const addToCart = async (product) => {
-    let currentCart = cart;
-    if (!currentCart) {
-      currentCart = await createCart();
-    }
-
-    const res = await fetch(`${API_URL}/api/store/cart/${currentCart.id}/items`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ product_id: product.id, quantity: 1 })
-    });
-
-    if (res.ok) {
-      const updatedCart = await res.json();
-      if (!updatedCart || !Array.isArray(updatedCart.items)) {
-        throw new Error('Invalid cart response');
+    try {
+      let currentCart = cart;
+      if (!currentCart) {
+        currentCart = await createCart();
       }
-      setCart(updatedCart);
-      toast.success(t('{name} added to cart', '{name} agregado al carrito').replace('{name}', product.name));
-    } else {
-      const error = await res.json();
-      toast.error(formatApiError(error.detail, t('Error adding to cart', 'Error al agregar al carrito')));
+      if (!currentCart) return;
+
+      const res = await fetch(`${API_URL}/api/store/cart/${currentCart.id}/items`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ product_id: product.id, quantity: 1 })
+      });
+
+      if (res.ok) {
+        const updatedCart = await res.json();
+        if (!updatedCart || !Array.isArray(updatedCart.items)) {
+          toast.error(t('Invalid cart data', 'Datos de carrito inválidos'));
+          return;
+        }
+        setCart(updatedCart);
+        toast.success(t('{name} added to cart', '{name} agregado al carrito').replace('{name}', product.name));
+      } else {
+        const error = await res.json();
+        toast.error(formatApiError(error.detail, t('Error adding to cart', 'Error al agregar al carrito')));
+      }
+    } catch (error) {
+      toast.error(t('Connection error', 'Error de conexión'));
     }
   };
 
   const updateQuantity = async (productId, newQuantity) => {
     if (!cart) return;
 
-    const res = await fetch(`${API_URL}/api/store/cart/${cart.id}/items/${productId}?quantity=${newQuantity}`, {
-      method: 'PUT'
-    });
+    try {
+      const res = await fetch(`${API_URL}/api/store/cart/${cart.id}/items/${productId}?quantity=${newQuantity}`, {
+        method: 'PUT'
+      });
 
-    if (res.ok) {
-      const updatedCart = await res.json();
-      if (!updatedCart || !Array.isArray(updatedCart.items)) {
-        throw new Error('Invalid cart response');
+      if (res.ok) {
+        const updatedCart = await res.json();
+        if (!updatedCart || !Array.isArray(updatedCart.items)) {
+          toast.error(t('Invalid cart data', 'Datos de carrito inválidos'));
+          return;
+        }
+        setCart(updatedCart);
       }
-      setCart(updatedCart);
+    } catch (error) {
+      toast.error(t('Connection error', 'Error de conexión'));
     }
   };
 
   const removeFromCart = async (productId) => {
     if (!cart) return;
 
-    const res = await fetch(`${API_URL}/api/store/cart/${cart.id}/items/${productId}`, {
-      method: 'DELETE'
-    });
+    try {
+      const res = await fetch(`${API_URL}/api/store/cart/${cart.id}/items/${productId}`, {
+        method: 'DELETE'
+      });
 
-    if (res.ok) {
-      const updatedCart = await res.json();
-      if (!updatedCart || !Array.isArray(updatedCart.items)) {
-        throw new Error('Invalid cart response');
+      if (res.ok) {
+        const updatedCart = await res.json();
+        if (!updatedCart || !Array.isArray(updatedCart.items)) {
+          toast.error(t('Invalid cart data', 'Datos de carrito inválidos'));
+          return;
+        }
+        setCart(updatedCart);
+        toast.success(t('Product removed from cart', 'Producto eliminado del carrito'));
       }
-      setCart(updatedCart);
-      toast.success(t('Product removed from cart', 'Producto eliminado del carrito'));
+    } catch (error) {
+      toast.error(t('Connection error', 'Error de conexión'));
     }
   };
 
