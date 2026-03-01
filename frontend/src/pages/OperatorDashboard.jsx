@@ -1229,12 +1229,12 @@ export default function OperatorDashboard() {
                         </div>
                       </div>
                       <div className="flex flex-col gap-2">
-                        {(order.next_status || getNextStatus(order.status)) && (
+                        {(order.next_status || getNextStatus(order.status, order.service_type)) && (
                           <Button
                             size="sm"
                             onClick={(e) => {
                               e.stopPropagation();
-                              updateOrderStatus(order.order_id, order.next_status || getNextStatus(order.status));
+                              updateOrderStatus(order.order_id, order.next_status || getNextStatus(order.status, order.service_type));
                             }}
                             disabled={updating[order.order_id]}
                             className="bg-sky-600 hover:bg-sky-700"
@@ -1244,7 +1244,7 @@ export default function OperatorDashboard() {
                               <RefreshCw className="h-4 w-4 animate-spin" />
                             ) : (
                               <>
-                                {getStatusInfo(order.next_status || getNextStatus(order.status)).label}
+                                {getStatusInfo(order.next_status || getNextStatus(order.status, order.service_type)).label}
                                 <ChevronRight className="h-4 w-4 ml-1" />
                               </>
                             )}
@@ -1361,13 +1361,13 @@ export default function OperatorDashboard() {
                           {safeString(order.delivery_address || order.pickup_address, "-")}
                         </div>
                       </div>
-                      {(order.next_status || getNextStatus(order.status)) && (
+                      {(order.next_status || getNextStatus(order.status, order.service_type)) && (
                         <Button
                           size="sm"
                           className="bg-emerald-600 hover:bg-emerald-700"
                           onClick={(e) => {
                             e.stopPropagation();
-                            updateOrderStatus(order.order_id, order.next_status || getNextStatus(order.status));
+                            updateOrderStatus(order.order_id, order.next_status || getNextStatus(order.status, order.service_type));
                           }}
                           disabled={updating[order.order_id]}
                           data-testid={`pos-pickup-delivery-update-${order.order_id}`}
@@ -1376,7 +1376,7 @@ export default function OperatorDashboard() {
                             <RefreshCw className="h-4 w-4 animate-spin" />
                           ) : (
                             <>
-                              {getStatusInfo(order.next_status || getNextStatus(order.status)).label}
+                              {getStatusInfo(order.next_status || getNextStatus(order.status, order.service_type)).label}
                               <ChevronRight className="h-4 w-4 ml-1" />
                             </>
                           )}
@@ -1426,13 +1426,13 @@ export default function OperatorDashboard() {
                           {safeString(order.pickup_date, t("Drop-off today", "Entrega hoy"))}
                         </div>
                       </div>
-                      {(order.next_status || getNextStatus(order.status)) && (
+                      {(order.next_status || getNextStatus(order.status, order.service_type)) && (
                         <Button
                           size="sm"
                           className="bg-purple-600 hover:bg-purple-700"
                           onClick={(e) => {
                             e.stopPropagation();
-                            updateOrderStatus(order.order_id, order.next_status || getNextStatus(order.status));
+                            updateOrderStatus(order.order_id, order.next_status || getNextStatus(order.status, order.service_type));
                           }}
                           disabled={updating[order.order_id]}
                           data-testid={`pos-washfold-update-${order.order_id}`}
@@ -1441,7 +1441,7 @@ export default function OperatorDashboard() {
                             <RefreshCw className="h-4 w-4 animate-spin" />
                           ) : (
                             <>
-                              {getStatusInfo(order.next_status || getNextStatus(order.status)).label}
+                              {getStatusInfo(order.next_status || getNextStatus(order.status, order.service_type)).label}
                               <ChevronRight className="h-4 w-4 ml-1" />
                             </>
                           )}
@@ -1545,13 +1545,13 @@ export default function OperatorDashboard() {
                           {t("Payment", "Pago")}: {getPaymentStatusLabel(order.payment_status)}
                         </div>
                       </div>
-                      {(order.next_status || getNextStatus(order.status)) && (
+                      {(order.next_status || getNextStatus(order.status, order.service_type)) && (
                         <Button
                           size="sm"
                           className="bg-emerald-600 hover:bg-emerald-700"
                           onClick={(e) => {
                             e.stopPropagation();
-                            updateOrderStatus(order.order_id, order.next_status || getNextStatus(order.status));
+                            updateOrderStatus(order.order_id, order.next_status || getNextStatus(order.status, order.service_type));
                           }}
                           disabled={updating[order.order_id]}
                           data-testid={`pos-washfold-ready-update-${order.order_id}`}
@@ -1560,7 +1560,7 @@ export default function OperatorDashboard() {
                             <RefreshCw className="h-4 w-4 animate-spin" />
                           ) : (
                             <>
-                              {getStatusInfo(order.next_status || getNextStatus(order.status)).label}
+                              {getStatusInfo(order.next_status || getNextStatus(order.status, order.service_type)).label}
                               <ChevronRight className="h-4 w-4 ml-1" />
                             </>
                           )}
