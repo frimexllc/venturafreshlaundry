@@ -11,7 +11,7 @@ from typing import Dict, Optional
 import time
 
 # Configuration
-BASE_URL = "https://laundry-ai-hub.preview.emergentagent.com"
+BASE_URL = "https://pos-laundry-sys.preview.emergentagent.com"
 API_URL = f"{BASE_URL}/api"
 
 # Test data - use unique timestamps to avoid duplicates

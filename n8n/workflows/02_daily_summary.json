@@ -21,7 +21,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "https://laundry-ai-hub.preview.emergentagent.com/api/automation/daily-summary",
+        "url": "https://pos-laundry-sys.preview.emergentagent.com/api/automation/daily-summary",
         "options": {}
       },
       "id": "get-summary",
@@ -35,7 +35,7 @@
         "operation": "send",
         "subject": "=Daily Operations Summary - {{ $now.format('MMMM D, YYYY') }}",
         "emailType": "html",
-        "message": "=<h2>Daily Operations Summary</h2>\n<p>Generated: {{ $json.generated_at }}</p>\n\n<h3>📦 Orders</h3>\n<ul>\n<li>New Today: <strong>{{ $json.orders.new_today }}</strong></li>\n<li>Pickups Today: <strong>{{ $json.orders.pickups_today }}</strong></li>\n<li>Unassigned: <strong>{{ $json.orders.unassigned }}</strong></li>\n</ul>\n\n<h3>🎫 Tickets</h3>\n<ul>\n<li>Open: <strong>{{ $json.tickets.open }}</strong></li>\n<li>High Priority: <strong>{{ $json.tickets.high_priority }}</strong></li>\n<li>SLA at Risk: <strong style='color:red'>{{ $json.tickets.sla_at_risk }}</strong></li>\n</ul>\n\n<h3>💼 B2B Quotes</h3>\n<ul>\n<li>Pending Follow-up: <strong>{{ $json.quotes.pending_followup }}</strong></li>\n</ul>\n\n<h3>📈 Leads</h3>\n<ul>\n<li>New Today: <strong>{{ $json.leads.new_today }}</strong></li>\n</ul>\n\n<p><a href='https://laundry-ai-hub.preview.emergentagent.com/admin'>Open Dashboard →</a></p>",
+        "message": "=<h2>Daily Operations Summary</h2>\n<p>Generated: {{ $json.generated_at }}</p>\n\n<h3>📦 Orders</h3>\n<ul>\n<li>New Today: <strong>{{ $json.orders.new_today }}</strong></li>\n<li>Pickups Today: <strong>{{ $json.orders.pickups_today }}</strong></li>\n<li>Unassigned: <strong>{{ $json.orders.unassigned }}</strong></li>\n</ul>\n\n<h3>🎫 Tickets</h3>\n<ul>\n<li>Open: <strong>{{ $json.tickets.open }}</strong></li>\n<li>High Priority: <strong>{{ $json.tickets.high_priority }}</strong></li>\n<li>SLA at Risk: <strong style='color:red'>{{ $json.tickets.sla_at_risk }}</strong></li>\n</ul>\n\n<h3>💼 B2B Quotes</h3>\n<ul>\n<li>Pending Follow-up: <strong>{{ $json.quotes.pending_followup }}</strong></li>\n</ul>\n\n<h3>📈 Leads</h3>\n<ul>\n<li>New Today: <strong>{{ $json.leads.new_today }}</strong></li>\n</ul>\n\n<p><a href='https://pos-laundry-sys.preview.emergentagent.com/admin'>Open Dashboard →</a></p>",
         "options": {
           "appendAttribution": false
         }
