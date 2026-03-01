@@ -119,7 +119,7 @@ export default function WashFoldRequest() {
         name: fullName,
         email: form.email.trim(),
         phone: fullPhone,
-        address: fullAddress,
+        address: fullAddress || null,
         dropoff_date: form.dropoff_date,
         dropoff_time: form.dropoff_time,
         contact_method: form.contact_method,
@@ -193,8 +193,8 @@ export default function WashFoldRequest() {
 
           <p className="text-lg text-slate-600 max-w-2xl mx-auto">
             {t(
-              "Tell us how you want your clothes handled and we'll confirm your drop-off window.",
-              "Cuéntanos cómo quieres que manejen tu ropa y confirmaremos tu horario de entrega."
+              "Bring your clothes to our store and pick them up when ready. Share your preferences and we'll confirm timing.",
+              "Trae tu ropa a nuestra tienda y recógela cuando esté lista. Comparte tus preferencias y confirmaremos tiempos."
             )}
           </p>
         </div>
@@ -303,14 +303,19 @@ export default function WashFoldRequest() {
             </div>
 
             <div className="mb-6">
-              <h3 className="font-semibold text-slate-900 mb-3">{t("Address *", "Dirección *")}</h3>
+              <h3 className="font-semibold text-slate-900 mb-3">{t("Address (optional)", "Dirección (opcional)")}</h3>
+              <p className="text-xs text-slate-500 mb-3" data-testid="washfold-address-help">
+                {t(
+                  "Optional: only used for contact context. Drop-off and pickup are in-store.",
+                  "Opcional: solo se usa como referencia de contacto. La entrega y recolección son en tienda."
+                )}
+              </p>
               <div className="space-y-4">
                 <div>
-                  <Label className="text-slate-600 text-sm">{t("Address Line 1 *", "Dirección línea 1 *")}</Label>
+                  <Label className="text-slate-600 text-sm">{t("Address Line 1", "Dirección línea 1")}</Label>
                   <Input
                     value={form.address_line1}
                     onChange={(e) => setForm({ ...form, address_line1: e.target.value })}
-                    required
                     className="mt-1"
                     placeholder={t("Street address", "Dirección")}
                     data-testid="washfold-address1"
@@ -327,32 +332,29 @@ export default function WashFoldRequest() {
                 </div>
                 <div className="grid sm:grid-cols-3 gap-4">
                   <div>
-                    <Label className="text-slate-600 text-sm">{t("City *", "Ciudad *")}</Label>
+                    <Label className="text-slate-600 text-sm">{t("City", "Ciudad")}</Label>
                     <Input
                       value={form.city}
                       onChange={(e) => setForm({ ...form, city: e.target.value })}
-                      required
                       className="mt-1"
                       data-testid="washfold-city"
                     />
                   </div>
                   <div>
-                    <Label className="text-slate-600 text-sm">{t("State *", "Estado *")}</Label>
+                    <Label className="text-slate-600 text-sm">{t("State", "Estado")}</Label>
                     <Input
                       value={form.state}
                       onChange={(e) => setForm({ ...form, state: e.target.value })}
-                      required
                       className="mt-1"
                       placeholder={t("CA", "CA")}
                       data-testid="washfold-state"
                     />
                   </div>
                   <div>
-                    <Label className="text-slate-600 text-sm">{t("ZIP Code *", "Código postal *")}</Label>
+                    <Label className="text-slate-600 text-sm">{t("ZIP Code", "Código postal")}</Label>
                     <Input
                       value={form.zip_code}
                       onChange={(e) => setForm({ ...form, zip_code: e.target.value })}
-                      required
                       className="mt-1"
                       data-testid="washfold-zip"
                     />
