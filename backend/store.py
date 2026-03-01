@@ -1089,10 +1089,9 @@ async def get_checkout_status(session_id: str):
     
     try:
         status: CheckoutStatusResponse = await stripe_checkout.get_checkout_status(session_id)
-        
-        # Update payment transaction
-        payment_status = "paid" if status.payment_status == "paid" else status.payment_status
-        
+
+        payment_status = normalize_payment_status(status.payment_status, status.status)
+
         await db.payment_transactions.update_one(
             {"session_id": session_id},
             {
@@ -1102,35 +1101,45 @@ async def get_checkout_status(session_id: str):
                 }
             }
         )
-        
-        # If paid, update order status
+
         if payment_status == "paid":
-            transaction = await db.payment_transactions.find_one({"session_id": session_id})
-            if transaction:
-                order_id = transaction.get("order_id")
-                if order_id:
-                    order = await db.store_orders.find_one({"id": order_id})
-                    if order and order.get("payment_status") != "paid":
-                        await db.store_orders.update_one(
-                            {"id": order_id},
-                            {
-                                "$set": {
-                                    "payment_status": "paid",
-                                    "payment_method": "card",
-                                    "status": "confirmed",
-                                    "updated_at": datetime.now(timezone.utc).isoformat()
-                                }
-                            }
-                        )
-                        await apply_stock_deduction(order.get("items", []))
-                        customer_snapshot = {
-                            "name": order.get("customer_name"),
-                            "email": order.get("customer_email"),
-                            "phone": order.get("customer_phone"),
-                            "preferred_contact": order.get("preferred_contact")
+            transaction = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
+            order_id = transaction.get("order_id") if transaction else None
+
+            order = None
+            if order_id:
+                order = await db.store_orders.find_one({"id": order_id}, {"_id": 0})
+            if not order:
+                order = await db.store_orders.find_one({"stripe_session_id": session_id}, {"_id": 0})
+
+            if order and (order.get("payment_status") or "").lower() != "paid":
+                now = datetime.now(timezone.utc).isoformat()
+                await db.store_orders.update_one(
+                    {"id": order.get("id")},
+                    {
+                        "$set": {
+                            "payment_status": "paid",
+                            "payment_method": "card",
+                            "status": "confirmed",
+                            "updated_at": now
                         }
-                        await notify_store_order(customer_snapshot, order)
-        
+                    }
+                )
+                await apply_stock_deduction(order.get("items", []))
+                customer_snapshot = {
+                    "name": order.get("customer_name"),
+                    "email": order.get("customer_email"),
+                    "phone": order.get("customer_phone"),
+                    "preferred_contact": order.get("preferred_contact")
+                }
+                order_for_notify = {
+                    **order,
+                    "payment_status": "paid",
+                    "payment_method": "card",
+                    "status": "confirmed"
+                }
+                await notify_store_order(customer_snapshot, order_for_notify)
+
         return {
             "status": status.status,
             "payment_status": payment_status,
