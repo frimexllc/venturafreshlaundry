@@ -116,7 +116,13 @@ export default function StorePage() {
           if (res.ok) return res.json();
           throw new Error('Cart not found');
         })
-        .then(setCart)
+        .then((data) => {
+          if (data && Array.isArray(data.items)) {
+            setCart(data);
+          } else {
+            throw new Error('Invalid cart response');
+          }
+        })
         .catch(() => {
           localStorage.removeItem('cartId');
         });
@@ -160,6 +166,9 @@ export default function StorePage() {
   const createCart = async () => {
     const res = await fetch(`${API_URL}/api/store/cart`, { method: 'POST' });
     const newCart = await res.json();
+    if (!newCart || !Array.isArray(newCart.items)) {
+      throw new Error('Invalid cart response');
+    }
     localStorage.setItem('cartId', newCart.id);
     setCart(newCart);
     return newCart;
@@ -179,6 +188,9 @@ export default function StorePage() {
 
     if (res.ok) {
       const updatedCart = await res.json();
+      if (!updatedCart || !Array.isArray(updatedCart.items)) {
+        throw new Error('Invalid cart response');
+      }
       setCart(updatedCart);
       toast.success(t('{name} added to cart', '{name} agregado al carrito').replace('{name}', product.name));
     } else {
@@ -196,6 +208,9 @@ export default function StorePage() {
 
     if (res.ok) {
       const updatedCart = await res.json();
+      if (!updatedCart || !Array.isArray(updatedCart.items)) {
+        throw new Error('Invalid cart response');
+      }
       setCart(updatedCart);
     }
   };
@@ -209,6 +224,9 @@ export default function StorePage() {
 
     if (res.ok) {
       const updatedCart = await res.json();
+      if (!updatedCart || !Array.isArray(updatedCart.items)) {
+        throw new Error('Invalid cart response');
+      }
       setCart(updatedCart);
       toast.success(t('Product removed from cart', 'Producto eliminado del carrito'));
     }
