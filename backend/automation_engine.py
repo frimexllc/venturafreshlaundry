@@ -1126,6 +1126,20 @@ async def update_order_status(order_id: str, new_status: str, notes: Optional[st
     order = await db.orders.find_one({"$or": [{"order_id": order_id}, {"id": order_id}, {"order_number": order_id}]})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
+
+    if is_wash_fold_service(order.get("service_type")):
+        disallowed_wash_fold_statuses = {
+            "CONFIRMED",
+            "PICKUP_SCHEDULED",
+            "PICKED_UP",
+            "OUT_FOR_DELIVERY",
+            "DELIVERED"
+        }
+        if status_value in disallowed_wash_fold_statuses:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid status for Wash & Fold Drop-Off. Use NEW -> PROCESSING -> READY -> COMPLETED"
+            )
     
     old_status = order.get("status")
     
