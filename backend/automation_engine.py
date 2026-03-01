@@ -89,7 +89,7 @@ STATUS_FLOW = [
     "COMPLETED"
 ]
 
-STATUS_ACTION_LABELS = {
+PICKUP_ACTION_LABELS = {
     "NEW": "Confirmar",
     "CONFIRMED": "Programar Pickup",
     "PICKUP_SCHEDULED": "Recogido",
@@ -100,21 +100,75 @@ STATUS_ACTION_LABELS = {
     "DELIVERED": "Completar"
 }
 
+WASH_FOLD_SERVICE_TYPES = {
+    "wash_fold",
+    "wash_fold_dropoff",
+    "wash-fold",
+    "wash fold",
+    "wash_and_fold",
+    "wash&fold"
+}
+
+WASH_FOLD_NEXT_STATUS_BY_STATUS = {
+    "NEW": "PROCESSING",
+    "CONFIRMED": "PROCESSING",
+    "PICKUP_SCHEDULED": "PROCESSING",
+    "PICKED_UP": "PROCESSING",
+    "PROCESSING": "READY",
+    "READY": "COMPLETED",
+    "OUT_FOR_DELIVERY": "COMPLETED",
+    "DELIVERED": "COMPLETED"
+}
+
+WASH_FOLD_ACTION_LABELS = {
+    "NEW": "Procesar",
+    "CONFIRMED": "Procesar",
+    "PICKUP_SCHEDULED": "Procesar",
+    "PICKED_UP": "Procesar",
+    "PROCESSING": "Listo",
+    "READY": "Completar",
+    "OUT_FOR_DELIVERY": "Completar",
+    "DELIVERED": "Completar"
+}
+
+
+def normalize_service_type(service_type: Optional[str]) -> str:
+    if not service_type:
+        return "pickup_delivery"
+    return str(service_type).strip().lower()
+
+
+def is_wash_fold_service(service_type: Optional[str]) -> bool:
+    return normalize_service_type(service_type) in WASH_FOLD_SERVICE_TYPES
+
 def normalize_status(value: Optional[str]):
     if not value:
         return None
     return value.upper()
 
-def get_next_status(value: Optional[str]):
+def get_next_status(value: Optional[str], service_type: Optional[str] = None):
     if not value:
         return None
     value = normalize_status(value)
+
+    if is_wash_fold_service(service_type):
+        return WASH_FOLD_NEXT_STATUS_BY_STATUS.get(value)
+
     if value not in STATUS_FLOW:
         return None
     index = STATUS_FLOW.index(value)
     if index < len(STATUS_FLOW) - 1:
         return STATUS_FLOW[index + 1]
     return None
+
+
+def get_action_label(status: Optional[str], service_type: Optional[str] = None):
+    normalized_status = normalize_status(status)
+    if not normalized_status:
+        return None
+    if is_wash_fold_service(service_type):
+        return WASH_FOLD_ACTION_LABELS.get(normalized_status)
+    return PICKUP_ACTION_LABELS.get(normalized_status)
 
 async def enrich_orders_with_customers(orders: List[Dict]):
     customer_ids = {o.get("customer_id") for o in orders if o.get("customer_id")}
