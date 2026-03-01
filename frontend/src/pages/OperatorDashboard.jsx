@@ -742,6 +742,9 @@ export default function OperatorDashboard() {
       ]);
       if (cartRes.ok) {
         const cartData = await cartRes.json();
+        if (!cartData || !Array.isArray(cartData.items)) {
+          throw new Error("Invalid cart response");
+        }
         setStoreCart(cartData);
       }
       if (productsRes.ok) {
@@ -804,6 +807,9 @@ export default function OperatorDashboard() {
       }
       if (res.ok) {
         const data = await res.json();
+        if (!data || !Array.isArray(data.items)) {
+          throw new Error("Invalid cart response");
+        }
         setStoreCart(data);
       } else {
         const error = await res.json();
