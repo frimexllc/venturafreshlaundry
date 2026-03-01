@@ -124,7 +124,7 @@ export default function StorePage() {
   }, []);
 
   useEffect(() => {
-    if (!checkoutForm.address || checkoutForm.address.length < 6) {
+    if (!checkoutForm.address || checkoutForm.address.trim().length < 10) {
       setShippingQuote({ distance_km: null, fee: 0 });
       setShippingError("");
       return;
