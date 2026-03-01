@@ -133,6 +133,8 @@ RECEIVED → PROCESSING → READY → OUT_FOR_DELIVERY → DELIVERED → COMPLET
 - ✅ **Validación de estados wash_fold**: se bloquean transiciones inválidas (`PICKUP_*`, `OUT_FOR_DELIVERY`, `DELIVERED`, `CONFIRMED`) con error claro de negocio.
 - ✅ **Formulario público `/wash-fold` actualizado**: dirección ahora opcional y explícitamente “solo para contacto”; la orden se crea como drop-off/pickup en tienda.
 - ✅ **UX checkout de envío**: helper visible con formato correcto de dirección (`street + number, city, state, ZIP`) en tienda pública y POS operador.
+- ✅ **Notificaciones Wash & Fold ampliadas**: ahora se notifican estados `processing`, `ready`, `completed` y `cancelled` respetando la preferencia del cliente (`sms/email/whatsapp/call`).
+- ✅ **Persistencia de preferencia en orden**: el formulario público Wash & Fold guarda `preferred_contact` en la orden para trazabilidad; también se expone en `GET /api/orders`.
 
 ## Pendientes / Issues
 **P1**
