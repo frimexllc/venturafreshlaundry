@@ -129,6 +129,10 @@ RECEIVED → PROCESSING → READY → OUT_FOR_DELIVERY → DELIVERED → COMPLET
 - ✅ **P0/P1** frontend: polling de confirmación de pago en `/store` y `/admin/operator` para evitar quedarse en `pending` tras redirección.
 - ✅ **P1** shipping quote endurecido: geocoding con fallback (con y sin `boundary.country`) para reducir errores 400 en direcciones válidas.
 - ✅ **P1** robustez carrito multi-item: validaciones defensivas de respuesta de carrito para prevenir crashes de UI.
+- ✅ **Wash & Fold Drop-Off corregido**: flujo operativo sin pickup/delivery forzado a `NEW → PROCESSING → READY → COMPLETED` (backend + operator dashboard).
+- ✅ **Validación de estados wash_fold**: se bloquean transiciones inválidas (`PICKUP_*`, `OUT_FOR_DELIVERY`, `DELIVERED`, `CONFIRMED`) con error claro de negocio.
+- ✅ **Formulario público `/wash-fold` actualizado**: dirección ahora opcional y explícitamente “solo para contacto”; la orden se crea como drop-off/pickup en tienda.
+- ✅ **UX checkout de envío**: helper visible con formato correcto de dirección (`street + number, city, state, ZIP`) en tienda pública y POS operador.
 
 ## Pendientes / Issues
 **P1**
