@@ -334,6 +334,7 @@ class OrderResponse(BaseModel):
     estimated_lbs: Optional[float] = None
     actual_lbs: Optional[float] = None
     notes: Optional[str] = None
+    preferred_contact: Optional[str] = None
     gate_code: Optional[str] = None
     preferences_id: Optional[str] = None
     preferences_snapshot: Optional[dict] = None
