@@ -123,26 +123,47 @@ def get_ors_client():
 
 def geocode_address(address: str):
     _, ors_api_key, _, _, _ = get_store_config()
-    response = requests.get(
-        "https://api.openrouteservice.org/geocode/search",
-        params={
+    normalized_address = normalize_spaces(address)
+    if not normalized_address:
+        raise HTTPException(status_code=400, detail="Unable to geocode address")
+
+    attempts = [
+        {
             "api_key": ors_api_key,
-            "text": address,
+            "text": normalized_address,
             "size": 1,
             "boundary.country": "USA"
         },
-        timeout=15
-    )
-    if response.status_code != 200:
-        raise HTTPException(status_code=400, detail="Unable to geocode address")
-    result = response.json()
-    features = result.get("features", []) if result else []
-    if not features:
-        raise HTTPException(status_code=400, detail="Unable to geocode address")
-    coordinates = features[0].get("geometry", {}).get("coordinates")
-    if not coordinates or len(coordinates) < 2:
-        raise HTTPException(status_code=400, detail="Unable to geocode address")
-    return coordinates
+        {
+            "api_key": ors_api_key,
+            "text": normalized_address,
+            "size": 1
+        }
+    ]
+
+    for params in attempts:
+        try:
+            response = requests.get(
+                "https://api.openrouteservice.org/geocode/search",
+                params=params,
+                timeout=15
+            )
+        except requests.RequestException:
+            continue
+
+        if response.status_code != 200:
+            continue
+
+        result = response.json() if response.content else {}
+        features = result.get("features", []) if result else []
+        if not features:
+            continue
+
+        coordinates = features[0].get("geometry", {}).get("coordinates")
+        if coordinates and len(coordinates) >= 2:
+            return coordinates
+
+    raise HTTPException(status_code=400, detail="Unable to geocode address")
 
 
 async def calculate_shipping_fee(address: str) -> Dict[str, float]:
