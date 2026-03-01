@@ -34,7 +34,7 @@ class PublicWashFoldRequest(BaseModel):
     name: str
     email: EmailStr
     phone: str
-    address: str
+    address: Optional[str] = None
     dropoff_date: Optional[str] = None
     dropoff_time: Optional[str] = None
     notes: Optional[str] = None
@@ -287,8 +287,9 @@ def get_public_forms_router(
             "service_type": "wash_fold",
             "pickup_date": data.dropoff_date,
             "pickup_time_window": data.dropoff_time,
-            "pickup_address": normalized_address,
-            "delivery_address": normalized_address,
+            "pickup_address": None,
+            "delivery_address": None,
+            "contact_address": normalized_address,
             "estimated_lbs": None,
             "actual_lbs": None,
             "notes": notes_payload,
