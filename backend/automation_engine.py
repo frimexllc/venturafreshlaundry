@@ -1003,14 +1003,6 @@ async def get_operator_dashboard():
     pickup_delivery_statuses = {"PROCESSING", "READY", "OUT_FOR_DELIVERY", "DELIVERED"}
     wash_fold_ready_statuses = {"READY", "DELIVERED", "OUT_FOR_DELIVERY"}
     processing_statuses = {"PROCESSING"}
-    wash_fold_service_types = {
-        "wash_fold",
-        "wash_fold_dropoff",
-        "wash-fold",
-        "wash fold",
-        "wash_and_fold",
-        "wash&fold"
-    }
 
     active_orders = await db.orders.find(
         {"status": {"$nin": terminal_statuses}},
@@ -1024,30 +1016,26 @@ async def get_operator_dashboard():
 
     active_orders = await enrich_orders_with_customers(active_orders)
 
-    def normalize_service_type(service_type: Optional[str]) -> str:
-        if not service_type:
-            return "pickup_delivery"
-        return str(service_type).strip().lower()
-
     def normalize_order(order: Dict):
         status = normalize_status(order.get("status") or order.get("estado_actual"))
         order_id = order.get("order_id") or order.get("order_number") or order.get("id")
         pickup_time = order.get("pickup_time") or order.get("pickup_time_window")
         delivery_address = order.get("delivery_address") or order.get("pickup_address")
+        service_type = order.get("service_type")
         return {
             "order_id": order_id,
             "id": order.get("id"),
             "order_number": order.get("order_number") or order.get("order_id"),
             "status": status,
-            "next_status": get_next_status(status),
-            "action_label": STATUS_ACTION_LABELS.get(status),
+            "next_status": get_next_status(status, service_type),
+            "action_label": get_action_label(status, service_type),
             "customer_name": order.get("customer_name"),
             "customer_phone": order.get("customer_phone"),
             "customer_email": order.get("customer_email"),
             "preferred_contact": order.get("preferred_contact"),
             "membership_plan": order.get("membership_plan"),
             "membership_status": order.get("membership_status"),
-            "service_type": order.get("service_type"),
+            "service_type": service_type,
             "pickup_date": order.get("pickup_date"),
             "pickup_time": pickup_time,
             "pickup_address": order.get("pickup_address"),
@@ -1076,7 +1064,7 @@ async def get_operator_dashboard():
     for order in normalized_orders:
         status = normalize_status(order.get("status")) or "NEW"
         service_type = normalize_service_type(order.get("service_type"))
-        is_wash_fold = service_type in wash_fold_service_types
+        is_wash_fold = service_type in WASH_FOLD_SERVICE_TYPES
 
         if is_wash_fold:
             if status in wash_fold_ready_statuses:
@@ -1092,7 +1080,7 @@ async def get_operator_dashboard():
 
     pickups_remaining_today = len([
         order for order in normalized_orders
-        if normalize_service_type(order.get("service_type")) not in wash_fold_service_types
+        if normalize_service_type(order.get("service_type")) not in WASH_FOLD_SERVICE_TYPES
         and order.get("pickup_date") == today
         and normalize_status(order.get("status")) not in {"PICKED_UP", "COMPLETED", "CANCELLED"}
     ])
