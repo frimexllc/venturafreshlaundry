@@ -207,6 +207,11 @@ export default function StorePage() {
       return;
     }
 
+    if (shippingError) {
+      toast.error(shippingError);
+      return;
+    }
+
     if (!shippingQuote.fee) {
       toast.error(t('Enter a valid address to calculate shipping', 'Ingresa una dirección válida para calcular el envío'));
       return;
