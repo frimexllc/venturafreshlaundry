@@ -960,12 +960,12 @@ async def get_operator_dashboard():
     }, {"_id": 0}).to_list(50)
 
     wash_fold_dropoffs = await db.orders.find({
-        "service_type": {"$in": ["wash_fold"]},
+        "service_type": {"$in": ["wash_fold", "wash_fold_dropoff"]},
         "status": {"$in": wash_fold_dropoff_statuses}
     }, {"_id": 0}).sort("created_at", -1).to_list(50)
 
     wash_fold_ready = await db.orders.find({
-        "service_type": {"$in": ["wash_fold"]},
+        "service_type": {"$in": ["wash_fold", "wash_fold_dropoff"]},
         "status": {"$in": wash_fold_ready_statuses}
     }, {"_id": 0}).sort("updated_at", -1).to_list(50)
 
