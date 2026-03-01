@@ -1841,6 +1841,9 @@ export default function OperatorDashboard() {
                 {storeShippingQuote.zone_name && storeCheckoutForm.fulfillment_type === "delivery" && (
                   <p className="text-xs text-slate-500" data-testid="store-pos-zone">{safeString(storeShippingQuote.zone_name)}</p>
                 )}
+                {storeShippingError && storeCheckoutForm.fulfillment_type === "delivery" && (
+                  <p className="text-xs text-red-600" data-testid="store-pos-shipping-error">{storeShippingError}</p>
+                )}
                 <div className="flex items-center justify-between font-semibold">
                   <span>{t("Total", "Total")}</span>
                   <span>${storeOrderTotal.toFixed(2)}</span>
