@@ -611,7 +611,8 @@ async def notify_order_status_changed(customer: Dict, order: Dict, new_status: s
 
     service_type = normalize_status_value(order.get("service_type") or "pickup_delivery")
     if service_type in ["wash_fold", "self_service"]:
-        if status_normalized != "ready":
+        wash_fold_notifiable_statuses = ["processing", "ready", "completed", "cancelled"]
+        if status_normalized not in wash_fold_notifiable_statuses:
             return False
     else:
         if status_normalized not in ["ready", "out_for_delivery", "delivered"]:
