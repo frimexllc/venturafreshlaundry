@@ -679,33 +679,58 @@ export default function OperatorDashboard() {
     }
   }, [stripePolling]);
 
+  const pollStoreCheckoutStatus = useCallback(async (sessionId, attempt = 0) => {
+    const maxAttempts = 8;
+
+    try {
+      const res = await fetch(`${API_URL}/api/store/checkout/status/${sessionId}`);
+      if (!res.ok) throw new Error("status");
+
+      const data = await res.json();
+      const paymentStatus = (data?.payment_status || "").toLowerCase();
+      const checkoutStatus = (data?.status || "").toLowerCase();
+
+      if (paymentStatus === "paid") {
+        toast.success(t("Store payment confirmed", "Pago de tienda confirmado"));
+        await loadStoreOrders();
+        return;
+      }
+
+      if (checkoutStatus === "expired") {
+        toast.error(t("Store payment expired", "Pago de tienda expirado"));
+        await loadStoreOrders();
+        return;
+      }
+
+      if (attempt >= maxAttempts) {
+        toast.info(t("Store payment pending", "Pago de tienda pendiente"));
+        await loadStoreOrders();
+        return;
+      }
+
+      setTimeout(() => {
+        pollStoreCheckoutStatus(sessionId, attempt + 1);
+      }, 2000);
+    } catch (error) {
+      if (attempt >= maxAttempts) {
+        toast.error(t("Unable to verify payment", "No se pudo verificar pago"));
+        await loadStoreOrders();
+        return;
+      }
+      setTimeout(() => {
+        pollStoreCheckoutStatus(sessionId, attempt + 1);
+      }, 2000);
+    }
+  }, [loadStoreOrders, t]);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const storeSessionId = params.get("store_session_id");
     if (!storeSessionId) return;
-    const checkStatus = async () => {
-      try {
-        const res = await fetch(`${API_URL}/api/store/checkout/status/${storeSessionId}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.payment_status === "paid") {
-            toast.success(t("Store payment confirmed", "Pago de tienda confirmado"));
-          } else {
-            toast.info(t("Store payment pending", "Pago de tienda pendiente"));
-          }
-        } else {
-          toast.error(t("Unable to verify payment", "No se pudo verificar pago"));
-        }
-      } catch (error) {
-        toast.error(t("Unable to verify payment", "No se pudo verificar pago"));
-      } finally {
-        await loadStoreOrders();
-        const cleanUrl = window.location.pathname;
-        window.history.replaceState({}, "", cleanUrl);
-      }
-    };
-    checkStatus();
-  }, [loadStoreOrders, t]);
+    pollStoreCheckoutStatus(storeSessionId);
+    const cleanUrl = window.location.pathname;
+    window.history.replaceState({}, "", cleanUrl);
+  }, [pollStoreCheckoutStatus]);
 
   const openStorePos = async () => {
     setStorePosOpen(true);
