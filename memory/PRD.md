@@ -123,14 +123,22 @@ RECEIVED → PROCESSING → READY → OUT_FOR_DELIVERY → DELIVERED → COMPLET
 - ✅ Finanzas: KPIs + breakdown por métodos de pago y tienda/servicio.
 - ✅ WebSocket: client con upgrade a websocket + polling fallback.
 
+## Cambios recientes (2026-03-01)
+- ✅ **P0** corregido: el dashboard de operador ahora clasifica órdenes activas por estado/servicio sin filtro rígido de fecha; las órdenes no desaparecen al avanzar de estado.
+- ✅ **P0** Stripe tienda reforzado: normalización de estados de pago (`complete/paid`), actualización robusta de orden por `order_id` o `stripe_session_id`, y URL pública para webhook.
+- ✅ **P0/P1** frontend: polling de confirmación de pago en `/store` y `/admin/operator` para evitar quedarse en `pending` tras redirección.
+- ✅ **P1** shipping quote endurecido: geocoding con fallback (con y sin `boundary.country`) para reducir errores 400 en direcciones válidas.
+- ✅ **P1** robustez carrito multi-item: validaciones defensivas de respuesta de carrito para prevenir crashes de UI.
+
 ## Pendientes / Issues
 **P1**
-- Validar estabilidad de tiempo real (WebSocket/polling) en producción
+- Validar webhook Stripe end-to-end en entorno productivo con eventos reales entrantes
 - Export CSV avanzado con filtros por canal y método de pago
 - Módulo Admin para monitorear estados y errores de mensajes Twilio
 - Verificación de dominio SendGrid/Twilio Trust (DNS) pendiente en proveedor de dominio
 
 **P2**
+- Estabilizar WebSocket en producción (fallback ya funcional en preview)
 - Corregir warnings React (jsx/keys)
 
 ## Credenciales de prueba
