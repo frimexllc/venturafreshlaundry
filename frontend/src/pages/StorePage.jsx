@@ -474,6 +474,10 @@ export default function StorePage() {
                           {shippingError}
                         </p>
                       )}
+                      <div className="flex justify-between font-semibold text-slate-900">
+                        <span>{t("Total", "Total")}</span>
+                        <span>${orderTotal.toFixed(2)}</span>
+                      </div>
                     </div>
 
                     <Button
