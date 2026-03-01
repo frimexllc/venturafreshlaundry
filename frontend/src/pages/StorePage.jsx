@@ -270,7 +270,7 @@ export default function StorePage() {
     }
 
     if (!shippingQuote.fee) {
-      toast.error(t('Enter a valid address to calculate shipping', 'Ingresa una dirección válida para calcular el envío'));
+      toast.error(t('Enter full address (street, city, state, ZIP)', 'Ingresa dirección completa (calle, ciudad, estado, ZIP)'));
       return;
     }
 
@@ -456,6 +456,9 @@ export default function StorePage() {
                           className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
                           data-testid="checkout-address"
                         />
+                        <p className="text-xs text-slate-500 mt-1" data-testid="checkout-address-format-help">
+                          {t("Format: street + number, city, state, ZIP", "Formato: calle y número, ciudad, estado, ZIP")}
+                        </p>
                       </div>
                       <div>
                         <label className="text-xs font-medium text-slate-600">{t("Apartment / Suite", "Apto / Suite")}</label>
@@ -528,7 +531,7 @@ export default function StorePage() {
                             ? t("Calculating...", "Calculando...")
                             : shippingQuote.distance_km
                               ? `$${shippingFee.toFixed(2)} (${shippingQuote.distance_km} km)`
-                              : t("Enter address", "Ingresa dirección")}
+                              : t("Enter full address (street, city, state, ZIP)", "Ingresa dirección completa (calle, ciudad, estado, ZIP)")}
                         </span>
                       </div>
                       {shippingError && (
