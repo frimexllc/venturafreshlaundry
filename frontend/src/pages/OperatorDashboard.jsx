@@ -932,7 +932,7 @@ export default function OperatorDashboard() {
       setStoreShippingError("");
       return;
     }
-    if (!storeCheckoutForm.address || storeCheckoutForm.address.trim().length < 6) {
+    if (!storeCheckoutForm.address || storeCheckoutForm.address.trim().length < 10) {
       setStoreShippingQuote({ distance_km: null, fee: 0, zone_name: null });
       setStoreShippingError("");
       return;
