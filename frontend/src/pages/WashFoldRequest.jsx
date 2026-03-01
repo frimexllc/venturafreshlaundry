@@ -19,6 +19,25 @@ import { useLocale } from "../context/LocaleContext";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
+// Lista de códigos de país comunes
+const countryCodes = [
+  { value: "+1", label: "USA/Canadá (+1)" },
+  { value: "+52", label: "México (+52)" },
+  { value: "+34", label: "España (+34)" },
+  { value: "+44", label: "Reino Unido (+44)" },
+  { value: "+33", label: "Francia (+33)" },
+  { value: "+49", label: "Alemania (+49)" },
+  { value: "+39", label: "Italia (+39)" },
+  { value: "+86", label: "China (+86)" },
+  { value: "+81", label: "Japón (+81)" },
+  { value: "+82", label: "Corea del Sur (+82)" },
+  { value: "+55", label: "Brasil (+55)" },
+  { value: "+54", label: "Argentina (+54)" },
+  { value: "+57", label: "Colombia (+57)" },
+  { value: "+56", label: "Chile (+56)" },
+  { value: "+51", label: "Perú (+51)" },
+];
+
 const getErrorMessage = (error) => {
   const detail = error.response?.data?.detail;
   if (typeof detail === "string") return detail;
@@ -37,6 +56,7 @@ export default function WashFoldRequest() {
     first_name: "",
     last_name: "",
     email: "",
+    country_code: "+1", // Código de país por defecto
     phone: "",
     contact_method: "",
     address_line1: "",
@@ -54,6 +74,7 @@ export default function WashFoldRequest() {
       first_name: "",
       last_name: "",
       email: "",
+      country_code: "+1",
       phone: "",
       contact_method: "",
       address_line1: "",
@@ -74,10 +95,11 @@ export default function WashFoldRequest() {
       toast.error(t("Please select the best way to contact you.", "Por favor selecciona la mejor forma de contactarte."));
       return;
     }
-    if (!form.dropoff_time) {
-      toast.error(t("Please select a preferred drop-off window.", "Por favor selecciona un horario preferido de entrega."));
-      return;
-    }
+    // Comentamos esta validación ya que el campo está desactivado
+    // if (!form.dropoff_time) {
+    //   toast.error(t("Please select a preferred drop-off window.", "Por favor selecciona un horario preferido de entrega."));
+    //   return;
+    // }
 
     setSubmitting(true);
     try {
@@ -90,10 +112,13 @@ export default function WashFoldRequest() {
         form.zip_code.trim()
       ].filter(Boolean).join(", ");
 
+      // Combinamos el código de país con el número de teléfono
+      const fullPhone = `${form.country_code} ${form.phone.trim()}`;
+
       const res = await axios.post(`${API}/public/wash-fold-request`, {
         name: fullName,
         email: form.email.trim(),
-        phone: form.phone.trim(),
+        phone: fullPhone,
         address: fullAddress,
         dropoff_date: form.dropoff_date,
         dropoff_time: form.dropoff_time,
@@ -168,7 +193,7 @@ export default function WashFoldRequest() {
 
           <p className="text-lg text-slate-600 max-w-2xl mx-auto">
             {t(
-              "Tell us how you want your clothes handled and we’ll confirm your drop-off window.",
+              "Tell us how you want your clothes handled and we'll confirm your drop-off window.",
               "Cuéntanos cómo quieres que manejen tu ropa y confirmaremos tu horario de entrega."
             )}
           </p>
@@ -225,13 +250,37 @@ export default function WashFoldRequest() {
 
             <div className="mb-6">
               <h3 className="font-semibold text-slate-900 mb-3">{t("Phone *", "Teléfono *")}</h3>
-              <Input
-                value={form.phone}
-                onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                required
-                placeholder="+1 (___) ___-____"
-                data-testid="washfold-phone"
-              />
+              <div className="flex gap-2">
+                {/* Selector de código de país */}
+                <Select
+                  value={form.country_code}
+                  onValueChange={(v) => setForm({ ...form, country_code: v })}
+                >
+                  <SelectTrigger className="w-32 mt-1" data-testid="washfold-country-code">
+                    <SelectValue placeholder="+1" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {countryCodes.map((code) => (
+                      <SelectItem key={code.value} value={code.value}>
+                        {code.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                
+                {/* Campo de número telefónico */}
+                <Input
+                  value={form.phone}
+                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                  required
+                  placeholder="(___) ___-____"
+                  className="flex-1 mt-1"
+                  data-testid="washfold-phone"
+                />
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                {t("Select your country code and enter your phone number", "Selecciona tu código de país y escribe tu número telefónico")}
+              </p>
             </div>
 
             <div className="mb-6">
@@ -326,6 +375,8 @@ export default function WashFoldRequest() {
                     data-testid="washfold-date"
                   />
                 </div>
+                
+                {/* SECCIÓN COMENTADA: Campo de hora desactivado
                 <div>
                   <Label className="text-slate-600 text-sm">{t("Preferred Time *", "Hora preferida *")}</Label>
                   <Select
@@ -343,6 +394,7 @@ export default function WashFoldRequest() {
                   </Select>
                   <p className="text-xs text-slate-500 mt-1">{t("Pacific Time", "Hora del Pacífico")}</p>
                 </div>
+                */}
               </div>
             </div>
 
