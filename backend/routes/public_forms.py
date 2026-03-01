@@ -285,6 +285,7 @@ def get_public_forms_router(
             "customer_id": customer["id"],
             "customer_name": customer["name"],
             "service_type": "wash_fold",
+            "preferred_contact": normalized_contact or customer.get("preferred_contact") or "email",
             "pickup_date": data.dropoff_date,
             "pickup_time_window": data.dropoff_time,
             "pickup_address": None,
