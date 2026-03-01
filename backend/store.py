@@ -1392,49 +1392,66 @@ async def handle_stripe_webhook(request: Request):
         signature = request.headers.get("Stripe-Signature")
         
         webhook_response = await stripe_checkout.handle_webhook(body, signature)
-        
-        # Process webhook event
-        if webhook_response.payment_status == "paid":
-            session_id = webhook_response.session_id
-            
-            # Update payment transaction
-            await db.payment_transactions.update_one(
-                {"session_id": session_id},
-                {
-                    "$set": {
-                        "payment_status": "paid",
-                        "updated_at": datetime.now(timezone.utc).isoformat()
-                    }
+
+        session_id = webhook_response.session_id
+        metadata = webhook_response.metadata or {}
+        normalized_status = normalize_payment_status(
+            webhook_response.payment_status,
+            "complete" if "completed" in (webhook_response.event_type or "") else None
+        )
+
+        await db.payment_transactions.update_one(
+            {"session_id": session_id},
+            {
+                "$set": {
+                    "payment_status": normalized_status,
+                    "updated_at": datetime.now(timezone.utc).isoformat()
                 }
-            )
-            
-            # Update order
-            order_id = webhook_response.metadata.get("order_id")
+            }
+        )
+
+        if is_paid(normalized_status):
+            order_id = metadata.get("order_id")
+            order = None
             if order_id:
-                order = await db.store_orders.find_one({"id": order_id})
-                if order and order.get("payment_status") != "paid":
-                    await db.store_orders.update_one(
-                        {"id": order_id},
-                        {
-                            "$set": {
-                                "payment_status": "paid",
-                                "payment_method": "card",
-                                "status": "confirmed",
-                                "updated_at": datetime.now(timezone.utc).isoformat()
-                            }
+                order = await db.store_orders.find_one({"id": order_id}, {"_id": 0})
+            if not order and session_id:
+                order = await db.store_orders.find_one({"stripe_session_id": session_id}, {"_id": 0})
+
+            if order and (order.get("payment_status") or "").lower() != "paid":
+                now = datetime.now(timezone.utc).isoformat()
+                await db.store_orders.update_one(
+                    {"id": order.get("id")},
+                    {
+                        "$set": {
+                            "payment_status": "paid",
+                            "payment_method": "card",
+                            "status": "confirmed",
+                            "updated_at": now
                         }
-                    )
-                    
-                    await apply_stock_deduction(order.get("items", []))
-                    customer_snapshot = {
-                        "name": order.get("customer_name"),
-                        "email": order.get("customer_email"),
-                        "phone": order.get("customer_phone"),
-                        "preferred_contact": order.get("preferred_contact")
                     }
-                    await notify_store_order(customer_snapshot, order)
-        
-        return {"status": "ok", "event_type": webhook_response.event_type}
+                )
+
+                await apply_stock_deduction(order.get("items", []))
+                customer_snapshot = {
+                    "name": order.get("customer_name"),
+                    "email": order.get("customer_email"),
+                    "phone": order.get("customer_phone"),
+                    "preferred_contact": order.get("preferred_contact")
+                }
+                order_for_notify = {
+                    **order,
+                    "payment_status": "paid",
+                    "payment_method": "card",
+                    "status": "confirmed"
+                }
+                await notify_store_order(customer_snapshot, order_for_notify)
+
+        return {
+            "status": "ok",
+            "event_type": webhook_response.event_type,
+            "payment_status": normalized_status
+        }
         
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Webhook error: {str(e)}")
