@@ -110,6 +110,7 @@ export default function OperatorDashboard() {
     fulfillment_type: "pickup"
   });
   const [storeShippingQuote, setStoreShippingQuote] = useState({ distance_km: null, fee: 0, zone_name: null });
+  const [storeShippingError, setStoreShippingError] = useState("");
   const [storeCheckoutLoading, setStoreCheckoutLoading] = useState(false);
   const [storePaymentOrder, setStorePaymentOrder] = useState(null);
   const [storePaymentForm, setStorePaymentForm] = useState({ method: "card" });
