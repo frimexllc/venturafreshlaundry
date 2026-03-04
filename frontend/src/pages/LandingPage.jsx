@@ -1,27 +1,27 @@
 import { useState, useEffect, useMemo } from "react";
 import { Link } from "react-router-dom";
-import { ChevronDown, ChevronUp, Phone, MapPin, Clock } from "lucide-react";
+import { ChevronDown, ChevronUp, Phone, MapPin, Clock, Sparkles, Wind, Truck } from "lucide-react";
 import { Button } from "../components/ui/button";
 import PublicNav from "../components/PublicNav";
 import PublicFooter from "../components/PublicFooter";
 import videoVFL from "../assets/videoHeroHomeInicial.mp4";
 import { useLocale } from "../context/LocaleContext";
 
-// FAQ Accordion Component
+// FAQ Accordion Component con estilos del sistema
 const FAQItem = ({ question, answer, isOpen, onClick }) => (
-  <div className="border-b border-slate-700 last:border-0">
+  <div className="border-b border-slate-200 last:border-0">
     <button
       onClick={onClick}
-      className="w-full py-5 flex items-center justify-between text-left group"
+      className="w-full py-5 flex items-center justify-between text-left group focus:outline-none focus:ring-2 focus:ring-primary/20 rounded-lg"
     >
-      <span className="text-lg font-medium text-slate-100 group-hover:text-sky-300 transition-colors pr-4">
+      <span className="text-lg font-medium text-slate-700 group-hover:text-primary transition-colors pr-4">
         {question}
       </span>
-      <div className="flex-shrink-0 h-8 w-8 rounded-full bg-slate-800 flex items-center justify-center">
+      <div className={`flex-shrink-0 h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center transition-colors ${isOpen ? 'bg-primary/10' : ''}`}>
         {isOpen ? (
-          <ChevronUp className="h-5 w-5 text-sky-600" />
+          <ChevronUp className="h-5 w-5 text-primary" />
         ) : (
-          <ChevronDown className="h-5 w-5 text-slate-300" />
+          <ChevronDown className="h-5 w-5 text-slate-400 group-hover:text-primary transition-colors" />
         )}
       </div>
     </button>
@@ -30,7 +30,7 @@ const FAQItem = ({ question, answer, isOpen, onClick }) => (
         isOpen ? "max-h-[500px] pb-5" : "max-h-0"
       }`}
     >
-      <div className="text-slate-300 leading-relaxed">{answer}</div>
+      <div className="text-slate-600 leading-relaxed">{answer}</div>
     </div>
   </div>
 );
@@ -47,7 +47,7 @@ const StaggeredElement = ({ children, delay = 0, className = "" }) => {
   return (
     <div
       className={`${className} ${
-        isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"
+        isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
       } transition-all duration-700 ease-out`}
     >
       {children}
@@ -60,14 +60,6 @@ export default function LandingPage() {
   const [openFAQ, setOpenFAQ] = useState(null);
   const [scrollY, setScrollY] = useState(0);
 
-  // Colores editables del Home (aquí puedes ajustar el look completo):
-  const LANDING_THEME = {
-    heroOverlay: "linear-gradient(135deg, rgba(2, 6, 23, 0.82) 0%, rgba(15, 23, 42, 0.65) 48%, rgba(3, 37, 65, 0.58) 100%)",
-    waveHeroToFeatures: "#0b4a72",
-    waveToDarkSections: "#0f172a"
-  };
-
-  // Efecto de parallax
   useEffect(() => {
     const handleScroll = () => setScrollY(window.pageYOffset);
     window.addEventListener("scroll", handleScroll);
@@ -80,9 +72,7 @@ export default function LandingPage() {
       question: t("What services do you offer?", "¿Qué servicios ofrecen?"),
       answer: locale === "es" ? (
         <div>
-          <p className="mb-2">
-            Ofrecemos una gama completa de soluciones de lavandería para negocios y anfitriones de Airbnb, incluyendo:
-          </p>
+          <p className="mb-2">Ofrecemos una gama completa de soluciones de lavandería para negocios y anfitriones de Airbnb, incluyendo:</p>
           <ul className="list-disc pl-5 space-y-1">
             <li><strong>Servicios de lavandería B2B</strong> – personalizados para empresas de todos los tamaños</li>
             <li><strong>Lavandería para Airbnb y alquileres de corto plazo</strong> – ropa de cama impecable, respuesta rápida</li>
@@ -92,9 +82,7 @@ export default function LandingPage() {
         </div>
       ) : (
         <div>
-          <p className="mb-2">
-            We offer a full range of laundry solutions for businesses and Airbnb hosts, including:
-          </p>
+          <p className="mb-2">We offer a full range of laundry solutions for businesses and Airbnb hosts, including:</p>
           <ul className="list-disc pl-5 space-y-1">
             <li><strong>B2B Laundry Services</strong> – customized for businesses of all sizes</li>
             <li><strong>Airbnb & Short-Term Rental Laundry</strong> – spotless linens, fast turnaround</li>
@@ -169,23 +157,18 @@ export default function LandingPage() {
     }
   ], [locale, t]);
 
-  // URLs de imágenes / video
   const images = {
     heroVideo: videoVFL,
-    background:
-      "https://images.squarespace-cdn.com/content/v1/696c559a4b2b9b1b0febf8d7/8f9faf72-9068-4289-8f90-869a9b1b00d2/backgound.png",
-    delivery:
-      "https://images.squarespace-cdn.com/content/v1/696c559a4b2b9b1b0febf8d7/3952928a-343a-44b5-ad18-6aa57be0b4eb/ventura_fresh_laundry_part_1.png",
+    background: "https://images.squarespace-cdn.com/content/v1/696c559a4b2b9b1b0febf8d7/8f9faf72-9068-4289-8f90-869a9b1b00d2/backgound.png",
+    delivery: "https://images.squarespace-cdn.com/content/v1/696c559a4b2b9b1b0febf8d7/3952928a-343a-44b5-ad18-6aa57be0b4eb/ventura_fresh_laundry_part_1.png",
   };
 
-  // Lista de características en la sección de características (Features Section)
   const features = useMemo(() => [
-    { icon: "⭐", title: t("Premium garment care", "Cuidado premium de prendas"), desc: t("Consistent, high-quality cleaning", "Limpieza constante y de alta calidad") },
-    { icon: "🧺", title: t("Custom folding", "Doblado personalizado"), desc: t("Done exactly your way", "Hecho exactamente a tu manera") },
-    { icon: "🚚", title: t("Pickup & delivery", "Recogida y entrega"), desc: t("Effortless, on your schedule", "Sin esfuerzo, en tu horario") },
+    { icon: <Sparkles className="w-8 h-8 text-primary" />, title: t("Premium garment care", "Cuidado premium de prendas"), desc: t("Consistent, high-quality cleaning", "Limpieza constante y de alta calidad") },
+    { icon: <Wind className="w-8 h-8 text-slate-400" />, title: t("Custom folding", "Doblado personalizado"), desc: t("Done exactly your way", "Hecho exactamente a tu manera") },
+    { icon: <Truck className="w-8 h-8 text-primary" />, title: t("Pickup & delivery", "Recogida y entrega"), desc: t("Effortless, on your schedule", "Sin esfuerzo, en tu horario") },
   ], [t]);
 
-  // Pasos en How It Works
   const steps = useMemo(() => [
     {
       step: "1",
@@ -234,7 +217,6 @@ export default function LandingPage() {
     },
   ], [t]);
 
-  // Textos de beneficios
   const benefits = useMemo(() => [
     {
       title: t("Real-Time Updates", "Actualizaciones en tiempo real"),
@@ -277,10 +259,9 @@ export default function LandingPage() {
   ], [t]);
 
   return (
-    <div className="min-h-screen bg-slate-950 overflow-x-hidden">
-      {/* Hero Section with Video Background */}
+    <div className="min-h-screen bg-white overflow-x-hidden">
+      {/* Hero Section */}
       <section className="relative min-h-screen flex items-center overflow-hidden">
-        {/* VIDEO Background */}
         <div className="absolute inset-0 z-0">
           <video
             className="absolute inset-0 w-full h-full object-cover"
@@ -291,55 +272,42 @@ export default function LandingPage() {
             playsInline
             preload="auto"
           />
-          {/* Overlay oscuro para mejorar contraste del texto blanco */}
-          <div className="absolute inset-0" style={{ background: LANDING_THEME.heroOverlay }}></div>
+          <div className="absolute inset-0 bg-gradient-to-r from-slate-900/80 via-slate-900/60 to-slate-900/40"></div>
         </div>
 
-        {/* NAV NORMALIZADO (usa el componente PublicNav) */}
         <PublicNav />
 
-        {/* Hero Content con animaciones escalonadas */}
         <div className="relative z-10 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
           <div className="max-w-xl">
             <StaggeredElement delay={100}>
-              <h1
-                className="text-4xl sm:text-5xl md:text-6xl font-light text-white mb-2 leading-tight italic mt-20"
-                style={{ fontFamily: "'Playfair Display', serif" }}
-              >
+              <h1 className="text-5xl sm:text-6xl md:text-7xl font-light text-white mb-2 leading-tight italic mt-20">
                 {t("We do your laundry.", "Hacemos tu lavandería.")}
               </h1>
             </StaggeredElement>
 
             <StaggeredElement delay={200}>
-              <h2
-                className="text-4xl sm:text-5xl md:text-6xl font-light text-white mb-2 leading-tight italic"
-                style={{ fontFamily: "'Playfair Display', serif" }}
-              >
+              <h2 className="text-5xl sm:text-6xl md:text-7xl font-light text-white mb-2 leading-tight italic">
                 {t("You enjoy your time.", "Tú disfrutas tu tiempo.")}
               </h2>
             </StaggeredElement>
 
             <StaggeredElement delay={300}>
-              <p
-                className="text-2xl sm:text-3xl text-white mb-8 italic"
-                style={{ fontFamily: "'Playfair Display', serif" }}
-              >
+              <p className="text-2xl sm:text-3xl text-white/90 mb-8 italic">
                 {t("Fast pickup, perfectly folded.", "Recogida rápida, perfectamente doblado.")}
               </p>
             </StaggeredElement>
 
-            {/* Botones */}
             <StaggeredElement delay={400}>
-              <div className="flex flex-col sm:flex-row gap-3 mb-10">
+              <div className="flex flex-col sm:flex-row gap-4 mb-12">
                 <Link to="/schedule-pickup">
-                  <Button className="bg-sky-500 hover:bg-sky-600 text-white rounded-full px-6 py-3 text-sm font-semibold shadow-lg transition-all duration-300">
+                  <Button className="bg-primary hover:bg-primary/90 text-white rounded-full px-8 py-4 text-base font-semibold shadow-lg shadow-primary/30 transition-all duration-300 hover:scale-105 hover:shadow-xl">
                     👉 {t("SCHEDULE PICK-UP", "PROGRAMAR RECOGIDA")}
                   </Button>
                 </Link>
                 <Link to="/services">
                   <Button
                     variant="outline"
-                    className="border-2 border-white text-white hover:bg-white hover:text-slate-900 rounded-full px-6 py-3 text-sm font-semibold bg-transparent transition-all duration-300"
+                    className="border-2 border-white text-white hover:bg-white hover:text-slate-900 rounded-full px-8 py-4 text-base font-semibold bg-transparent transition-all duration-300 hover:scale-105"
                   >
                     👉 {t("MORE SERVICES", "MÁS SERVICIOS")}
                   </Button>
@@ -348,7 +316,7 @@ export default function LandingPage() {
                   <Button
                     data-testid="landing-b2b-quote-button"
                     variant="outline"
-                    className="border-2 border-sky-400 text-sky-400 hover:bg-sky-400 hover:text-white rounded-full px-6 py-3 text-sm font-semibold bg-transparent transition-all duration-300"
+                    className="border-2 border-white/40 text-white hover:bg-white/10 rounded-full px-8 py-4 text-base font-semibold bg-transparent transition-all duration-300 hover:scale-105"
                   >
                     🏢 {t("B2B / COMMERCIAL", "B2B / COMERCIAL")}
                   </Button>
@@ -356,60 +324,43 @@ export default function LandingPage() {
               </div>
             </StaggeredElement>
 
-            {/* Service List */}
             <StaggeredElement delay={500}>
-              <div className="space-y-2 text-white bg-white/10 p-6 rounded-2xl border border-white/20">
-                <p className="text-lg hover:text-sky-300 transition-colors duration-300">
-                  • {t("Self Service", "Autoservicio")}
+              <div className="space-y-3 text-white bg-white/10 backdrop-blur-sm p-8 rounded-2xl border border-white/20">
+                <p className="text-xl hover:text-primary transition-colors flex items-center gap-3">
+                  <span className="w-2 h-2 bg-primary rounded-full"></span> {t("Self Service", "Autoservicio")}
                 </p>
-                <p className="text-lg hover:text-sky-300 transition-colors duration-300">
-                  • {t("Wash & Fold", "Lavado y Doblado")}
+                <p className="text-xl hover:text-primary transition-colors flex items-center gap-3">
+                  <span className="w-2 h-2 bg-primary rounded-full"></span> {t("Wash & Fold", "Lavado y Doblado")}
                 </p>
-                <p className="text-lg hover:text-sky-300 transition-colors duration-300">
-                  • {t("Pickup & Delivery", "Recogida y Entrega")}
+                <p className="text-xl hover:text-primary transition-colors flex items-center gap-3">
+                  <span className="w-2 h-2 bg-primary rounded-full"></span> {t("Pickup & Delivery", "Recogida y Entrega")}
                 </p>
               </div>
             </StaggeredElement>
           </div>
         </div>
 
-        {/* Wave Divider - Una sola ola alargada */}
-        <div className="absolute bottom-0 left-0 right-0 z-10 pointer-events-none">
-          <svg
-            viewBox="0 0 1440 120"
-            xmlns="http://www.w3.org/2000/svg"
-            className="w-full h-[120px]"
-            preserveAspectRatio="none"
-          >
-            <path
-              d="M0,40 C360,0 1080,80 1440,40 L1440,120 L0,120 Z"
-              fill={LANDING_THEME.waveHeroToFeatures}
-              opacity="0.9"
-            />
+        {/* Wave Divider */}
+        <div className="wave-divider">
+          <svg viewBox="0 0 1440 120" preserveAspectRatio="none">
+            <path d="M0,40 C360,0 1080,80 1440,40 L1440,120 L0,120 Z" className="shape-fill" />
           </svg>
         </div>
       </section>
 
       {/* Features Section */}
-      <section className="pt-20 pb-40 relative overflow-hidden">
-        {/* Fondo con overlay */}
+      <section className="py-20 bg-slate-50/50 relative overflow-hidden">
         <div
-          className="absolute inset-0 bg-cover bg-center"
+          className="absolute inset-0 bg-cover bg-center opacity-1"
           style={{
             backgroundImage: `url(${images.background})`,
             transform: `translateY(${scrollY * 0.3}px) scale(1.1)`,
-            filter: "brightness(0.8)",
           }}
-        >
-          <div className="absolute inset-0 bg-gradient-to-b from-sky-600/90 via-sky-600/80 to-sky-600/90"></div>
-        </div>
+        ></div>
 
         <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <StaggeredElement>
-            <h2
-              className="text-3xl sm:text-4xl md:text-5xl font-bold text-white text-center mb-6 leading-tight"
-              style={{ fontFamily: "'Playfair Display', serif" }}
-            >
+            <h2 className="text-4xl sm:text-5xl font-bold text-slate-800 text-center mb-6 leading-tight">
               {t(
                 "Ventura Fresh Laundry makes laundry effortless across Ventura County",
                 "Ventura Fresh Laundry hace que la lavandería sea sin esfuerzo en todo el condado de Ventura"
@@ -418,7 +369,7 @@ export default function LandingPage() {
           </StaggeredElement>
 
           <StaggeredElement delay={100}>
-            <p className="text-xl text-white/90 text-center mb-12 max-w-3xl mx-auto bg-white/5 p-6 rounded-2xl">
+            <p className="text-xl text-slate-600 text-center mb-12 max-w-3xl mx-auto">
               {t(
                 "From convenient self-service to professional fluff & fold and fast pickup & delivery, we handle every detail so you don't have to.",
                 "Desde el autoservicio conveniente hasta el lavado y doblado profesional y la recogida y entrega rápida, manejamos cada detalle para que tú no tengas que hacerlo."
@@ -429,21 +380,21 @@ export default function LandingPage() {
           <div className="grid md:grid-cols-3 gap-8 mb-12">
             {features.map((feature, idx) => (
               <StaggeredElement key={idx} delay={200 + idx * 100}>
-                <div className="text-center p-6 bg-white/10 rounded-3xl border border-white/20 hover:bg-white/15 transition-all duration-500 hover:scale-105 hover:shadow-2xl">
-                  <div className="text-5xl mb-4 transition-transform duration-300">
+                <div className="dashboard-card text-center p-8">
+                  <div className="w-16 h-16 mx-auto mb-4 bg-primary/10 rounded-xl flex items-center justify-center">
                     {feature.icon}
                   </div>
-                  <h3 className="text-xl font-bold text-white mb-3">
+                  <h3 className="text-xl font-semibold text-slate-800 mb-2">
                     {feature.title}
                   </h3>
-                  <p className="text-white/90">{feature.desc}</p>
+                  <p className="text-slate-600">{feature.desc}</p>
                 </div>
               </StaggeredElement>
             ))}
           </div>
 
           <StaggeredElement delay={500}>
-            <p className="text-lg text-white/90 text-center max-w-2xl mx-auto mb-8 bg-white/5 p-6 rounded-2xl">
+            <p className="text-lg text-slate-600 text-center max-w-2xl mx-auto mb-8">
               {t(
                 "Simply schedule a pickup and we'll return your clothes clean, fresh, and perfectly folded to your preferences.",
                 "Simplemente programa una recogida y te devolveremos tu ropa limpia, fresca y perfectamente doblada según tus preferencias."
@@ -451,38 +402,27 @@ export default function LandingPage() {
             </p>
           </StaggeredElement>
 
-          {/* Botones con z-index superior para que estén por encima del SVG */}
           <StaggeredElement delay={600}>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center relative z-20">
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link to="/services">
-                <Button className="bg-white text-sky-600 hover:bg-slate-100 rounded-full px-8 py-4 text-lg font-semibold transition-all duration-300 hover:scale-105">
+                <Button className="btn-primary text-lg px-10 py-5">
                   {t("MORE SERVICES", "MÁS SERVICIOS")}
                 </Button>
               </Link>
               <Link to="/schedule-pickup">
-                <Button className="bg-slate-900 text-white hover:bg-slate-800 rounded-full px-8 py-4 text-lg font-semibold transition-all duration-300 hover:scale-105">
+                <Button className="bg-slate-800 text-white hover:bg-slate-700 rounded-full px-10 py-5 text-lg font-semibold transition-all duration-300 hover:scale-105 shadow-lg">
                   {t("SCHEDULE PICK-UP", "PROGRAMAR RECOGIDA")}
                 </Button>
               </Link>
             </div>
           </StaggeredElement>
         </div>
-
-        {/* SVG inferior - Una sola ola alargada */}
-        <div className="absolute bottom-0 left-0 right-0 z-10 pointer-events-none">
-          <svg viewBox="0 0 1440 120" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full">
-            <path
-              d="M0,40 Q360,100 720,40 T1440,40 L1440,120 L0,120 Z"
-              fill={LANDING_THEME.waveToDarkSections}
-            />
-          </svg>
-        </div>
       </section>
 
       {/* How It Works Section */}
-      <section className="py-24 bg-slate-900 relative overflow-hidden">
+      <section className="py-20 bg-white relative overflow-hidden">
         <div
-          className="absolute inset-0 bg-cover bg-center opacity-30"
+          className="absolute inset-0 bg-cover bg-center opacity-1"
           style={{
             backgroundImage: `url(${images.delivery})`,
             transform: `translateY(${scrollY * 0.2}px) scale(1.05)`,
@@ -492,10 +432,7 @@ export default function LandingPage() {
 
         <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <StaggeredElement>
-            <h2
-              className="text-3xl sm:text-4xl md:text-5xl font-bold text-white text-center mb-16"
-              style={{ fontFamily: "'Playfair Display', serif" }}
-            >
+            <h2 className="text-4xl sm:text-5xl font-bold text-slate-800 text-center mb-16">
               {t("How It Works", "Cómo Funciona")}
             </h2>
           </StaggeredElement>
@@ -503,25 +440,25 @@ export default function LandingPage() {
           <div className="grid md:grid-cols-3 gap-8">
             {steps.map((stepData, idx) => (
               <StaggeredElement key={idx} delay={100 + idx * 100}>
-                <div className="bg-white/10 rounded-2xl p-8 border border-white/20 hover:bg-white/15 transition-all duration-500 hover:scale-105 flex flex-col h-full">
-                  <div className="h-16 w-16 rounded-full bg-gradient-to-br from-sky-500 to-sky-700 text-white text-2xl font-bold flex items-center justify-center mx-auto mb-6 shadow-lg">
+                <div className="dashboard-card p-8 h-full flex flex-col">
+                  <div className="w-16 h-16 rounded-full bg-primary/10 text-primary text-2xl font-bold flex items-center justify-center mb-6">
                     {stepData.step}
                   </div>
-                  <h3 className="text-2xl font-bold text-white text-center mb-4">
+                  <h3 className="text-xl font-semibold text-slate-800 mb-3">
                     {stepData.title}
                   </h3>
-                  <p className="text-white/80 mb-4">{stepData.content}</p>
-                  <ul className="text-white/80 space-y-2 text-sm">
+                  <p className="text-slate-600 text-sm mb-4">{stepData.content}</p>
+                  <ul className="text-slate-600 text-sm space-y-2 mb-4">
                     {stepData.list.map((item, itemIdx) => (
-                      <li key={itemIdx}>• {item}</li>
+                      <li key={itemIdx} className="flex items-start gap-2">
+                        <span className="text-primary mt-1">•</span> {item}
+                      </li>
                     ))}
                   </ul>
-                  <p className="text-white/80 mt-4 text-sm font-semibold">
-                    {stepData.footer}
-                  </p>
-                  <div className="mt-6">
+                  <p className="text-slate-600 text-sm italic mb-6">{stepData.footer}</p>
+                  <div className="mt-auto">
                     <Link to="/schedule-pickup">
-                      <Button className="bg-slate-900 text-white hover:bg-slate-800 rounded-full px-6 py-3 text-sm font-semibold w-full">
+                      <Button className="btn-secondary w-full">
                         {stepData.button}
                       </Button>
                     </Link>
@@ -531,70 +468,64 @@ export default function LandingPage() {
             ))}
           </div>
         </div>
-
-        {/* SVG inferior - Una sola ola alargada */}
-        <div className="absolute bottom-0 left-0 right-0 z-10 pointer-events-none">
-          <svg viewBox="0 0 1440 120" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full">
-            <path
-              d="M0,60 Q360,0 720,60 T1440,60 L1440,120 L0,120 Z"
-              fill={LANDING_THEME.waveToDarkSections}
-            />
-          </svg>
-        </div>
       </section>
 
       {/* Benefits Section */}
-      <section className="py-24 bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950">
+      <section className="py-20 bg-slate-50/50">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid md:grid-cols-2 gap-16">
+          <div className="grid md:grid-cols-2 gap-12">
             <div>
               <StaggeredElement>
-                <div className="mb-12 p-6 rounded-2xl bg-gradient-to-br from-slate-800/90 to-slate-900/90 border border-slate-700 hover:shadow-xl transition-all duration-500">
-                  <h3 className="text-3xl font-bold text-slate-100 mb-4" style={{ fontFamily: "'Playfair Display', serif" }}>
+                <div className="dashboard-card p-8 mb-8">
+                  <h3 className="text-2xl font-bold text-slate-800 mb-4">
                     {benefits[0].title}
                   </h3>
-                  <p className="text-slate-300 leading-relaxed">{benefits[0].text}</p>
+                  <p className="text-slate-600">{benefits[0].text}</p>
                 </div>
               </StaggeredElement>
 
               <StaggeredElement delay={100}>
-                <div className="p-6 rounded-2xl bg-gradient-to-br from-slate-800/90 to-slate-900/90 border border-slate-700 hover:shadow-xl transition-all duration-500">
-                  <h3 className="text-3xl font-bold text-slate-100 mb-4" style={{ fontFamily: "'Playfair Display', serif" }}>
+                <div className="dashboard-card p-8">
+                  <h3 className="text-2xl font-bold text-slate-800 mb-4">
                     {benefits[1].title}
                   </h3>
-                  <p className="text-slate-300 mb-4">{benefits[1].text1}</p>
-                  <ul className="text-slate-300 space-y-2">
+                  <p className="text-slate-600 mb-4">{benefits[1].text1}</p>
+                  <ul className="text-slate-600 space-y-2 mb-4">
                     {benefits[1].list.map((item, i) => (
-                      <li key={i}>• {item}</li>
+                      <li key={i} className="flex items-start gap-2">
+                        <span className="text-emerald-500 mt-1">🌱</span> {item}
+                      </li>
                     ))}
                   </ul>
-                  <p className="text-slate-300 mt-4 font-medium">{benefits[1].footer}</p>
+                  <p className="text-slate-600 font-medium">{benefits[1].footer}</p>
                 </div>
               </StaggeredElement>
             </div>
 
             <div>
               <StaggeredElement delay={200}>
-                <div className="mb-12 p-6 rounded-2xl bg-gradient-to-br from-slate-800/90 to-slate-900/90 border border-slate-700 hover:shadow-xl transition-all duration-500">
-                  <h3 className="text-3xl font-bold text-slate-100 mb-4" style={{ fontFamily: "'Playfair Display', serif" }}>
+                <div className="dashboard-card p-8 mb-8">
+                  <h3 className="text-2xl font-bold text-slate-800 mb-4">
                     {benefits[2].title}
                   </h3>
-                  <p className="text-slate-300 mb-4">{benefits[2].text1}</p>
-                  <ul className="text-slate-300 space-y-2">
+                  <p className="text-slate-600 mb-4">{benefits[2].text1}</p>
+                  <ul className="text-slate-600 space-y-2 mb-4">
                     {benefits[2].list.map((item, i) => (
-                      <li key={i}>• {item}</li>
+                      <li key={i} className="flex items-start gap-2">
+                        <span className="text-primary mt-1">✨</span> {item}
+                      </li>
                     ))}
                   </ul>
-                  <p className="text-slate-300 mt-4 font-medium">{benefits[2].footer}</p>
+                  <p className="text-slate-600 font-medium">{benefits[2].footer}</p>
                 </div>
               </StaggeredElement>
 
               <StaggeredElement delay={300}>
-                <div className="p-6 rounded-2xl bg-gradient-to-br from-slate-800/90 to-slate-900/90 border border-slate-700 hover:shadow-xl transition-all duration-500">
-                  <h3 className="text-3xl font-bold text-slate-100 mb-4" style={{ fontFamily: "'Playfair Display', serif" }}>
+                <div className="dashboard-card p-8">
+                  <h3 className="text-2xl font-bold text-slate-800 mb-4">
                     {benefits[3].title}
                   </h3>
-                  <p className="text-slate-300 leading-relaxed">{benefits[3].text}</p>
+                  <p className="text-slate-600">{benefits[3].text}</p>
                 </div>
               </StaggeredElement>
             </div>
@@ -603,22 +534,22 @@ export default function LandingPage() {
       </section>
 
       {/* Testimonial Section */}
-      <section className="py-24 relative overflow-hidden" style={{ background: "linear-gradient(135deg, #0ea5e9 0%, #0284c7 50%, #0369a1 100%)" }}>
+      <section className="py-20 relative overflow-hidden bg-gradient-to-br from-primary to-primary/80">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
           <StaggeredElement>
-            <h2 className="text-4xl sm:text-5xl font-bold text-white mb-6" style={{ fontFamily: "'Playfair Display', serif" }}>
+            <h2 className="text-5xl sm:text-6xl font-bold text-white mb-6 drop-shadow-xl">
               {t("Take Back Your Time!!", "¡Recupera tu tiempo!!")}
             </h2>
           </StaggeredElement>
 
           <StaggeredElement delay={100}>
-            <p className="text-xl text-white/90 mb-8">
+            <p className="text-2xl text-white/90 mb-8 drop-shadow">
               {t("Laundry shouldn't take over your schedule.", "La lavandería no debería apoderarse de tu agenda.")}
             </p>
           </StaggeredElement>
 
           <StaggeredElement delay={200}>
-            <p className="text-lg text-white/80 mb-12 max-w-2xl mx-auto bg-white/10 p-6 rounded-2xl">
+            <p className="text-lg text-white/80 mb-12 max-w-2xl mx-auto bg-white/10 p-8 rounded-2xl">
               {t(
                 "We know how many hours disappear sorting, washing, drying, and folding. That's time you could spend relaxing, being with family, exploring the city, or simply recharging. Let us handle the laundry so you can focus on what truly matters.",
                 "Sabemos cuántas horas desaparecen clasificando, lavando, secando y doblando. Ese es tiempo que podrías pasar relajándote, con tu familia, explorando la ciudad o simplemente recargando energías. Déjanos encargarnos de la lavandería para que puedas concentrarte en lo que realmente importa."
@@ -627,19 +558,19 @@ export default function LandingPage() {
           </StaggeredElement>
 
           <StaggeredElement delay={300}>
-            <blockquote className="bg-white/20 rounded-2xl p-8 md:p-12 border border-white/30 hover:bg-white/25 transition-all duration-500">
-              <p className="text-xl md:text-2xl text-white italic mb-6 leading-relaxed">
+            <blockquote className="bg-white/10 rounded-2xl p-10 md:p-14 border border-white/20 hover:bg-white/20 transition-all duration-500 shadow-2xl">
+              <p className="text-2xl md:text-3xl text-white italic mb-8 leading-relaxed drop-shadow-lg">
                 {t(
                   '"Ventura Fresh Laundry completely changed the way I handle laundry. The pickup and delivery is always on time, and my clothes come back perfectly clean and folded. I honestly can\'t imagine going back to doing it myself."',
                   '"Ventura Fresh Laundry cambió por completo la forma en que manejo la lavandería. La recogida y entrega siempre llega a tiempo, y mi ropa vuelve perfectamente limpia y doblada. Honestamente, no puedo imaginar volver a hacerlo yo mismo."'
                 )}
               </p>
-              <footer className="text-white/90 font-semibold text-lg">— Katy F.</footer>
+              <footer className="text-white/90 font-semibold text-xl">— Katy F.</footer>
             </blockquote>
           </StaggeredElement>
 
           <StaggeredElement delay={400}>
-            <p className="text-xl text-white font-bold mt-12 bg-white/10 p-6 rounded-2xl inline-block">
+            <p className="text-2xl text-white font-bold mt-12 bg-white/10 p-6 rounded-2xl inline-block">
               {t(
                 "Ventura County Most Affordable Laundry Service is Ready to Take Laundry Off Your To-Do List.",
                 "El servicio de lavandería más asequible del condado de Ventura está listo para quitar la lavandería de tu lista de tareas."
@@ -648,27 +579,23 @@ export default function LandingPage() {
           </StaggeredElement>
         </div>
 
-        {/* SVG inferior - Una sola ola alargada */}
-        <div className="absolute bottom-0 left-0 right-0 z-10 pointer-events-none">
-          <svg viewBox="0 0 1440 60" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full">
-            <path
-              d="M0,30 Q80,60 160,30 T1440,30 L1440,60 L0,60 Z"
-              fill={LANDING_THEME.waveToDarkSections}
-            />
+        <div className="wave-divider">
+          <svg viewBox="0 0 1440 60" preserveAspectRatio="none">
+            <path d="M0,30 Q80,60 160,30 T1440,30 L1440,60 L0,60 Z" className="shape-fill" />
           </svg>
         </div>
       </section>
 
       {/* FAQ Section */}
-      <section className="py-24 bg-slate-950">
+      <section className="py-20 bg-white">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
           <StaggeredElement>
-            <h2 className="text-3xl sm:text-4xl font-bold text-slate-100 text-center mb-12" style={{ fontFamily: "'Playfair Display', serif" }}>
+            <h2 className="text-4xl sm:text-5xl font-bold text-slate-800 text-center mb-12">
               {t("Frequently Asked Questions", "Preguntas Frecuentes")}
             </h2>
           </StaggeredElement>
 
-          <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl shadow-xl border border-slate-700 p-6 md:p-8">
+          <div className="bg-slate-50 rounded-2xl p-6 md:p-8 border border-slate-200">
             {faqs.map((faq, index) => (
               <StaggeredElement key={index} delay={index * 50}>
                 <FAQItem
@@ -684,20 +611,20 @@ export default function LandingPage() {
       </section>
 
       {/* Contact Info Section */}
-      <section className="py-16 bg-gradient-to-b from-slate-900 to-slate-950">
+      <section className="py-16 bg-slate-50 border-t border-slate-200">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid md:grid-cols-3 gap-8 text-center">
             {[
-              { icon: <MapPin className="h-7 w-7 text-sky-600" />, text: t("📍 5722 Telephone Rd #5, Ventura, CA 93003", "📍 5722 Telephone Rd #5, Ventura, CA 93003") },
-              { icon: <Clock className="h-7 w-7 text-sky-600" />, text: t("🕒 Mon–Sun 6:00 AM – 10:00 PM", "🕒 Lun–Dom 6:00 AM – 10:00 PM") },
-              { icon: <Phone className="h-7 w-7 text-sky-600" />, text: t("📞 (805) 836-8872", "📞 (805) 836-8872") },
+              { icon: <MapPin className="h-6 w-6 text-primary" />, text: t("📍 5722 Telephone Rd #5, Ventura, CA 93003", "📍 5722 Telephone Rd #5, Ventura, CA 93003") },
+              { icon: <Clock className="h-6 w-6 text-primary" />, text: t("🕒 Mon–Sun 6:00 AM – 10:00 PM", "🕒 Lun–Dom 6:00 AM – 10:00 PM") },
+              { icon: <Phone className="h-6 w-6 text-primary" />, text: t("📞 (805) 836-8872", "📞 (805) 836-8872") },
             ].map((contact, idx) => (
               <StaggeredElement key={idx} delay={idx * 100}>
-                <div className="flex flex-col items-center hover:scale-105 transition-all duration-500">
-                  <div className="h-14 w-14 rounded-full bg-gradient-to-br from-slate-800 to-slate-700 flex items-center justify-center mb-4 shadow-lg border border-slate-600">
+                <div className="flex flex-col items-center hover:scale-105 transition-all duration-500 group">
+                  <div className="h-14 w-14 rounded-full bg-primary/10 flex items-center justify-center mb-3 group-hover:bg-primary/20 transition-colors">
                     {contact.icon}
                   </div>
-                  <p className="text-slate-200 font-medium">{contact.text}</p>
+                  <p className="text-slate-600 text-sm">{contact.text}</p>
                 </div>
               </StaggeredElement>
             ))}
