@@ -26,6 +26,7 @@ class PublicPickupRequest(BaseModel):
     pickup_time: Optional[str] = None
     service_type: Optional[str] = "pickup_delivery"
     contact_method: Optional[str] = None
+    sms_consent: Optional[bool] = False
     notes: Optional[str] = None
     gate_code: Optional[str] = None
 
@@ -39,6 +40,7 @@ class PublicWashFoldRequest(BaseModel):
     dropoff_time: Optional[str] = None
     notes: Optional[str] = None
     contact_method: Optional[str] = None
+    sms_consent: Optional[bool] = False
 
 
 class PublicContactRequest(BaseModel):
@@ -47,6 +49,8 @@ class PublicContactRequest(BaseModel):
     phone: Optional[str] = None
     message: str
     subject: Optional[str] = "Contact Request"
+    contact_method: Optional[str] = None
+    sms_consent: Optional[bool] = False
 
 
 class PublicQuoteRequest(BaseModel):
@@ -65,6 +69,7 @@ class PublicMembershipSignup(BaseModel):
     email: EmailStr
     phone: str
     contact_method: str
+    sms_consent: Optional[bool] = False
     address_line1: str
     address_line2: Optional[str] = None
     city: str
@@ -90,6 +95,7 @@ class B2BQuoteRequest(BaseModel):
     email: EmailStr
     phone: str
     contact_method: Optional[str] = None
+    sms_consent: Optional[bool] = False
     address_line1: str
     address_line2: Optional[str] = None
     city: str
@@ -120,6 +126,14 @@ def get_public_forms_router(
 ):
     router = APIRouter()
 
+    def validate_sms_consent(contact_method: Optional[str], sms_consent: Optional[bool]):
+        normalized_contact = normalize_preferred_contact(contact_method) if contact_method else None
+        if normalized_contact in {"sms", "whatsapp"} and not bool(sms_consent):
+            raise HTTPException(
+                status_code=400,
+                detail="SMS consent is required for text or WhatsApp notifications"
+            )
+
     @router.post("/public/pickup-request")
     async def public_pickup_request(data: PublicPickupRequest):
         now = datetime.now(timezone.utc).isoformat()
@@ -133,6 +147,8 @@ def get_public_forms_router(
         normalized_service_type = normalize_spaces(data.service_type).lower().replace(" ", "_") or "pickup_delivery"
         normalized_contact_raw = normalize_spaces(data.contact_method)
         preferred_contact = normalize_preferred_contact(normalized_contact_raw) if normalized_contact_raw else None
+        validate_sms_consent(preferred_contact, data.sms_consent)
+        sms_consent = bool(data.sms_consent)
 
         customer = await db.customers.find_one({"email": normalized_email}, {"_id": 0})
         if not customer:
@@ -144,6 +160,8 @@ def get_public_forms_router(
                 "phone": normalized_phone or data.phone,
                 "address": normalized_address or data.address,
                 "preferred_contact": preferred_contact or "email",
+                "sms_consent": sms_consent,
+                "sms_consent_at": now if sms_consent else None,
                 "notes": None,
                 "status": "active",
                 "total_orders": 0,
@@ -160,6 +178,7 @@ def get_public_forms_router(
                     "phone": normalized_phone or customer.get("phone"),
                     "address": normalized_address or customer.get("address"),
                     **({"preferred_contact": preferred_contact} if preferred_contact else {}),
+                    **({"sms_consent": True, "sms_consent_at": now} if sms_consent else {}),
                     "updated_at": now
                 }}
             )
@@ -168,7 +187,8 @@ def get_public_forms_router(
                 "name": normalized_name or customer.get("name"),
                 "phone": normalized_phone or customer.get("phone"),
                 "address": normalized_address or customer.get("address"),
-                **({"preferred_contact": preferred_contact} if preferred_contact else {})
+                **({"preferred_contact": preferred_contact} if preferred_contact else {}),
+                **({"sms_consent": True, "sms_consent_at": now} if sms_consent else {})
             }
 
         pref = await db.preferences.find({"customer_id": customer["id"]}, {"_id": 0}).sort("version", -1).limit(1).to_list(1)
@@ -194,6 +214,8 @@ def get_public_forms_router(
             "notes": normalized_notes,
             "gate_code": normalized_gate_code,
             "preferred_contact": preferred_contact,
+            "sms_consent": sms_consent,
+            "sms_consent_at": now if sms_consent else None,
             "preferences_id": preference_id,
             "preferences_snapshot": preference_snapshot,
             "status": "new",
@@ -236,6 +258,9 @@ def get_public_forms_router(
         normalized_address = normalize_address(data.address)
         normalized_notes = normalize_spaces(data.notes)
         normalized_contact = normalize_spaces(data.contact_method)
+        preferred_contact = normalize_preferred_contact(normalized_contact) if normalized_contact else None
+        validate_sms_consent(preferred_contact, data.sms_consent)
+        sms_consent = bool(data.sms_consent)
 
         notes_payload = normalized_notes or ""
         if normalized_contact:
@@ -250,7 +275,9 @@ def get_public_forms_router(
                 "email": normalized_email,
                 "phone": normalized_phone or data.phone,
                 "address": normalized_address or data.address,
-                "preferred_contact": normalized_contact or "email",
+                "preferred_contact": preferred_contact or "email",
+                "sms_consent": sms_consent,
+                "sms_consent_at": now if sms_consent else None,
                 "notes": None,
                 "status": "active",
                 "total_orders": 0,
@@ -266,7 +293,8 @@ def get_public_forms_router(
                     "name": normalized_name or customer.get("name"),
                     "phone": normalized_phone or customer.get("phone"),
                     "address": normalized_address or customer.get("address"),
-                    "preferred_contact": normalized_contact or customer.get("preferred_contact"),
+                    "preferred_contact": preferred_contact or customer.get("preferred_contact"),
+                    **({"sms_consent": True, "sms_consent_at": now} if sms_consent else {}),
                     "updated_at": now
                 }}
             )
@@ -285,7 +313,9 @@ def get_public_forms_router(
             "customer_id": customer["id"],
             "customer_name": customer["name"],
             "service_type": "wash_fold",
-            "preferred_contact": normalized_contact or customer.get("preferred_contact") or "email",
+            "preferred_contact": preferred_contact or customer.get("preferred_contact") or "email",
+            "sms_consent": sms_consent,
+            "sms_consent_at": now if sms_consent else None,
             "pickup_date": data.dropoff_date,
             "pickup_time_window": data.dropoff_time,
             "pickup_address": None,
@@ -336,6 +366,9 @@ def get_public_forms_router(
         normalized_phone = normalize_phone(data.phone)
         normalized_message = normalize_spaces(data.message)
         normalized_subject = normalize_spaces(data.subject) or "Contact Request"
+        normalized_contact_method = normalize_spaces(data.contact_method)
+        preferred_contact = normalize_preferred_contact(normalized_contact_method) if normalized_contact_method else None
+        validate_sms_consent(preferred_contact, data.sms_consent)
 
         customer = await db.customers.find_one({"email": normalized_email}, {"_id": 0})
         customer_id = customer["id"] if customer else None
@@ -353,6 +386,9 @@ def get_public_forms_router(
             "subject": normalized_subject,
             "description": f"Nombre: {normalized_name or data.name}\nEmail: {normalized_email}\nTeléfono: {normalized_phone or 'N/A'}\n\nMensaje:\n{normalized_message}",
             "category": "general",
+            "contact_method": preferred_contact,
+            "sms_consent": bool(data.sms_consent),
+            "sms_consent_at": now if bool(data.sms_consent) else None,
             "priority": "medium",
             "status": "open",
             "assigned_to": None,
@@ -421,6 +457,8 @@ def get_public_forms_router(
         normalized_email = normalize_email(data.email) or data.email.lower()
         normalized_phone = normalize_phone(data.phone)
         normalized_contact = normalize_spaces(data.contact_method)
+        preferred_contact = normalize_preferred_contact(normalized_contact) if normalized_contact else None
+        validate_sms_consent(preferred_contact, data.sms_consent)
         normalized_address1 = normalize_address(data.address_line1)
         normalized_address2 = normalize_address(data.address_line2)
         normalized_city = normalize_spaces(data.city)
@@ -448,7 +486,9 @@ def get_public_forms_router(
             "last_name": normalized_last or data.last_name,
             "email": normalized_email,
             "phone": normalized_phone or data.phone,
-            "contact_method": normalized_contact or data.contact_method,
+            "contact_method": preferred_contact or data.contact_method,
+            "sms_consent": bool(data.sms_consent),
+            "sms_consent_at": now if bool(data.sms_consent) else None,
             "address_line1": normalized_address1 or data.address_line1,
             "address_line2": normalized_address2 or data.address_line2,
             "city": normalized_city or data.city,
@@ -481,6 +521,8 @@ def get_public_forms_router(
         normalized_email = normalize_email(data.email) or data.email.lower()
         normalized_phone = normalize_phone(data.phone)
         normalized_contact_method = normalize_spaces(data.contact_method)
+        preferred_contact = normalize_preferred_contact(normalized_contact_method) if normalized_contact_method else None
+        validate_sms_consent(preferred_contact, data.sms_consent)
         normalized_address1 = normalize_address(data.address_line1)
         normalized_address2 = normalize_address(data.address_line2)
         normalized_city = normalize_spaces(data.city)
@@ -507,7 +549,9 @@ def get_public_forms_router(
             "contact_name": f"{normalized_first or data.first_name} {normalized_last or data.last_name}".strip(),
             "email": normalized_email,
             "phone": normalized_phone or data.phone,
-            "contact_method": normalized_contact_method or data.contact_method,
+            "contact_method": preferred_contact or data.contact_method,
+            "sms_consent": bool(data.sms_consent),
+            "sms_consent_at": now if bool(data.sms_consent) else None,
             "job_title": normalized_job_title or data.job_title,
             "address_line1": normalized_address1 or data.address_line1,
             "address_line2": normalized_address2 or data.address_line2,

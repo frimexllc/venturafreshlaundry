@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { CheckCircle, Star, CreditCard, Loader2, AlertCircle } from "lucide-react";
 import PublicNav from "../components/PublicNav";
 import PublicFooter from "../components/PublicFooter";
+import SmsConsentField from "../components/SmsConsentField";
 import { useLocale } from "../context/LocaleContext";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -42,6 +43,7 @@ export default function MembershipPage() {
     email: "",
     phone: "",
     contact_method: "",
+    sms_consent: false,
     address_line1: "",
     address_line2: "",
     city: "",
@@ -164,6 +166,15 @@ export default function MembershipPage() {
       toast.error(t("Please enter your name", "Por favor ingresa tu nombre"));
       return;
     }
+    if (["text", "sms", "whatsapp"].includes(form.contact_method) && !form.sms_consent) {
+      toast.error(
+        t(
+          "You must accept SMS consent to receive text notifications.",
+          "Debes aceptar el consentimiento SMS para recibir notificaciones por mensaje."
+        )
+      );
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -195,6 +206,15 @@ export default function MembershipPage() {
       toast.error(t("Please complete all required fields", "Por favor completa todos los campos obligatorios"));
       return;
     }
+    if (["text", "sms", "whatsapp"].includes(form.contact_method) && !form.sms_consent) {
+      toast.error(
+        t(
+          "You must accept SMS consent to receive text notifications.",
+          "Debes aceptar el consentimiento SMS para recibir notificaciones por mensaje."
+        )
+      );
+      return;
+    }
     setSubmitting(true);
     try {
       const preferences = buildPreferencesPayload();
@@ -210,6 +230,7 @@ export default function MembershipPage() {
         state: form.state.trim(),
         zip_code: form.zip_code.trim(),
         membership_plan: form.membership_plan,
+        sms_consent: form.sms_consent,
         laundry_frequency: form.laundry_frequency,
         estimated_lbs: parseFloat(form.estimated_lbs),
         detergent_type: preferences?.detergent_type || null,
@@ -281,6 +302,7 @@ export default function MembershipPage() {
                   email: "",
                   phone: "",
                   contact_method: "",
+                  sms_consent: false,
                   address_line1: "",
                   address_line2: "",
                   city: "",
@@ -447,6 +469,11 @@ export default function MembershipPage() {
                     <SelectItem value="email">{t("Email", "Correo")}</SelectItem>
                   </SelectContent>
                 </Select>
+                <SmsConsentField
+                  checked={form.sms_consent}
+                  onChange={(e) => setForm({ ...form, sms_consent: e.target.checked })}
+                  idPrefix="membership-sms-consent"
+                />
               </div>
 
               <div>

@@ -16,6 +16,7 @@ import {
 import { Truck, CheckCircle } from "lucide-react";
 import PublicNav from "../components/PublicNav";
 import PublicFooter from "../components/PublicFooter";
+import SmsConsentField from "../components/SmsConsentField";
 import { useLocale } from "../context/LocaleContext";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -41,6 +42,7 @@ export default function SchedulePickup() {
     email: "",
     phone: "",
     contact_method: "",
+    sms_consent: false,
     address_line1: "",
     address_line2: "",
     city: "",
@@ -59,6 +61,7 @@ export default function SchedulePickup() {
       email: "",
       phone: "",
       contact_method: "",
+      sms_consent: false,
       address_line1: "",
       address_line2: "",
       city: "",
@@ -77,6 +80,15 @@ export default function SchedulePickup() {
     // Validaciones simples (porque Select no siempre “respeta” required como un input nativo)
     if (!form.contact_method) {
       toast.error(t("Please select the best way to contact you.", "Por favor selecciona la mejor forma de contactarte."));
+      return;
+    }
+    if (["text", "sms", "whatsapp"].includes(form.contact_method) && !form.sms_consent) {
+      toast.error(
+        t(
+          "You must accept SMS consent to receive text notifications.",
+          "Debes aceptar el consentimiento SMS para recibir notificaciones por mensaje."
+        )
+      );
       return;
     }
     if (!form.service_type) {
@@ -109,6 +121,7 @@ export default function SchedulePickup() {
         pickup_time: form.pickup_time,
         service_type: form.service_type,
         contact_method: form.contact_method,
+        sms_consent: form.sms_consent,
         notes: `Preferred contact: ${form.contact_method}\n${form.notes?.trim() || ""}`.trim(),
       });
 
@@ -273,6 +286,11 @@ export default function SchedulePickup() {
                   <SelectItem value="email">{t("Email", "Correo")}</SelectItem>
                 </SelectContent>
               </Select>
+              <SmsConsentField
+                checked={form.sms_consent}
+                onChange={(e) => setForm({ ...form, sms_consent: e.target.checked })}
+                idPrefix="pickup-sms-consent"
+              />
             </div>
 
             {/* Address */}

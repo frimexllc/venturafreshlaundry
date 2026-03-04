@@ -1,94 +1,121 @@
 import PublicNav from "../components/PublicNav";
 import PublicFooter from "../components/PublicFooter";
-import { useLocale } from "../context/LocaleContext";
 
 export default function PrivacyPolicy() {
-  const { t } = useLocale();
-
   return (
     <div className="min-h-screen bg-white" data-testid="privacy-page">
       <PublicNav />
 
       <section className="pt-32 pb-20">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="mb-10">
-            <h1 className="text-4xl font-bold text-slate-900" data-testid="privacy-title">
-              {t("Privacy Policy", "Política de Privacidad")}
-            </h1>
-            <p className="text-slate-500 mt-2" data-testid="privacy-updated">
-              {t("Last updated: February 22, 2026", "Última actualización: 22 de febrero de 2026")}
+            <h1 className="text-4xl font-bold text-slate-900" data-testid="privacy-title">Ventura Fresh Laundry – Privacy Policy</h1>
+            <p className="text-slate-500 mt-2" data-testid="privacy-effective-date">Effective Date: 02/22/26</p>
+            <p className="text-slate-700 mt-4" data-testid="privacy-intro">
+              Ventura Fresh Laundry (“we”, “our”, “us”) respects your privacy and is committed to protecting your personal information.
+              This Privacy Policy explains how we collect, use, and safeguard information when you visit our website or use our services.
             </p>
           </div>
 
           <div className="space-y-8 text-slate-700 leading-relaxed">
-            <div data-testid="privacy-section-data">
-              <h2 className="text-xl font-semibold text-slate-900 mb-3">{t("1. Information we collect", "1. Información que recopilamos")}</h2>
-              <p>
-                {t(
-                  "We collect contact information, addresses, service preferences, order history, and details necessary to process payments and deliveries.",
-                  "Recopilamos datos de contacto, direcciones, preferencias de servicio, historial de órdenes, y detalles necesarios para procesar pagos y entregas."
-                )}
-              </p>
+            <div data-testid="privacy-section-1">
+              <h2 className="text-xl font-semibold text-slate-900 mb-3">1. Information We Collect</h2>
+              <p className="font-semibold">Personal Information</p>
+              <ul className="list-disc pl-6 mt-2 space-y-1">
+                <li>Full name</li>
+                <li>Email address</li>
+                <li>Phone number</li>
+                <li>Pickup and delivery address</li>
+                <li>Payment information (processed securely through third-party payment processors)</li>
+              </ul>
+              <p className="font-semibold mt-4">Automatically Collected Information</p>
+              <ul className="list-disc pl-6 mt-2 space-y-1">
+                <li>IP address</li>
+                <li>Browser type</li>
+                <li>Device type</li>
+                <li>Pages visited</li>
+                <li>Date and time of access</li>
+              </ul>
             </div>
 
-            <div data-testid="privacy-section-use">
-              <h2 className="text-xl font-semibold text-slate-900 mb-3">{t("2. Use of information", "2. Uso de la información")}</h2>
-              <p>
-                {t(
-                  "We use the information to operate the service, confirm orders, send notifications, and improve the customer experience. We do not sell your information to third parties.",
-                  "Usamos la información para operar el servicio, confirmar órdenes, enviar notificaciones, y mejorar la experiencia del cliente. No vendemos tu información a terceros."
-                )}
-              </p>
+            <div data-testid="privacy-section-2">
+              <h2 className="text-xl font-semibold text-slate-900 mb-3">2. How We Use Your Information</h2>
+              <ul className="list-disc pl-6 space-y-1">
+                <li>Process service orders</li>
+                <li>Schedule pickups and deliveries</li>
+                <li>Communicate order updates</li>
+                <li>Provide customer support</li>
+                <li>Process payments</li>
+                <li>Improve website functionality</li>
+                <li>Send service notifications</li>
+                <li>Prevent fraud and protect our business</li>
+              </ul>
             </div>
 
-            <div data-testid="privacy-section-sharing">
-              <h2 className="text-xl font-semibold text-slate-900 mb-3">{t("3. Sharing with third parties", "3. Compartición con terceros")}</h2>
-              <p>
-                {t(
-                  "We share data only with providers necessary for the service (e.g., payment processors and couriers). These providers are required to protect your information.",
-                  "Compartimos datos solo con proveedores necesarios para el servicio (por ejemplo, procesadores de pago y mensajería). Estos proveedores están obligados a proteger tu información."
-                )}
-              </p>
+            <div data-testid="privacy-section-3">
+              <h2 className="text-xl font-semibold text-slate-900 mb-3">3. Payment Processing</h2>
+              <p>Payments made through our website may be processed by secure third-party payment providers such as Stripe.</p>
+              <p>Ventura Fresh Laundry does not store full credit card details on its servers.</p>
             </div>
 
-            <div data-testid="privacy-section-retention">
-              <h2 className="text-xl font-semibold text-slate-900 mb-3">{t("4. Retention", "4. Retención")}</h2>
-              <p>
-                {t(
-                  "We retain your data as long as you maintain an active account or as necessary to comply with legal and service obligations.",
-                  "Conservamos tus datos mientras mantengas una cuenta activa o sea necesario para cumplir obligaciones legales y de servicio."
-                )}
-              </p>
+            <div data-testid="privacy-section-4">
+              <h2 className="text-xl font-semibold text-slate-900 mb-3">4. SMS Communications</h2>
+              <p>If you opt-in to receive SMS messages, we may send notifications related to:</p>
+              <ul className="list-disc pl-6 mt-2 space-y-1">
+                <li>Order confirmations</li>
+                <li>Pickup reminders</li>
+                <li>Order completion</li>
+                <li>Delivery notifications</li>
+              </ul>
+              <p className="mt-2">Message frequency may vary. Message and data rates may apply.</p>
+              <p>You may opt out at any time by replying STOP.</p>
             </div>
 
-            <div data-testid="privacy-section-rights">
-              <h2 className="text-xl font-semibold text-slate-900 mb-3">{t("5. Your rights", "5. Tus derechos")}</h2>
-              <p>
-                {t(
-                  "You may request access, update, or deletion of your personal data. To do so, contact us at support@venturafreshlaundry.com.",
-                  "Puedes solicitar acceso, actualización o eliminación de tus datos personales. Para hacerlo, contáctanos en soporte@venturafreshlaundry.com."
-                )}
-              </p>
+            <div data-testid="privacy-section-5">
+              <h2 className="text-xl font-semibold text-slate-900 mb-3">5. Information Sharing</h2>
+              <p>We do not sell or rent personal information. We may share information only with trusted service providers required to operate our business, including:</p>
+              <ul className="list-disc pl-6 mt-2 space-y-1">
+                <li>Payment processors</li>
+                <li>Messaging providers</li>
+                <li>Delivery logistics tools</li>
+                <li>Website hosting services</li>
+              </ul>
             </div>
 
-            <div data-testid="privacy-section-security">
-              <h2 className="text-xl font-semibold text-slate-900 mb-3">{t("6. Security", "6. Seguridad")}</h2>
-              <p>
-                {t(
-                  "We apply technical and organizational security measures to protect your information.",
-                  "Aplicamos medidas de seguridad técnicas y organizativas para proteger tu información."
-                )}
-              </p>
+            <div data-testid="privacy-section-6">
+              <h2 className="text-xl font-semibold text-slate-900 mb-3">6. Data Security</h2>
+              <p>We implement reasonable security measures to protect personal information.</p>
             </div>
 
-            <div data-testid="privacy-section-changes">
-              <h2 className="text-xl font-semibold text-slate-900 mb-3">{t("7. Changes to this policy", "7. Cambios en la política")}</h2>
-              <p>
-                {t(
-                  "We will update this policy when necessary. The current version will be published on this page.",
-                  "Actualizaremos esta política cuando sea necesario. Publicaremos la versión vigente en esta página."
-                )}
-              </p>
+            <div data-testid="privacy-section-7">
+              <h2 className="text-xl font-semibold text-slate-900 mb-3">7. Cookies and Tracking</h2>
+              <p>Our website may use cookies or similar technologies to enhance functionality and analyze website traffic.</p>
+            </div>
+
+            <div data-testid="privacy-section-8">
+              <h2 className="text-xl font-semibold text-slate-900 mb-3">8. Children's Privacy</h2>
+              <p>Our services are not directed toward individuals under the age of 13.</p>
+            </div>
+
+            <div data-testid="privacy-section-9">
+              <h2 className="text-xl font-semibold text-slate-900 mb-3">9. Your Privacy Rights</h2>
+              <ul className="list-disc pl-6 space-y-1">
+                <li>Request access to your personal information</li>
+                <li>Request corrections</li>
+                <li>Request deletion of your data</li>
+              </ul>
+            </div>
+
+            <div data-testid="privacy-section-10">
+              <h2 className="text-xl font-semibold text-slate-900 mb-3">10. Changes to This Policy</h2>
+              <p>We may update this Privacy Policy from time to time. Updates will be posted on this page with a revised effective date.</p>
+            </div>
+
+            <div data-testid="privacy-section-11">
+              <h2 className="text-xl font-semibold text-slate-900 mb-3">11. Contact Us</h2>
+              <p>Ventura Fresh Laundry</p>
+              <p>Website: https://venturafreshlaundry.com</p>
+              <p>Email: info@venturafreshlaundry.com</p>
             </div>
           </div>
         </div>

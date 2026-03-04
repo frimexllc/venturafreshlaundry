@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import PublicNav from "../components/PublicNav";
 import PublicFooter from "../components/PublicFooter";
+import SmsConsentField from "../components/SmsConsentField";
 import { useLocale } from "../context/LocaleContext";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -58,21 +59,34 @@ export default function ContactPage() {
     phone: "",
     subject: "",
     contact_method: "",
+    sms_consent: false,
     message: ""
   });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (["text", "sms", "whatsapp"].includes(form.contact_method) && !form.sms_consent) {
+      toast.error(
+        t(
+          "You must accept SMS consent to receive text notifications.",
+          "Debes aceptar el consentimiento SMS para recibir notificaciones por mensaje."
+        )
+      );
+      return;
+    }
     setSubmitting(true);
     try {
       const res = await axios.post(`${API}/public/contact`, {
         name: form.name.trim(),
         email: form.email.trim(),
         phone: form.phone.trim(),
+        contact_method: form.contact_method,
+        sms_consent: form.sms_consent,
+        subject: form.subject.trim(),
         message: `Subject: ${form.subject.trim()}\nPreferred Contact: ${form.contact_method}\n\n${form.message.trim()}`.trim()
       });
       toast.success(res.data.message);
-      setForm({ name: "", email: "", phone: "", subject: "", contact_method: "", message: "" });
+      setForm({ name: "", email: "", phone: "", subject: "", contact_method: "", sms_consent: false, message: "" });
     } catch (error) {
       toast.error(error.response?.data?.detail || t("Error sending message", "Error al enviar mensaje"));
     } finally {
@@ -235,6 +249,12 @@ export default function ContactPage() {
                       </Select>
                     </div>
                   </div>
+
+                  <SmsConsentField
+                    checked={form.sms_consent}
+                    onChange={(e) => setForm({ ...form, sms_consent: e.target.checked })}
+                    idPrefix="contact-sms-consent"
+                  />
 
                   <div>
                     <Label className="text-slate-700">{t("Subject *", "Asunto *")}</Label>

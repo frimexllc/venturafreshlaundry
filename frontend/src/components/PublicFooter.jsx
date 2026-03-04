@@ -58,6 +58,7 @@ export default function PublicFooter() {
               <Link to="/store" className="block hover:text-white transition-colors">{t("Store", "Tienda")}</Link>
               <Link to="/terms-and-conditions" className="block hover:text-white transition-colors" data-testid="footer-terms-link">{t("Terms and Conditions", "Términos y condiciones")}</Link>
               <Link to="/privacy-policy" className="block hover:text-white transition-colors" data-testid="footer-privacy-link">{t("Privacy Policy", "Política de privacidad")}</Link>
+              <Link to="/sms-policy-consent" className="block hover:text-white transition-colors" data-testid="footer-sms-policy-link">{t("SMS Policy", "Política SMS")}</Link>
             </div>
           </div>
 

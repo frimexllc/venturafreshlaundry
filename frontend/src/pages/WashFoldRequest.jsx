@@ -15,6 +15,7 @@ import {
 import { Package, CheckCircle } from "lucide-react";
 import PublicNav from "../components/PublicNav";
 import PublicFooter from "../components/PublicFooter";
+import SmsConsentField from "../components/SmsConsentField";
 import { useLocale } from "../context/LocaleContext";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -59,6 +60,7 @@ export default function WashFoldRequest() {
     country_code: "+1", // Código de país por defecto
     phone: "",
     contact_method: "",
+    sms_consent: false,
     address_line1: "",
     address_line2: "",
     city: "",
@@ -77,6 +79,7 @@ export default function WashFoldRequest() {
       country_code: "+1",
       phone: "",
       contact_method: "",
+      sms_consent: false,
       address_line1: "",
       address_line2: "",
       city: "",
@@ -93,6 +96,15 @@ export default function WashFoldRequest() {
 
     if (!form.contact_method) {
       toast.error(t("Please select the best way to contact you.", "Por favor selecciona la mejor forma de contactarte."));
+      return;
+    }
+    if (["text", "sms", "whatsapp"].includes(form.contact_method) && !form.sms_consent) {
+      toast.error(
+        t(
+          "You must accept SMS consent to receive text notifications.",
+          "Debes aceptar el consentimiento SMS para recibir notificaciones por mensaje."
+        )
+      );
       return;
     }
     // Comentamos esta validación ya que el campo está desactivado
@@ -123,6 +135,7 @@ export default function WashFoldRequest() {
         dropoff_date: form.dropoff_date,
         dropoff_time: form.dropoff_time,
         contact_method: form.contact_method,
+        sms_consent: form.sms_consent,
         notes: form.notes?.trim() || ""
       });
 
@@ -300,6 +313,11 @@ export default function WashFoldRequest() {
                   <SelectItem value="email">{t("Email", "Correo")}</SelectItem>
                 </SelectContent>
               </Select>
+              <SmsConsentField
+                checked={form.sms_consent}
+                onChange={(e) => setForm({ ...form, sms_consent: e.target.checked })}
+                idPrefix="washfold-sms-consent"
+              />
             </div>
 
             <div className="mb-6">

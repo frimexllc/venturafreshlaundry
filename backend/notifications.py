@@ -188,6 +188,14 @@ def normalize_preferred_contact(value: str) -> str:
         return "sms"
     return "sms"
 
+
+def has_sms_consent(order: Optional[Dict], customer: Optional[Dict]) -> bool:
+    if order and order.get("sms_consent") is True:
+        return True
+    if customer and customer.get("sms_consent") is True:
+        return True
+    return False
+
 def normalize_status_value(value: Optional[str]) -> str:
     if not value:
         return ""
@@ -605,6 +613,15 @@ async def send_preferred_notification(
         or extract_contact_from_notes(order)
         or (customer or {}).get("preferred_contact")
     )
+
+    sms_opt_in = has_sms_consent(order, customer)
+    if preference in {"sms", "whatsapp"} and not sms_opt_in:
+        logger.info("SMS/WhatsApp preference requested without consent. Fallback to email/call.")
+        if email:
+            preference = "email"
+        else:
+            preference = "call"
+
     country = detect_country(phone)
     if country == 'mx' and preference == 'sms' and TWILIO_WHATSAPP_NUMBER:
         logger.info("Mexican number detected, switching from SMS to WhatsApp for cost savings")

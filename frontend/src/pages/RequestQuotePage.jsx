@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { CheckCircle, Building2, Briefcase, Truck, Hotel } from "lucide-react";
 import PublicNav from "../components/PublicNav";
 import PublicFooter from "../components/PublicFooter";
+import SmsConsentField from "../components/SmsConsentField";
 import { useLocale } from "../context/LocaleContext";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -61,6 +62,7 @@ export default function RequestQuotePage() {
     email: "",
     phone: "",
     contact_method: "",
+    sms_consent: false,
     address_line1: "",
     address_line2: "",
     city: "",
@@ -90,6 +92,15 @@ export default function RequestQuotePage() {
       toast.error(t("Please fill all required fields", "Por favor completa todos los campos obligatorios"));
       return;
     }
+    if (["text", "sms", "whatsapp"].includes(form.contact_method) && !form.sms_consent) {
+      toast.error(
+        t(
+          "You must accept SMS consent to receive text notifications.",
+          "Debes aceptar el consentimiento SMS para recibir notificaciones por mensaje."
+        )
+      );
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -112,7 +123,8 @@ export default function RequestQuotePage() {
         best_date: form.best_date,
         best_time: form.best_time,
         additional_notes: form.additional_notes.trim(),
-        estimated_lbs: parseFloat(form.estimated_lbs) || 0
+        estimated_lbs: parseFloat(form.estimated_lbs) || 0,
+        sms_consent: form.sms_consent
       };
 
       const res = await axios.post(`${API}/public/b2b-quote`, payload);
@@ -147,7 +159,7 @@ export default function RequestQuotePage() {
               onClick={() => {
                 setSubmitted(false);
                 setForm({
-                  first_name: "", last_name: "", email: "", phone: "", contact_method: "",
+                  first_name: "", last_name: "", email: "", phone: "", contact_method: "", sms_consent: false,
                   address_line1: "", address_line2: "", city: "", state: "", zip_code: "",
                   job_title: "", service_type: "", has_membership: "", company_legal_name: "",
                   dba_name: "", business_type: "", laundry_frequency: "", estimated_lbs: "",
@@ -281,6 +293,12 @@ export default function RequestQuotePage() {
                   />
                 </div>
               </div>
+
+              <SmsConsentField
+                checked={form.sms_consent}
+                onChange={(e) => setForm({ ...form, sms_consent: e.target.checked })}
+                idPrefix="quote-sms-consent"
+              />
 
               <div className="mt-4">
                 <label className="flex items-center gap-2 cursor-pointer">

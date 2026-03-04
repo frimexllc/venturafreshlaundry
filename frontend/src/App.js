@@ -40,6 +40,7 @@ import CustomerAccount from "./pages/CustomerAccount";
 import CustomerLogin from "./pages/CustomerLogin";
 import TermsAndConditions from "./pages/TermsAndConditions";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
+import SmsPolicyConsent from "./pages/SmsPolicyConsent";
 
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -110,6 +111,7 @@ function AppRoutes() {
       <Route path="/b2b" element={<RequestQuotePage />} />
       <Route path="/terms-and-conditions" element={<TermsAndConditions />} />
       <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+      <Route path="/sms-policy-consent" element={<SmsPolicyConsent />} />
 
       {/* Customer portal */}
       <Route path="/account/login" element={<CustomerLogin />} />
