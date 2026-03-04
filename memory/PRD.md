@@ -151,6 +151,21 @@ RECEIVED → PROCESSING → READY → OUT_FOR_DELIVERY → DELIVERED → COMPLET
 - ✅ **Stripe avanzado (estructura preparada, no activa)**: nuevo scaffold en `/api/stripe-sync/*` controlado por feature flag `STRIPE_ADVANCED_SYNC_ENABLED=false`.
 - ✅ **Hardening backend**: mount robusto para `/uploads` con path absoluto y creación automática de directorio.
 
+## Cambios recientes (2026-03-04) – SMS Consent Compliance
+- ✅ **Consentimiento SMS en formularios públicos**: se agregó checkbox legal después de “Best way to contact you” en:
+  - `/schedule-pickup`
+  - `/wash-fold`
+  - `/contact`
+  - `/request-quote` (B2B)
+  - `/membership`
+- ✅ **Validación doble anti-rechazo Twilio**:
+  - Frontend bloquea envío si método de contacto es `text/sms/whatsapp` sin consentimiento.
+  - Backend devuelve `400` con mensaje claro si falta consentimiento.
+- ✅ **Evidencia de consentimiento**: se guardan `sms_consent` y `sms_consent_at` en documentos relevantes (órdenes/forms/tickets/quotes/signups).
+- ✅ **Nueva página legal**: ` /sms-policy-consent ` con política SMS completa (opt-in, frecuencia, tarifas, STOP/HELP, privacidad).
+- ✅ **Políticas legales actualizadas**: ` /privacy-policy ` y ` /terms-and-conditions ` con contenido detallado provisto.
+- ✅ **Notificaciones protegidas**: backend ahora evita SMS/WhatsApp sin consentimiento y hace fallback a email/call.
+
 ## Pendientes / Issues
 **P1**
 - Validar webhook Stripe end-to-end en entorno productivo con eventos reales entrantes
