@@ -536,6 +536,81 @@ frontend:
         agent: "testing"
         comment: "✅ TESTED (Feb 28, 2026): Payment modal for unpaid orders fully functional. Verified: 1) Modal opens when 'Request payment' button clicked (data-testid: store-payment-modal) ✓, 2) Displays unpaid order number: SO-20260222-1C108307 ✓, 3) Shows order total: $24.99 ✓, 4) Payment method dropdown present with all options: Card (Stripe), Cash, Transfer, Other (data-testid: store-payment-method) ✓, 5) Submit button displays 'Pay with Stripe' when card selected (data-testid: store-payment-submit) ✓, 6) Helper text shown: 'Stripe Checkout will open in a new page' (data-testid: store-payment-note) ✓. Modal closes correctly with Escape key. All payment request functionality working correctly. Evidence: screenshot 03_payment_modal_open.png captured."
 
+  - task: "Landing Page - Background Transitions and Text Legibility"
+    implemented: true
+    working: true
+    file: "pages/LandingPage.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Landing page with video hero, wave transitions between sections, dark gradient backgrounds for consistency"
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED (Mar 4, 2026): Landing page transitions and backgrounds verified. NO white blocks detected in hero-to-sections transition. Verified: 1) Hero section displays with video background and dark overlay (LANDING_THEME.heroOverlay gradient) ✓, 2) Wave SVG dividers between sections provide smooth visual transitions ✓, 3) All 8 sections have consistent dark backgrounds (slate-950 to slate-900 gradients) ✓, 4) Hero text fully readable - white text (rgb(255,255,255)) on dark background with sufficient contrast ✓, 5) Features section has sky-600 gradient background with proper overlay ✓, 6) Scrolling between sections smooth with no white flashes or gaps ✓. Background consistency maintained throughout entire page. Evidence: screenshots 01_landing_hero.png and 02_landing_transition.png captured."
+
+  - task: "Public Store - Product Images with Fallback"
+    implemented: true
+    working: true
+    file: "pages/StorePage.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Store page displays products with images, DEFAULT_PRODUCT_IMAGE fallback, add to cart functionality"
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED (Mar 4, 2026): Public store product images and add to cart fully functional. Verified: 1) All 8 product cards display real images from image_url (Unsplash URLs) ✓, 2) Images loading correctly with proper dimensions (400x300) and complete status ✓, 3) Image fallback handler (handleProductImageError) sets DEFAULT_PRODUCT_IMAGE on error (data-testid: store-product-image-{id}) ✓, 4) Add to cart button working perfectly - clicked button, cart badge updated from 0 to 1 item ✓, 5) Cart sidebar opens correctly showing added product ✓. All product images displaying real content, no broken images found. Evidence: screenshot 03_store_products.png captured."
+
+  - task: "Admin Store - Product Modal with File Upload + URL Field"
+    implemented: true
+    working: true
+    file: "pages/AdminStore.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Admin Store product modal includes file uploader and URL field (Blog style) with image preview"
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED (Mar 4, 2026): Admin Store product modal with image upload options fully functional. Verified: 1) Product modal opens when 'Add Product' button clicked (data-testid: add-product-btn) ✓, 2) File upload input present and functional (data-testid: admin-store-image-upload-input, accepts image files) ✓, 3) Image URL input field present with label 'Or image URL (Blog style)' (data-testid: admin-store-image-url-input) ✓, 4) Image preview displays correctly when URL entered (data-testid: admin-store-image-preview shows 20x20px preview) ✓, 5) Help text visible: 'Optional: upload a file or paste an image URL' (data-testid: admin-store-image-help) ✓, 6) Both upload methods supported: file selection via input OR URL paste ✓. Modal provides dual image upload options as specified (Blog style). Evidence: screenshot 04_admin_store_modal.png captured."
+
+  - task: "Operator Dashboard - Separate Pickup & Delivery vs Wash & Fold Panels"
+    implemented: true
+    working: true
+    file: "pages/OperatorDashboard.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Operator dashboard with 6 POS cards: 3 for Pickup & Delivery, 3 for Wash & Fold with distinct status labels"
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED (Mar 4, 2026): Operator dashboard panels fully separated and labeled distinctly for Pickup & Delivery vs Wash & Fold services. Verified all 6 panels: **Pickup & Delivery** - 1) Panel 1: 'Pickup & Delivery — Created / Confirmed' with 9 orders (data-testid: pos-pickup-today-card) ✓, 2) Panel 2: 'Pickup & Delivery — Request Payment' with 22 orders (data-testid: pos-pickup-payment-card) ✓, 3) Panel 3: 'Pickup & Delivery — In Process / Ready / Out for Delivery' with 15 orders (data-testid: pos-pickup-delivery-card) ✓. **Wash & Fold** - 4) Panel 1: 'Wash & Fold — Order Received / Processing' with 37 orders (data-testid: pos-washfold-dropoff-card) ✓, 5) Panel 2: 'Wash & Fold — Request Payment' with 37 orders (data-testid: pos-washfold-payment-card) ✓, 6) Panel 3: 'Wash & Fold — Ready for customer pickup' with 9 orders (data-testid: pos-washfold-ready-card) ✓. All panels properly labeled with updated status descriptions matching service type workflows. POS grid layout verified (data-testid: operator-pos-grid). Evidence: screenshot 05_operator_panels.png captured."
+
+  - task: "Bilingual Toggle EN/ES - Navigation and Operator Labels"
+    implemented: true
+    working: true
+    file: "components/LanguageToggle.jsx, pages/OperatorDashboard.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED (Feb 28, 2026): Language toggle fully functional. Both EN and ES buttons visible in sidebar (data-testid: language-toggle-en, language-toggle-es). Clicking ES button successfully changes all labels from English to Spanish: Dashboard→Panel, Operator Panel→Panel Operador, AI Assistant→Asistente IA, Calendar→Calendario, Orders→Órdenes, Customers→Clientes, Memberships→Membresías, B2B Quotes→Cotizaciones B2B, Leads→Prospectos, Services→Servicios, Finances→Finanzas, Support→Soporte, Store→Tienda, Blog→Blog, Users→Usuarios, Audit Log→Bitácora, Settings→Configuración. Language persistence working correctly."
+      - working: true
+        agent: "testing"
+        comment: "✅ RE-TESTED (Mar 4, 2026): Language toggle verified across admin pages with specific focus on visible labels and Operator panels. Verified: 1) ES button found in sidebar (data-testid: language-toggle-es) ✓, 2) Navigation labels change correctly: Dashboard→Panel, Operator Panel→Panel Operador, AI Assistant→Asistente IA, Calendar→Calendario, Orders→Órdenes ✓, 3) Operator dashboard title changes to 'Panel del Operador' ✓, 4) All 6 POS panel labels translated: 'Pickup & Delivery — Creadas / Confirmadas', 'Pickup & Delivery — Solicitar pago', 'Pickup & Delivery — En proceso / Lista / En camino', 'Wash & Fold — Orden recibida / Procesando', 'Wash & Fold — Solicitar pago', 'Wash & Fold — Lista para recoger en tienda' ✓, 5) EN button switches back to English correctly ✓. Language toggle working perfectly across all tested pages. Evidence: screenshot 06_operator_spanish.png captured."
+
 metadata:
   created_by: "main_agent"
   version: "1.0"
@@ -570,4 +645,7 @@ agent_communication:
 
   - agent: "testing"
     message: "✅ OPERATOR STORE ORDERS HEADER & POS MODAL TESTING COMPLETE (Feb 28, 2026): Validated updated operator flow at https://pos-laundry-sys.preview.emergentagent.com/admin/operator per review request. ALL REQUIREMENTS VERIFIED: **Store Orders Header** - 1) 'New Store Sale' button found and functional with text 'New Store Sale' (data-testid: store-pos-open) ✓, 2) 'Request payment' button found displaying count of unpaid orders 'Request payment (3)' (data-testid: store-pos-request-payment) ✓, 3) Steps banner visible showing '1. Open POS', '2. Add products', '3. Collect payment' with hint text 'Pending payments available below' (data-testid: store-orders-steps) ✓. **POS Modal** - 1) Modal opens successfully when clicking 'New Store Sale' button ✓, 2) Product list section displays 5 products (data-testid: store-pos-products) ✓, 3) Cart section shows 'No items yet' (data-testid: store-pos-cart) ✓, 4) Customer fields section contains Name, Email, Phone inputs - all found and functional (data-testid: store-pos-name, store-pos-email, store-pos-phone) ✓, 5) Fulfillment dropdown with Pickup/Delivery options (data-testid: store-pos-fulfillment) ✓, 6) Payment method dropdown with Card/Cash/Transfer/Other options - default selection 'card' (data-testid: store-pos-payment-method) ✓, 7) Order summary displays Subtotal, Shipping, Total ✓, 8) Submit button shows 'Pay with Stripe' (data-testid: store-pos-submit) ✓. **Payment Modal** - 1) Opens correctly when clicking 'Request payment' button for unpaid order SO-20260222-1C108307 ✓, 2) Total amount displayed: $24.99 ✓, 3) Payment method dropdown present with options: Card (Stripe), Cash, Transfer, Other (data-testid: store-payment-method) ✓, 4) Submit button shows 'Pay with Stripe' (data-testid: store-payment-submit) ✓, 5) Helper text displayed: 'Stripe Checkout will open in a new page' ✓. Evidence: 4 screenshots captured. Minor non-critical issues: WebSocket warnings, some CDN/font requests failed (cosmetic only). NO CRITICAL ERRORS. All operator flow requirements validated successfully."
+  
+  - agent: "testing"
+    message: "✅ COMPREHENSIVE REVIEW VALIDATION COMPLETE (Mar 4, 2026): Validated all 5 review requirements at https://pos-laundry-sys.preview.emergentagent.com. ALL TESTS PASSED: **1) Landing/Home Page** - Verified smooth transitions from hero to sections with wave dividers, NO white blocks detected, consistent dark background (slate-950 to slate-900 gradient), white text fully readable (rgb(255,255,255) on dark overlay), found 8 sections with proper backgrounds, hero text displays correctly 'We do your laundry.' ✓. **2) Public Store** - All product images loading correctly, found 8 product images all displaying real images from Unsplash (400x300 size), images have proper fallback handling (DEFAULT_PRODUCT_IMAGE), add to cart functionality working perfectly (cart count updated from 0 to 1 after adding product) ✓. **3) Admin Store Product Modal** - File uploader present and functional (data-testid: admin-store-image-upload-input), Image URL field present with 'Blog style' label (data-testid: admin-store-image-url-input), Image preview working correctly (data-testid: admin-store-image-preview shows preview when URL entered), Help text displayed explaining optional upload ✓. **4) Operator Dashboard Panels** - All 6 POS panels verified with updated status labels: Pickup & Delivery cards: 'Created / Confirmed (9)', 'Request Payment (22)', 'In Process / Ready / Out for Delivery (15)'; Wash & Fold cards: 'Order Received / Processing (37)', 'Request Payment (37)', 'Ready for customer pickup (9)'. All panels properly separated and labeled distinctly ✓. **5) Bilingual EN/ES Toggle** - Language toggle working perfectly in admin area, verified label changes: Dashboard→Panel, Operator Panel→Panel Operador, AI Assistant→Asistente IA, Calendar→Calendario, Orders→Órdenes, Customers→Clientes; Operator page panels correctly translated to Spanish: 'Pickup & Delivery — Creadas / Confirmadas', 'Pickup & Delivery — Solicitar pago', 'Pickup & Delivery — En proceso / Lista / En camino' ✓. NO console errors detected. Evidence: 6 screenshots captured. ALL REVIEW REQUIREMENTS VALIDATED SUCCESSFULLY."
 

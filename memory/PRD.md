@@ -136,12 +136,28 @@ RECEIVED → PROCESSING → READY → OUT_FOR_DELIVERY → DELIVERED → COMPLET
 - ✅ **Notificaciones Wash & Fold ampliadas**: ahora se notifican estados `processing`, `ready`, `completed` y `cancelled` respetando la preferencia del cliente (`sms/email/whatsapp/call`).
 - ✅ **Persistencia de preferencia en orden**: el formulario público Wash & Fold guarda `preferred_contact` en la orden para trazabilidad; también se expone en `GET /api/orders`.
 
+## Cambios recientes (2026-03-04)
+- ✅ **Home sin fondo blanco**: se aplicó tema oscuro continuo en Landing (degradado + secciones oscuras + transiciones wave), eliminando el bloque blanco reportado.
+- ✅ **Store imágenes estilo Blog**: Admin Store ahora soporta **subida de archivo** y **URL de imagen**; Store pública renderiza imágenes reales con fallback seguro.
+- ✅ **Flujos operador refinados**:
+  - Pickup & Delivery: `Order Created → Pickup Confirmed → Order in Process → Ready → Out for Delivery → Delivered`
+  - Wash & Fold: `Order Received → Processing → Ready for Pickup → Completed`
+  Se validan transiciones inválidas en backend (ej. `PROCESSING -> COMPLETED` en wash_fold devuelve 400).
+- ✅ **Reducción de notificaciones anti-spam**:
+  - Wash & Fold: `order_received`, `ready_for_pickup`
+  - Pickup & Delivery: `pickup_confirmed`, `ready`, `out_for_delivery`, `delivered`
+  con dedupe por evento/canal en capa de notificaciones.
+- ✅ **Botones bilingües (EN/ES) reforzados**: fallback de traducción y auto-traducción en componente UI Button para cobertura transversal.
+- ✅ **Stripe avanzado (estructura preparada, no activa)**: nuevo scaffold en `/api/stripe-sync/*` controlado por feature flag `STRIPE_ADVANCED_SYNC_ENABLED=false`.
+- ✅ **Hardening backend**: mount robusto para `/uploads` con path absoluto y creación automática de directorio.
+
 ## Pendientes / Issues
 **P1**
 - Validar webhook Stripe end-to-end en entorno productivo con eventos reales entrantes
 - Export CSV avanzado con filtros por canal y método de pago
 - Módulo Admin para monitorear estados y errores de mensajes Twilio
 - Verificación de dominio SendGrid/Twilio Trust (DNS) pendiente en proveedor de dominio
+- Definir en llamada la activación real de Stripe Sync (customers/products/prices) y política de reconciliación
 
 **P2**
 - Estabilizar WebSocket en producción (fallback ya funcional en preview)
