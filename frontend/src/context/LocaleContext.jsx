@@ -3,6 +3,31 @@ import { createContext, useContext, useEffect, useMemo, useState } from "react";
 const LocaleContext = createContext(null);
 const STORAGE_KEY = "vfl_locale";
 
+const FALLBACK_ES_TRANSLATIONS = {
+  "Save": "Guardar",
+  "Update": "Actualizar",
+  "Create": "Crear",
+  "Delete": "Eliminar",
+  "Cancel": "Cancelar",
+  "Close": "Cerrar",
+  "Next": "Siguiente",
+  "Previous": "Anterior",
+  "Back": "Volver",
+  "Continue": "Continuar",
+  "Search": "Buscar",
+  "Filter": "Filtrar",
+  "Print": "Imprimir",
+  "Edit": "Editar",
+  "Open": "Abrir",
+  "Submit": "Enviar",
+  "Confirm": "Confirmar"
+};
+
+const fallbackTranslateToEs = (text) => {
+  if (typeof text !== "string") return text;
+  return FALLBACK_ES_TRANSLATIONS[text] || text;
+};
+
 export const LocaleProvider = ({ children }) => {
   const [locale, setLocale] = useState(() => {
     if (typeof window === "undefined") return "en";
@@ -19,7 +44,7 @@ export const LocaleProvider = ({ children }) => {
     () => ({
       locale,
       setLocale,
-      t: (enText, esText) => (locale === "es" ? esText : enText),
+      t: (enText, esText) => (locale === "es" ? (esText || fallbackTranslateToEs(enText)) : enText),
     }),
     [locale]
   );

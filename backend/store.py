@@ -7,12 +7,24 @@ from typing import List, Optional, Dict
 from datetime import datetime, timezone
 import uuid
 import os
+import shutil
+from fastapi import File, UploadFile, Form
+from pathlib import Path
 import openrouteservice
 import requests
 from motor.motor_asyncio import AsyncIOMotorClient
 from normalization import normalize_email, normalize_phone, normalize_spaces, normalize_preference_dict
 from notifications import notify_store_order
-
+UPLOAD_DIR = Path("uploads/products")
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+class ProductData(BaseModel):
+    name: str
+    description: Optional[str] = None
+    price: float = Field(..., gt=0)
+    category: str
+    stock: int = 0
+    is_active: bool = True
+    # image_url se generará en el backend
 # Stripe integration
 try:
     from emergentintegrations.payments.stripe.checkout import (
@@ -538,40 +550,112 @@ async def get_product(product_id: str):
 
 
 @store_router.post("/products", response_model=ProductResponse)
-async def create_product(product: ProductCreate):
-    """Create a new product (admin only)"""
+async def create_product(
+    request: Request,
+    name: str = Form(...),
+    description: Optional[str] = Form(None),
+    price: float = Form(..., gt=0),
+    category: str = Form(...),
+    stock: int = Form(0),
+    is_active: bool = Form(True),
+    image_url: Optional[str] = Form(None),
+    image: Optional[UploadFile] = File(None)
+):
+    """Create a new product (admin only) with optional image upload"""
     now = datetime.now(timezone.utc).isoformat()
+    
+    # Procesar imagen si se subió
+    final_image_url = normalize_spaces(image_url)
+    if image and image.filename:
+        # Generar nombre único
+        ext = Path(image.filename).suffix
+        filename = f"{uuid.uuid4()}{ext}"
+        file_path = UPLOAD_DIR / filename
+        
+        # Guardar archivo
+        try:
+            with open(file_path, "wb") as buffer:
+                shutil.copyfileobj(image.file, buffer)
+            # Construir URL (ajusta según tu dominio)
+            base_url = resolve_public_base_url(request)
+            final_image_url = f"{base_url}/uploads/products/{filename}"
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error saving image: {str(e)}")
+    
     product_doc = {
         "id": str(uuid.uuid4()),
-        **product.model_dump(),
+        "name": name,
+        "description": description,
+        "price": price,
+        "category": category,
+        "image_url": final_image_url,
+        "stock": stock,
+        "is_active": is_active if stock > 0 else False,
         "created_at": now,
         "updated_at": now
     }
-    if product_doc.get("stock", 0) <= 0:
-        product_doc["is_active"] = False
+    
     await db.products.insert_one(product_doc)
     del product_doc["_id"]
     return product_doc
 
-
 @store_router.put("/products/{product_id}", response_model=ProductResponse)
-async def update_product(product_id: str, product: ProductCreate):
-    """Update a product (admin only)"""
+async def update_product(
+    request: Request,
+    product_id: str,
+    name: str = Form(...),
+    description: Optional[str] = Form(None),
+    price: float = Form(..., gt=0),
+    category: str = Form(...),
+    stock: int = Form(0),
+    is_active: bool = Form(True),
+    image_url: Optional[str] = Form(None),
+    image: Optional[UploadFile] = File(None)
+):
+    """Update a product (admin only) with optional new image"""
     existing = await db.products.find_one({"id": product_id})
     if not existing:
         raise HTTPException(status_code=404, detail="Product not found")
     
+    now = datetime.now(timezone.utc).isoformat()
+    
+    # Determinar nueva URL de imagen
+    final_image_url = normalize_spaces(image_url) or existing.get("image_url")
+    if image and image.filename:
+        # Eliminar imagen anterior si existe (opcional)
+        if final_image_url and "/uploads/products/" in final_image_url:
+            old_filename = Path(final_image_url).name
+            old_path = UPLOAD_DIR / old_filename
+            if old_path.exists():
+                old_path.unlink()
+        
+        # Guardar nueva imagen
+        ext = Path(image.filename).suffix
+        filename = f"{uuid.uuid4()}{ext}"
+        file_path = UPLOAD_DIR / filename
+        try:
+            with open(file_path, "wb") as buffer:
+                shutil.copyfileobj(image.file, buffer)
+            base_url = resolve_public_base_url(request)
+            final_image_url = f"{base_url}/uploads/products/{filename}"
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error saving image: {str(e)}")
+    
     update_data = {
-        **product.model_dump(),
-        "updated_at": datetime.now(timezone.utc).isoformat()
+        "name": name,
+        "description": description,
+        "price": price,
+        "category": category,
+        "image_url": final_image_url,
+        "stock": stock,
+        "is_active": is_active if stock > 0 else False,
+        "updated_at": now
     }
-    if update_data.get("stock", 0) <= 0:
-        update_data["is_active"] = False
+    
     await db.products.update_one({"id": product_id}, {"$set": update_data})
     
     updated = await db.products.find_one({"id": product_id}, {"_id": 0})
     return updated
-
 
 @store_router.delete("/products/{product_id}")
 async def delete_product(product_id: str):

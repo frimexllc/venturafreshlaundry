@@ -2,11 +2,12 @@ import { useState, useEffect } from "react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
-import { Package, Plus, Edit2, Trash2, Search, DollarSign, Archive, X } from "lucide-react";
+import { Package, Plus, Edit2, Trash2, Search, DollarSign, Archive, X, Image as ImageIcon } from "lucide-react";
 import { toast } from "sonner";
 import { useLocale } from "../context/LocaleContext";
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
+const DEFAULT_PRODUCT_IMAGE = "https://images.unsplash.com/photo-1582735689369-4fe89db7114c?w=400&h=300&fit=crop";
 
 export default function AdminStore() {
   const { t } = useLocale();
@@ -17,15 +18,19 @@ export default function AdminStore() {
   const [showModal, setShowModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
-
+  
+  // Estados para el formulario (incluyendo imagen)
   const [formData, setFormData] = useState({
     name: '',
     description: '',
     price: '',
     category: 'accesorios',
     stock: '',
+    image_url: '',
     is_active: true
   });
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
 
   useEffect(() => {
     loadData();
@@ -47,8 +52,51 @@ export default function AdminStore() {
     }
   };
 
+  // Manejar selección de imagen
+  const handleImageChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setImageFile(file);
+      setFormData(prev => ({ ...prev, image_url: '' }));
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      setImageFile(null);
+      setImagePreview(null);
+    }
+  };
+
+  const handleImageUrlChange = (value) => {
+    setFormData(prev => ({ ...prev, image_url: value }));
+    if (value && value.trim()) {
+      setImageFile(null);
+      setImagePreview(value.trim());
+      return;
+    }
+    setImagePreview(null);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // Crear FormData para enviar archivo
+    const formDataToSend = new FormData();
+    formDataToSend.append('name', formData.name);
+    formDataToSend.append('description', formData.description || '');
+    formDataToSend.append('price', formData.price);
+    formDataToSend.append('category', formData.category);
+    formDataToSend.append('stock', formData.stock);
+    formDataToSend.append('is_active', formData.is_active ? 'true' : 'false');
+    formDataToSend.append('image_url', formData.image_url || '');
+    
+    // Si hay una nueva imagen, la añadimos
+    if (imageFile) {
+      formDataToSend.append('image', imageFile);
+    }
+
     try {
       const url = editingProduct 
         ? `${API_URL}/api/store/products/${editingProduct.id}`
@@ -56,12 +104,8 @@ export default function AdminStore() {
       
       const res = await fetch(url, {
         method: editingProduct ? 'PUT' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...formData,
-          price: parseFloat(formData.price),
-          stock: parseInt(formData.stock)
-        })
+        // No establecer Content-Type, el navegador lo hará automáticamente con el boundary
+        body: formDataToSend
       });
 
       if (res.ok) {
@@ -70,7 +114,8 @@ export default function AdminStore() {
         resetForm();
         loadData();
       } else {
-        toast.error(t('Error saving product', 'Error al guardar producto'));
+        const error = await res.text();
+        toast.error(t('Error saving product', 'Error al guardar producto') + ': ' + error);
       }
     } catch (error) {
       toast.error(t('Connection error', 'Error de conexión'));
@@ -111,8 +156,11 @@ export default function AdminStore() {
       price: '',
       category: 'accesorios',
       stock: '',
+      image_url: '',
       is_active: true
     });
+    setImageFile(null);
+    setImagePreview(null);
     setEditingProduct(null);
   };
 
@@ -124,8 +172,16 @@ export default function AdminStore() {
       price: product.price.toString(),
       category: product.category,
       stock: product.stock.toString(),
+      image_url: product.image_url || '',
       is_active: product.is_active
     });
+    // Si el producto tiene imagen, mostramos preview
+    if (product.image_url) {
+      setImagePreview(product.image_url);
+      setImageFile(null); // No hay archivo nuevo, solo la URL existente
+    } else {
+      setImagePreview(null);
+    }
     setShowModal(true);
   };
 
@@ -200,7 +256,20 @@ export default function AdminStore() {
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {filteredProducts.map((product) => (
               <div key={product.id} className="bg-white rounded-xl border border-slate-200 p-4" data-testid={`admin-product-${product.id}`}>
-                <div className="flex items-start justify-between mb-3">
+                {/* Imagen del producto */}
+                <div className="aspect-square w-full bg-slate-100 rounded-lg mb-3 overflow-hidden flex items-center justify-center">
+                  {product.image_url ? (
+                    <img
+                      src={product.image_url}
+                      alt={product.name}
+                      className="w-full h-full object-cover"
+                      onError={(e) => { e.currentTarget.src = DEFAULT_PRODUCT_IMAGE; }}
+                    />
+                  ) : (
+                    <img src={DEFAULT_PRODUCT_IMAGE} alt={product.name} className="w-full h-full object-cover" />
+                  )}
+                </div>
+                <div className="flex items-start justify-between mb-2">
                   <span className={`px-2 py-1 text-xs font-medium rounded-full ${product.is_active ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-600'}`}>
                     {product.is_active ? t('Active', 'Activo') : t('Inactive', 'Inactivo')}
                   </span>
@@ -299,6 +368,47 @@ export default function AdminStore() {
               </button>
             </div>
             <form onSubmit={handleSubmit} className="space-y-4">
+              {/* Campo de imagen */}
+              <div>
+                <Label htmlFor="image">{t('Product Image', 'Imagen del producto')}</Label>
+                <div className="mt-1 flex items-center gap-4">
+                  {imagePreview && (
+                    <div className="relative w-20 h-20 rounded-lg overflow-hidden border border-slate-200">
+                      <img
+                        src={imagePreview}
+                        alt="Preview"
+                        className="w-full h-full object-cover"
+                        onError={(e) => { e.currentTarget.src = DEFAULT_PRODUCT_IMAGE; }}
+                        data-testid="admin-store-image-preview"
+                      />
+                    </div>
+                  )}
+                  <input
+                    type="file"
+                    id="image"
+                    accept="image/*"
+                    onChange={handleImageChange}
+                    className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-sky-50 file:text-sky-700 hover:file:bg-sky-100"
+                    data-testid="admin-store-image-upload-input"
+                  />
+                </div>
+                <div className="mt-3">
+                  <Label htmlFor="image_url">{t('Or image URL (Blog style)', 'O URL de imagen (estilo Blog)')}</Label>
+                  <Input
+                    id="image_url"
+                    value={formData.image_url}
+                    onChange={(e) => handleImageUrlChange(e.target.value)}
+                    placeholder={t('https://example.com/image.jpg', 'https://ejemplo.com/imagen.jpg')}
+                    data-testid="admin-store-image-url-input"
+                  />
+                </div>
+                {!imagePreview && !editingProduct && (
+                  <p className="text-xs text-slate-400 mt-1" data-testid="admin-store-image-help">
+                    {t('Optional: upload a file or paste an image URL', 'Opcional: sube una imagen o pega una URL')}
+                  </p>
+                )}
+              </div>
+
               <div>
                 <Label htmlFor="name">{t('Name', 'Nombre')}</Label>
                 <Input

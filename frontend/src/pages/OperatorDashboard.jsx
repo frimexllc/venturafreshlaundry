@@ -140,26 +140,38 @@ export default function OperatorDashboard() {
     return String(value);
   };
 
-  // Translate status labels dynamically
-  const getStatusLabel = (status) => {
-    const map = {
-      NEW: t("New", "Nueva"),
-      CONFIRMED: t("Confirmed", "Confirmado"),
-      PICKUP_SCHEDULED: t("Pickup Scheduled", "Pickup Programado"),
-      PICKED_UP: t("Picked Up", "Recogido"),
-      PROCESSING: t("Processing", "En Proceso"),
+  // Translate status labels dynamically with flow-specific wording.
+  const getStatusLabel = (status, serviceType) => {
+    const normalizedStatus = (status || "").toString().toUpperCase();
+    if (isWashFoldService(serviceType)) {
+      const washFoldMap = {
+        NEW: t("Order Received", "Orden recibida"),
+        PROCESSING: t("Processing", "Procesando"),
+        READY: t("Ready for Pickup", "Lista para recoger"),
+        COMPLETED: t("Completed", "Completada"),
+        CANCELLED: t("Cancelled", "Cancelada")
+      };
+      return washFoldMap[normalizedStatus] || safeString(status);
+    }
+
+    const pickupMap = {
+      NEW: t("Order Created", "Orden creada"),
+      CONFIRMED: t("Pickup Confirmed", "Pickup confirmado"),
+      PICKUP_SCHEDULED: t("Pickup Confirmed", "Pickup confirmado"),
+      PICKED_UP: t("Order in Process", "Orden en proceso"),
+      PROCESSING: t("Order in Process", "Orden en proceso"),
       READY: t("Ready", "Lista"),
       OUT_FOR_DELIVERY: t("Out for Delivery", "En camino"),
       DELIVERED: t("Delivered", "Entregada"),
       COMPLETED: t("Completed", "Completada"),
       CANCELLED: t("Cancelled", "Cancelada")
     };
-    return map[status] || safeString(status);
+    return pickupMap[normalizedStatus] || safeString(status);
   };
 
-  const getStatusInfo = (status) => {
+  const getStatusInfo = (status, serviceType) => {
     const found = ORDER_STATUSES.find(s => s.value === status) || ORDER_STATUSES[0];
-    return { ...found, label: getStatusLabel(found.value) };
+    return { ...found, label: getStatusLabel(found.value, serviceType) };
   };
 
   const storeStatusLabels = {
@@ -515,12 +527,16 @@ export default function OperatorDashboard() {
       return washFoldFlow[normalizedStatus] || null;
     }
 
-    const statusOrder = ["NEW", "CONFIRMED", "PICKUP_SCHEDULED", "PICKED_UP", "PROCESSING", "READY", "OUT_FOR_DELIVERY", "DELIVERED", "COMPLETED"];
-    const currentIndex = statusOrder.indexOf(normalizedStatus);
-    if (currentIndex < statusOrder.length - 1) {
-      return statusOrder[currentIndex + 1];
-    }
-    return null;
+    const pickupFlow = {
+      NEW: "CONFIRMED",
+      CONFIRMED: "PROCESSING",
+      PICKUP_SCHEDULED: "PROCESSING",
+      PICKED_UP: "PROCESSING",
+      PROCESSING: "READY",
+      READY: "OUT_FOR_DELIVERY",
+      OUT_FOR_DELIVERY: "DELIVERED"
+    };
+    return pickupFlow[normalizedStatus] || null;
   };
 
   const buildDateSlug = (dateStr) => {
@@ -1196,7 +1212,7 @@ export default function OperatorDashboard() {
             <div className="px-5 py-4 border-b border-slate-100 bg-slate-50">
               <h2 className="font-semibold text-slate-900 flex items-center gap-2">
                 <Truck className="h-5 w-5 text-sky-600" />
-                {t("Pickup & Delivery — Pickups Today", "Pickup & Delivery — Pickups de hoy")}
+                {t("Pickup & Delivery — Created / Confirmed", "Pickup & Delivery — Creadas / Confirmadas")}
                 <span className="ml-2 text-sm font-semibold text-slate-600" data-testid="pos-pickup-today-count">({pickupOrders.length})</span>
               </h2>
             </div>
@@ -1204,7 +1220,7 @@ export default function OperatorDashboard() {
               {pickupOrders.length === 0 ? (
                 <div className="p-6 text-center text-slate-500" data-testid="pos-pickup-today-empty">
                   <Truck className="h-10 w-10 mx-auto mb-2 text-slate-300" />
-                  <p>{t("No pickups scheduled", "No hay pickups programados")}</p>
+                  <p>{t("No created or confirmed orders", "No hay órdenes creadas o confirmadas")}</p>
                 </div>
               ) : (
                 pickupOrders.map((order) => (
@@ -1219,8 +1235,8 @@ export default function OperatorDashboard() {
                       <div>
                         <div className="flex items-center gap-2 mb-1">
                           <span className="font-mono font-semibold text-slate-900">{formatOrderId(order)}</span>
-                          <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${getStatusInfo(order.status).color}`}>
-                            {getStatusInfo(order.status).label}
+                          <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${getStatusInfo(order.status, order.service_type).color}`}>
+                            {getStatusInfo(order.status, order.service_type).label}
                           </span>
                         </div>
                         <div className="text-sm text-slate-600">{safeString(order.customer_name, t("Customer", "Cliente"))}</div>
@@ -1244,7 +1260,7 @@ export default function OperatorDashboard() {
                               <RefreshCw className="h-4 w-4 animate-spin" />
                             ) : (
                               <>
-                                {getStatusInfo(order.next_status || getNextStatus(order.status, order.service_type)).label}
+                                {getStatusInfo(order.next_status || getNextStatus(order.status, order.service_type), order.service_type).label}
                                 <ChevronRight className="h-4 w-4 ml-1" />
                               </>
                             )}
@@ -1297,8 +1313,8 @@ export default function OperatorDashboard() {
                         <div>
                           <div className="flex items-center gap-2 mb-1">
                             <span className="font-mono font-semibold text-slate-900">{formatOrderId(order)}</span>
-                            <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${getStatusInfo(order.status).color}`}>
-                              {getStatusInfo(order.status).label}
+                            <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${getStatusInfo(order.status, order.service_type).color}`}>
+                              {getStatusInfo(order.status, order.service_type).label}
                             </span>
                           </div>
                           <div className="text-sm text-slate-600">{safeString(order.customer_name, t("Customer", "Cliente"))}</div>
@@ -1329,7 +1345,7 @@ export default function OperatorDashboard() {
             <div className="px-5 py-4 border-b border-slate-100 bg-emerald-50">
               <h2 className="font-semibold text-slate-900 flex items-center gap-2" data-testid="operator-delivery-section-title">
                 <CheckCircle className="h-5 w-5 text-emerald-600" />
-                {t("Pickup & Delivery — Deliveries in progress", "Pickup & Delivery — Entregas en curso")}
+                {t("Pickup & Delivery — In Process / Ready / Out for Delivery", "Pickup & Delivery — En proceso / Lista / En camino")}
                 <span className="ml-2 text-sm font-semibold text-slate-600" data-testid="pos-pickup-delivery-count">({pickupDeliveries.length})</span>
               </h2>
             </div>
@@ -1337,7 +1353,7 @@ export default function OperatorDashboard() {
               {pickupDeliveries.length === 0 ? (
                 <div className="p-6 text-center text-slate-500" data-testid="operator-delivery-empty">
                   <Package className="h-10 w-10 mx-auto mb-2 text-slate-300" />
-                  <p>{t("No deliveries in progress", "No hay entregas en curso")}</p>
+                  <p>{t("No active process or delivery orders", "No hay órdenes activas en proceso o entrega")}</p>
                 </div>
               ) : (
                 pickupDeliveries.map((order) => (
@@ -1352,8 +1368,8 @@ export default function OperatorDashboard() {
                       <div>
                         <div className="flex items-center gap-2 mb-1">
                           <span className="font-mono font-semibold text-slate-900">{formatOrderId(order)}</span>
-                          <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${getStatusInfo(order.status).color}`}>
-                            {getStatusInfo(order.status).label}
+                          <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${getStatusInfo(order.status, order.service_type).color}`}>
+                            {getStatusInfo(order.status, order.service_type).label}
                           </span>
                         </div>
                         <div className="text-sm text-slate-600">{safeString(order.customer_name, t("Customer", "Cliente"))}</div>
@@ -1376,7 +1392,7 @@ export default function OperatorDashboard() {
                             <RefreshCw className="h-4 w-4 animate-spin" />
                           ) : (
                             <>
-                              {getStatusInfo(order.next_status || getNextStatus(order.status, order.service_type)).label}
+                              {getStatusInfo(order.next_status || getNextStatus(order.status, order.service_type), order.service_type).label}
                               <ChevronRight className="h-4 w-4 ml-1" />
                             </>
                           )}
@@ -1395,7 +1411,7 @@ export default function OperatorDashboard() {
             <div className="px-5 py-4 border-b border-slate-100 bg-slate-50">
               <h2 className="font-semibold text-slate-900 flex items-center gap-2">
                 <Package className="h-5 w-5 text-purple-600" />
-                {t("Wash & Fold Drop-Off", "Wash & Fold Drop-Off")}
+                {t("Wash & Fold — Order Received / Processing", "Wash & Fold — Orden recibida / Procesando")}
                 <span className="ml-2 text-sm font-semibold text-slate-600" data-testid="pos-washfold-dropoff-count">({washFoldDropoffs.length})</span>
               </h2>
             </div>
@@ -1417,8 +1433,8 @@ export default function OperatorDashboard() {
                       <div>
                         <div className="flex items-center gap-2 mb-1">
                           <span className="font-mono font-semibold text-slate-900">{formatOrderId(order)}</span>
-                          <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${getStatusInfo(order.status).color}`}>
-                            {getStatusInfo(order.status).label}
+                          <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${getStatusInfo(order.status, order.service_type).color}`}>
+                            {getStatusInfo(order.status, order.service_type).label}
                           </span>
                         </div>
                         <div className="text-sm text-slate-600">{safeString(order.customer_name, t("Customer", "Cliente"))}</div>
@@ -1441,7 +1457,7 @@ export default function OperatorDashboard() {
                             <RefreshCw className="h-4 w-4 animate-spin" />
                           ) : (
                             <>
-                              {getStatusInfo(order.next_status || getNextStatus(order.status, order.service_type)).label}
+                              {getStatusInfo(order.next_status || getNextStatus(order.status, order.service_type), order.service_type).label}
                               <ChevronRight className="h-4 w-4 ml-1" />
                             </>
                           )}
@@ -1482,8 +1498,8 @@ export default function OperatorDashboard() {
                         <div>
                           <div className="flex items-center gap-2 mb-1">
                             <span className="font-mono font-semibold text-slate-900">{formatOrderId(order)}</span>
-                            <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${getStatusInfo(order.status).color}`}>
-                              {getStatusInfo(order.status).label}
+                            <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${getStatusInfo(order.status, order.service_type).color}`}>
+                              {getStatusInfo(order.status, order.service_type).label}
                             </span>
                           </div>
                           <div className="text-sm text-slate-600">{safeString(order.customer_name, t("Customer", "Cliente"))}</div>
@@ -1536,8 +1552,8 @@ export default function OperatorDashboard() {
                       <div>
                         <div className="flex items-center gap-2 mb-1">
                           <span className="font-mono font-semibold text-slate-900">{formatOrderId(order)}</span>
-                          <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${getStatusInfo(order.status).color}`}>
-                            {getStatusInfo(order.status).label}
+                          <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${getStatusInfo(order.status, order.service_type).color}`}>
+                            {getStatusInfo(order.status, order.service_type).label}
                           </span>
                         </div>
                         <div className="text-sm text-slate-600">{safeString(order.customer_name, t("Customer", "Cliente"))}</div>
@@ -1560,7 +1576,7 @@ export default function OperatorDashboard() {
                             <RefreshCw className="h-4 w-4 animate-spin" />
                           ) : (
                             <>
-                              {getStatusInfo(order.next_status || getNextStatus(order.status, order.service_type)).label}
+                              {getStatusInfo(order.next_status || getNextStatus(order.status, order.service_type), order.service_type).label}
                               <ChevronRight className="h-4 w-4 ml-1" />
                             </>
                           )}
@@ -1986,7 +2002,7 @@ export default function OperatorDashboard() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-slate-500">{t("Status", "Estado")}</p>
-                  <p className="font-medium" data-testid="operator-order-status">{getStatusInfo(selectedOrder.status).label}</p>
+                  <p className="font-medium" data-testid="operator-order-status">{getStatusInfo(selectedOrder.status, selectedOrder.service_type).label}</p>
                 </div>
                 <div>
                   <p className="text-sm text-slate-500">{t("Service", "Servicio")}</p>

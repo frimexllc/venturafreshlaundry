@@ -17,10 +17,11 @@ automation_router = APIRouter(prefix="/automation", tags=["Automation Engine"])
 logger = logging.getLogger(__name__)
 
 try:
-    from notifications import notify_order_status_changed
+    from notifications import notify_order_status_changed, normalize_preferred_contact
     NOTIFICATIONS_ENABLED = True
 except ImportError:
     NOTIFICATIONS_ENABLED = False
+    normalize_preferred_contact = None
     logger.warning("Notification services not available")
 
 SKIP_SERVER_NOTIFICATIONS = os.environ.get('SKIP_SERVER_NOTIFICATIONS', 'false').lower() == 'true'
@@ -77,27 +78,24 @@ class OrderStatus(str, Enum):
     COMPLETED = "COMPLETED"
     CANCELLED = "CANCELLED"
 
-STATUS_FLOW = [
-    "NEW",
-    "CONFIRMED",
-    "PICKUP_SCHEDULED",
-    "PICKED_UP",
-    "PROCESSING",
-    "READY",
-    "OUT_FOR_DELIVERY",
-    "DELIVERED",
-    "COMPLETED"
-]
+PICKUP_NEXT_STATUS_BY_STATUS = {
+    "NEW": "CONFIRMED",
+    "CONFIRMED": "PROCESSING",
+    "PICKUP_SCHEDULED": "PROCESSING",
+    "PICKED_UP": "PROCESSING",
+    "PROCESSING": "READY",
+    "READY": "OUT_FOR_DELIVERY",
+    "OUT_FOR_DELIVERY": "DELIVERED"
+}
 
 PICKUP_ACTION_LABELS = {
-    "NEW": "Confirmar",
-    "CONFIRMED": "Programar Pickup",
-    "PICKUP_SCHEDULED": "Recogido",
-    "PICKED_UP": "Procesar",
-    "PROCESSING": "Listo",
-    "READY": "Salir a Entregar",
-    "OUT_FOR_DELIVERY": "Entregado",
-    "DELIVERED": "Completar"
+    "NEW": "Confirmar pickup",
+    "CONFIRMED": "Iniciar proceso",
+    "PICKUP_SCHEDULED": "Iniciar proceso",
+    "PICKED_UP": "Iniciar proceso",
+    "PROCESSING": "Marcar listo",
+    "READY": "Salir a entregar",
+    "OUT_FOR_DELIVERY": "Marcar entregado"
 }
 
 WASH_FOLD_SERVICE_TYPES = {
@@ -154,12 +152,7 @@ def get_next_status(value: Optional[str], service_type: Optional[str] = None):
     if is_wash_fold_service(service_type):
         return WASH_FOLD_NEXT_STATUS_BY_STATUS.get(value)
 
-    if value not in STATUS_FLOW:
-        return None
-    index = STATUS_FLOW.index(value)
-    if index < len(STATUS_FLOW) - 1:
-        return STATUS_FLOW[index + 1]
-    return None
+    return PICKUP_NEXT_STATUS_BY_STATUS.get(value)
 
 
 def get_action_label(status: Optional[str], service_type: Optional[str] = None):
@@ -169,6 +162,22 @@ def get_action_label(status: Optional[str], service_type: Optional[str] = None):
     if is_wash_fold_service(service_type):
         return WASH_FOLD_ACTION_LABELS.get(normalized_status)
     return PICKUP_ACTION_LABELS.get(normalized_status)
+
+
+def resolve_notification_channel(customer: Dict, order: Dict) -> str:
+    raw_value = (order or {}).get("preferred_contact") or (customer or {}).get("preferred_contact") or "sms"
+    if normalize_preferred_contact:
+        return normalize_preferred_contact(raw_value)
+    normalized = str(raw_value).strip().lower()
+    if normalized in {"email", "call", "whatsapp", "sms"}:
+        return normalized
+    return "sms"
+
+
+def build_status_notification_key(status: str, channel: str) -> str:
+    status_normalized = (status or "").strip().lower()
+    channel_normalized = (channel or "sms").strip().lower()
+    return f"status_changed:{status_normalized}:{channel_normalized}"
 
 async def enrich_orders_with_customers(orders: List[Dict]):
     customer_ids = {o.get("customer_id") for o in orders if o.get("customer_id")}
@@ -1142,6 +1151,25 @@ async def update_order_status(order_id: str, new_status: str, notes: Optional[st
             )
     
     old_status = order.get("status")
+    old_status_normalized = normalize_status(old_status) or "NEW"
+
+    if status_value != old_status_normalized:
+        if is_wash_fold_service(order.get("service_type")):
+            expected_next = WASH_FOLD_NEXT_STATUS_BY_STATUS.get(old_status_normalized)
+            if expected_next and status_value != expected_next:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid Wash & Fold transition: {old_status_normalized} -> {status_value}. Expected: {expected_next}"
+                )
+        else:
+            expected_next = PICKUP_NEXT_STATUS_BY_STATUS.get(old_status_normalized)
+            if old_status_normalized == "DELIVERED" and status_value == "COMPLETED":
+                expected_next = "COMPLETED"
+            if expected_next and status_value != expected_next:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid Pickup & Delivery transition: {old_status_normalized} -> {status_value}. Expected: {expected_next}"
+                )
     
     update_data = {
         "status": status_db,
@@ -1184,11 +1212,28 @@ async def update_order_status(order_id: str, new_status: str, notes: Optional[st
         "created_at": now.isoformat()
     })
 
-    if NOTIFICATIONS_ENABLED and not SKIP_SERVER_NOTIFICATIONS and order.get("customer_id"):
+    status_changed = old_status_normalized != status_value
+
+    if status_changed and NOTIFICATIONS_ENABLED and not SKIP_SERVER_NOTIFICATIONS and order.get("customer_id"):
         try:
             customer = await db.customers.find_one({"id": order.get("customer_id")}, {"_id": 0})
             if customer:
-                await notify_order_status_changed(customer, order, status_db)
+                order_for_notify = {
+                    **order,
+                    "status": status_db,
+                    "preferred_contact": order.get("preferred_contact") or customer.get("preferred_contact")
+                }
+                channel = resolve_notification_channel(customer, order_for_notify)
+                notification_key = build_status_notification_key(status_db, channel)
+                existing_keys = order.get("notification_events") or []
+
+                if notification_key not in existing_keys:
+                    sent = await notify_order_status_changed(customer, order_for_notify, status_db)
+                    if sent:
+                        await db.orders.update_one(
+                            {"id": order.get("id")},
+                            {"$addToSet": {"notification_events": notification_key}}
+                        )
         except Exception as exc:
             logger.error(f"Operator notification failed: {exc}")
 
@@ -1218,25 +1263,6 @@ async def update_order_status(order_id: str, new_status: str, notes: Optional[st
             "created_at": now.isoformat()
         })
 
-    if status_value == OrderStatus.OUT_FOR_DELIVERY.value and NOTIFICATIONS_ENABLED:
-        customer = None
-        customer_id = order.get("customer_id")
-        if customer_id:
-            customer = await db.customers.find_one(
-                {"$or": [{"id": customer_id}, {"customer_id": customer_id}]},
-                {"_id": 0}
-            )
-        if customer:
-            order_for_notify = {
-                **order,
-                "order_number": order.get("order_number") or order.get("order_id"),
-                "status": status_value.lower()
-            }
-            try:
-                await notify_order_status_changed(customer, order_for_notify, status_value.lower())
-            except Exception as e:
-                logger.error(f"Notification failed: {e}")
-    
     return {
         "order_id": order_id,
         "old_status": old_status,

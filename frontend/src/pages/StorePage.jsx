@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { useLocale } from "../context/LocaleContext";
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
+const DEFAULT_PRODUCT_IMAGE = "https://images.unsplash.com/photo-1582735689369-4fe89db7114c?w=400&h=300&fit=crop";
 
 export default function StorePage() {
   const { t } = useLocale();
@@ -31,6 +32,10 @@ export default function StorePage() {
     payment_method: "card"
   });
   const [searchParams] = useSearchParams();
+
+  const handleProductImageError = (event) => {
+    event.currentTarget.src = DEFAULT_PRODUCT_IMAGE;
+  };
 
   const pollCheckoutStatus = useCallback(async (sessionId, attempt = 0) => {
     const maxAttempts = 8;
@@ -591,8 +596,14 @@ export default function StorePage() {
                   className="bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-100 hover:shadow-lg transition-all group"
                   data-testid={`product-${product.id}`}
                 >
-                  <div className="aspect-square bg-gradient-to-br from-sky-100 to-sky-50 flex items-center justify-center">
-                    <ShoppingBag className="h-16 w-16 text-sky-400 group-hover:scale-110 transition-transform" />
+                  <div className="aspect-square bg-gradient-to-br from-sky-100 to-sky-50 overflow-hidden">
+                    <img
+                      src={product.image_url || DEFAULT_PRODUCT_IMAGE}
+                      alt={product.name}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      onError={handleProductImageError}
+                      data-testid={`store-product-image-${product.id}`}
+                    />
                   </div>
                   <div className="p-6">
                     <span className="text-xs font-medium text-sky-600 uppercase tracking-wide">

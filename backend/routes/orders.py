@@ -277,7 +277,11 @@ def get_orders_router(
 
     @router.patch("/orders/{order_id}/status")
     async def update_order_status(order_id: str, status: str, notify: bool = True, current_user: dict = Depends(get_current_user)):
-        valid_statuses = ["new", "processing", "ready", "out_for_delivery", "delivered", "completed", "cancelled"]
+        valid_statuses = [
+            "new", "confirmed", "pickup_scheduled", "picked_up",
+            "processing", "ready", "out_for_delivery", "delivered",
+            "completed", "cancelled"
+        ]
         normalized_status = normalize_status(status)
         if normalized_status not in valid_statuses:
             raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {valid_statuses}")
@@ -287,8 +291,13 @@ def get_orders_router(
             raise HTTPException(status_code=404, detail="Order not found")
 
         current_status = normalize_status(order.get("status"))
-        if normalized_status == "completed" and current_status not in ["delivered", "completed", "out_for_delivery"]:
-            raise HTTPException(status_code=400, detail="Order must be delivered before it can be completed")
+        service_type = normalize_spaces(order.get("service_type") or "pickup_delivery").lower().replace(" ", "_")
+        if normalized_status == "completed":
+            if service_type in ["wash_fold", "wash_fold_dropoff", "self_service"]:
+                if current_status not in ["ready", "completed"]:
+                    raise HTTPException(status_code=400, detail="Wash & Fold must be ready before it can be completed")
+            elif current_status not in ["delivered", "completed", "out_for_delivery"]:
+                raise HTTPException(status_code=400, detail="Order must be delivered before it can be completed")
 
         await db.orders.update_one(
             {"id": order_id},

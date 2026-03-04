@@ -66,13 +66,24 @@ try:
         normalize_preferred_contact
     )
     NOTIFICATIONS_ENABLED = True
-
-    from routes.public_forms import get_public_forms_router
-    from routes.voice import get_voice_router
 except ImportError:
     NOTIFICATIONS_ENABLED = False
     logger = logging.getLogger(__name__)
     logger.warning("Notification services not available")
+
+try:
+    from routes.public_forms import get_public_forms_router
+except ImportError:
+    get_public_forms_router = None
+    logger = logging.getLogger(__name__)
+    logger.warning("Public forms router not available")
+
+try:
+    from routes.voice import get_voice_router
+except ImportError:
+    get_voice_router = None
+    logger = logging.getLogger(__name__)
+    logger.warning("Voice router not available")
 
 # Import n8n integration
 try:
@@ -159,6 +170,16 @@ except ImportError:
     logger = logging.getLogger(__name__)
     logger.warning("Automation engine not available")
 
+# Stripe advanced sync scaffold (disabled by default)
+try:
+    from stripe_sync_scaffold import stripe_sync_router, set_database as set_stripe_sync_db
+    STRIPE_SYNC_SCAFFOLD_ENABLED = True
+except ImportError:
+    STRIPE_SYNC_SCAFFOLD_ENABLED = False
+    stripe_sync_router = None
+    logger = logging.getLogger(__name__)
+    logger.warning("Stripe sync scaffold not available")
+
 # MongoDB connection
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
@@ -180,6 +201,10 @@ if BLOG_ENABLED:
 # Set database for automation engine
 if AUTOMATION_ENABLED:
     set_automation_db(db)
+
+# Set database for Stripe sync scaffold
+if STRIPE_SYNC_SCAFFOLD_ENABLED:
+    set_stripe_sync_db(db)
 
 # JWT Config
 JWT_SECRET = os.environ.get('JWT_SECRET', 'ventura-fresh-laundry-secret-key-2024')
@@ -1622,13 +1647,13 @@ def should_notify_order_status(order: dict, status_value: str) -> bool:
 
     service_type = normalize_status(order.get("service_type") or "pickup_delivery")
     if service_type in ["wash_fold", "self_service"]:
-        return status_normalized in ["processing", "ready", "completed", "cancelled"]
+        return status_normalized == "ready"
 
-    return status_normalized in ["ready", "out_for_delivery", "delivered"]
+    return status_normalized in ["confirmed", "pickup_scheduled", "ready", "out_for_delivery", "delivered"]
 
 @api_router.patch("/orders/{order_id}/status")
 async def update_order_status(order_id: str, status: str, notify: bool = True, current_user: dict = Depends(get_current_user)):
-    valid_statuses = ["new", "processing", "ready", "out_for_delivery", "delivered", "completed", "cancelled"]
+    valid_statuses = ["new", "confirmed", "pickup_scheduled", "picked_up", "processing", "ready", "out_for_delivery", "delivered", "completed", "cancelled"]
     normalized_status = normalize_status(status)
     if normalized_status not in valid_statuses:
         raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {valid_statuses}")
@@ -1638,8 +1663,13 @@ async def update_order_status(order_id: str, status: str, notify: bool = True, c
         raise HTTPException(status_code=404, detail="Order not found")
 
     current_status = normalize_status(order.get("status"))
-    if normalized_status == "completed" and current_status not in ["delivered", "completed", "out_for_delivery"]:
-        raise HTTPException(status_code=400, detail="Order must be delivered before it can be completed")
+    service_type = normalize_spaces(order.get("service_type") or "pickup_delivery").lower().replace(" ", "_")
+    if normalized_status == "completed":
+        if service_type in ["wash_fold", "wash_fold_dropoff", "self_service"]:
+            if current_status not in ["ready", "completed"]:
+                raise HTTPException(status_code=400, detail="Wash & Fold must be ready before it can be completed")
+        elif current_status not in ["delivered", "completed", "out_for_delivery"]:
+            raise HTTPException(status_code=400, detail="Order must be delivered before it can be completed")
 
     await db.orders.update_one(
         {"id": order_id},
@@ -2763,7 +2793,7 @@ async def ai_operations(
         "Return ONLY valid JSON with keys: reply (string) and actions (array). "
         "Actions must be objects with type and payload. Allowed types: "
         "update_order_status, update_order_lbs, register_payment, print_ticket, send_notification. "
-        "For update_order_status payload: order_id, status (new|processing|ready|out_for_delivery|delivered|completed|cancelled). "
+        "For update_order_status payload: order_id, status (new|confirmed|pickup_scheduled|picked_up|processing|ready|out_for_delivery|delivered|completed|cancelled). "
         "For update_order_lbs payload: order_id, estimated_lbs (number or null), actual_lbs (number or null). "
         "For register_payment payload: order_id, payment_method (cash|card|transfer|other), amount_received (number or null). "
         "For print_ticket payload: order_id. "
@@ -3007,7 +3037,7 @@ async def admin_ai(data: AdminAIRequest, current_user: dict = Depends(get_curren
             if action_type == "update_order_status":
                 order_id = action_payload.get("order_id")
                 status_value = action_payload.get("status")
-                valid_statuses = ["new", "processing", "ready", "out_for_delivery", "delivered", "completed", "cancelled"]
+                valid_statuses = ["new", "confirmed", "pickup_scheduled", "picked_up", "processing", "ready", "out_for_delivery", "delivered", "completed", "cancelled"]
                 if not order_id or status_value not in valid_statuses:
                     results.append({"type": action_type, "ok": False, "error": "Invalid order status or id"})
                     continue
@@ -4570,44 +4600,54 @@ async def operator_update_order_status(
     if not has_permission(current_user, "orders:update_status"):
         raise HTTPException(status_code=403, detail="Permission denied")
     
-    valid_statuses = ["new", "processing", "ready", "out_for_delivery", "delivered", "completed", "cancelled"]
-    if status not in valid_statuses:
+    valid_statuses = ["new", "confirmed", "pickup_scheduled", "picked_up", "processing", "ready", "out_for_delivery", "delivered", "completed", "cancelled"]
+    status_normalized = normalize_status(status)
+    if status_normalized not in valid_statuses:
         raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {valid_statuses}")
     
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     
+    current_status = normalize_status(order.get("status"))
+    service_type = normalize_spaces(order.get("service_type") or "pickup_delivery").lower().replace(" ", "_")
+    if status_normalized == "completed":
+        if service_type in ["wash_fold", "wash_fold_dropoff", "self_service"]:
+            if current_status not in ["ready", "completed"]:
+                raise HTTPException(status_code=400, detail="Wash & Fold must be ready before it can be completed")
+        elif current_status not in ["delivered", "completed", "out_for_delivery"]:
+            raise HTTPException(status_code=400, detail="Order must be delivered before it can be completed")
+
     now = datetime.now(timezone.utc).isoformat()
     result = await db.orders.update_one(
         {"id": order_id},
         {
             "$set": {
-                "status": status,
-                "estado_actual": status,
+                "status": status_normalized,
+                "estado_actual": status_normalized,
                 "updated_at": now,
                 "tiempos.ultimo_cambio_estado": now,
-                f"tiempos.fechas_estado.{status}": now
+                f"tiempos.fechas_estado.{status_normalized}": now
             }
         }
     )
     
-    await create_audit_log("ORDER_STATUS_CHANGED_BY_OPERATOR", "order", order_id, current_user["id"], {"new_status": status})
+    await create_audit_log("ORDER_STATUS_CHANGED_BY_OPERATOR", "order", order_id, current_user["id"], {"new_status": status_normalized})
     
     # Send notifications if enabled
     if NOTIFICATIONS_ENABLED and not SKIP_SERVER_NOTIFICATIONS and order.get("customer_id"):
         customer = await db.customers.find_one({"id": order["customer_id"]}, {"_id": 0})
-        if customer and should_notify_order_status(order, status):
-            order["status"] = status
+        if customer and should_notify_order_status(order, status_normalized):
+            order["status"] = status_normalized
             try:
-                await notify_order_status_changed(customer, order, status)
+                await notify_order_status_changed(customer, order, status_normalized)
             except Exception as e:
                 logger.error(f"Notification failed: {e}")
     
-    return {"message": f"Order status updated to {status}"}
+    return {"message": f"Order status updated to {status_normalized}"}
 
 # === External routers (refactored) ===
-if NOTIFICATIONS_ENABLED and 'get_public_forms_router' in globals():
+if get_public_forms_router:
     public_forms_router = get_public_forms_router(
         db=db,
         generate_order_number=generate_order_number,
@@ -4619,7 +4659,7 @@ if NOTIFICATIONS_ENABLED and 'get_public_forms_router' in globals():
     )
     api_router.include_router(public_forms_router)
 
-if NOTIFICATIONS_ENABLED and 'get_voice_router' in globals():
+if NOTIFICATIONS_ENABLED and get_voice_router:
     voice_router = get_voice_router(
         db=db,
         require_admin=require_admin,
@@ -4664,6 +4704,11 @@ if AUTOMATION_ENABLED and automation_router:
     app.include_router(automation_router, prefix="/api")
     logger.info("Automation engine enabled at /api/automation/*")
 
+# Include Stripe advanced sync scaffold (feature-flag controlled inside module)
+if STRIPE_SYNC_SCAFFOLD_ENABLED and stripe_sync_router:
+    app.include_router(stripe_sync_router, prefix="/api")
+    logger.info("Stripe sync scaffold enabled at /api/stripe-sync/*")
+
 # Stripe webhook endpoint
 @app.post("/api/webhook/stripe")
 async def stripe_webhook(request: Request):
@@ -4676,12 +4721,16 @@ async def stripe_webhook(request: Request):
 # Serve the HTML website files
 
 WEB_DIR = ROOT_DIR / "paginaweb"
+UPLOADS_DIR = ROOT_DIR / "uploads"
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
+app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
 # Mount static files directories for each page's assets
 if WEB_DIR.exists():
     for folder in WEB_DIR.iterdir():
         if folder.is_dir() and (folder.name.endswith('_files') or folder.name.endswith('_resources')):
             app.mount(f"/web/{folder.name}", StaticFiles(directory=folder), name=folder.name)
+
 
 @app.get("/web/crm-integration.js")
 async def serve_crm_js():

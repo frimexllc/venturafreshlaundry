@@ -9,19 +9,19 @@ import { useLocale } from "../context/LocaleContext";
 
 // FAQ Accordion Component
 const FAQItem = ({ question, answer, isOpen, onClick }) => (
-  <div className="border-b border-slate-200 last:border-0">
+  <div className="border-b border-slate-700 last:border-0">
     <button
       onClick={onClick}
       className="w-full py-5 flex items-center justify-between text-left group"
     >
-      <span className="text-lg font-medium text-slate-900 group-hover:text-sky-600 transition-colors pr-4">
+      <span className="text-lg font-medium text-slate-100 group-hover:text-sky-300 transition-colors pr-4">
         {question}
       </span>
-      <div className="flex-shrink-0 h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center">
+      <div className="flex-shrink-0 h-8 w-8 rounded-full bg-slate-800 flex items-center justify-center">
         {isOpen ? (
           <ChevronUp className="h-5 w-5 text-sky-600" />
         ) : (
-          <ChevronDown className="h-5 w-5 text-slate-400" />
+          <ChevronDown className="h-5 w-5 text-slate-300" />
         )}
       </div>
     </button>
@@ -30,7 +30,7 @@ const FAQItem = ({ question, answer, isOpen, onClick }) => (
         isOpen ? "max-h-[500px] pb-5" : "max-h-0"
       }`}
     >
-      <div className="text-slate-600 leading-relaxed">{answer}</div>
+      <div className="text-slate-300 leading-relaxed">{answer}</div>
     </div>
   </div>
 );
@@ -59,6 +59,13 @@ export default function LandingPage() {
   const { t, locale } = useLocale();
   const [openFAQ, setOpenFAQ] = useState(null);
   const [scrollY, setScrollY] = useState(0);
+
+  // Colores editables del Home (aquí puedes ajustar el look completo):
+  const LANDING_THEME = {
+    heroOverlay: "linear-gradient(135deg, rgba(2, 6, 23, 0.82) 0%, rgba(15, 23, 42, 0.65) 48%, rgba(3, 37, 65, 0.58) 100%)",
+    waveHeroToFeatures: "#0b4a72",
+    waveToDarkSections: "#0f172a"
+  };
 
   // Efecto de parallax
   useEffect(() => {
@@ -270,7 +277,7 @@ export default function LandingPage() {
   ], [t]);
 
   return (
-    <div className="min-h-screen bg-white overflow-x-hidden">
+    <div className="min-h-screen bg-slate-950 overflow-x-hidden">
       {/* Hero Section with Video Background */}
       <section className="relative min-h-screen flex items-center overflow-hidden">
         {/* VIDEO Background */}
@@ -284,8 +291,8 @@ export default function LandingPage() {
             playsInline
             preload="auto"
           />
-          {/* Overlay ligero para legibilidad */}
-          <div className="absolute inset-0 bg-black/25"></div>
+          {/* Overlay oscuro para mejorar contraste del texto blanco */}
+          <div className="absolute inset-0" style={{ background: LANDING_THEME.heroOverlay }}></div>
         </div>
 
         {/* NAV NORMALIZADO (usa el componente PublicNav) */}
@@ -376,7 +383,7 @@ export default function LandingPage() {
           >
             <path
               d="M0,40 C360,0 1080,80 1440,40 L1440,120 L0,120 Z"
-              fill="white"
+              fill={LANDING_THEME.waveHeroToFeatures}
               opacity="0.9"
             />
           </svg>
@@ -466,7 +473,7 @@ export default function LandingPage() {
           <svg viewBox="0 0 1440 120" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full">
             <path
               d="M0,40 Q360,100 720,40 T1440,40 L1440,120 L0,120 Z"
-              fill="white"
+              fill={LANDING_THEME.waveToDarkSections}
             />
           </svg>
         </div>
@@ -530,64 +537,64 @@ export default function LandingPage() {
           <svg viewBox="0 0 1440 120" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full">
             <path
               d="M0,60 Q360,0 720,60 T1440,60 L1440,120 L0,120 Z"
-              fill="white"
+              fill={LANDING_THEME.waveToDarkSections}
             />
           </svg>
         </div>
       </section>
 
       {/* Benefits Section */}
-      <section className="py-24 bg-white">
+      <section className="py-24 bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid md:grid-cols-2 gap-16">
             <div>
               <StaggeredElement>
-                <div className="mb-12 p-6 rounded-2xl bg-gradient-to-br from-sky-50 to-white border border-sky-100 hover:shadow-xl transition-all duration-500">
-                  <h3 className="text-3xl font-bold text-slate-900 mb-4" style={{ fontFamily: "'Playfair Display', serif" }}>
+                <div className="mb-12 p-6 rounded-2xl bg-gradient-to-br from-slate-800/90 to-slate-900/90 border border-slate-700 hover:shadow-xl transition-all duration-500">
+                  <h3 className="text-3xl font-bold text-slate-100 mb-4" style={{ fontFamily: "'Playfair Display', serif" }}>
                     {benefits[0].title}
                   </h3>
-                  <p className="text-slate-600 leading-relaxed">{benefits[0].text}</p>
+                  <p className="text-slate-300 leading-relaxed">{benefits[0].text}</p>
                 </div>
               </StaggeredElement>
 
               <StaggeredElement delay={100}>
-                <div className="p-6 rounded-2xl bg-gradient-to-br from-emerald-50 to-white border border-emerald-100 hover:shadow-xl transition-all duration-500">
-                  <h3 className="text-3xl font-bold text-slate-900 mb-4" style={{ fontFamily: "'Playfair Display', serif" }}>
+                <div className="p-6 rounded-2xl bg-gradient-to-br from-slate-800/90 to-slate-900/90 border border-slate-700 hover:shadow-xl transition-all duration-500">
+                  <h3 className="text-3xl font-bold text-slate-100 mb-4" style={{ fontFamily: "'Playfair Display', serif" }}>
                     {benefits[1].title}
                   </h3>
-                  <p className="text-slate-600 mb-4">{benefits[1].text1}</p>
-                  <ul className="text-slate-600 space-y-2">
+                  <p className="text-slate-300 mb-4">{benefits[1].text1}</p>
+                  <ul className="text-slate-300 space-y-2">
                     {benefits[1].list.map((item, i) => (
                       <li key={i}>• {item}</li>
                     ))}
                   </ul>
-                  <p className="text-slate-600 mt-4 font-medium">{benefits[1].footer}</p>
+                  <p className="text-slate-300 mt-4 font-medium">{benefits[1].footer}</p>
                 </div>
               </StaggeredElement>
             </div>
 
             <div>
               <StaggeredElement delay={200}>
-                <div className="mb-12 p-6 rounded-2xl bg-gradient-to-br from-amber-50 to-white border border-amber-100 hover:shadow-xl transition-all duration-500">
-                  <h3 className="text-3xl font-bold text-slate-900 mb-4" style={{ fontFamily: "'Playfair Display', serif" }}>
+                <div className="mb-12 p-6 rounded-2xl bg-gradient-to-br from-slate-800/90 to-slate-900/90 border border-slate-700 hover:shadow-xl transition-all duration-500">
+                  <h3 className="text-3xl font-bold text-slate-100 mb-4" style={{ fontFamily: "'Playfair Display', serif" }}>
                     {benefits[2].title}
                   </h3>
-                  <p className="text-slate-600 mb-4">{benefits[2].text1}</p>
-                  <ul className="text-slate-600 space-y-2">
+                  <p className="text-slate-300 mb-4">{benefits[2].text1}</p>
+                  <ul className="text-slate-300 space-y-2">
                     {benefits[2].list.map((item, i) => (
                       <li key={i}>• {item}</li>
                     ))}
                   </ul>
-                  <p className="text-slate-600 mt-4 font-medium">{benefits[2].footer}</p>
+                  <p className="text-slate-300 mt-4 font-medium">{benefits[2].footer}</p>
                 </div>
               </StaggeredElement>
 
               <StaggeredElement delay={300}>
-                <div className="p-6 rounded-2xl bg-gradient-to-br from-purple-50 to-white border border-purple-100 hover:shadow-xl transition-all duration-500">
-                  <h3 className="text-3xl font-bold text-slate-900 mb-4" style={{ fontFamily: "'Playfair Display', serif" }}>
+                <div className="p-6 rounded-2xl bg-gradient-to-br from-slate-800/90 to-slate-900/90 border border-slate-700 hover:shadow-xl transition-all duration-500">
+                  <h3 className="text-3xl font-bold text-slate-100 mb-4" style={{ fontFamily: "'Playfair Display', serif" }}>
                     {benefits[3].title}
                   </h3>
-                  <p className="text-slate-600 leading-relaxed">{benefits[3].text}</p>
+                  <p className="text-slate-300 leading-relaxed">{benefits[3].text}</p>
                 </div>
               </StaggeredElement>
             </div>
@@ -646,22 +653,22 @@ export default function LandingPage() {
           <svg viewBox="0 0 1440 60" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full">
             <path
               d="M0,30 Q80,60 160,30 T1440,30 L1440,60 L0,60 Z"
-              fill="white"
+              fill={LANDING_THEME.waveToDarkSections}
             />
           </svg>
         </div>
       </section>
 
       {/* FAQ Section */}
-      <section className="py-24 bg-white">
+      <section className="py-24 bg-slate-950">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
           <StaggeredElement>
-            <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 text-center mb-12" style={{ fontFamily: "'Playfair Display', serif" }}>
+            <h2 className="text-3xl sm:text-4xl font-bold text-slate-100 text-center mb-12" style={{ fontFamily: "'Playfair Display', serif" }}>
               {t("Frequently Asked Questions", "Preguntas Frecuentes")}
             </h2>
           </StaggeredElement>
 
-          <div className="bg-gradient-to-br from-white to-slate-50 rounded-2xl shadow-xl border border-slate-100 p-6 md:p-8">
+          <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl shadow-xl border border-slate-700 p-6 md:p-8">
             {faqs.map((faq, index) => (
               <StaggeredElement key={index} delay={index * 50}>
                 <FAQItem
@@ -677,7 +684,7 @@ export default function LandingPage() {
       </section>
 
       {/* Contact Info Section */}
-      <section className="py-16 bg-gradient-to-b from-slate-50 to-white">
+      <section className="py-16 bg-gradient-to-b from-slate-900 to-slate-950">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid md:grid-cols-3 gap-8 text-center">
             {[
@@ -687,10 +694,10 @@ export default function LandingPage() {
             ].map((contact, idx) => (
               <StaggeredElement key={idx} delay={idx * 100}>
                 <div className="flex flex-col items-center hover:scale-105 transition-all duration-500">
-                  <div className="h-14 w-14 rounded-full bg-gradient-to-br from-sky-100 to-white flex items-center justify-center mb-4 shadow-lg border border-sky-200">
+                  <div className="h-14 w-14 rounded-full bg-gradient-to-br from-slate-800 to-slate-700 flex items-center justify-center mb-4 shadow-lg border border-slate-600">
                     {contact.icon}
                   </div>
-                  <p className="text-slate-600 font-medium">{contact.text}</p>
+                  <p className="text-slate-200 font-medium">{contact.text}</p>
                 </div>
               </StaggeredElement>
             ))}
