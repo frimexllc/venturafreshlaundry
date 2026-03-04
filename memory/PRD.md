@@ -166,6 +166,19 @@ RECEIVED → PROCESSING → READY → OUT_FOR_DELIVERY → DELIVERED → COMPLET
 - ✅ **Políticas legales actualizadas**: ` /privacy-policy ` y ` /terms-and-conditions ` con contenido detallado provisto.
 - ✅ **Notificaciones protegidas**: backend ahora evita SMS/WhatsApp sin consentimiento y hace fallback a email/call.
 
+## Cambios recientes (2026-03-04) – Premium Notifications + SEO Logo
+- ✅ **notifications.py corregido para envío real**:
+  - Se agregó flag `ENFORCE_QUIET_HOURS` (default `false`) para que no se bloqueen envíos por horario silencioso en operación normal.
+  - Se eliminó el prefijo duplicado de marca en Twilio (`send_sms` / `send_whatsapp` ahora envían mensaje limpio).
+- ✅ **Plantillas oficiales premium implementadas**:
+  - Wash & Fold: `order_received`, `ready_for_pickup`, `completed`
+  - Pickup & Delivery: `order_created`, `pickup_confirmed`, `ready`, `out_for_delivery`, `delivered`
+  - Regla aplicada: `ORDER_NUMBER` solo en primer evento (`order_received` y `order_created`).
+- ✅ **Hitos y mapeos ajustados** para respetar flujo premium y anti-spam en ambos servicios.
+- ✅ **Logo del nav en navegador y buscadores**:
+  - Nuevos assets públicos: `favicon-ventura.webp`, `logo-ventura.webp`, `manifest.json`
+  - `index.html` actualizado con `rel=icon`, `apple-touch-icon`, OpenGraph, Twitter cards y JSON-LD de organización (logo).
+
 ## Pendientes / Issues
 **P1**
 - Validar webhook Stripe end-to-end en entorno productivo con eventos reales entrantes
