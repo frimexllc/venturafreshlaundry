@@ -56,6 +56,7 @@ TIMEZONE = os.environ.get('TIMEZONE', 'America/Los_Angeles') # para uso futuro c
 USE_PREMIUM_TEMPLATES = os.environ.get('USE_PREMIUM_TEMPLATES', 'true').lower() == 'true'
 MAX_RETRIES = int(os.environ.get('TWILIO_MAX_RETRIES', '3'))
 RETRY_DELAY = float(os.environ.get('TWILIO_RETRY_DELAY', '1.5'))  # factor multiplicador
+ENFORCE_QUIET_HOURS = os.environ.get('ENFORCE_QUIET_HOURS', 'false').lower() == 'true'
 
 # ----------------------------------------------------------------------
 # Almacenes de idempotencia y auditoría (en memoria - reemplazar en prod)
@@ -78,16 +79,16 @@ def _log_attempt(entry: dict) -> None:
 # Definición de hitos permitidos por flujo (anti-spam)
 # ----------------------------------------------------------------------
 MILESTONES = {
-    "wash_fold": {"order_received", "ready_for_pickup"},
-    "pickup_delivery": {"pickup_confirmed", "ready", "out_for_delivery", "delivered"},
+    "wash_fold": {"order_received", "ready_for_pickup", "completed"},
+    "pickup_delivery": {"order_created", "pickup_confirmed", "ready", "out_for_delivery", "delivered"},
 }
 # Normalizamos los eventos internos a estos nombres (para compatibilidad)
 EVENT_MAPPING = {
     "order_created": "order_created",
     "pickup_scheduled": "pickup_confirmed",
-    "pickup_reminder": "order_created",            # también usa fecha
+    "pickup_reminder": "pickup_confirmed",
     "pickup_completed": "pickup_confirmed",        # similar a pickup_confirmed
-    "pickup_update": "order_created",              # genérico con fecha
+    "pickup_update": "pickup_confirmed",           # genérico con fecha
     "status_changed": None,                         # se mapea según status
 }
 
@@ -238,126 +239,158 @@ def build_premium_message(
     order_total: Optional[float] = None,
     shipping_fee: Optional[float] = None
 ) -> dict:
-    """
-    Genera mensajes premium según la propuesta: número de orden solo en primer evento,
-    siempre saluda por nombre, tono cálido y profesional.
-    """
     is_spanish = str(language).lower().startswith("es")
     name = customer_name or ("Cliente" if is_spanish else "Customer")
-    signature = f"\n\n{BUSINESS_NAME}"
-    if USE_ULTRA_PREMIUM:
-        signature += "\nBecause you have better things to do."
 
-    # --- Eventos que son el primer contacto (incluyen número) ---
-    first_events = {"order_created", "pickup_scheduled", "store_order"}
-    include_order_number = event in first_events
+    def with_brand(content: str) -> str:
+        return f"{BUSINESS_NAME}:\n\n{content}"
 
-    # Mapeo de eventos a templates
-    if event == "order_created" or event == "pickup_scheduled" or event == "pickup_reminder" or event == "pickup_update":
-        # Todos estos son variantes de "orden creada/confirmada"
+    # WASH & FOLD
+    if event == "order_received":
         if is_spanish:
-            subject = f"Confirmación de orden {order_number}" if include_order_number else "Confirmación de orden"
-            if include_order_number:
-                message = f"Hola {name}, tu orden #{order_number} fue programada correctamente.\nConfirmaremos tu pickup en breve."
-            else:
-                message = f"Hola {name}, tu orden está programada.\nConfirmaremos tu pickup en breve."
-        else:
-            subject = f"Order {order_number} confirmation" if include_order_number else "Order confirmation"
-            if include_order_number:
-                message = f"Hello {name}, your order #{order_number} has been successfully scheduled.\nWe will confirm your pickup shortly."
-            else:
-                message = f"Hello {name}, your order has been scheduled.\nWe will confirm your pickup shortly."
-        return {"subject": subject, "message": message + signature}
+            return {
+                "subject": f"Orden recibida #{order_number}",
+                "message": with_brand(
+                    f"Hola {name}, recibimos tu orden #{order_number}.\n\nTe notificaremos cuando esté lista.\n\nGracias por confiar en nosotros."
+                )
+            }
+        return {
+            "subject": f"Order received #{order_number}",
+            "message": with_brand(
+                f"Hello {name}, we received your order #{order_number}.\n\nWe’ll notify you when it’s ready.\n\nThank you for choosing us."
+            )
+        }
 
-    if event == "pickup_confirmed" or event == "pickup_completed":
+    if event == "ready_for_pickup":
         if is_spanish:
-            subject = "Pickup confirmado"
-            message = f"Hola {name}, tu pickup está confirmado.\nNos encargaremos del resto."
-        else:
-            subject = "Pickup confirmed"
-            message = f"Hello {name}, your pickup is confirmed.\nWe'll take care of everything."
-        return {"subject": subject, "message": message + signature}
+            return {
+                "subject": "Lista para recoger",
+                "message": with_brand(
+                    f"Hola {name}, tu ropa está lista para recoger.\n\nSerá un placer recibirte."
+                )
+            }
+        return {
+            "subject": "Ready for pickup",
+            "message": with_brand(
+                f"Hello {name}, your laundry is ready for pickup.\n\nWe look forward to seeing you."
+            )
+        }
 
-    if event == "status_changed":
-        status_lower = (status or "").lower().strip()
-        # Mapeo a estados reconocidos
-        if status_lower in ["procesando", "processing"]:
-            if is_spanish:
-                subject = "Orden en proceso"
-                message = f"Hola {name}, tu orden está siendo procesada.\nTe avisaremos cuando esté lista."
-            else:
-                subject = "Order processing"
-                message = f"Hello {name}, your order is being processed.\nWe'll notify you when it's ready."
-        elif status_lower in ["lista", "listo", "ready"]:
-            if is_spanish:
-                subject = "Orden lista"
-                message = f"Hola {name}, tu ropa está lista para recoger.\nSerá un placer recibirte."
-            else:
-                subject = "Order ready"
-                message = f"Hello {name}, your laundry is ready for pickup.\nWe look forward to seeing you."
-        elif status_lower in ["en camino", "out for delivery", "out_for_delivery"]:
-            if is_spanish:
-                subject = "En camino"
-                message = f"Hola {name}, tu entrega va en camino.\nGracias por tu confianza."
-            else:
-                subject = "Out for delivery"
-                message = f"Hello {name}, your delivery is on the way.\nThank you for your trust."
-        elif status_lower in ["entregada", "delivered"]:
-            if is_spanish:
-                subject = "Orden entregada"
-                message = f"Hola {name}, tu entrega fue completada.\nEsperamos verte pronto nuevamente."
-            else:
-                subject = "Order delivered"
-                message = f"Hello {name}, your delivery has been completed.\nWe look forward to serving you again."
-        elif status_lower in ["completada", "completed"]:
-            if is_spanish:
-                subject = "Orden completada"
-                message = f"Hola {name}, tu servicio fue completado.\nGracias por permitirnos cuidar tu ropa."
-            else:
-                subject = "Order completed"
-                message = f"Hello {name}, your service has been completed.\nThank you for trusting us with your garments."
-        elif status_lower in ["cancelada", "cancelled"]:
-            if is_spanish:
-                subject = "Orden cancelada"
-                message = f"Hola {name}, lamentamos informarte que tu orden ha sido cancelada.\nContáctanos si necesitas ayuda."
-            else:
-                subject = "Order cancelled"
-                message = f"Hello {name}, we regret to inform you that your order has been cancelled.\nContact us if you need assistance."
-        else:
-            # fallback genérico
-            if is_spanish:
-                subject = "Actualización de orden"
-                message = f"Hola {name}, tu orden cambió de estado a {status_lower}."
-            else:
-                subject = "Order update"
-                message = f"Hello {name}, your order status changed to {status_lower}."
-        return {"subject": subject, "message": message + signature}
+    if event == "completed":
+        if is_spanish:
+            return {
+                "subject": "Servicio completado",
+                "message": with_brand(
+                    f"Hola {name}, tu servicio fue completado.\n\nGracias por permitirnos cuidar tu ropa."
+                )
+            }
+        return {
+            "subject": "Service completed",
+            "message": with_brand(
+                f"Hello {name}, your service has been completed.\n\nThank you for trusting us with your garments."
+            )
+        }
+
+    # PICKUP & DELIVERY
+    if event == "order_created":
+        if is_spanish:
+            return {
+                "subject": f"Orden programada #{order_number}",
+                "message": with_brand(
+                    f"Hola {name}, tu orden #{order_number} fue programada correctamente.\n\nConfirmaremos tu pickup en breve."
+                )
+            }
+        return {
+            "subject": f"Order scheduled #{order_number}",
+            "message": with_brand(
+                f"Hello {name}, your order #{order_number} has been successfully scheduled.\n\nWe will confirm your pickup shortly."
+            )
+        }
+
+    if event == "pickup_confirmed":
+        if is_spanish:
+            return {
+                "subject": "Pickup confirmado",
+                "message": with_brand(
+                    f"Hola {name}, tu pickup está confirmado.\n\nNos encargaremos del resto."
+                )
+            }
+        return {
+            "subject": "Pickup confirmed",
+            "message": with_brand(
+                f"Hello {name}, your pickup is confirmed.\n\nWe’ll take care of everything."
+            )
+        }
+
+    if event == "ready":
+        if is_spanish:
+            return {
+                "subject": "Orden lista",
+                "message": with_brand(
+                    f"Hola {name}, tu ropa está lista.\n\nPronto estará contigo."
+                )
+            }
+        return {
+            "subject": "Laundry ready",
+            "message": with_brand(
+                f"Hello {name}, your laundry is ready.\n\nIt will be delivered soon."
+            )
+        }
+
+    if event == "out_for_delivery":
+        if is_spanish:
+            return {
+                "subject": "En camino",
+                "message": with_brand(
+                    f"Hola {name}, tu entrega va en camino.\n\nGracias por tu confianza."
+                )
+            }
+        return {
+            "subject": "Out for delivery",
+            "message": with_brand(
+                f"Hello {name}, your delivery is on the way.\n\nThank you for your trust."
+            )
+        }
+
+    if event == "delivered":
+        if is_spanish:
+            return {
+                "subject": "Entrega completada",
+                "message": with_brand(
+                    f"Hola {name}, tu entrega fue completada.\n\nEsperamos verte pronto nuevamente."
+                )
+            }
+        return {
+            "subject": "Delivery completed",
+            "message": with_brand(
+                f"Hello {name}, your delivery has been completed.\n\nWe look forward to serving you again."
+            )
+        }
 
     if event == "store_order":
-        total_label = f"${order_total:.2f}" if order_total is not None else ""
-        shipping_label = f" (envío ${shipping_fee:.2f})" if shipping_fee is not None else ""
         if is_spanish:
-            subject = f"Orden de tienda {order_number}" if include_order_number else "Orden de tienda confirmada"
-            if include_order_number:
-                message = f"Hola {name}, ¡gracias por tu compra! Tu orden #{order_number} está confirmada. Total: {total_label}{shipping_label}.\nTe avisaremos cuando esté lista."
-            else:
-                message = f"Hola {name}, ¡gracias por tu compra! Tu orden está confirmada. Total: {total_label}{shipping_label}.\nTe avisaremos cuando esté lista."
-        else:
-            subject = f"Store order {order_number}" if include_order_number else "Store order confirmed"
-            if include_order_number:
-                message = f"Hello {name}, thanks for your purchase! Your order #{order_number} is confirmed. Total: {total_label}{shipping_label}.\nWe'll notify you when it's ready."
-            else:
-                message = f"Hello {name}, thanks for your purchase! Your order is confirmed. Total: {total_label}{shipping_label}.\nWe'll notify you when it's ready."
-        return {"subject": subject, "message": message + signature}
+            return {
+                "subject": f"Compra confirmada #{order_number}",
+                "message": with_brand(
+                    f"Hola {name}, recibimos tu orden #{order_number}.\n\nTe notificaremos cuando esté lista."
+                )
+            }
+        return {
+            "subject": f"Store order received #{order_number}",
+            "message": with_brand(
+                f"Hello {name}, we received your order #{order_number}.\n\nWe’ll notify you when it’s ready."
+            )
+        }
 
-    # Fallback: usar plantilla genérica
     if is_spanish:
-        subject = f"Notificación {event}"
-        message = f"Hola {name}, este es un mensaje de {BUSINESS_NAME} sobre tu orden."
-    else:
-        subject = f"{event} notification"
-        message = f"Hello {name}, this is a message from {BUSINESS_NAME} regarding your order."
-    return {"subject": subject, "message": message + signature}
+        return {
+            "subject": "Actualización de orden",
+            "message": with_brand(f"Hola {name}, tenemos una actualización de tu servicio.")
+        }
+    return {
+        "subject": "Order update",
+        "message": with_brand(f"Hello {name}, we have an update regarding your service.")
+    }
 
 # ----------------------------------------------------------------------
 # Funciones de envío con reintentos (wrapper)
@@ -392,7 +425,7 @@ async def send_sms(to_phone: str, message: str) -> bool:
     async def _send():
         return await asyncio.to_thread(
             twilio_client.messages.create,
-            body=f"{BUSINESS_NAME}: {message}",
+            body=message,
             from_=TWILIO_PHONE_NUMBER,
             to=formatted_phone
         )
@@ -418,7 +451,7 @@ async def send_whatsapp(to_phone: str, message: str) -> bool:
     async def _send():
         return await asyncio.to_thread(
             twilio_client.messages.create,
-            body=f"{BUSINESS_NAME}: {message}",
+            body=message,
             from_=TWILIO_WHATSAPP_NUMBER,
             to=formatted
         )
@@ -517,7 +550,8 @@ async def send_preferred_notification(
         # Mapeo de estados a eventos de la propuesta
         if flow == "wash_fold":
             status_to_event = {
-                "ready": "ready_for_pickup"
+                "ready": "ready_for_pickup",
+                "completed": "completed"
             }
         else:
             status_to_event = {
@@ -641,7 +675,7 @@ async def send_preferred_notification(
         return True  # Consideramos éxito porque ya se envió antes
 
     # --- Horas de silencio: si está dentro, encolamos (simulado) ---
-    if is_quiet_hours():
+    if ENFORCE_QUIET_HOURS and is_quiet_hours():
         logger.info(f"Horas de silencio activas, notificación encolada: {dedupe_key}")
         _log_attempt({
             "timestamp": datetime.now().isoformat(),
