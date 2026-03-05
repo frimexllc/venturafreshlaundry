@@ -9,124 +9,125 @@ const backendUrl = process.env.REACT_APP_BACKEND_URL;
 
 const getWebSocketConfig = () => {
   if (!backendUrl) {
-    return null;
-  }
-  try {
-    const parsed = new URL(backendUrl);
-    return {
-      protocol: parsed.protocol === "https:" ? "wss" : "ws",
-      hostname: parsed.hostname,
-      port: parsed.port ? Number(parsed.port) : undefined,
-      pathname: "/ws"
-    };
-  } catch (error) {
-    return null;
-  }
-};
+      return null;
+        }
+          try {
+              const parsed = new URL(backendUrl);
+                  return {
+                        protocol: parsed.protocol === "https:" ? "wss" : "ws",
+                              hostname: parsed.hostname,
+                                    port: parsed.port ? Number(parsed.port) : undefined,
+                                          pathname: "/ws"
+                                              };
+                                                } catch (error) {
+                                                    return null;
+                                                      }
+                                                      };
 
-// Environment variable overrides
-const config = {
-  enableHealthCheck: process.env.ENABLE_HEALTH_CHECK === "true",
-  enableVisualEdits: process.env.ENABLE_VISUAL_EDITS === "true" && isDevServer,
-};
+                                                      // Environment variable overrides
+                                                      const config = {
+                                                        enableHealthCheck: process.env.ENABLE_HEALTH_CHECK === "true",
+                                                          enableVisualEdits: process.env.ENABLE_VISUAL_EDITS === "true" && isDevServer,
+                                                          };
 
-// Conditionally load visual edits modules only in dev mode
-let setupDevServer;
-let babelMetadataPlugin;
+                                                          // Conditionally load visual edits modules only in dev mode
+                                                          let setupDevServer;
+                                                          let babelMetadataPlugin;
 
-if (config.enableVisualEdits) {
-  setupDevServer = require("./plugins/visual-edits/dev-server-setup");
-  babelMetadataPlugin = require("./plugins/visual-edits/babel-metadata-plugin");
-}
+                                                          if (config.enableVisualEdits) {
+                                                            setupDevServer = require("./plugins/visual-edits/dev-server-setup");
+                                                              babelMetadataPlugin = require("./plugins/visual-edits/babel-metadata-plugin");
+                                                              }
 
-// Conditionally load health check modules only if enabled
-let WebpackHealthPlugin;
-let setupHealthEndpoints;
-let healthPluginInstance;
+                                                              // Conditionally load health check modules only if enabled
+                                                              let WebpackHealthPlugin;
+                                                              let setupHealthEndpoints;
+                                                              let healthPluginInstance;
 
-if (config.enableHealthCheck) {
-  WebpackHealthPlugin = require("./plugins/health-check/webpack-health-plugin");
-  setupHealthEndpoints = require("./plugins/health-check/health-endpoints");
-  healthPluginInstance = new WebpackHealthPlugin();
-}
+                                                              if (config.enableHealthCheck) {
+                                                                WebpackHealthPlugin = require("./plugins/health-check/webpack-health-plugin");
+                                                                  setupHealthEndpoints = require("./plugins/health-check/health-endpoints");
+                                                                    healthPluginInstance = new WebpackHealthPlugin();
+                                                                    }
 
-const webpackConfig = {
-  eslint: {
-    configure: {
-      extends: ["plugin:react-hooks/recommended"],
-      rules: {
-        "react-hooks/rules-of-hooks": "error",
-        "react-hooks/exhaustive-deps": "warn",
-      },
-    },
-  },
-  webpack: {
-    alias: {
-      '@': path.resolve(__dirname, 'src'),
-    },
-    configure: (webpackConfig) => {
+                                                                    const webpackConfig = {
+                                                                      eslint: {
+                                                                          configure: {
+                                                                                extends: ["plugin:react-hooks/recommended"],
+                                                                                      rules: {
+                                                                                              "react-hooks/rules-of-hooks": "error",
+                                                                                                      "react-hooks/exhaustive-deps": "warn",
+                                                                                                            },
+                                                                                                                },
+                                                                                                                  },
+                                                                                                                    webpack: {
+                                                                                                                        alias: {
+                                                                                                                              '@': path.resolve(__dirname, 'src'),
+                                                                                                                                  },
+                                                                                                                                      configure: (webpackConfig) => {
 
-      // Add ignored patterns to reduce watched directories
-        webpackConfig.watchOptions = {
-          ...webpackConfig.watchOptions,
-          ignored: [
-            '**/node_modules/**',
-            '**/.git/**',
-            '**/build/**',
-            '**/dist/**',
-            '**/coverage/**',
-            '**/public/**',
-        ],
-      };
+                                                                                                                                            // Add ignored patterns to reduce watched directories
+                                                                                                                                                    webpackConfig.watchOptions = {
+                                                                                                                                                              ...webpackConfig.watchOptions,
+                                                                                                                                                                        ignored: [
+                                                                                                                                                                                    '**/node_modules/**',
+                                                                                                                                                                                                '**/.git/**',
+                                                                                                                                                                                                            '**/build/**',
+                                                                                                                                                                                                                        '**/dist/**',
+                                                                                                                                                                                                                                    '**/coverage/**',
+                                                                                                                                                                                                                                                '**/public/**',
+                                                                                                                                                                                                                                                        ],
+                                                                                                                                                                                                                                                              };
 
-      // Add health check plugin to webpack if enabled
-      if (config.enableHealthCheck && healthPluginInstance) {
-        webpackConfig.plugins.push(healthPluginInstance);
-      }
-      return webpackConfig;
-    },
-  },
-};
+                                                                                                                                                                                                                                                                    // Add health check plugin to webpack if enabled
+                                                                                                                                                                                                                                                                          if (config.enableHealthCheck && healthPluginInstance) {
+                                                                                                                                                                                                                                                                                  webpackConfig.plugins.push(healthPluginInstance);
+                                                                                                                                                                                                                                                                                        }
+                                                                                                                                                                                                                                                                                              return webpackConfig;
+                                                                                                                                                                                                                                                                                                  },
+                                                                                                                                                                                                                                                                                                    },
+                                                                                                                                                                                                                                                                                                    };
 
-// Only add babel metadata plugin during dev server
-if (config.enableVisualEdits && babelMetadataPlugin) {
-  webpackConfig.babel = {
-    plugins: [babelMetadataPlugin],
-  };
-}
+                                                                                                                                                                                                                                                                                                    // Only add babel metadata plugin during dev server
+                                                                                                                                                                                                                                                                                                    if (config.enableVisualEdits && babelMetadataPlugin) {
+                                                                                                                                                                                                                                                                                                      webpackConfig.babel = {
+                                                                                                                                                                                                                                                                                                          plugins: [babelMetadataPlugin],
+                                                                                                                                                                                                                                                                                                            };
+                                                                                                                                                                                                                                                                                                            }
 
-webpackConfig.devServer = (devServerConfig) => {
-  // Apply visual edits dev server setup only if enabled
-  if (config.enableVisualEdits && setupDevServer) {
-    devServerConfig = setupDevServer(devServerConfig);
-  }
+                                                                                                                                                                                                                                                                                                            webpackConfig.devServer = (devServerConfig) => {
+                                                                                                                                                                                                                                                                                                              // Apply visual edits dev server setup only if enabled
+                                                                                                                                                                                                                                                                                                                if (config.enableVisualEdits && setupDevServer) {
+                                                                                                                                                                                                                                                                                                                    devServerConfig = setupDevServer(devServerConfig);
+                                                                                                                                                                                                                                                                                                                      }
 
-  // Add health check endpoints if enabled
-  if (config.enableHealthCheck && setupHealthEndpoints && healthPluginInstance) {
-    const originalSetupMiddlewares = devServerConfig.setupMiddlewares;
+                                                                                                                                                                                                                                                                                                                        // Add health check endpoints if enabled
+                                                                                                                                                                                                                                                                                                                          if (config.enableHealthCheck && setupHealthEndpoints && healthPluginInstance) {
+                                                                                                                                                                                                                                                                                                                              const originalSetupMiddlewares = devServerConfig.setupMiddlewares;
 
-    devServerConfig.setupMiddlewares = (middlewares, devServer) => {
-      // Call original setup if exists
-      if (originalSetupMiddlewares) {
-        middlewares = originalSetupMiddlewares(middlewares, devServer);
-      }
+                                                                                                                                                                                                                                                                                                                                  devServerConfig.setupMiddlewares = (middlewares, devServer) => {
+                                                                                                                                                                                                                                                                                                                                        // Call original setup if exists
+                                                                                                                                                                                                                                                                                                                                              if (originalSetupMiddlewares) {
+                                                                                                                                                                                                                                                                                                                                                      middlewares = originalSetupMiddlewares(middlewares, devServer);
+                                                                                                                                                                                                                                                                                                                                                            }
 
-      // Setup health endpoints
-      setupHealthEndpoints(devServer, healthPluginInstance);
+                                                                                                                                                                                                                                                                                                                                                                  // Setup health endpoints
+                                                                                                                                                                                                                                                                                                                                                                        setupHealthEndpoints(devServer, healthPluginInstance);
 
-      return middlewares;
-    };
-  }
+                                                                                                                                                                                                                                                                                                                                                                              return middlewares;
+                                                                                                                                                                                                                                                                                                                                                                                  };
+                                                                                                                                                                                                                                                                                                                                                                                    }
 
-  const websocketConfig = getWebSocketConfig();
-  if (websocketConfig) {
-    devServerConfig.client = {
-      ...devServerConfig.client,
-      webSocketURL: websocketConfig
-    };
-  }
+                                                                                                                                                                                                                                                                                                                                                                                      const websocketConfig = getWebSocketConfig();
+                                                                                                                                                                                                                                                                                                                                                                                        if (websocketConfig) {
+                                                                                                                                                                                                                                                                                                                                                                                            devServerConfig.client = {
+                                                                                                                                                                                                                                                                                                                                                                                                  ...devServerConfig.client,
+                                                                                                                                                                                                                                                                                                                                                                                                        webSocketURL: websocketConfig
+                                                                                                                                                                                                                                                                                                                                                                                                            };
+                                                                                                                                                                                                                                                                                                                                                                                                              }
 
-  return devServerConfig;
-};
+                                                                                                                                                                                                                                                                                                                                                                                                                return devServerConfig;
+                                                                                                                                                                                                                                                                                                                                                                                                                };
 
-module.exports = webpackConfig;
+                                                                                                                                                                                                                                                                                                                                                                                                                module.exports = webpackConfig;
+                                                                                                                                                                                                                                                                                                                                                                                                                

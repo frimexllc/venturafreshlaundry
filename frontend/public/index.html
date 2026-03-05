@@ -1,65 +1,60 @@
-<!doctype html>
-<html lang="en">
-    <head>
-        <meta charset="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <meta name="theme-color" content="#000000" />
-        <meta name="description" content="Ventura Fresh Laundry - Pickup & Delivery, Wash & Fold, and premium garment care in Ventura." />
-        <meta name="application-name" content="Ventura Fresh Laundry" />
-        <meta property="og:title" content="Ventura Fresh Laundry" />
-        <meta property="og:description" content="Pickup & Delivery, Wash & Fold, and premium garment care in Ventura." />
-        <meta property="og:type" content="website" />
-        <meta property="og:url" content="https://venturafreshlaundry.com" />
-        <meta property="og:image" content="https://venturafreshlaundry.com/logo-ventura.webp" />
-        <meta name="twitter:card" content="summary" />
-        <meta name="twitter:title" content="Ventura Fresh Laundry" />
-        <meta name="twitter:description" content="Pickup & Delivery, Wash & Fold, and premium garment care in Ventura." />
-        <meta name="twitter:image" content="https://venturafreshlaundry.com/logo-ventura.webp" />
-        <link rel="icon" type="image/webp" href="%PUBLIC_URL%/favicon-ventura.webp" />
-        <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo-ventura.webp" />
-        <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
-        <link rel="canonical" href="https://venturafreshlaundry.com" />
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@600&display=swap" rel="stylesheet" />
-        <script type="application/ld+json">
-          {
-            "@context": "https://schema.org",
-            "@type": "Laundromat",
-            "name": "Ventura Fresh Laundry",
-            "url": "https://venturafreshlaundry.com",
-            "logo": "https://venturafreshlaundry.com/logo-ventura.webp",
-            "image": "https://venturafreshlaundry.com/logo-ventura.webp",
-            "email": "info@venturafreshlaundry.com"
-          }
-        </script>
-        <!--
-        manifest.json provides metadata used when your web app is installed on a
-        user's mobile device or desktop. See https://developers.google.com/web/fundamentals/web-app-manifest/
-        -->
-        <!--
-        Notice the use of %PUBLIC_URL% in the tags above.
-        It will be replaced with the URL of the `public` folder during the build.
-        Only files inside the `public` folder can be referenced from the HTML.
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-        Unlike "/favicon.ico" or "favicon.ico", "%PUBLIC_URL%/favicon.ico" will
-        work correctly both with client-side routing and a non-root public URL.
-        Learn how to configure a non-root public URL by running `npm run build`.
-        -->
-        <title>Ventura Fresh Laundry</title>
-    </head>
-    <body>
-        <noscript>You need to enable JavaScript to run this app.</noscript>
-        <div id="root"></div>
-        <!--
-      This HTML file is a template.
-      If you open it directly in the browser, you will see an empty page.
+  <!-- Brand / Theme -->
+  <meta name="theme-color" content="#0ea5e9" />
+  <meta name="description" content="Ventura Fresh Laundry - Pickup & Delivery, Wash & Fold, and premium garment care in Ventura." />
+  <meta name="application-name" content="Ventura Fresh Laundry" />
 
-      You can add webfonts, meta tags, or analytics to this file.
-      The build step will place the bundled scripts into the <body> tag.
+  <!-- Canonical -->
+  <link rel="canonical" href="https://venturafreshlaundry.com" />
 
-      To begin the development, run `npm start` or `yarn start`.
-      To create a production bundle, use `npm run build` or `yarn build`.
-    -->
-    </body>
-</html>
+  <!-- ✅ FAVICON (use .ico for best compatibility + Google) -->
+  <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+  <link rel="shortcut icon" href="%PUBLIC_URL%/favicon.ico" />
+
+  <!-- Optional: keep your named ico too (not required, but ok) -->
+  <link rel="icon" href="%PUBLIC_URL%/favicon-ventura.ico" />
+
+  <!-- ✅ Apple touch icon (better as PNG, but if you only have ico/webp, keep it) -->
+  <link rel="apple-touch-icon" href="%PUBLIC_URL%/apple-touch-icon.png" />
+
+  <!-- Manifest -->
+  <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="Ventura Fresh Laundry" />
+  <meta property="og:description" content="Pickup & Delivery, Wash & Fold, and premium garment care in Ventura." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://venturafreshlaundry.com" />
+  <meta property="og:image" content="https://venturafreshlaundry.com/og-image.jpg" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Ventura Fresh Laundry" />
+  <meta name="twitter:description" content="Pickup & Delivery, Wash & Fold, and premium garment care in Ventura." />
+  <meta name="twitter:image" content="https://venturafreshlaundry.com/og-image.jpg" />
+
+  <!-- Fonts (your design rules say no Inter for headings; keep Inter only if it's body) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&family=Inter:wght@400;500&display=swap" rel="stylesheet" />
+
+  <!-- Structured Data -->
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Laundromat",
+      "name": "Ventura Fresh Laundry",
+      "url": "https://venturafreshlaundry.com",
+      "logo": "https://venturafreshlaundry.com/og-image.jpg",
+      "image": "https://venturafreshlaundry.com/og-image.jpg",
+      "email": "info@venturafreshlaundry.com"
+    }
+  </script>
+
+  <title>Ventura Fresh Laundry</title>
+</head>
