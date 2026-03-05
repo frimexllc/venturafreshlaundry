@@ -179,6 +179,18 @@ RECEIVED → PROCESSING → READY → OUT_FOR_DELIVERY → DELIVERED → COMPLET
   - Nuevos assets públicos: `favicon-ventura.webp`, `logo-ventura.webp`, `manifest.json`
   - `index.html` actualizado con `rel=icon`, `apple-touch-icon`, OpenGraph, Twitter cards y JSON-LD de organización (logo).
 
+## Cambios recientes (2026-03-05) – Favicon SEO hardening
+- ✅ Se agregó set completo de íconos estándar para buscadores/navegadores:
+  - `favicon.ico`
+  - `favicon-32x32.png`
+  - `favicon-16x16.png`
+  - `apple-touch-icon.png`
+  - `android-chrome-192x192.png`
+  - `android-chrome-512x512.png`
+- ✅ `index.html` actualizado para priorizar formatos recomendados por Google (`ico/png`) y metadata social con `logo-ventura.png`.
+- ✅ `manifest.json` actualizado con íconos PNG reales.
+- ✅ Se agregaron `robots.txt` y `sitemap.xml` públicos para reforzar crawling e indexación.
+
 ## Pendientes / Issues
 **P1**
 - Validar webhook Stripe end-to-end en entorno productivo con eventos reales entrantes
