@@ -191,6 +191,13 @@ RECEIVED → PROCESSING → READY → OUT_FOR_DELIVERY → DELIVERED → COMPLET
 - ✅ `manifest.json` actualizado con íconos PNG reales.
 - ✅ Se agregaron `robots.txt` y `sitemap.xml` públicos para reforzar crawling e indexación.
 
+## Cambios recientes (2026-03-06) – PWA Splash animada rotativa
+- ✅ Se implementó splash screen animada para arranque de PWA instalada (standalone), con duración configurada en **3.5s**.
+- ✅ Rotación automática entre 3 variantes en cada apertura (A/B/C) usando `localStorage` (`vfl_pwa_splash_variant_index`).
+- ✅ Modo preview para QA en navegador con `?pwa_splash=1`.
+- ✅ Incluye animaciones: fade+zoom, pulse rings, floating+bubbles, barra de progreso 3.5s, y auto-hide al finalizar.
+- ✅ Se agregaron `data-testid` para validación automatizada del splash y variantes.
+
 ## Pendientes / Issues
 **P1**
 - Validar webhook Stripe end-to-end en entorno productivo con eventos reales entrantes
