@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { LocaleProvider } from "./context/LocaleContext";
@@ -41,6 +42,7 @@ import CustomerLogin from "./pages/CustomerLogin";
 import TermsAndConditions from "./pages/TermsAndConditions";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import SmsPolicyConsent from "./pages/SmsPolicyConsent";
+import PwaSplashScreen from "./components/PwaSplashScreen";
 
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -159,9 +161,42 @@ function AppRoutes() {
 }
 
 function App() {
+  const [showPwaSplash, setShowPwaSplash] = useState(false);
+  const [splashVariant, setSplashVariant] = useState(0);
+  const splashInitializedRef = useRef(false);
+
+  useEffect(() => {
+    if (splashInitializedRef.current) return;
+
+    const isStandalone =
+      window.matchMedia?.("(display-mode: standalone)")?.matches ||
+      window.navigator.standalone === true;
+    const params = new URLSearchParams(window.location.search);
+    const isPreviewMode = params.get("pwa_splash") === "1";
+
+    if (!isStandalone && !isPreviewMode) return;
+
+    splashInitializedRef.current = true;
+
+    const storageKey = "vfl_pwa_splash_variant_index";
+    const currentVariant = Number.parseInt(localStorage.getItem(storageKey) || "0", 10);
+    const safeVariant = Number.isNaN(currentVariant) ? 0 : ((currentVariant % 3) + 3) % 3;
+
+    setSplashVariant(safeVariant);
+    setShowPwaSplash(true);
+    localStorage.setItem(storageKey, String((safeVariant + 1) % 3));
+
+    const timer = window.setTimeout(() => {
+      setShowPwaSplash(false);
+    }, 3500);
+
+    return () => window.clearTimeout(timer);
+  }, []);
+
   return (
     <LocaleProvider>
       <AuthProvider>
+        {showPwaSplash && <PwaSplashScreen variant={splashVariant} />}
         <BrowserRouter>
           {/* ✅ Esto arregla que siempre abra arriba */}
           <ScrollToTop />

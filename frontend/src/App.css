@@ -1,54 +1,226 @@
+/* ===========================
+   APP LOGO
+=========================== */
 .App-logo {
-    height: 40vmin;
-    pointer-events: none;
+  height: 40vmin;
+  pointer-events: none;
+  filter: drop-shadow(0 0 20px rgba(14, 165, 233, 0.4));
+  transition: filter 0.4s ease;
+}
+
+.App-logo:hover {
+  filter: drop-shadow(0 0 35px rgba(14, 165, 233, 0.75));
 }
 
 @media (prefers-reduced-motion: no-preference) {
-    .App-logo {
-        animation: App-logo-spin infinite 20s linear;
-    }
+  .App-logo {
+    animation: App-logo-spin infinite 20s linear,
+               logo-pulse infinite 4s ease-in-out;
+  }
 }
 
+
+/* ===========================
+   APP HEADER
+=========================== */
 .App-header {
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    font-size: calc(10px + 2vmin);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(10px + 2vmin);
+  position: relative;
+  overflow: hidden;
+
+  /* Animated gradient background */
+  background: linear-gradient(
+    -45deg,
+    #0f172a,
+    #0c1a2e,
+    #0d2137,
+    #0e1628
+  );
+  background-size: 400% 400%;
+  animation: gradient-shift 12s ease infinite;
 }
 
+/* Subtle noise texture overlay */
+.App-header::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Radial glow from center */
+.App-header::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse 70% 60% at 50% 50%,
+    rgba(14, 165, 233, 0.07) 0%,
+    transparent 70%
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+
+.App-header > * {
+  position: relative;
+  z-index: 1;
+}
+
+
+/* ===========================
+   APP LINK
+=========================== */
 .App-link {
-    color: #0ea5e9;
+  color: #38bdf8;
+  text-decoration: none;
+  position: relative;
+  transition: color 0.3s ease, text-shadow 0.3s ease;
 }
 
+.App-link::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: -2px;
+  width: 0;
+  height: 1.5px;
+  background: linear-gradient(90deg, #38bdf8, #818cf8);
+  transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.App-link:hover {
+  color: #7dd3fc;
+  text-shadow: 0 0 16px rgba(56, 189, 248, 0.5);
+}
+
+.App-link:hover::after {
+  width: 100%;
+}
+
+
+/* ===========================
+   KEYFRAMES
+=========================== */
+
+/* Spin logo */
 @keyframes App-logo-spin {
-    from {
-        transform: rotate(0deg);
-    }
-    to {
-        transform: rotate(360deg);
-    }
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
 }
+
+/* Subtle scale pulse on logo */
+@keyframes logo-pulse {
+  0%, 100% { filter: drop-shadow(0 0 18px rgba(14, 165, 233, 0.35)); }
+  50%       { filter: drop-shadow(0 0 36px rgba(14, 165, 233, 0.65)); }
+}
+
+/* Animated gradient background */
+@keyframes gradient-shift {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Organic blob */
 @keyframes blob {
-  0% {
-    transform: translate(0px, 0px) scale(1);
+  0%   { transform: translate(0px, 0px) scale(1) rotate(0deg); }
+  25%  { transform: translate(28px, -45px) scale(1.12) rotate(8deg); }
+  50%  { transform: translate(-15px, 25px) scale(0.92) rotate(-5deg); }
+  75%  { transform: translate(18px, 10px) scale(1.05) rotate(3deg); }
+  100% { transform: translate(0px, 0px) scale(1) rotate(0deg); }
+}
+
+/* Fade in + float up for content entry */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
   }
-  33% {
-    transform: translate(30px, -50px) scale(1.1);
-  }
-  66% {
-    transform: translate(-20px, 20px) scale(0.9);
-  }
-  100% {
-    transform: translate(0px, 0px) scale(1);
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
+/* Shimmer / glint sweep */
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+/* Floating idle drift */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-12px); }
+}
+
+/* Glow pulse for decorative elements */
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 20px rgba(14, 165, 233, 0.3); }
+  50%       { box-shadow: 0 0 45px rgba(14, 165, 233, 0.65), 0 0 80px rgba(129, 140, 248, 0.2); }
+}
+
+
+/* ===========================
+   UTILITY ANIMATION CLASSES
+=========================== */
+
+/* Blobs */
 .animate-blob {
-  animation: blob 7s infinite;
+  animation: blob 8s ease-in-out infinite;
 }
 
-.animation-delay-2000 {
-  animation-delay: 2s;
+.animation-delay-1000 { animation-delay: 1s; }
+.animation-delay-2000 { animation-delay: 2s; }
+.animation-delay-3000 { animation-delay: 3s; }
+.animation-delay-4000 { animation-delay: 4s; }
+
+/* Fade up on mount */
+.animate-fade-up {
+  animation: fade-up 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Floating idle motion */
+.animate-float {
+  animation: float 5s ease-in-out infinite;
+}
+
+/* Glow pulse */
+.animate-glow {
+  animation: glow-pulse 3s ease-in-out infinite;
+}
+
+/* Shimmer text effect */
+.animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    #38bdf8 0%,
+    #a5f3fc 40%,
+    #818cf8 60%,
+    #38bdf8 100%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 4s linear infinite;
+}
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
