@@ -198,6 +198,16 @@ RECEIVED → PROCESSING → READY → OUT_FOR_DELIVERY → DELIVERED → COMPLET
 - ✅ Incluye animaciones: fade+zoom, pulse rings, floating+bubbles, barra de progreso 3.5s, y auto-hide al finalizar.
 - ✅ Se agregaron `data-testid` para validación automatizada del splash y variantes.
 
+## Cambios recientes (2026-03-19) – Voice Assistant público (cliente)
+- ✅ Integrado asistente de voz/chat en frontend público (`PublicVoiceAssistant`) visible en rutas públicas y oculto en `/admin/*` y `/login`.
+- ✅ Adaptado al backend actual (sin exponer keys en frontend):
+  - `POST /api/public/voice-assistant/chat`
+  - `GET /api/public/voice-assistant/session/{session_id}`
+- ✅ Persistencia en backend con `session_id` (MongoDB colección `voice_assistant_sessions`) y recuperación de conversación al recargar.
+- ✅ Bilingüe automático según selector EN/ES (placeholder, estado, quick prompts y TTS/STT language).
+- ✅ Controles UX implementados: abrir/cerrar, minimizar, mute, micrófono, typing indicator, waveform.
+- ✅ Prompt comercial Ventura integrado en backend con servicios/precios y respuesta breve orientada a conversión.
+
 ## Pendientes / Issues
 **P1**
 - Validar webhook Stripe end-to-end en entorno productivo con eventos reales entrantes
