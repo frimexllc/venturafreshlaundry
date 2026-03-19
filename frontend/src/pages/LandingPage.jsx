@@ -211,7 +211,7 @@ const SCard = ({ s, delay }) => {
             </li>
           ))}
         </ul>
-        <p className="text-slate-400 text-xs italic mb-6 border-l-2 border-primary/20 pl-3">{s.footer}</p>
+        <p className="text-slate-400 text-xs  mb-6 border-l-2 border-primary/20 pl-3">{s.footer}</p>
         <div className="mt-auto">
           <Link to="/schedule-pickup">
             <button className="group/btn w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:border-primary hover:text-primary hover:bg-primary/5 transition-all duration-300 active:scale-95">
@@ -330,21 +330,19 @@ export default function LandingPage() {
               </div>
             </HR>
 
-            {/* Headline — solid line */}
+            {/* Headline */}
             <HR delay={180}>
-              <h1 className="text-5xl sm:text-6xl md:text-7xl lg:text-[88px] font-light text-white leading-[1.0] italic mb-1 tracking-tight">
+              <h1 className="text-5xl sm:text-6xl md:text-7xl lg:text-[88px] font-bold text-white leading-[1.0] mb-1 tracking-tight">
                 {t("We do your","Hacemos tu")}
               </h1>
             </HR>
-            {/* Headline — outline (stroke) */}
             <HR delay={310}>
-              <h1 className="text-5xl sm:text-6xl md:text-7xl lg:text-[88px] font-light leading-[1.0] italic mb-5 tracking-tight select-none"
-                style={{WebkitTextStroke:"1.5px rgba(255,255,255,0.75)", color:"transparent"}}>
+              <h1 className="text-5xl sm:text-6xl md:text-7xl lg:text-[88px] font-bold text-primary leading-[1.0] mb-5 tracking-tight">
                 {t("laundry.","lavandería.")}
               </h1>
             </HR>
             <HR delay={430}>
-              <h2 className="text-2xl sm:text-3xl md:text-4xl font-extralight text-white/70 italic mb-10 tracking-wide">
+              <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white/70 mb-10 tracking-wide">
                 {t("You enjoy your time.","Tú disfrutas tu tiempo.")}
               </h2>
             </HR>
@@ -442,7 +440,7 @@ export default function LandingPage() {
           <Reveal delay={80} dir="up" dur={850}>
             <h2 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-slate-900 text-center mb-3 leading-tight">
               {t("Laundry made","Lavandería hecha")}
-              <em className="block text-primary font-extralight not-italic">{t("effortless.","sin esfuerzo.")}</em>
+              <span className="block text-primary font-bold">{t("effortless.","sin esfuerzo.")}</span>
             </h2>
           </Reveal>
           <Reveal delay={160}>
@@ -517,7 +515,7 @@ export default function LandingPage() {
           <Reveal delay={80}>
             <h2 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white mb-4 leading-tight">
               {t("Take Back","Recupera")}
-              <em className="block font-extralight not-italic text-sky-300">{t("Your Time.","Tu Tiempo.")}</em>
+              <span className="block font-bold text-sky-300">{t("Your Time.","Tu Tiempo.")}</span>
             </h2>
           </Reveal>
           <Reveal delay={160}>
@@ -529,7 +527,7 @@ export default function LandingPage() {
             <Tilt depth={3}>
               <blockquote className="relative bg-white/5 backdrop-blur-lg rounded-3xl p-8 sm:p-12 lg:p-16 border border-white/10 shadow-2xl hover:bg-white/8 transition-colors duration-500">
                 <span className="absolute top-6 left-8 text-8xl text-sky-400/15 font-serif leading-none select-none">"</span>
-                <p className="relative text-xl sm:text-2xl text-white/85 italic leading-relaxed mb-8">
+                <p className="relative text-xl sm:text-2xl text-white/85 leading-relaxed mb-8">
                   {t('"Ventura Fresh Laundry completely changed the way I handle laundry. Always on time, and my clothes come back perfectly clean and folded."','"Ventura Fresh Laundry cambió por completo la forma en que manejo la lavandería. Siempre puntual, y mi ropa vuelve perfectamente limpia y doblada."')}
                 </p>
                 <div className="flex items-center justify-center gap-3">
@@ -568,7 +566,7 @@ export default function LandingPage() {
             <h2 className="text-4xl sm:text-5xl font-bold text-slate-900 text-center mb-2 leading-tight">
               {t("Got questions?","¿Tienes preguntas?")}
             </h2>
-            <p className="text-center text-slate-400 font-light text-xl mb-12">{t("We have answers.","Tenemos respuestas.")}</p>
+            <p className="text-center text-slate-400 font-bold text-xl mb-12">{t("We have answers.","Tenemos respuestas.")}</p>
           </Reveal>
           <Reveal delay={160} dir="scale">
             <div className="rounded-2xl border border-slate-100 overflow-hidden shadow-sm">

@@ -1,9 +1,10 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, EmailStr
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
 import uuid
 import os
+import asyncio
 
 from normalization import (
     normalize_name,
@@ -15,6 +16,7 @@ from normalization import (
     normalize_yes_no
 )
 from notifications import notify_order_created, send_sms, normalize_preferred_contact
+from ai_assistant import get_groq_client
 
 
 class PublicPickupRequest(BaseModel):
@@ -115,6 +117,12 @@ class B2BQuoteRequest(BaseModel):
     subscribe_newsletter: Optional[bool] = False
 
 
+class PublicVoiceAssistantChatRequest(BaseModel):
+    message: str
+    session_id: Optional[str] = None
+    locale: Optional[str] = "en"
+
+
 def get_public_forms_router(
     db,
     generate_order_number,
@@ -125,6 +133,66 @@ def get_public_forms_router(
     logger
 ):
     router = APIRouter()
+
+    VOICE_ASSISTANT_SYSTEM_PROMPT = """You are Ventura, a friendly and enthusiastic AI sales assistant for Ventura Fresh Laundry, a premium laundry service in Ventura County, California. Your goal is to warmly engage visitors, answer their questions, and help them choose the right service.
+
+SERVICES YOU OFFER:
+1. Pickup & Delivery
+   - Member recurring: $2.50/lb (minimum $40)
+   - As-needed: $2.75/lb (minimum $40)
+
+2. Wash Dry Fold (drop-off)
+   - $2.25/lb
+   - 10 lb minimum
+
+3. Self-Service Laundry
+   - Open 6:00 AM - 10:00 PM, 7 days a week
+
+4. Membership Plans
+   - FAMILY PLUS: $199/month up to 90 lb
+   - MOST POPULAR: $139/month up to 60 lb
+   - ELITE CONCIERGE: $299/month up to 120 lb
+   - NEW MEMBER SPECIAL: $10 OFF first month
+
+5. Airbnb and B2B programs are available with custom quotes.
+
+PERSONALITY GUIDELINES:
+- Warm, conversational, and concise.
+- Keep responses under 60 words.
+- No markdown or bullet formatting.
+- End with a gentle question.
+- Use the same language as the customer (English or Spanish).
+"""
+
+    def assistant_fallback_reply(locale: Optional[str]) -> str:
+        if str(locale or "en").lower().startswith("es"):
+            return (
+                "¡Hola! Soy Ventura, tu concierge de lavandería. Podemos ayudarte con pickup y delivery, wash and fold, "
+                "membresías o servicios para Airbnb y negocios. ¿Qué servicio te interesa hoy?"
+            )
+        return (
+            "Hi! I’m Ventura, your laundry concierge. I can help with pickup and delivery, wash and fold, memberships, "
+            "or Airbnb and business service. What would you like to set up today?"
+        )
+
+    async def get_or_create_voice_session(session_id: Optional[str], locale: Optional[str]) -> Dict[str, Any]:
+        now = datetime.now(timezone.utc).isoformat()
+        normalized_locale = "es" if str(locale or "en").lower().startswith("es") else "en"
+        target_session_id = session_id or str(uuid.uuid4())
+
+        session = await db.voice_assistant_sessions.find_one({"session_id": target_session_id}, {"_id": 0})
+        if session:
+            return session
+
+        new_session = {
+            "session_id": target_session_id,
+            "locale": normalized_locale,
+            "messages": [],
+            "created_at": now,
+            "updated_at": now
+        }
+        await db.voice_assistant_sessions.insert_one(new_session)
+        return new_session
 
     def validate_sms_consent(contact_method: Optional[str], sms_consent: Optional[bool]):
         normalized_contact = normalize_preferred_contact(contact_method) if contact_method else None
@@ -591,6 +659,99 @@ def get_public_forms_router(
         return {
             "message": "Thank you! Your quote request has been received. Our team will contact you within 24-48 hours.",
             "quote_number": quote_number
+        }
+
+    @router.get("/public/voice-assistant/session/{session_id}")
+    async def get_voice_assistant_session(session_id: str):
+        session = await db.voice_assistant_sessions.find_one({"session_id": session_id}, {"_id": 0})
+        if not session:
+            return {
+                "session_id": session_id,
+                "locale": "en",
+                "messages": []
+            }
+        messages = session.get("messages", [])[-30:]
+        return {
+            "session_id": session.get("session_id"),
+            "locale": session.get("locale", "en"),
+            "messages": messages
+        }
+
+    @router.post("/public/voice-assistant/chat")
+    async def public_voice_assistant_chat(data: PublicVoiceAssistantChatRequest, request: Request):
+        message = normalize_spaces(data.message)
+        if not message:
+            raise HTTPException(status_code=400, detail="Message is required")
+
+        if len(message) > 1200:
+            raise HTTPException(status_code=400, detail="Message too long")
+
+        locale = "es" if str(data.locale or "en").lower().startswith("es") else "en"
+        session = await get_or_create_voice_session(data.session_id, locale)
+        session_id = session.get("session_id")
+        now = datetime.now(timezone.utc).isoformat()
+
+        stored_messages = session.get("messages", [])
+        stored_messages.append({
+            "role": "user",
+            "content": message,
+            "created_at": now
+        })
+
+        convo_messages = []
+        for item in stored_messages[-14:]:
+            role = item.get("role")
+            content = item.get("content")
+            if role in {"user", "assistant"} and content:
+                convo_messages.append({"role": role, "content": content})
+
+        client = get_groq_client()
+        reply = assistant_fallback_reply(locale)
+
+        if client:
+            try:
+                completion = await asyncio.to_thread(
+                    client.chat.completions.create,
+                    model="llama-3.3-70b-versatile",
+                    temperature=0.5,
+                    max_tokens=220,
+                    messages=[
+                        {"role": "system", "content": VOICE_ASSISTANT_SYSTEM_PROMPT},
+                        *convo_messages
+                    ]
+                )
+                content = completion.choices[0].message.content.strip() if completion and completion.choices else ""
+                if content:
+                    reply = content
+            except Exception as exc:
+                logger.error(f"Public voice assistant error: {exc}")
+
+        stored_messages.append({
+            "role": "assistant",
+            "content": reply,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
+
+        stored_messages = stored_messages[-40:]
+
+        await db.voice_assistant_sessions.update_one(
+            {"session_id": session_id},
+            {
+                "$set": {
+                    "locale": locale,
+                    "messages": stored_messages,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                    "last_user_agent": request.headers.get("user-agent")
+                }
+            },
+            upsert=True
+        )
+
+        return {
+            "session_id": session_id,
+            "locale": locale,
+            "reply": reply,
+            "messages": stored_messages[-30:]
         }
 
     return router

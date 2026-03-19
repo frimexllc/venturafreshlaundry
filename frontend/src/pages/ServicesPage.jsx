@@ -109,17 +109,18 @@ const Marquee = ({ items }) => (
 );
 
 // ─── Accordion ────────────────────────────────────────────────────────────────
+// dark variant: uses consistent white/20 borders, white/80 title, white/60 hover
 const AccordionItem = ({ title, children, isOpen, onClick, variant="light" }) => {
   const isDark = variant==="dark";
   return (
-    <div className={`border-b ${isDark?"border-white/15":"border-slate-200/70"} last:border-0`}>
+    <div className={`border-b ${isDark?"border-white/20":"border-slate-200/70"} last:border-0`}>
       <button onClick={onClick}
         className="w-full py-4 flex items-center justify-between text-left group focus:outline-none"
         aria-expanded={isOpen}>
-        <span className={`text-base font-semibold transition-colors duration-200 pr-4 ${isDark?"text-white group-hover:text-sky-300":"text-slate-800 group-hover:text-primary"}`}>
+        <span className={`text-base font-semibold transition-colors duration-200 pr-4 ${isDark?"text-white/80 group-hover:text-sky-300":"text-slate-800 group-hover:text-primary"}`}>
           {title}
         </span>
-        <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-all duration-350 ${isOpen ? (isDark?"bg-sky-400 text-white rotate-180":"bg-primary text-white rotate-180") : (isDark?"bg-white/15 text-white/60":"bg-slate-100 text-slate-400 group-hover:bg-primary/10 group-hover:text-primary")}`}>
+        <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-all duration-350 ${isOpen ? (isDark?"bg-sky-400 text-white rotate-180":"bg-primary text-white rotate-180") : (isDark?"bg-white/10 text-white/50":"bg-slate-100 text-slate-400 group-hover:bg-primary/10 group-hover:text-primary")}`}>
           <ChevronDown className="w-4 h-4"/>
         </div>
       </button>
@@ -147,8 +148,10 @@ const ServiceCard = ({ title, emoji, description, features=[], buttonText, butto
             {emoji}
           </div>
         )}
-        {category && <p className="relative text-[11px] uppercase tracking-widest text-primary/60 font-bold mb-1">{category}</p>}
+        {/* Categoría: primary/50 → consistente con otras etiquetas eyebrow */}
+        {category && <p className="relative text-[11px] uppercase tracking-widest text-primary/50 font-bold mb-1">{category}</p>}
         <h3 className={`relative text-2xl font-bold mb-3 transition-colors duration-200 ${h?"text-primary":"text-slate-900"}`}>{title}</h3>
+        {/* Descripción: text-slate-500 → unificado en todas las cards */}
         <p className="relative text-slate-500 text-sm leading-relaxed mb-4">{description}</p>
         {price && <p className="relative text-3xl font-black text-primary mb-5">{price}</p>}
         {features.length > 0 && (
@@ -194,8 +197,8 @@ const MembershipCard = ({ plan, price, image, features, isPopular }) => {
             </div>
           </div>
         )}
-        {/* Image area */}
-        <div className={`h-44 overflow-hidden flex items-center justify-center p-5 transition-colors duration-400 ${isPopular?"bg-gradient-to-br from-sky-50 to-primary/5":"bg-gradient-to-br from-slate-50 to-white"}`}>
+        {/* Image area: gradientes unificados entre popular y no-popular */}
+        <div className={`h-44 overflow-hidden flex items-center justify-center p-5 transition-colors duration-400 ${isPopular?"bg-gradient-to-br from-sky-50 to-primary/5":"bg-gradient-to-br from-slate-50 to-slate-100/50"}`}>
           <img src={image} alt={`${plan} – Ventura Fresh Laundry`}
             className={`max-w-full max-h-full object-contain transition-transform duration-500 ${h?"scale-110":""}`} loading="lazy"/>
         </div>
@@ -204,7 +207,7 @@ const MembershipCard = ({ plan, price, image, features, isPopular }) => {
           <p className="text-3xl font-black text-primary mb-5">{price}</p>
           <ul className="space-y-2.5 flex-grow">
             {features.map((f,i)=>(
-              <li key={i} className="flex items-start gap-2 text-sm text-slate-600">
+              <li key={i} className="flex items-start gap-2 text-sm text-slate-500">
                 <Check className={`w-4 h-4 flex-shrink-0 mt-0.5 transition-colors duration-200 ${h?"text-primary":"text-sky-400"}`}/>
                 {f}
               </li>
@@ -225,6 +228,7 @@ const PricingTable = ({ title, data, note }) => {
       <table className="w-full mb-5">
         <thead>
           <tr className="border-b-2 border-slate-100">
+            {/* Encabezados de tabla: slate-400 → unificado */}
             <th className="py-2 text-left text-xs font-bold uppercase tracking-wider text-slate-400">{t("Option","Opción")}</th>
             <th className="py-2 text-center text-xs font-bold uppercase tracking-wider text-slate-400">{t("Rate","Tarifa")}</th>
             <th className="py-2 text-right text-xs font-bold uppercase tracking-wider text-slate-400">{t("Minimum","Mínimo")}</th>
@@ -240,15 +244,22 @@ const PricingTable = ({ title, data, note }) => {
           ))}
         </tbody>
       </table>
-      {note && <p className="text-slate-400 text-xs text-center italic leading-relaxed border-t border-slate-50 pt-4">{note}</p>}
+      {note && <p className="text-slate-400 text-xs text-center leading-relaxed border-t border-slate-100 pt-4">{note}</p>}
     </div>
   );
 };
 
-// ─── Section with dark BG + overlay ──────────────────────────────────────────
+// ─── Section con fondo oscuro + overlay ──────────────────────────────────────
+// Sistema de colores dark unificado:
+//   - Texto primario:    text-white
+//   - Texto secundario:  text-white/65
+//   - Texto terciario:   text-white/45
+//   - Bordes:            border-white/20
+//   - Backgrounds:       bg-white/10
 const DarkSection = ({ children, bgImage, from="from-sky-950/92", to="to-sky-900/88", scrollY=0, parallaxStrength=0.15 }) => (
-  <section className="py-20 relative overflow-hidden">
+  <section className="py-20 relative overflow-hidden bg-sky-950">
     <div className="absolute inset-0 will-change-transform" style={{backgroundImage:`url('${bgImage}')`,backgroundSize:"cover",backgroundPosition:"center",transform:`translateY(${scrollY*parallaxStrength}px) scale(1.08)`}}/>
+    <div className="absolute inset-0 bg-sky-950/80"/>
     <div className={`absolute inset-0 bg-gradient-to-br ${from} ${to}`}/>
     {/* grid texture */}
     <div className="absolute inset-0 opacity-[0.04]" style={{backgroundImage:"radial-gradient(rgba(255,255,255,0.8) 1px,transparent 1px)",backgroundSize:"28px 28px"}}/>
@@ -364,19 +375,21 @@ export default function ServicesPage() {
 
         <div className="relative z-10 text-center px-6 pb-20 max-w-5xl mx-auto">
           {/* eyebrow */}
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/8 backdrop-blur-md border border-white/15 mb-7"
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 backdrop-blur-md border border-white/20 mb-7"
             style={{animation:"fadeUp 0.8s 0.1s both ease-out"}}>
             <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"/>
-            <span className="text-[11px] text-white/75 font-bold uppercase tracking-[0.18em]">{t("Our Services","Nuestros Servicios")}</span>
+            {/* Eyebrow: text-white/65 → jerarquía consistente con resto de secciones dark */}
+            <span className="text-[11px] text-white/65 font-bold uppercase tracking-[0.18em]">{t("Our Services","Nuestros Servicios")}</span>
           </div>
-          <h1 className="text-5xl sm:text-6xl md:text-7xl font-light text-white leading-[1.05] italic mb-4 tracking-tight"
+          <h1 className="text-5xl sm:text-6xl md:text-7xl font-bold text-white leading-[1.05] mb-4 tracking-tight"
             style={{animation:"fadeUp 0.9s 0.25s both ease-out"}}>
             {t("A clean space for","Un espacio limpio para")}
-            <span className="block" style={{WebkitTextStroke:"1.5px rgba(255,255,255,0.8)",color:"transparent"}}>
+            <span className="block font-bold text-white">
               {t("everyone.","todos.")}
             </span>
           </h1>
-          <p className="text-lg sm:text-xl text-white/70 max-w-xl mx-auto" style={{animation:"fadeUp 0.9s 0.4s both ease-out"}}>
+          {/* Subtítulo hero: text-white/65 → unificado con resto de subtítulos en dark */}
+          <p className="text-lg sm:text-xl text-white/65 max-w-xl mx-auto font-bold" style={{animation:"fadeUp 0.9s 0.4s both ease-out"}}>
             {t("Self-service, wash & fold, pickup & delivery — tailored to your life.","Autoservicio, lavado y doblado, recogida y entrega — adaptado a tu vida.")}
           </p>
         </div>
@@ -400,17 +413,19 @@ export default function ServicesPage() {
       <section className="py-20 sm:py-24 relative overflow-hidden bg-white">
         <div className="absolute inset-0 opacity-[0.03]" style={{backgroundImage:"url('https://images.unsplash.com/photo-1582735689369-4fe89db7114c?w=1920&h=1080&fit=crop')",backgroundSize:"cover",backgroundPosition:"center",transform:`translateY(${scrollY*0.12}px)`}}/>
         <div className="relative z-10 max-w-6xl mx-auto px-6 sm:px-8 lg:px-12">
+          {/* Eyebrow: primary/50 → valor estándar para todas las etiquetas eyebrow en secciones claras */}
           <Reveal dir="blur">
             <p className="text-center text-[11px] font-bold uppercase tracking-[0.22em] text-primary/50 mb-3">{t("Core Services","Servicios Principales")}</p>
           </Reveal>
           <Reveal delay={80}>
             <h2 className="text-4xl sm:text-5xl font-bold text-slate-900 text-center mb-3 leading-tight">
               {t("Choose the option","Elige la opción")}
-              <em className="block text-primary font-extralight not-italic">{t("that fits your day.","que se adapte a tu día.")}</em>
+              <span className="block text-primary font-bold">{t("that fits your day.","que se adapte a tu día.")}</span>
             </h2>
           </Reveal>
           <Reveal delay={160}>
-            <p className="text-slate-400 text-center mb-14 max-w-xl mx-auto text-lg">{t("Walk-in, drop-off, or pickup & delivery — we've got you covered.","Presencial, entrega o recogida — aquí estamos.")}</p>
+            {/* Subtítulo sección: text-slate-500 → estándar para todas las secciones claras */}
+            <p className="text-slate-500 text-center mb-14 max-w-xl mx-auto text-lg">{t("Walk-in, drop-off, or pickup & delivery — we've got you covered.","Presencial, entrega o recogida — aquí estamos.")}</p>
           </Reveal>
 
           <div className="grid md:grid-cols-2 gap-6 mb-8">
@@ -439,6 +454,7 @@ export default function ServicesPage() {
                     {[{val:"6:00 AM",label:t("Open","Abrimos")},{val:"10:00 PM",label:t("Close","Cerramos")}].map((h,i)=>(
                       <div key={i} className="text-center">
                         <div className="text-2xl font-black text-primary">{h.val}</div>
+                        {/* Etiqueta horario: text-slate-400 → consistente con otros labels secundarios */}
                         <div className="text-xs text-slate-400 uppercase tracking-wider font-semibold">{h.label}</div>
                       </div>
                     ))}
@@ -468,6 +484,7 @@ export default function ServicesPage() {
           <Reveal delay={80}>
             <h2 className="text-4xl sm:text-5xl font-bold text-slate-900 text-center mb-3">{MS.heading}</h2>
           </Reveal>
+          {/* Subtítulo membresía: text-slate-500 → alineado con el resto */}
           {MS.subheading && <Reveal delay={140}><p className="text-slate-500 text-center text-lg mb-6">{MS.subheading}</p></Reveal>}
 
           {/* Special offer banner */}
@@ -476,6 +493,7 @@ export default function ServicesPage() {
               <div className="relative overflow-hidden bg-gradient-to-r from-amber-50 to-yellow-50 rounded-2xl p-6 max-w-2xl mx-auto border border-amber-200/60 mb-12 shadow-sm group hover:shadow-md transition-shadow duration-300">
                 <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-400/50 to-transparent"/>
                 {MS.special_title && <h3 className="text-2xl font-bold text-amber-800 mb-2">{MS.special_title}</h3>}
+                {/* Texto oferta: amber-700 → consistente con el título amber-800 */}
                 {MS.special_text  && <p className="text-amber-700 text-base leading-relaxed">{MS.special_text}</p>}
               </div>
             </Reveal>
@@ -493,7 +511,7 @@ export default function ServicesPage() {
           {/* Support block */}
           <Reveal delay={350} dir="scale">
             <div className="text-center bg-white rounded-2xl p-8 shadow-lg max-w-2xl mx-auto border border-slate-100 hover:shadow-xl transition-shadow duration-300">
-              <div className="w-12 h-12 mx-auto mb-4 bg-primary/10 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+              <div className="w-12 h-12 mx-auto mb-4 bg-primary/10 rounded-2xl flex items-center justify-center">
                 <Shield className="w-6 h-6 text-primary"/>
               </div>
               {MS.cta_title && <h4 className="text-lg font-bold text-slate-900 mb-2">{MS.cta_title}</h4>}
@@ -525,28 +543,32 @@ export default function ServicesPage() {
       {/* ══ AIRBNB ════════════════════════════════════════════════════════ */}
       <DarkSection bgImage="https://images.unsplash.com/photo-1556910103-1c02745a2384?w=1920&h=1080&fit=crop" from="from-sky-950/92" to="to-sky-900/88" scrollY={scrollY}>
         <Reveal dir="blur">
-          <p className="text-center text-[11px] font-bold uppercase tracking-[0.22em] text-sky-400/70 mb-4">{t("Airbnb & Rentals","Airbnb y Alquileres")}</p>
+          {/* Eyebrow dark: sky-400/60 → valor estándar para todas las secciones sky-dark */}
+          <p className="text-center text-[11px] font-bold uppercase tracking-[0.22em] text-sky-400/60 mb-4">{t("Airbnb & Rentals","Airbnb y Alquileres")}</p>
         </Reveal>
         <Reveal delay={80}>
-          <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-dark text-center mb-4 leading-tight">
+          <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white text-center mb-4 leading-tight">
             {t("Premium Laundry for","Lavandería Premium para")}
-            <em className="block font-extralight not-italic text-sky-300">{t("Airbnb Hosts.","Anfitriones Airbnb.")}</em>
+            <span className="block font-bold text-sky-300">{t("Airbnb Hosts.","Anfitriones Airbnb.")}</span>
           </h2>
         </Reveal>
         <Reveal delay={160}>
-          <p className="text-dark/60 text-center mb-8 max-w-lg mx-auto leading-relaxed">
+          {/* Subtítulo dark: text-white/65 → unificado en todas las DarkSection */}
+          <p className="text-white/65 text-center mb-8 max-w-lg mx-auto leading-relaxed">
             {t("Spotless linens. Five-star guest experiences. Zero hassle.","Ropa de cama impecable. Experiencias de cinco estrellas. Cero complicaciones.")}
           </p>
         </Reveal>
         <Reveal delay={240} dir="scale">
-          <div className="bg-white/8 backdrop-blur-lg rounded-2xl border border-white/12 p-6 mb-8">
+          {/* Panel accordion: bg-white/10, border-white/20 → sistema unificado */}
+          <div className="bg-sky-950/80 rounded-2xl border border-white/15 p-6 mb-8">
             <AccordionItem title={t("About This Service","Sobre Este Servicio")} isOpen={openAccordions.airbnb===0} onClick={()=>toggleAcc("airbnb",0)} variant="dark">
-              <p className="text-dark/75 text-sm leading-relaxed pt-1">{t("Our Airbnb laundry service is built for hosts who want flawless turnovers and happier guests. We professionally clean, sanitize, and return linens on schedule.","Nuestro servicio está diseñado para anfitriones que quieren entregas impecables y huéspedes felices. Limpiamos y sanitizamos su ropa según el horario.")}</p>
+              {/* Texto accordion dark: text-white/65 → unificado */}
+              <p className="text-white/65 text-sm leading-relaxed pt-1">{t("Our Airbnb laundry service is built for hosts who want flawless turnovers and happier guests. We professionally clean, sanitize, and return linens on schedule.","Nuestro servicio está diseñado para anfitriones que quieren entregas impecables y huéspedes felices. Limpiamos y sanitizamos su ropa según el horario.")}</p>
             </AccordionItem>
             <AccordionItem title={t("Key Features","Características Clave")} isOpen={openAccordions.airbnb===1} onClick={()=>toggleAcc("airbnb",1)} variant="dark">
               <ul className="space-y-2 pt-1">
                 {[t("Customized programs for Airbnb hosts","Programas personalizados para anfitriones"),t("Professional cleaning & sanitization","Limpieza y sanitización profesional"),t("Scheduled pickup aligned with turnover","Recogida alineada con tu horario"),t("Consistent quality for 5-star reviews","Calidad constante para reseñas 5 estrellas"),t("Save time, eliminate laundry stress","Ahorra tiempo, elimina el estrés")].map((item,i)=>(
-                  <li key={i} className="flex items-start gap-2.5 text-sm text-white/75">
+                  <li key={i} className="flex items-start gap-2.5 text-sm text-white/65">
                     <Check className="w-4 h-4 text-sky-400 flex-shrink-0 mt-0.5"/>{item}
                   </li>
                 ))}
@@ -569,28 +591,28 @@ export default function ServicesPage() {
       {/* ══ B2B ═══════════════════════════════════════════════════════════ */}
       <DarkSection bgImage="https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=1920&h=1080&fit=crop" from="from-sky-950/92" to="to-indigo-950/88" scrollY={scrollY} parallaxStrength={0.12}>
         <Reveal dir="blur">
-          <p className="text-center text-[11px] font-bold uppercase tracking-[0.22em] text-sky-400/70 mb-4">{t("B2B Solutions","Soluciones B2B")}</p>
+          <p className="text-center text-[11px] font-bold uppercase tracking-[0.22em] text-sky-400/60 mb-4">{t("B2B Solutions","Soluciones B2B")}</p>
         </Reveal>
         <Reveal delay={80}>
-          <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-dark text-center mb-4 leading-tight">
+          <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white text-center mb-4 leading-tight">
             {t("High-Performance","Alto Rendimiento")}
-            <em className="block font-extralight not-italic text-sky-300">{t("B2B Laundry.","Lavandería B2B.")}</em>
+            <span className="block font-bold text-sky-300">{t("B2B Laundry.","Lavandería B2B.")}</span>
           </h2>
         </Reveal>
         <Reveal delay={160}>
-          <p className="text-dark/60 text-center mb-8 max-w-lg mx-auto leading-relaxed">
+          <p className="text-white/65 text-center mb-8 max-w-lg mx-auto leading-relaxed">
             {t("Reliable, scalable, professional — built to handle volume every day.","Confiable, escalable, profesional — para manejar volumen todos los días.")}
           </p>
         </Reveal>
         <Reveal delay={240} dir="scale">
-          <div className="bg-white/8 backdrop-blur-lg rounded-2xl border border-white/12 p-6 mb-8">
+          <div className="bg-sky-950/80 rounded-2xl border border-white/15 p-6 mb-8">
             <AccordionItem title={t("About B2B Services","Sobre Servicios B2B")} isOpen={openAccordions.b2b===0} onClick={()=>toggleAcc("b2b",0)} variant="dark">
-              <p className="text-dark/75 text-sm leading-relaxed pt-1">{t("We provide tailored B2B solutions that help businesses maintain the highest cleanliness standards while reducing operational costs. Commercial-grade quality, fast turnaround.","Ofrecemos soluciones B2B a medida que ayudan a las empresas a mantener los más altos estándares de limpieza reduciendo costos operativos.")}</p>
+              <p className="text-white/65 text-sm leading-relaxed pt-1">{t("We provide tailored B2B solutions that help businesses maintain the highest cleanliness standards while reducing operational costs. Commercial-grade quality, fast turnaround.","Ofrecemos soluciones B2B a medida que ayudan a las empresas a mantener los más altos estándares de limpieza reduciendo costos operativos.")}</p>
             </AccordionItem>
             <AccordionItem title={t("Key Features","Características Clave")} isOpen={openAccordions.b2b===1} onClick={()=>toggleAcc("b2b",1)} variant="dark">
               <ul className="space-y-2 pt-1">
                 {[t("Customized programs for all business sizes","Programas para empresas de todos los tamaños"),t("Commercial-grade washing & stain removal","Lavado comercial y eliminación de manchas"),t("Scheduled pickup & delivery","Recogida y entrega programadas"),t("Flexible volume, no long-term commitments","Volumen flexible, sin compromisos largos"),t("Priority support for business clients","Soporte prioritario para clientes")].map((item,i)=>(
-                  <li key={i} className="flex items-start gap-2.5 text-sm text-white/75">
+                  <li key={i} className="flex items-start gap-2.5 text-sm text-white/65">
                     <Check className="w-4 h-4 text-sky-400 flex-shrink-0 mt-0.5"/>{item}
                   </li>
                 ))}
@@ -612,30 +634,34 @@ export default function ServicesPage() {
       </DarkSection>
 
       {/* ══ COMMERCIAL ════════════════════════════════════════════════════ */}
+      {/* Sección commercial: usa slate en vez de sky → diferenciación visual pero con el mismo sistema */}
       <DarkSection bgImage="https://images.unsplash.com/photo-1521791055366-0d553872125f?w=1920&h=1080&fit=crop" from="from-slate-950/93" to="to-slate-900/90" scrollY={scrollY} parallaxStrength={0.1}>
         <Reveal dir="blur">
-          <p className="text-center text-[11px] font-bold uppercase tracking-[0.22em] text-slate-400/80 mb-4">{t("Commercial Services","Servicios Comerciales")}</p>
+          {/* Eyebrow commercial: slate-400/70 → diferencia visual respecto a sky pero mismo nivel de opacidad */}
+          <p className="text-center text-[11px] font-bold uppercase tracking-[0.22em] text-slate-400/70 mb-4">{t("Commercial Services","Servicios Comerciales")}</p>
         </Reveal>
         <Reveal delay={80}>
           <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white text-center mb-4 leading-tight">
             {t("Commercial Laundry","Lavandería Comercial")}
-            <em className="block font-extralight not-italic text-slate-300">{t("You Can Depend On.","En la que Puedes Confiar.")}</em>
+            {/* Acento commercial: slate-300 → diferencia esta sección de las sky (sky-300) */}
+            <span className="block font-bold text-slate-300">{t("You Can Depend On.","En la que Puedes Confiar.")}</span>
           </h2>
         </Reveal>
         <Reveal delay={160}>
-          <p className="text-white/55 text-center mb-8 max-w-lg mx-auto leading-relaxed">
+          <p className="text-white/65 text-center mb-8 max-w-lg mx-auto leading-relaxed">
             {t("Volume, quality, reliability — every single day.","Volumen, calidad, confiabilidad — todos los días.")}
           </p>
         </Reveal>
         <Reveal delay={240} dir="scale">
-          <div className="bg-white/6 backdrop-blur-lg rounded-2xl border border-white/10 p-6 mb-8">
+          <div className="bg-slate-950/80 rounded-2xl border border-white/15 p-6 mb-8">
             <AccordionItem title={t("About Commercial Services","Sobre Servicios Comerciales")} isOpen={openAccordions.commercial===0} onClick={()=>toggleAcc("commercial",0)} variant="dark">
-              <p className="text-dark/70 text-sm leading-relaxed pt-1">{t("Designed for high-traffic businesses — restaurants, hotels, spas, gyms, offices. Consistent results, dependable logistics, tailored to your needs.","Diseñado para negocios de alto tráfico — restaurantes, hoteles, spas, gimnasios. Resultados consistentes, logística confiable.")}</p>
+              <p className="text-white/65 text-sm leading-relaxed pt-1">{t("Designed for high-traffic businesses — restaurants, hotels, spas, gyms, offices. Consistent results, dependable logistics, tailored to your needs.","Diseñado para negocios de alto tráfico — restaurantes, hoteles, spas, gimnasios. Resultados consistentes, logística confiable.")}</p>
             </AccordionItem>
             <AccordionItem title={t("Key Features","Características Clave")} isOpen={openAccordions.commercial===1} onClick={()=>toggleAcc("commercial",1)} variant="dark">
               <ul className="space-y-2 pt-1">
                 {[t("Restaurants, hotels, spas, gyms, offices","Restaurantes, hoteles, spas, gimnasios"),t("High-volume processing with commercial equipment","Procesamiento de alto volumen"),t("Specialized care for uniforms and delicates","Cuidado especializado para uniformes"),t("Reliable pickup & delivery, strict quality control","Recogida confiable y control de calidad"),t("Flexible billing and service plans","Facturación y planes flexibles")].map((item,i)=>(
-                  <li key={i} className="flex items-start gap-2.5 text-sm text-dark/70">
+                  <li key={i} className="flex items-start gap-2.5 text-sm text-white/65">
+                    {/* Check commercial: slate-400 → diferencia visual consistente con el acento slate de esta sección */}
                     <Check className="w-4 h-4 text-slate-400 flex-shrink-0 mt-0.5"/>{item}
                   </li>
                 ))}
@@ -657,7 +683,7 @@ export default function ServicesPage() {
       </DarkSection>
 
       {/* ══ QUOTE ═════════════════════════════════════════════════════════ */}
-      <section className="relative py-28 overflow-hidden">
+      <section className="relative py-28 overflow-hidden bg-slate-950">
         <div className="absolute inset-0 will-change-transform"
           style={{backgroundImage:"url('https://images.unsplash.com/photo-1517677208171-0bc6725a3e60?w=1920&h=1080&fit=crop')",backgroundSize:"cover",backgroundPosition:"center",transform:`translateY(${scrollY*0.2}px) scale(1.1)`}}/>
         <div className="absolute inset-0 bg-gradient-to-br from-black/85 to-black/70"/>
@@ -665,16 +691,23 @@ export default function ServicesPage() {
         <div className="relative z-10 max-w-3xl mx-auto px-6 text-center">
           <Reveal dir="scale" dur={900}>
             <div>
-              <span className="text-white/20 text-8xl font-serif leading-none select-none block mb-4">"</span>
-              <h2 className="text-4xl sm:text-5xl font-bold text-white italic mb-6 leading-tight">
+              {/* Comillas decorativas: eliminado font-serif, reemplazado por un separador visual limpio */}
+              <div className="flex items-center justify-center gap-4 mb-8">
+                <div className="h-px w-16 bg-gradient-to-r from-transparent to-primary/60"/>
+                <div className="w-2 h-2 rounded-full bg-primary/60"/>
+                <div className="h-px w-16 bg-gradient-to-l from-transparent to-primary/60"/>
+              </div>
+              <h2 className="text-4xl sm:text-5xl font-bold text-white mb-6 leading-tight">
                 {t("If you care for your laundry,","Si cuidas tu ropa,")}
-                <span className="block font-extralight">{t("you'll notice the difference.","notarás la diferencia.")}</span>
+                {/* Línea secundaria: text-white/75 → más legible que /80, unificado con otros subtítulos */}
+                <span className="block font-bold text-white/75">{t("you'll notice the difference.","notarás la diferencia.")}</span>
               </h2>
               <div className="w-16 h-px bg-gradient-to-r from-transparent via-primary to-transparent mx-auto mb-6"/>
-              <p className="text-xl text-white/60 italic mb-10">{t("Clean linens, happy clients…","Ropa de cama limpia, clientes felices…")}</p>
+              {/* Texto cita: text-white/65 → unificado con resto de subtítulos dark */}
+              <p className="text-xl text-white/65 mb-10">{t("Clean linens, happy clients…","Ropa de cama limpia, clientes felices…")}</p>
               <div className="flex justify-center flex-wrap gap-6">
                 {[{icon:<Clock className="w-4 h-4"/>,text:t("Since 2020","Desde 2020")},{icon:<Star className="w-4 h-4"/>,text:t("5-Star Service","Servicio 5 estrellas")},{icon:<Truck className="w-4 h-4"/>,text:t("Free Pickup","Recogida gratis")}].map((it,i)=>(
-                  <div key={i} className="flex items-center gap-2 text-white/50 text-sm hover:text-white/80 transition-colors duration-200">
+                  <div key={i} className="flex items-center gap-2 text-white/45 text-sm hover:text-white/70 transition-colors duration-200">
                     {it.icon}{it.text}
                   </div>
                 ))}
@@ -691,10 +724,11 @@ export default function ServicesPage() {
           <Reveal delay={80}>
             <h2 className="text-4xl sm:text-5xl font-bold text-slate-900 text-center mb-3 leading-tight">
               {t("Transparent","Precios")}
-              <em className="block text-primary font-extralight not-italic">{t("Pricing.","Transparentes.")}</em>
+              <span className="block text-primary font-bold">{t("Pricing.","Transparentes.")}</span>
             </h2>
           </Reveal>
-          <Reveal delay={160}><p className="text-slate-400 text-center mb-14 max-w-xl mx-auto text-lg">{t("No surprises. Premium service you can count on.","Sin sorpresas. Servicio premium en el que puedes confiar.")}</p></Reveal>
+          {/* Subtítulo pricing: text-slate-500 → estándar secciones claras */}
+          <Reveal delay={160}><p className="text-slate-500 text-center mb-14 max-w-xl mx-auto text-lg">{t("No surprises. Premium service you can count on.","Sin sorpresas. Servicio premium en el que puedes confiar.")}</p></Reveal>
 
           {/* Pickup & Self Service */}
           <div className="grid md:grid-cols-2 gap-6 mb-6">
@@ -708,7 +742,8 @@ export default function ServicesPage() {
             <Reveal dir="right" delay={100}>
               <div className="bg-white rounded-2xl p-8 shadow-lg border border-slate-100 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 h-full">
                 <h3 className="text-xl font-bold text-slate-900 text-center mb-3">{t("🏪 Self Service","🏪 Autoservicio")}</h3>
-                <p className="text-slate-400 text-center text-sm mb-6">{t("Walk in and wash anytime.","Entra y lava en cualquier momento.")}</p>
+                {/* Subtítulo self service: text-slate-500 → alineado */}
+                <p className="text-slate-500 text-center text-sm mb-6">{t("Walk in and wash anytime.","Entra y lava en cualquier momento.")}</p>
                 <div className="grid grid-cols-2 gap-6">
                   {[{title:t("Washers","Lavadoras"),items:WASHER_PRICES,note:null},{title:t("Dryers (30 min)","Secadoras (30 min)"),items:DRYER_PRICES,note:t("+6 min extra: $0.25","+6 min extra: $0.25")}].map((col,ci)=>(
                     <div key={ci}>
@@ -724,7 +759,8 @@ export default function ServicesPage() {
                           </li>
                         ))}
                       </ul>
-                      {col.note && <p className="text-xs text-slate-400 mt-3 italic">{col.note}</p>}
+                      {/* Nota dryers: text-slate-400 → consistente con resto de notas */}
+                      {col.note && <p className="text-xs text-slate-400 mt-3">{col.note}</p>}
                     </div>
                   ))}
                 </div>
@@ -751,7 +787,7 @@ export default function ServicesPage() {
                   </div>
                 ))}
               </div>
-              <div className="mt-8 pt-6 border-t border-slate-50 text-center">
+              <div className="mt-8 pt-6 border-t border-slate-100 text-center">
                 <Link to="/schedule-pickup" className="inline-flex items-center gap-1.5 text-sm text-primary hover:text-sky-600 font-semibold transition-colors group">
                   {t("Need special items? Contact us","¿Artículos especiales? Contáctanos")}
                   <ArrowRight className="w-3.5 h-3.5 transition-transform duration-200 group-hover:translate-x-1"/>

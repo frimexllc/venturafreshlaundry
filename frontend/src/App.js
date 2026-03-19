@@ -43,6 +43,7 @@ import TermsAndConditions from "./pages/TermsAndConditions";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import SmsPolicyConsent from "./pages/SmsPolicyConsent";
 import PwaSplashScreen from "./components/PwaSplashScreen";
+import PublicVoiceAssistant from "./components/PublicVoiceAssistant";
 
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -202,6 +203,7 @@ function App() {
           <ScrollToTop />
 
           <AppRoutes />
+          <PublicVoiceAssistant />
           <Toaster position="top-right" richColors />
         </BrowserRouter>
       </AuthProvider>
