@@ -194,10 +194,10 @@ export default function AboutPage() {
   ];
 
   const values = [
-    { icon: Star,  title: t("Quality First", "Calidad Primero"),         text: t("We treat every item with care, using premium products and professional techniques.", "Tratamos cada prenda con cuidado, usando productos premium y técnicas profesionales.") },
-    { icon: Heart, title: t("Customer Care", "Atención al Cliente"),      text: t("Your satisfaction is our priority. We listen, adapt, and deliver on your preferences.", "Tu satisfacción es nuestra prioridad. Escuchamos, nos adaptamos y cumplimos con tus preferencias.") },
-    { icon: Users, title: t("Community", "Comunidad"),                    text: t("We're proud to be part of Ventura County and committed to serving our neighbors.", "Estamos orgullosos de ser parte del condado de Ventura y comprometidos a servir a nuestros vecinos.") },
-    { icon: Award, title: t("Reliability", "Confiabilidad"),              text: t("On time, every time. You can count on us to keep our promises.", "A tiempo, siempre. Puedes contar con nosotros para cumplir nuestras promesas.") },
+    { icon: Star,  title: t("Quality First", "Calidad Primero"),     text: t("We treat every item with care, using premium products and professional techniques.", "Tratamos cada prenda con cuidado, usando productos premium y técnicas profesionales.") },
+    { icon: Heart, title: t("Customer Care", "Atención al Cliente"), text: t("Your satisfaction is our priority. We listen, adapt, and deliver on your preferences.", "Tu satisfacción es nuestra prioridad. Escuchamos, nos adaptamos y cumplimos con tus preferencias.") },
+    { icon: Users, title: t("Community", "Comunidad"),               text: t("We're proud to be part of Ventura County and committed to serving our neighbors.", "Estamos orgullosos de ser parte del condado de Ventura y comprometidos a servir a nuestros vecinos.") },
+    { icon: Award, title: t("Reliability", "Confiabilidad"),         text: t("On time, every time. You can count on us to keep our promises.", "A tiempo, siempre. Puedes contar con nosotros para cumplir nuestras promesas.") },
   ];
 
   return (<>
@@ -211,7 +211,8 @@ export default function AboutPage() {
       <PublicNav />
 
       {/* ══ HERO ══════════════════════════════════════════════════════════ */}
-      <section className="relative min-h-[68vh] flex items-end justify-center overflow-hidden">
+      {/* bg-slate-950 como fallback si la imagen tarda o falla */}
+      <section className="relative min-h-[68vh] flex items-end justify-center overflow-hidden bg-slate-950">
         <div className="absolute inset-0 will-change-transform"
           style={{ backgroundImage: "url('https://images.unsplash.com/photo-1521791055366-0d553872125f?w=1920&h=1080&fit=crop')", backgroundSize: "cover", backgroundPosition: "center", transform: `translateY(${scrollY * 0.22}px) scale(1.08)` }} />
         <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-900/60 to-slate-800/30" />
@@ -219,10 +220,11 @@ export default function AboutPage() {
         <div className="absolute inset-0 opacity-[0.025]" style={{ backgroundImage: "repeating-linear-gradient(0deg,#000 0px,#000 1px,transparent 1px,transparent 4px)" }} />
 
         <div className="relative z-10 text-center px-6 pb-20 max-w-4xl mx-auto">
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/8 backdrop-blur-md border border-white/15 mb-7"
+          {/* Eyebrow: bg-white/10, border-white/20, text-white/65 → sistema unificado */}
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 backdrop-blur-md border border-white/20 mb-7"
             style={{ animation: "fadeUp 0.8s 0.1s both ease-out" }}>
             <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-            <span className="text-[11px] text-white/75 font-bold uppercase tracking-[0.18em]">{t("Our Story", "Nuestra Historia")}</span>
+            <span className="text-[11px] text-white/65 font-bold uppercase tracking-[0.18em]">{t("Our Story", "Nuestra Historia")}</span>
           </div>
           <h1 className="text-5xl sm:text-6xl md:text-7xl font-bold text-white leading-[1.05] mb-4 tracking-tight"
             style={{ animation: "fadeUp 0.9s 0.25s both ease-out" }}>
@@ -231,7 +233,8 @@ export default function AboutPage() {
               {t("the freshness.", "la frescura.")}
             </span>
           </h1>
-          <p className="text-lg sm:text-xl text-white/70 max-w-xl mx-auto" style={{ animation: "fadeUp 0.9s 0.4s both ease-out" }}>
+          {/* Subtítulo hero: text-white/65 → unificado con ServicesPage */}
+          <p className="text-lg sm:text-xl text-white/65 max-w-xl mx-auto" style={{ animation: "fadeUp 0.9s 0.4s both ease-out" }}>
             {t("Ventura Fresh Laundry makes laundry effortless across Ventura County.", "Ventura Fresh Laundry hace que la lavandería sea sin esfuerzo en todo el condado de Ventura.")}
           </p>
         </div>
@@ -256,6 +259,7 @@ export default function AboutPage() {
           <div className="grid md:grid-cols-2 gap-14 items-center">
             {/* Text */}
             <div>
+              {/* Eyebrow sección clara: primary/50 → estándar */}
               <Reveal dir="blur">
                 <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-primary/50 mb-3">{t("Who We Are", "Quiénes Somos")}</p>
               </Reveal>
@@ -265,6 +269,7 @@ export default function AboutPage() {
                   <span className="block text-primary font-bold">{t("Story.", "Historia.")}</span>
                 </h2>
               </Reveal>
+              {/* Párrafos: text-slate-500 → estándar para body text en secciones claras */}
               <Reveal delay={160}>
                 <p className="text-slate-500 leading-relaxed mb-4">
                   {t(
@@ -315,7 +320,8 @@ export default function AboutPage() {
             </h2>
           </Reveal>
           <Reveal delay={140}>
-            <p className="text-slate-400 text-center mb-14 max-w-xl mx-auto text-lg">{t("The principles that drive every wash, fold, and delivery.", "Los principios que impulsan cada lavado, doblado y entrega.")}</p>
+            {/* Subtítulo: text-slate-500 → unificado (era text-slate-400) */}
+            <p className="text-slate-500 text-center mb-14 max-w-xl mx-auto text-lg">{t("The principles that drive every wash, fold, and delivery.", "Los principios que impulsan cada lavado, doblado y entrega.")}</p>
           </Reveal>
           <div className="grid sm:grid-cols-2 md:grid-cols-4 gap-5">
             {values.map((v, i) => (
@@ -326,21 +332,31 @@ export default function AboutPage() {
       </section>
 
       {/* ══ DARK QUOTE ════════════════════════════════════════════════════ */}
-      <section className="py-28 relative overflow-hidden">
+      {/* bg-sky-950 como fallback sólido, overlay más opaco */}
+      <section className="py-28 relative overflow-hidden bg-sky-950">
         <div className="absolute inset-0 will-change-transform"
           style={{ backgroundImage: "url('https://images.unsplash.com/photo-1517677208171-0bc6725a3e60?w=1920&h=1080&fit=crop')", backgroundSize: "cover", backgroundPosition: "center", transform: `translateY(${scrollY * 0.18}px) scale(1.1)` }} />
+        {/* Capa de oscurecimiento extra para garantizar legibilidad */}
+        <div className="absolute inset-0 bg-sky-950/70" />
         <div className="absolute inset-0 bg-gradient-to-br from-sky-950/92 to-sky-900/88" />
         <div className="absolute inset-0 opacity-[0.04]" style={{ backgroundImage: "radial-gradient(rgba(255,255,255,0.8) 1px,transparent 1px)", backgroundSize: "28px 28px" }} />
         <div className="relative z-10 max-w-3xl mx-auto px-6 text-center">
           <Reveal dir="scale" dur={900}>
             <div>
-              <span className="text-white/15 text-8xl font-serif leading-none select-none block mb-4">"</span>
+              {/* Reemplazado font-serif + comillas gigantes por separador decorativo consistente */}
+              <div className="flex items-center justify-center gap-4 mb-8">
+                <div className="h-px w-16 bg-gradient-to-r from-transparent to-sky-400/60" />
+                <div className="w-2 h-2 rounded-full bg-sky-400/60" />
+                <div className="h-px w-16 bg-gradient-to-l from-transparent to-sky-400/60" />
+              </div>
               <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-6 leading-tight">
                 {t("We didn't just open a laundromat.", "No solo abrimos una lavandería.")}
-                <span className="block font-bold text-white/80 mt-2">{t("We gave our community time back.", "Le devolvimos tiempo a nuestra comunidad.")}</span>
+                {/* Línea secundaria: text-white/75 → consistente con ServicesPage quote */}
+                <span className="block font-bold text-white/75 mt-2">{t("We gave our community time back.", "Le devolvimos tiempo a nuestra comunidad.")}</span>
               </h2>
               <div className="w-16 h-px bg-gradient-to-r from-transparent via-primary to-transparent mx-auto mb-6" />
-              <p className="text-xl text-white/55">{t("— Ventura Fresh Laundry", "— Ventura Fresh Laundry")}</p>
+              {/* Atribución: text-white/50 → jerarquía clara bajo el subtítulo */}
+              <p className="text-lg text-white/50">{t("— Ventura Fresh Laundry", "— Ventura Fresh Laundry")}</p>
             </div>
           </Reveal>
         </div>
@@ -364,7 +380,7 @@ export default function AboutPage() {
               </Reveal>
               <div className="space-y-5 mb-10">
                 <InfoRow icon={MapPin} label={t("Address", "Dirección")} value="5722 Telephone Rd #5, Ventura, CA 93003" delay={100} />
-                <InfoRow icon={Clock}  label={t("Hours", "Horario")}    value={t("Monday – Sunday: 6:00 AM – 10:00 PM", "Lunes a Domingo: 6:00 AM – 10:00 PM")} delay={180} />
+                <InfoRow icon={Clock}  label={t("Hours", "Horario")}     value={t("Monday – Sunday: 6:00 AM – 10:00 PM", "Lunes a Domingo: 6:00 AM – 10:00 PM")} delay={180} />
                 <InfoRow icon={Phone}  label={t("Phone / Text", "Teléfono / Mensaje")} value="(805) 836-8872" delay={260} />
               </div>
               <Reveal delay={320}>
@@ -401,9 +417,12 @@ export default function AboutPage() {
       </section>
 
       {/* ══ CTA ═══════════════════════════════════════════════════════════ */}
-      <section className="relative py-28 overflow-hidden">
+      {/* bg-slate-950 como fallback sólido */}
+      <section className="relative py-28 overflow-hidden bg-slate-950">
         <div className="absolute inset-0 will-change-transform"
           style={{ backgroundImage: "url('https://images.unsplash.com/photo-1545173168-9f1947eebb7f?w=1920&h=1080&fit=crop')", backgroundSize: "cover", backgroundPosition: "center top", transform: `translateY(${scrollY * 0.15}px) scale(1.08)` }} />
+        {/* Capa extra de oscurecimiento */}
+        <div className="absolute inset-0 bg-slate-950/60" />
         <div className="absolute inset-0 bg-gradient-to-br from-black/85 to-black/70" />
         <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse at center,transparent 40%,rgba(0,0,0,0.5) 100%)" }} />
         <div className="relative z-10 max-w-3xl mx-auto px-6 text-center">
@@ -412,10 +431,12 @@ export default function AboutPage() {
               <Sparkles className="w-8 h-8 text-primary/60 mx-auto mb-6" />
               <h2 className="text-4xl sm:text-5xl font-bold text-white mb-4 leading-tight">
                 {t("Ready to Experience", "¿Listo para Experimentar")}
-                <span className="block font-bold text-white/80">{t("the Difference?", "la Diferencia?")}</span>
+                {/* text-white/75 → consistente con líneas secundarias en otras secciones dark */}
+                <span className="block font-bold text-white/75">{t("the Difference?", "la Diferencia?")}</span>
               </h2>
               <div className="w-16 h-px bg-gradient-to-r from-transparent via-primary to-transparent mx-auto mb-6" />
-              <p className="text-white/60 text-lg mb-10">
+              {/* text-white/65 → estándar para subtítulos en secciones dark */}
+              <p className="text-white/65 text-lg mb-10">
                 {t("Let us take laundry off your to-do list.", "Deja que nosotros quitemos la lavandería de tu lista de tareas.")}
               </p>
               <Link to="/schedule-pickup">
