@@ -1167,6 +1167,8 @@ async def create_customer(data: CustomerCreate, current_user: dict = Depends(get
 async def get_customers(
     search: Optional[str] = None,
     status: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
     current_user: dict = Depends(get_current_user)
 ):
     query = {}
@@ -1179,7 +1181,8 @@ async def get_customers(
     if status:
         query["status"] = status
     
-    customers = await db.customers.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    skip = (page - 1) * page_size
+    customers = await db.customers.find(query, {"_id": 0}).sort("created_at", -1).skip(skip).limit(page_size).to_list(page_size)
     return [CustomerResponse(**c) for c in customers]
 
 @api_router.get("/customers/{customer_id}", response_model=CustomerResponse)
@@ -1257,8 +1260,8 @@ def normalize_preference_payload(data: PreferenceCreate) -> Dict[str, Any]:
 
 @api_router.post("/preferences", response_model=PreferenceResponse)
 async def create_preference(data: PreferenceCreate, current_user: dict = Depends(get_current_user)):
-    existing = await db.preferences.find({"customer_id": data.customer_id}).sort("version", -1).limit(1).to_list(1)
-    version = (existing[0]["version"] + 1) if existing else 1
+    existing = await db.preferences.find_one({"customer_id": data.customer_id}, sort=[("version", -1)], projection={"_id": 0, "version": 1})
+    version = ((existing or {}).get("version", 0) + 1)
 
     pref_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
@@ -1414,6 +1417,8 @@ async def get_orders(
     customer_id: Optional[str] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
     current_user: dict = Depends(get_current_user)
 ):
     query = {}
@@ -1427,7 +1432,8 @@ async def get_orders(
     if date_to:
         query.setdefault("created_at", {})["$lte"] = date_to
     
-    orders = await db.orders.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    skip = (page - 1) * page_size
+    orders = await db.orders.find(query, {"_id": 0}).sort("created_at", -1).skip(skip).limit(page_size).to_list(page_size)
     return [OrderResponse(**o) for o in orders]
 
 @api_router.get("/orders/{order_id}", response_model=OrderResponse)
@@ -1481,12 +1487,15 @@ async def export_qr_batch(
         query["status"] = status
     if service_type:
         query["service_type"] = service_type
-    orders = await db.orders.find(query, {"_id": 0}).sort("pickup_date", 1).to_list(2000)
+    export_limit = 500
+    orders = await db.orders.find(query, {"_id": 0}).sort("pickup_date", 1).limit(export_limit + 1).to_list(export_limit + 1)
+    if len(orders) > export_limit:
+        raise HTTPException(status_code=400, detail=f"Export limit exceeded. Please narrow your filter to {export_limit} orders or fewer.")
 
     customer_ids = {order.get("customer_id") for order in orders if order.get("customer_id")}
     customer_map = {}
     if customer_ids:
-        customers = await db.customers.find({"id": {"$in": list(customer_ids)}}, {"_id": 0}).to_list(2000)
+        customers = await db.customers.find({"id": {"$in": list(customer_ids)}}, {"_id": 0}).to_list(len(customer_ids))
         customer_map = {customer.get("id"): customer for customer in customers}
 
     buffer = io.BytesIO()
@@ -2074,6 +2083,8 @@ async def create_lead(data: LeadCreate, current_user: dict = Depends(get_current
 async def get_leads(
     status: Optional[str] = None,
     source: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
     current_user: dict = Depends(get_current_user)
 ):
     query = {}
@@ -2082,7 +2093,8 @@ async def get_leads(
     if source:
         query["source"] = source
     
-    leads = await db.leads.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    skip = (page - 1) * page_size
+    leads = await db.leads.find(query, {"_id": 0}).sort("created_at", -1).skip(skip).limit(page_size).to_list(page_size)
     return [LeadResponse(**l) for l in leads]
 
 @api_router.get("/leads/{lead_id}", response_model=LeadResponse)
