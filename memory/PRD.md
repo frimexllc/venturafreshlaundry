@@ -208,6 +208,17 @@ RECEIVED → PROCESSING → READY → OUT_FOR_DELIVERY → DELIVERED → COMPLET
 - ✅ Controles UX implementados: abrir/cerrar, minimizar, mute, micrófono, typing indicator, waveform.
 - ✅ Prompt comercial Ventura integrado en backend con servicios/precios y respuesta breve orientada a conversión.
 
+## Cambios recientes (2026-03-19) – Corrección Deployment Readiness
+- ✅ Se eliminó dependencia bloqueante `ollama` de `backend/requirements.txt`.
+- ✅ Se implementó paginación segura en endpoints críticos:
+  - `GET /api/customers` (`page`, `page_size`, default 50, max 100)
+  - `GET /api/orders` (`page`, `page_size`, default 50, max 100)
+  - `GET /api/leads` (`page`, `page_size`, default 50, max 100)
+- ✅ Se optimizó creación de preferencias: reemplazo de `find(...).limit(1).to_list(1)` por `find_one(..., sort=[("version", -1)])`.
+- ✅ Se endureció export QR para evitar lotes excesivos:
+  - límite operativo de 500 órdenes por export
+  - mensaje claro cuando excede el límite
+
 ## Pendientes / Issues
 **P1**
 - Validar webhook Stripe end-to-end en entorno productivo con eventos reales entrantes
