@@ -219,6 +219,19 @@ RECEIVED → PROCESSING → READY → OUT_FOR_DELIVERY → DELIVERED → COMPLET
   - límite operativo de 500 órdenes por export
   - mensaje claro cuando excede el límite
 
+## Cambios recientes (2026-03-20) – Integración ZIP en Panel Operador (ruta nueva)
+- ✅ Integrado paquete del usuario (`OperatorAgent.jsx`, `useHeyLau.js`, `useLauVoice.js`) adaptado al sistema actual.
+- ✅ Nueva ruta funcional: ` /admin/operator/agent `.
+- ✅ Nuevo ítem en sidebar admin/operator: **Operator Agent**.
+- ✅ Componente reutilizable:
+  - `frontend/src/components/operator-agent/OperatorAgent.jsx`
+  - acepta `dashboard`, `storeOrders`, `apiBaseUrl` por props.
+- ✅ Nueva página contenedora reutilizable: `frontend/src/pages/OperatorAgentPage.jsx`
+  - carga contexto real desde `GET /api/automation/operator-dashboard` y `GET /api/store/orders`.
+  - integra métricas rápidas + workspace de agente.
+- ✅ Chat operativo conectado a backend existente `POST /api/ai/operations`.
+- ✅ Validado sin regresiones en `/admin/operator`.
+
 ## Pendientes / Issues
 **P1**
 - Validar webhook Stripe end-to-end en entorno productivo con eventos reales entrantes
