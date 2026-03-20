@@ -22,7 +22,9 @@ import {
   Star,
   Bot,
   Shield,
-  DollarSign
+  DollarSign,
+  BarChart3,
+  ShieldCheck
 } from "lucide-react";
 import { useState } from "react";
 import { useLocale } from "../context/LocaleContext";
@@ -44,6 +46,8 @@ const allNavItems = [
   { path: "/admin/leads", icon: UserPlus, key: "leads", adminOnly: true },
   { path: "/admin/services", icon: Layers, key: "services", adminOnly: true },
   { path: "/admin/finances", icon: DollarSign, key: "finances", adminOnly: true },
+  { path: "/admin/ai-metrics", icon: BarChart3, key: "ai_metrics", adminOnly: true },
+  { path: "/admin/quick-approval", icon: ShieldCheck, key: "quick_approval", highlight: true },
   { path: "/admin/tickets", icon: HeadphonesIcon, key: "support" },
   { path: "/admin/store", icon: Store, key: "store", adminOnly: true },
   { path: "/admin/blog", icon: BookOpen, key: "blog", adminOnly: true },
@@ -79,6 +83,8 @@ export default function Layout() {
     leads: t("Leads", "Prospectos"),
     services: t("Services", "Servicios"),
     finances: t("Finances", "Finanzas"),
+    ai_metrics: t("AI Metrics", "Métricas IA"),
+    quick_approval: t("Quick Approval", "Aprobación Rápida"),
     support: t("Support", "Soporte"),
     store: t("Store", "Tienda"),
     blog: t("Blog", "Blog"),

@@ -24,6 +24,8 @@ import AdminAi from "./pages/AdminAi";
 import OperatorDashboard from "./pages/OperatorDashboard";
 import UserManagement from "./pages/UserManagement";
 import Finances from "./pages/Finances";
+import AiMetrics from "./pages/AiMetrics";
+import QuickApproval from "./pages/QuickApproval";
 import Layout from "./components/Layout";
 
 // Public pages
@@ -156,6 +158,8 @@ function AppRoutes() {
         <Route path="settings" element={<Settings />} />
         <Route path="users" element={<UserManagement />} />
         <Route path="finances" element={<Finances />} />
+        <Route path="ai-metrics" element={<AiMetrics />} />
+        <Route path="quick-approval" element={<QuickApproval />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />
