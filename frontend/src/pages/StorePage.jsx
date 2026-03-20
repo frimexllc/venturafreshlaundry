@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import PublicNav from "../components/PublicNav";
 import PublicFooter from "../components/PublicFooter";
+import AddressAutocomplete from "../components/AddressAutocomplete";
 import { toast } from "sonner";
 import { useLocale } from "../context/LocaleContext";
 
@@ -540,7 +541,17 @@ export default function StorePage() {
                       <input value={checkoutForm.phone} onChange={e => setField("phone", e.target.value)} className={inputCls} data-testid="checkout-phone" />
                     </Field>
                     <Field label={t("Shipping address", "Dirección de envío")} required>
-                      <input value={checkoutForm.address} onChange={e => setField("address", e.target.value)} className={inputCls} data-testid="checkout-address" />
+                      <AddressAutocomplete
+                        value={checkoutForm.address}
+                        onChange={(v) => setField("address", v)}
+                        onSelect={(addr) => {
+                          const fullAddr = [addr.street, addr.city, addr.state, addr.zip].filter(Boolean).join(", ");
+                          setField("address", fullAddr);
+                        }}
+                        inputClassName={inputCls}
+                        inputProps={{ "data-testid": "checkout-address" }}
+                        placeholder={t("Start typing address…", "Empieza a escribir dirección…")}
+                      />
                       <p className="text-[11px] text-slate-400 mt-1" data-testid="checkout-address-format-help">
                         {t("Format: street + number, city, state, ZIP", "Formato: calle y número, ciudad, estado, ZIP")}
                       </p>

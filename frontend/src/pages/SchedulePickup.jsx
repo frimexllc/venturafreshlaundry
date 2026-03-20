@@ -6,6 +6,7 @@ import { ChevronDown } from "lucide-react";
 import PublicNav from "../components/PublicNav";
 import PublicFooter from "../components/PublicFooter";
 import SmsConsentField from "../components/SmsConsentField";
+import AddressAutocomplete from "../components/AddressAutocomplete";
 import { useLocale } from "../context/LocaleContext";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -736,7 +737,20 @@ export default function SchedulePickup() {
                   {/* Step 1 */}
                   {cur === 1 && (
                     <>
-                      <FF label={t("Street address *", "Dirección *")}><FInput value={form.address_line1} onChange={(e) => setF("address_line1", e.target.value)} placeholder={t("123 Main St", "Calle Principal 123")} autoComplete="street-address" /></FF>
+                      <FF label={t("Street address *", "Dirección *")}>
+                        <AddressAutocomplete
+                          value={form.address_line1}
+                          onChange={(v) => setF("address_line1", v)}
+                          onSelect={(addr) => {
+                            setF("address_line1", addr.street);
+                            if (addr.city) setF("city", addr.city);
+                            if (addr.state) setF("state", addr.state.length > 2 ? addr.state.substring(0, 2).toUpperCase() : addr.state.toUpperCase());
+                            if (addr.zip) setF("zip_code", addr.zip);
+                          }}
+                          placeholder={t("123 Main St", "Calle Principal 123")}
+                          renderInput={(props) => <FInput {...props} data-testid="pickup-address-autocomplete" />}
+                        />
+                      </FF>
                       <FF label={t("Apt / Suite (optional)", "Apto / Suite (opcional)")}><FInput value={form.address_line2} onChange={(e) => setF("address_line2", e.target.value)} placeholder={t("Apt 4B…", "Apto 4B…")} /></FF>
                       <div style={g3}>
                         <FF label={t("City *", "Ciudad *")}><FInput value={form.city} onChange={(e) => setF("city", e.target.value)} placeholder="Los Angeles" autoComplete="address-level2" /></FF>

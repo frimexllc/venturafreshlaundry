@@ -18,7 +18,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://pos-laundry-sys.preview.emergentagent.com/api/automation/ingest",
+        "url": "=https://laundry-forms-ux.preview.emergentagent.com/api/automation/ingest",
         "sendBody": true,
         "bodyParameters": {
           "parameters": [

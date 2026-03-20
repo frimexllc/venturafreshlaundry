@@ -12,7 +12,7 @@ import os
 import time
 import uuid
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://pos-laundry-sys.preview.emergentagent.com')
+BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://laundry-forms-ux.preview.emergentagent.com')
 
 class TestP0OrdersDashboard:
     """P0: Orders should not disappear from operator dashboard after status update"""
@@ -265,7 +265,7 @@ class TestRegressionStoreCheckout:
             f"{BASE_URL}/api/store/checkout/manual",
             json={
                 "cart_id": cart_id,
-                "origin_url": "https://pos-laundry-sys.preview.emergentagent.com",
+                "origin_url": "https://laundry-forms-ux.preview.emergentagent.com",
                 "customer_name": f"Test Customer {uuid.uuid4().hex[:6]}",
                 "customer_email": f"test_{uuid.uuid4().hex[:6]}@example.com",
                 "customer_phone": "+18051234567",

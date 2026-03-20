@@ -16,6 +16,7 @@ import { Package, CheckCircle } from "lucide-react";
 import PublicNav from "../components/PublicNav";
 import PublicFooter from "../components/PublicFooter";
 import SmsConsentField from "../components/SmsConsentField";
+import AddressAutocomplete from "../components/AddressAutocomplete";
 import { useLocale } from "../context/LocaleContext";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -331,12 +332,21 @@ export default function WashFoldRequest() {
               <div className="space-y-4">
                 <div>
                   <Label className="text-slate-600 text-sm">{t("Address Line 1", "Dirección línea 1")}</Label>
-                  <Input
+                  <AddressAutocomplete
                     value={form.address_line1}
-                    onChange={(e) => setForm({ ...form, address_line1: e.target.value })}
-                    className="mt-1"
+                    onChange={(v) => setForm({ ...form, address_line1: v })}
+                    onSelect={(addr) => {
+                      setForm((prev) => ({
+                        ...prev,
+                        address_line1: addr.street,
+                        ...(addr.city && { city: addr.city }),
+                        ...(addr.state && { state: addr.state }),
+                        ...(addr.zip && { zip_code: addr.zip }),
+                      }));
+                    }}
                     placeholder={t("Street address", "Dirección")}
-                    data-testid="washfold-address1"
+                    inputClassName="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 mt-1"
+                    inputProps={{ "data-testid": "washfold-address1" }}
                   />
                 </div>
                 <div>
