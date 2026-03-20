@@ -19,7 +19,7 @@ export default function TermsAndConditions() {
               <h2 className="text-xl font-semibold text-slate-900 mb-3">1. Services</h2>
               <p>Ventura Fresh Laundry provides laundry-related services including:</p>
               <ul className="list-disc pl-6 mt-2 space-y-1">
-                <li>Self-service laundromat</li>
+                <li>Self-service laundry</li>
                 <li>Wash &amp; Fold services</li>
                 <li>Pickup and delivery laundry services</li>
                 <li>Laundry-related product sales</li>

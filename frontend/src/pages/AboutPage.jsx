@@ -350,7 +350,7 @@ export default function AboutPage() {
                 <div className="h-px w-16 bg-gradient-to-l from-transparent to-sky-400/60" />
               </div>
               <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-6 leading-tight">
-                {t("We didn't just open a laundromat.", "No solo abrimos una lavandería.")}
+                {t("We didn't just open a laundry.", "No solo abrimos una lavandería.")}
                 {/* Línea secundaria: text-white/75 → consistente con ServicesPage quote */}
                 <span className="block font-bold text-white/75 mt-2">{t("We gave our community time back.", "Le devolvimos tiempo a nuestra comunidad.")}</span>
               </h2>

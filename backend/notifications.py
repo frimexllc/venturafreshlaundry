@@ -368,21 +368,36 @@ def _html_order_created(name: str, order_number: str, pickup_date: Optional[str]
     return _html_base(content, accent)
 
 
+# ── UPDATED: _html_pickup_confirmed ──────────────────────────────────────────
 def _html_pickup_confirmed(name: str, order_number: str, pickup_date: Optional[str],
                             pickup_window: Optional[str], is_es: bool) -> str:
     accent = VFL_BLUE
     if is_es:
-        greeting  = "¡Tu pickup está confirmado! 🚚"
-        sub       = f"Hola {name}, tu recogida está confirmada. Estaremos en tu dirección puntualmente."
-        tip       = "🔔 Asegúrate de tener tu ropa lista en bolsas antes de nuestra llegada."
-        badge_txt = "Pickup Confirmado"
-        date_label = "Fecha de pickup"; window_label = "Ventana de tiempo"; status_label = "Estado"; confirmed_label = "Confirmado ✓"
+        greeting    = "¡Tu recolección ha sido programada! 🚚"
+        _date_str   = f" para el {pickup_date}" if pickup_date else ""
+        _phone_line = (f"<br>Si tienes alguna pregunta o necesitas hacer algún cambio, "
+                       f"puedes contactarnos al {BUSINESS_PHONE_DISPLAY}.") if BUSINESS_PHONE_DISPLAY else ""
+        sub         = (f"Hola {name}, tu recolección ha sido programada correctamente{_date_str}."
+                       f"<br>Estaremos llegando a tu dirección en el horario programado."
+                       f"{_phone_line}"
+                       f"<br>¡Gracias por tu preferencia!")
+        tip         = "🔔 Asegúrate de tener tu ropa lista en bolsas antes de nuestra llegada."
+        badge_txt   = "Recolección Programada"
+        date_label  = "Fecha de pickup"; window_label = "Ventana de tiempo"
+        status_label = "Estado"; confirmed_label = "Confirmado ✓"
     else:
-        greeting  = "Your pickup is confirmed! 🚚"
-        sub       = f"Hi {name}, your pickup is confirmed. We'll be at your address on time."
-        tip       = "🔔 Make sure your laundry is ready in bags before our arrival."
-        badge_txt = "Pickup Confirmed"
-        date_label = "Pickup date"; window_label = "Time window"; status_label = "Status"; confirmed_label = "Confirmed ✓"
+        greeting    = "Your pickup has been successfully scheduled! 🚚"
+        _date_str   = f" for {pickup_date}" if pickup_date else ""
+        _phone_line = (f"<br>If you have any questions or need to make changes, "
+                       f"feel free to contact us at {BUSINESS_PHONE_DISPLAY}.") if BUSINESS_PHONE_DISPLAY else ""
+        sub         = (f"Hi {name}, your pickup has been successfully scheduled{_date_str}."
+                       f"<br>We will arrive at your address during the scheduled time."
+                       f"{_phone_line}"
+                       f"<br>Thank you for choosing us!")
+        tip         = "🔔 Make sure your laundry is ready in bags before our arrival."
+        badge_txt   = "Pickup Scheduled"
+        date_label  = "Pickup date"; window_label = "Time window"
+        status_label = "Status"; confirmed_label = "Confirmed ✓"
 
     date_rows = ""
     if pickup_date:
@@ -664,13 +679,22 @@ def _sms(event: str, name: str, order_number: str, language: str,
             date_str = f"\n📅 Pickup: {pickup_date}" + (f" ({pickup_window})" if pickup_window else "") if pickup_date else ""
             return f"🫧 *{biz}*\n\nHi {n}! Your order *#{order_number}* has been scheduled.{date_str}\n\nWe'll confirm soon. Thank you! 🙌"
 
+    # ── UPDATED: pickup_confirmed ─────────────────────────────────────────────
     if event == "pickup_confirmed":
         if is_es:
-            date_str = f"\n📅 {pickup_date}" + (f" · {pickup_window}" if pickup_window else "") if pickup_date else ""
-            return f"🚚 *{biz}*\n\n¡Hola {n}! Tu pickup está *CONFIRMADO* ✅{date_str}\n\nTen tu ropa lista en bolsas. ¡Nos vemos pronto!"
+            _date_line  = f"\n📅 {pickup_date}" + (f" · {pickup_window}" if pickup_window else "") if pickup_date else ""
+            _phone_line = f"\n📞 {BUSINESS_PHONE_DISPLAY}" if BUSINESS_PHONE_DISPLAY else ""
+            return (f"🚚 *{biz}*\n\n"
+                    f"Hola {n}, tu recolección ha sido programada correctamente{_date_line}.\n"
+                    f"Estaremos llegando a tu dirección en el horario programado.{_phone_line}\n"
+                    f"¡Gracias por tu preferencia!")
         else:
-            date_str = f"\n📅 {pickup_date}" + (f" · {pickup_window}" if pickup_window else "") if pickup_date else ""
-            return f"🚚 *{biz}*\n\nHi {n}! Your pickup is *CONFIRMED* ✅{date_str}\n\nHave your laundry ready in bags. See you soon!"
+            _date_line  = f"\n📅 {pickup_date}" + (f" · {pickup_window}" if pickup_window else "") if pickup_date else ""
+            _phone_line = f"\n📞 {BUSINESS_PHONE_DISPLAY}" if BUSINESS_PHONE_DISPLAY else ""
+            return (f"🚚 *{biz}*\n\n"
+                    f"Hi {n}, your pickup has been successfully scheduled{_date_line}.\n"
+                    f"We will arrive at your address during the scheduled time.{_phone_line}\n"
+                    f"Thank you for choosing us!")
 
     if event in {"order_received", "processing"}:
         if is_es:
@@ -737,8 +761,8 @@ def _voice(event: str, name: str, order_number: str, language: str) -> str:
             f"Hi {n}, this is {biz} calling to confirm we received your order number {order_number}. We'll be in touch soon. Goodbye!"
         ),
         "pickup_confirmed": (
-            f"Hola {n}, tu pickup con {biz} está confirmado. Estaremos en tu domicilio en el horario acordado. ¡Hasta pronto!",
-            f"Hi {n}, your pickup with {biz} is confirmed. We'll be at your address during the scheduled window. Goodbye!"
+            f"Hola {n}, tu recolección con {biz} ha sido programada correctamente. Estaremos en tu domicilio en el horario acordado. ¡Hasta pronto!",
+            f"Hi {n}, your pickup with {biz} has been successfully scheduled. We will arrive at your address during the scheduled time. Goodbye!"
         ),
         "ready": (
             f"Hola {n}, tu ropa con {biz} está lista y camino a tu domicilio. Por favor mantente disponible. ¡Hasta luego!",
@@ -795,7 +819,7 @@ def build_premium_message(
     subjects = {
         "order_created":    ("Orden programada — " + BUSINESS_NAME,           "Order scheduled — " + BUSINESS_NAME),
         "order_received":   ("Orden recibida — " + BUSINESS_NAME,              "Order received — " + BUSINESS_NAME),
-        "pickup_confirmed": ("Pickup confirmado ✓ — " + BUSINESS_NAME,         "Pickup confirmed ✓ — " + BUSINESS_NAME),
+        "pickup_confirmed": ("Recolección programada ✓ — " + BUSINESS_NAME,    "Pickup scheduled ✓ — " + BUSINESS_NAME),
         "processing":       ("Tu ropa está en proceso — " + BUSINESS_NAME,     "Your laundry is processing — " + BUSINESS_NAME),
         "ready":            ("¡Tu ropa está lista! — " + BUSINESS_NAME,        "Your laundry is ready! — " + BUSINESS_NAME),
         "ready_for_pickup": ("Lista para recoger — " + BUSINESS_NAME,          "Ready for pickup — " + BUSINESS_NAME),

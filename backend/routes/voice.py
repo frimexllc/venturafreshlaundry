@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import html
 import os
 
-BUSINESS_NAME = os.environ.get("BUSINESS_NAME", "Ventura Fresh Laundromat")
+BUSINESS_NAME = os.environ.get("BUSINESS_NAME", "Ventura Fresh Laundry")
 
 
 def sanitize_voice_text(text: str) -> str:
