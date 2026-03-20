@@ -232,6 +232,22 @@ RECEIVED → PROCESSING → READY → OUT_FOR_DELIVERY → DELIVERED → COMPLET
 - ✅ Chat operativo conectado a backend existente `POST /api/ai/operations`.
 - ✅ Validado sin regresiones en `/admin/operator`.
 
+## Cambios recientes (2026-03-20) – Jarvis operativo global (Groq + contexto total)
+- ✅ `POST /api/ai/operations` evolucionado a modo Jarvis:
+  - contexto global en tiempo real (orders, store_orders, tickets, quotes, leads, signups, users + stats)
+  - memoria persistente por sesión en `ai_operator_sessions`
+  - auditoría completa en `ai_command_logs`
+  - resumen diario automático en `ai_daily_summaries`
+- ✅ Se añadió `GET /api/ai/operations/session/{session_id}` para recuperar historial persistente.
+- ✅ Ejecución multi-comando ampliada (15+ tipos de acción) para operar órdenes, pagos, tickets, quotes, leads, memberships, store, usuarios y settings.
+- ✅ Confirmación de acciones críticas con token (`ai_pending_actions`) antes de ejecutar cambios sensibles.
+- ✅ Frontend Operator Agent adaptado:
+  - envía `session_id` persistente
+  - consume historial de sesión
+  - muestra flujo de confirmación crítica (botón de confirmación)
+  - experiencia “Hey Lau / Jarvis” formal-profesional.
+- ✅ Manejo resiliente de límite externo Groq: fallback operativo sin tumbar UI/flujo.
+
 ## Pendientes / Issues
 **P1**
 - Validar webhook Stripe end-to-end en entorno productivo con eventos reales entrantes
