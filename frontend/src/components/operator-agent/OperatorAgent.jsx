@@ -276,7 +276,7 @@ export default function OperatorAgent({ dashboard, storeOrders = [], onSelectOrd
     } catch {
       addAgent(locale==="es" ? "No pude conectarme. Intenta de nuevo." : "Couldn't reach the server.");
     } finally { setLoading(false); }
-  }, [dashboard, locale, open, lauSpeak, addAgent]);
+  }, [apiBaseUrl, dashboard, locale, open, lauSpeak, addAgent]);
 
   // ── Hey Lau hook ─────────────────────────────────────────────────────────────
   const {
