@@ -3070,11 +3070,25 @@ async def ai_operations(
         f"JSON:"
     )
 
-    raw = call_ollama(prompt)
+    ai_error = None
     try:
-        payload = extract_json_payload(raw)
-    except Exception:
-        payload = {"reply": raw, "actions": [], "confidence": 0.5}
+        raw = call_ollama(prompt)
+        try:
+            payload = extract_json_payload(raw)
+        except Exception:
+            payload = {"reply": raw, "actions": [], "confidence": 0.5}
+    except Exception as exc:
+        ai_error = str(exc)
+        context_locale = normalize_spaces((data.context or {}).get("locale") if isinstance(data.context, dict) else "")
+        is_spanish = (context_locale or "").lower().startswith("es") or any(ch in (data.message or "") for ch in ["¿", "á", "é", "í", "ó", "ú", "ñ"])
+        fallback_reply = (
+            "Estoy temporalmente en modo de alta demanda de IA. Puedo seguir ejecutando comandos directos del sistema "
+            "si me das la acción exacta (por ejemplo: actualizar orden X a READY, registrar pago, o cerrar ticket Y)."
+            if is_spanish else
+            "I'm temporarily in high-demand AI mode. I can still execute direct system commands if you provide an explicit action "
+            "(for example: update order X to READY, register payment, or close ticket Y)."
+        )
+        payload = {"reply": fallback_reply, "actions": [], "confidence": 0.2}
 
     reply = normalize_spaces(payload.get("reply") or "Done")
     actions = payload.get("actions", []) if isinstance(payload.get("actions", []), list) else []
@@ -3145,6 +3159,7 @@ async def ai_operations(
         "executed": data.execute and not requires_confirmation,
         "results": results,
         "confidence": confidence,
+        "ai_error": ai_error,
         "created_at": now
     })
 
