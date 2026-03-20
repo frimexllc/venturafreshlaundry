@@ -60,7 +60,7 @@ const normalizeMessages = (messages = []) => {
     }));
 };
 
-const PublicVoiceAssistantWidget = () => {
+const PublicVoiceAssistantWidget = ({ pathname }) => {
   const { t, locale } = useLocale();
   const [open, setOpen] = useState(false);
   const [minimized, setMinimized] = useState(false);
@@ -85,6 +85,10 @@ const PublicVoiceAssistantWidget = () => {
     t("I am an Airbnb host", "Soy host de Airbnb"),
     t("What are your self service hours?", "¿Cuáles son sus horarios de autoservicio?")
   ], [t]);
+
+  const isStoreLikeRoute = (pathname || "").startsWith("/store") || (pathname || "").startsWith("/cart");
+  const floatingButtonPositionClass = isStoreLikeRoute ? "right-24 sm:right-24" : "right-6";
+  const panelPositionClass = isStoreLikeRoute ? "right-16 sm:right-6" : "right-6";
 
   useEffect(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -262,7 +266,7 @@ const PublicVoiceAssistantWidget = () => {
       {!open && (
         <button
           onClick={() => setOpen(true)}
-          className="fixed bottom-6 right-6 z-[90] w-14 h-14 rounded-full bg-gradient-to-br from-sky-500 to-blue-600 text-white shadow-xl shadow-sky-400/30 flex items-center justify-center hover:scale-105 transition-transform"
+          className={`fixed bottom-6 ${floatingButtonPositionClass} z-[90] w-14 h-14 rounded-full bg-gradient-to-br from-sky-500 to-blue-600 text-white shadow-xl shadow-sky-400/30 flex items-center justify-center hover:scale-105 transition-transform`}
           data-testid="public-voice-assistant-open-button"
           aria-label={t("Open AI voice assistant", "Abrir asistente de voz")}
         >
@@ -271,7 +275,7 @@ const PublicVoiceAssistantWidget = () => {
       )}
 
       {open && (
-        <div className={`fixed bottom-6 right-6 z-[95] ${minimized ? "w-72" : "w-[360px] sm:w-[410px]"}`} data-testid="public-voice-assistant-panel">
+        <div className={`fixed bottom-6 ${panelPositionClass} z-[95] ${minimized ? "w-72" : "w-[360px] sm:w-[410px]"}`} data-testid="public-voice-assistant-panel">
           <div className="bg-gradient-to-r from-sky-500 to-blue-600 rounded-t-2xl px-4 py-3 flex items-center justify-between">
             <div>
               <p className="text-white font-bold text-sm" data-testid="public-voice-assistant-title">Ventura AI</p>
@@ -375,5 +379,5 @@ const PublicVoiceAssistantWidget = () => {
 export default function PublicVoiceAssistant() {
   const location = useLocation();
   if (!shouldRenderOnRoute(location.pathname)) return null;
-  return <PublicVoiceAssistantWidget />;
+  return <PublicVoiceAssistantWidget pathname={location.pathname} />;
 }
