@@ -17,7 +17,6 @@ const getErr = (e) => {
   return "Error submitting request";
 };
 
-// ─── Countries ─────────────────────────────────────────────────────────────────
 const COUNTRIES = [
   { code: "+1",    flag: "🇺🇸", name: "United States", iso: "US" },
   { code: "+1",    flag: "🇨🇦", name: "Canada",         iso: "CA" },
@@ -41,7 +40,6 @@ const COUNTRIES = [
   { code: "+61",   flag: "🇦🇺", name: "Australia",      iso: "AU" },
 ];
 
-// ─── Stage config ───────────────────────────────────────────────────────────────
 const STAGES = [
   { icon: "👤", en: "Contact",  es: "Contacto",  subEN: "Who are you?",        subES: "¿Quién eres?" },
   { icon: "📍", en: "Address",  es: "Dirección", subEN: "Where to pick up?",   subES: "¿Dónde recogemos?" },
@@ -146,13 +144,10 @@ const RiderMachine = ({ step }) => {
         <clipPath id="rc"><circle cx="50" cy="65" r="28" /></clipPath>
         <filter id="rg"><feGaussianBlur stdDeviation="1.5" result="b" /><feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
       </defs>
-      {/* Shadow */}
       <ellipse cx="50" cy="127" rx="32" ry="4" fill="#000" opacity=".2" />
-      {/* Body */}
       <rect x="4" y="16" width="92" height="100" rx="10" fill="#1a3558" stroke="#2a4568" strokeWidth="1" />
       <rect x="4" y="104" width="92" height="12" fill="#0f1e2e" />
       <rect x="4" y="110" width="92" height="6" rx="6" fill="#0f1e2e" />
-      {/* Panel */}
       <rect x="4" y="4" width="92" height="14" rx="7" fill="#0c1825" stroke="#1e3355" strokeWidth=".6" />
       {[16, 25, 34, 43, 52].map((x, i) => (
         <circle key={i} cx={x} cy="11" r={i === step ? 2.5 : 1.8}
@@ -165,43 +160,35 @@ const RiderMachine = ({ step }) => {
       <circle cx="82" cy="11" r="2" fill="#38bdf8" opacity=".9">
         <animate attributeName="opacity" values=".9;.3;.9" dur="1.5s" repeatCount="indefinite" />
       </circle>
-      {/* Drum rings */}
       <circle cx="50" cy="65" r="32" fill="#0b1a2a" stroke="#1a3050" strokeWidth=".8" />
       <circle cx="50" cy="65" r="28" fill="#0e1e2e" />
-      {/* Water */}
       <g clipPath="url(#rc)">
         <rect x="22" y={wY} width="56" height={130 - wY} fill="#0ea5e9" opacity=".4">
           <animate attributeName="y" values={`${wY};${wY - 3};${wY}`} dur="1.8s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1" />
         </rect>
-        {/* Soap suds when advanced */}
         {step >= 2 && [{ cx: 36, r: 3 }, { cx: 44, r: 2 }, { cx: 52, r: 3.5 }, { cx: 61, r: 2.5 }].map((b, i) => (
           <circle key={i} cx={b.cx} cy={wY - 1} r={b.r} fill="white" opacity=".5">
             <animate attributeName="cy" values={`${wY-1};${wY-3};${wY-1}`} dur={`${1.6 + i * 0.2}s`} begin={`${i * 0.2}s`} repeatCount="indefinite" />
           </circle>
         ))}
-        {/* Bubbles */}
         {step >= 1 && [{ cx: 36 }, { cx: 50 }, { cx: 64 }].map((b, i) => (
           <circle key={i} cx={b.cx} r={2.5 - i * 0.3} fill="#7dd3fc" opacity=".6">
             <animate attributeName="cy" values={`${wY + 5};${wY - 30};${wY + 5}`} dur={`${2 + i * 0.3}s`} begin={`${i * 0.5}s`} repeatCount="indefinite" />
             <animate attributeName="opacity" values=".6;0;.6" dur={`${2 + i * 0.3}s`} begin={`${i * 0.5}s`} repeatCount="indefinite" />
           </circle>
         ))}
-        {/* Drum spin */}
         <g style={{ transformOrigin: "50px 65px", animation: `tl_spin ${spinDur} linear infinite` }}>
           {holes.map((deg, i) => {
             const rad = (deg * Math.PI) / 180;
             return <circle key={i} cx={50 + 19 * Math.sin(rad)} cy={65 - 19 * Math.cos(rad)} r="3" fill="#071320" stroke="#1e3558" strokeWidth=".5" opacity=".9" />;
           })}
         </g>
-        {/* VFL badge counter-rotates */}
         <g transform="translate(50,65)" style={{ transformOrigin: "0 0", animation: `tl_spinr ${spinDur} linear infinite` }}>
           <circle r="8" fill="#050e1a" stroke="#38bdf8" strokeWidth="1" filter="url(#rg)" opacity=".95" />
           <text textAnchor="middle" dy=".35em" fill="#38bdf8" fontSize="4" fontWeight="800" fontFamily="'Manrope',sans-serif" letterSpacing=".8">VFL</text>
         </g>
       </g>
-      {/* Glass */}
       <circle cx="50" cy="65" r="28" fill="none" stroke="#1e3558" strokeWidth="1.5" />
-      {/* Feet */}
       <rect x="16" y="115" width="14" height="4" rx="2" fill="#0c1825" />
       <rect x="70" y="115" width="14" height="4" rx="2" fill="#0c1825" />
     </svg>
@@ -309,30 +296,79 @@ const ChipSet = ({ options, value, onChange }) => (
   </div>
 );
 
+// CHANGED: 3-column grid + accent/badge props support
 const OptionCards = ({ options, value, onChange }) => (
-  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-    {options.map((o) => (
-      <button key={o.val} type="button" onClick={() => onChange(o.val)}
-        style={{ padding: "12px 14px", borderRadius: 10, textAlign: "left",
-          border: `1.5px solid ${value === o.val ? "#0ea5e9" : "hsl(var(--border))"}`,
-          background: value === o.val ? "rgba(14,165,233,.08)" : "hsl(var(--secondary))",
-          cursor: "pointer", transition: "all .15s", transform: value === o.val ? "scale(1.02)" : "scale(1)", fontFamily: "inherit" }}>
-        <div style={{ fontSize: 18, marginBottom: 5 }}>{o.icon}</div>
-        <div style={{ fontSize: 12, fontWeight: 600, color: value === o.val ? "#0ea5e9" : "hsl(var(--foreground))", marginBottom: 2 }}>{o.title}</div>
-        <div style={{ fontSize: 10, color: "hsl(var(--muted-foreground))" }}>{o.desc}</div>
-      </button>
-    ))}
+  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+    {options.map((o) => {
+      const active     = value === o.val;
+      const accent     = o.accentColor || "#0ea5e9";
+      const accentBg   = o.accentBg    || "rgba(14,165,233,.08)";
+      const accentGlow = o.accentGlow  || "rgba(14,165,233,.15)";
+      return (
+        <button key={o.val} type="button" onClick={() => onChange(o.val)}
+          style={{ padding: "14px 8px", borderRadius: 12, textAlign: "center",
+            border: `1.5px solid ${active ? accent : "hsl(var(--border))"}`,
+            background: active ? accentBg : "hsl(var(--secondary))",
+            cursor: "pointer", transition: "all .18s",
+            transform: active ? "scale(1.03)" : "scale(1)", fontFamily: "inherit",
+            boxShadow: active ? `0 0 0 3px ${accentGlow}` : "none" }}>
+          <div style={{ fontSize: 24, marginBottom: 5, lineHeight: 1 }}>{o.icon}</div>
+          {o.badge && (
+            <div style={{ display: "inline-block", fontSize: 8, fontWeight: 800, textTransform: "uppercase",
+              letterSpacing: ".1em", padding: "2px 7px", borderRadius: 8, marginBottom: 5,
+              background: o.badgeBg || "rgba(14,165,233,.12)", color: o.badgeColor || accent,
+              border: `1px solid ${o.badgeBorder || "rgba(14,165,233,.3)"}` }}>{o.badge}</div>
+          )}
+          <div style={{ fontSize: 11, fontWeight: 700, lineHeight: 1.3,
+            color: active ? accent : "hsl(var(--foreground))", marginBottom: 3 }}>{o.title}</div>
+          <div style={{ fontSize: 10, color: "hsl(var(--muted-foreground))", lineHeight: 1.4 }}>{o.desc}</div>
+        </button>
+      );
+    })}
   </div>
 );
 
-const TempRow = ({ value, onChange }) => (
+// NEW: Airbnb host detail panel
+const AirbnbInfoPanel = ({ t }) => (
+  <div style={{ padding: "13px 15px", borderRadius: 11, marginTop: 8,
+    background: "linear-gradient(135deg,rgba(255,92,37,.06),rgba(255,56,92,.04))",
+    border: "1px solid rgba(255,92,37,.25)", animation: "tl_panel .25s ease both" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 9 }}>
+      <span style={{ fontSize: 17 }}>🏠</span>
+      <span style={{ fontSize: 12, fontWeight: 700, color: "#ff5c25" }}>
+        {t("Airbnb Host Service", "Servicio para Anfitriones Airbnb")}
+      </span>
+    </div>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "5px 12px", marginBottom: 9 }}>
+      {[
+        { icon: "🛏️", en: "Bed linens & towels",   es: "Sábanas y toallas"       },
+        { icon: "⚡",  en: "Priority same-day",      es: "Prioridad mismo día"     },
+        { icon: "📦",  en: "Folded & bag-ready",     es: "Doblado listo en bolsa"  },
+        { icon: "📋",  en: "Inventory checklist",    es: "Lista de inventario"     },
+        { icon: "🔄",  en: "Recurring weekly plan",  es: "Plan semanal recurrente" },
+        { icon: "💼",  en: "Volume discount",        es: "Descuento por volumen"   },
+      ].map((f) => (
+        <div key={f.icon} style={{ display: "flex", alignItems: "center", gap: 5,
+          fontSize: 11, color: "hsl(var(--foreground))" }}>
+          <span style={{ fontSize: 13 }}>{f.icon}</span>
+          <span>{t(f.en, f.es)}</span>
+        </div>
+      ))}
+    </div>
+    <div style={{ padding: "7px 10px", borderRadius: 8, background: "rgba(255,92,37,.07)",
+      fontSize: 10, color: "#c2440a", lineHeight: 1.55 }}>
+      {t(
+        "💡 We'll coordinate with your guest checkout schedule and set up recurring pickups.",
+        "💡 Coordinamos con tus salidas de huéspedes y configuramos recogidas recurrentes."
+      )}
+    </div>
+  </div>
+);
+
+// CHANGED: now accepts `options` prop so it works for both wash & dry
+const TempRow = ({ value, onChange, options }) => (
   <div style={{ display: "flex", gap: 6 }}>
-    {[
-      { val: "cold", icon: "❄️", label: "Cold",    sub: "≤30°C" },
-      { val: "warm", icon: "🌡️", label: "Warm",    sub: "40°C"  },
-      { val: "hot",  icon: "🔥", label: "Hot",     sub: "60°C+" },
-      { val: "any",  icon: "✨", label: "Any",     sub: "Trust us" },
-    ].map((o) => (
+    {options.map((o) => (
       <button key={o.val} type="button" onClick={() => onChange(o.val)}
         style={{ flex: 1, padding: "9px 4px", borderRadius: 9, textAlign: "center",
           border: `1.5px solid ${value === o.val ? "#0ea5e9" : "hsl(var(--border))"}`,
@@ -346,6 +382,21 @@ const TempRow = ({ value, onChange }) => (
     ))}
   </div>
 );
+
+// NEW: option arrays for wash & dry temperatures
+const WASH_TEMP_OPTIONS = [
+  { val: "cold", icon: "❄️",  label: "Cold",     sub: "≤30°C"    },
+  { val: "warm", icon: "🌡️", label: "Warm",     sub: "40°C"     },
+  { val: "hot",  icon: "🔥",  label: "Hot",      sub: "60°C+"    },
+  { val: "any",  icon: "✨",  label: "Any",      sub: "Trust us" },
+];
+
+const DRY_TEMP_OPTIONS = [
+  { val: "low",    icon: "🌬️", label: "Low",     sub: "Delicates"  },
+  { val: "medium", icon: "☀️", label: "Medium",  sub: "Normal"     },
+  { val: "high",   icon: "🔆", label: "High",    sub: "Heavy duty" },
+  { val: "air",    icon: "🌿", label: "Air dry", sub: "No heat"    },
+];
 
 const TimeSlots = ({ value, onChange, locale }) => (
   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
@@ -398,20 +449,13 @@ const ConveyorTrack = ({ cur, locale, onStageClick }) => {
       background: "linear-gradient(150deg,#0b1929 0%,#081320 60%,#040c16 100%)",
       borderRadius: 16, padding: "20px 0 14px", position: "relative", overflow: "hidden",
     }}>
-      {/* Grid texture */}
       <div style={{ position: "absolute", inset: 0, backgroundImage: "linear-gradient(rgba(255,255,255,.022) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)", backgroundSize: "32px 32px", pointerEvents: "none" }} />
-
-      {/* Scrollable track */}
       <div style={{ overflowX: "auto", overflowY: "visible", padding: "0 16px", WebkitOverflowScrolling: "touch" }}
         className="scrollbar-hide">
         <div ref={trackRef} style={{ display: "flex", alignItems: "flex-start", minWidth: "max-content", padding: "10px 8px 4px", position: "relative" }}>
-
-          {/* Conveyor belt line */}
           <div style={{ position: "absolute", top: 38, left: 0, right: 0, height: 4,
             background: "repeating-linear-gradient(90deg,#1e3558 0,#1e3558 18px,#0b1929 18px,#0b1929 24px)",
             borderRadius: 2, zIndex: 0 }} />
-
-          {/* Machine rider */}
           <div style={{
             position: "absolute", top: 10, left: riderLeft,
             transition: "left .6s cubic-bezier(.34,1.56,.64,1)", zIndex: 3, pointerEvents: "none",
@@ -419,16 +463,13 @@ const ConveyorTrack = ({ cur, locale, onStageClick }) => {
           }}>
             <RiderMachine step={cur} />
           </div>
-
           {STAGES.map((s, i) => (
             <>
               {i > 0 && (
                 <div key={`conn-${i}`} style={{
                   width: 28, height: 4, marginTop: 26, flexShrink: 0, zIndex: 0, position: "relative",
-                  background: i <= cur ? "#0ea5e9" : "#1e3558",
-                  transition: "background .3s",
+                  background: i <= cur ? "#0ea5e9" : "#1e3558", transition: "background .3s",
                 }}>
-                  {/* Arrow head */}
                   <div style={{ position: "absolute", top: -3, right: -5, width: 0, height: 0,
                     borderTop: "5px solid transparent", borderBottom: "5px solid transparent",
                     borderLeft: `5px solid ${i <= cur ? "#0ea5e9" : "#1e3558"}`, transition: "border-left-color .3s" }} />
@@ -439,7 +480,6 @@ const ConveyorTrack = ({ cur, locale, onStageClick }) => {
                 onClick={() => i < cur && onStageClick(i)}
                 style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 0,
                   cursor: i < cur ? "pointer" : "default", position: "relative", zIndex: 1, width: 112, flexShrink: 0 }}>
-                {/* Bubble */}
                 <div style={{
                   width: 56, height: 56, borderRadius: "50%", display: "flex", alignItems: "center",
                   justifyContent: "center", fontSize: 20, flexShrink: 0, position: "relative",
@@ -450,12 +490,10 @@ const ConveyorTrack = ({ cur, locale, onStageClick }) => {
                   transition: "all .25s cubic-bezier(.34,1.56,.64,1)",
                 }}>
                   {s.icon}
-                  {/* Pulse ring on active */}
                   {i === cur && (
                     <div style={{ position: "absolute", inset: -8, borderRadius: "50%",
                       border: "2px solid rgba(14,165,233,.35)", animation: "tl_pulse 1.6s ease-out infinite" }} />
                   )}
-                  {/* Check badge on done */}
                   {i < cur && (
                     <div style={{ position: "absolute", bottom: -2, right: -2, width: 16, height: 16,
                       borderRadius: "50%", background: "#0ea5e9", color: "white", fontSize: 9,
@@ -481,11 +519,13 @@ const ConveyorTrack = ({ cur, locale, onStageClick }) => {
 };
 
 // ─── Main ──────────────────────────────────────────────────────────────────────
+// CHANGED: added dry_temp to EMPTY
 const EMPTY = {
   first_name: "", last_name: "", email: "", phone: "", dialCode: "+1", dialIso: "US",
   contact_method: "", sms_consent: false,
   address_line1: "", address_line2: "", city: "", state: "", zip_code: "", addr_notes: "",
-  service_type: "", wash_temp: "", notes: "", pickup_date: "", pickup_time: "", terms: false,
+  service_type: "", wash_temp: "", dry_temp: "", notes: "",
+  pickup_date: "", pickup_time: "", terms: false,
 };
 
 export default function SchedulePickup() {
@@ -500,7 +540,6 @@ export default function SchedulePickup() {
 
   const setF = useCallback((k, v) => setForm((p) => ({ ...p, [k]: v })), []);
   const scrollTop = () => topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-
   const goTo = (n) => { setCur(n); setFormKey((k) => k + 1); scrollTop(); };
 
   const validate = () => {
@@ -530,7 +569,6 @@ export default function SchedulePickup() {
     if (!validate()) return;
     if (cur < 4) { goTo(cur + 1); return; }
 
-    // Submit + start wash animation simultaneously
     setWashPhase(0); setWashDone(false);
     const phaseDurs = [900, 1100, 1000, 900, 700];
     let cum = 0;
@@ -540,7 +578,14 @@ export default function SchedulePickup() {
     try {
       const fullPhone   = `${form.dialCode} ${form.phone}`.trim();
       const fullAddress = [form.address_line1, form.address_line2, form.city, form.state, form.zip_code].filter(Boolean).join(", ");
-      const notes = [form.wash_temp ? `Wash temp: ${form.wash_temp}` : "", form.notes?.trim(), form.addr_notes ? `Pickup note: ${form.addr_notes}` : "", `Contact via: ${form.contact_method}`].filter(Boolean).join("\n");
+      // CHANGED: dry_temp included in notes
+      const notes = [
+        form.wash_temp ? `Wash temp: ${form.wash_temp}` : "",
+        form.dry_temp  ? `Dry temp: ${form.dry_temp}`   : "",
+        form.notes?.trim(),
+        form.addr_notes ? `Pickup note: ${form.addr_notes}` : "",
+        `Contact via: ${form.contact_method}`,
+      ].filter(Boolean).join("\n");
       await axios.post(`${API}/public/pickup-request`, {
         name: `${form.first_name} ${form.last_name}`.trim(),
         email: form.email.trim(), phone: fullPhone,
@@ -559,12 +604,24 @@ export default function SchedulePickup() {
     setWashPhase(-1); setWashDone(false); scrollTop();
   };
 
-  const g2  = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 };
-  const g3  = { display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 8 };
+  const g2   = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 };
+  const g3   = { display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 8 };
   const fGap = { display: "flex", flexDirection: "column", gap: 14 };
 
-  const svcMap  = { pickup_delivery: t("Pickup & Delivery", "Recogida y Entrega"), commercial: t("Commercial / B2B", "Comercial / B2B") };
+  // CHANGED: airbnb_host added to svcMap
+  const svcMap  = {
+    pickup_delivery: t("Pickup & Delivery", "Recogida y Entrega"),
+    airbnb_host:     t("Airbnb Host",       "Anfitrión Airbnb"),
+    commercial:      t("Commercial / B2B",  "Comercial / B2B"),
+  };
   const tempMap = { cold: "Cold ≤30°C", warm: "Warm 40°C", hot: "Hot 60°C+", any: t("Any temperature", "Cualquier temperatura") };
+  // NEW: dryMap for confirm summary
+  const dryMap  = {
+    low:    t("Low heat",   "Calor bajo"),
+    medium: t("Medium heat","Calor medio"),
+    high:   t("High heat",  "Calor alto"),
+    air:    t("Air dry",    "Secado al aire"),
+  };
   const timeMap = { "8am-12pm": "8:00 AM – 12:00 PM", "2pm-6pm": "2:00 PM – 6:00 PM" };
   const cmMap   = { phone: t("Phone call", "Llamada"), text: "Text/SMS", email: "Email" };
 
@@ -579,6 +636,7 @@ export default function SchedulePickup() {
         @keyframes tl_float  { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-7px)} }
         @keyframes tl_panel  { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
         @keyframes tl_wash   { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes tl_shimmer{ 0%{transform:translateX(-100%)} 100%{transform:translateX(100%)} }
         .scrollbar-hide::-webkit-scrollbar{display:none}
         .scrollbar-hide{scrollbar-width:none}
       `}</style>
@@ -619,12 +677,7 @@ export default function SchedulePickup() {
 
           {/* Wash overlay */}
           {washPhase >= 0 && (
-            <div style={{
-              background: "#07111d", borderRadius: 16, marginTop: 16,
-              border: "0.5px solid rgba(14,165,233,.2)",
-              padding: "32px 24px", textAlign: "center",
-              animation: "tl_wash .4s ease both",
-            }}>
+            <div style={{ background: "#07111d", borderRadius: 16, marginTop: 16, border: "0.5px solid rgba(14,165,233,.2)", padding: "32px 24px", textAlign: "center", animation: "tl_wash .4s ease both" }}>
               {!washDone ? (
                 <>
                   <div style={{ width: 180, margin: "0 auto", animation: "tl_float 3s ease-in-out infinite" }}>
@@ -636,16 +689,10 @@ export default function SchedulePickup() {
                   <div style={{ fontSize: 11, color: "rgba(255,255,255,.4)", marginTop: 4 }}>
                     {["Getting things started", "Cleaning in progress", "Rinsing with care", "Almost there!", "✓ Confirmed"][Math.min(washPhase, 4)]}
                   </div>
-                  {/* Phase bar */}
                   <div style={{ display: "flex", justifyContent: "center", gap: 10, marginTop: 16 }}>
                     {WASH_PHASES.map((p, i) => (
                       <div key={i} style={{ textAlign: "center", width: 52 }}>
-                        <div style={{
-                          width: 8, height: 8, borderRadius: "50%", margin: "0 auto 4px",
-                          background: i < washPhase ? "#0ea5e9" : i === washPhase ? "#38bdf8" : "rgba(255,255,255,.1)",
-                          boxShadow: i === washPhase ? "0 0 0 3px rgba(56,189,248,.25)" : "none",
-                          transition: "all .3s",
-                        }} />
+                        <div style={{ width: 8, height: 8, borderRadius: "50%", margin: "0 auto 4px", background: i < washPhase ? "#0ea5e9" : i === washPhase ? "#38bdf8" : "rgba(255,255,255,.1)", boxShadow: i === washPhase ? "0 0 0 3px rgba(56,189,248,.25)" : "none", transition: "all .3s" }} />
                         <div style={{ fontSize: 9, fontWeight: 600, color: i <= washPhase ? "rgba(255,255,255,.6)" : "rgba(255,255,255,.2)" }}>{p}</div>
                       </div>
                     ))}
@@ -674,15 +721,8 @@ export default function SchedulePickup() {
 
           {/* Form card */}
           {washPhase < 0 && (
-            <div key={formKey} style={{
-              background: "hsl(var(--card))", border: "1px solid hsl(var(--border))",
-              borderRadius: 16, boxShadow: "var(--shadow-lg)", overflow: "hidden",
-              marginTop: 16, animation: "tl_panel .3s ease both",
-            }}>
-              {/* Accent */}
+            <div key={formKey} style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 16, boxShadow: "var(--shadow-lg)", overflow: "hidden", marginTop: 16, animation: "tl_panel .3s ease both" }}>
               <div style={{ height: 3, background: "linear-gradient(90deg,#38bdf8,#0ea5e9,#2563eb)" }} />
-
-              {/* Header */}
               <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "13px 20px", borderBottom: "1px solid hsl(var(--border))", background: "hsl(var(--secondary))" }}>
                 <div style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(14,165,233,.1)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>
                   {STAGES[cur].icon}
@@ -695,7 +735,6 @@ export default function SchedulePickup() {
                     {t(`Step ${cur + 1} of 5`, `Paso ${cur + 1} de 5`)} — {locale === "es" ? STAGES[cur].es : STAGES[cur].en}
                   </div>
                 </div>
-                {/* Progress pills */}
                 <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
                   {STAGES.map((_, i) => (
                     <div key={i} style={{ width: i === cur ? 20 : 7, height: 7, borderRadius: 3.5, background: i < cur ? "#0ea5e9" : i === cur ? "#0ea5e9" : "hsl(var(--border))", transition: "all .3s", cursor: i < cur ? "pointer" : "default" }} onClick={() => i < cur && goTo(i)} />
@@ -703,11 +742,10 @@ export default function SchedulePickup() {
                 </div>
               </div>
 
-              {/* Body */}
               <div style={{ padding: "20px 24px" }}>
                 <div style={fGap}>
 
-                  {/* Step 0 */}
+                  {/* Step 0 — Contact */}
                   {cur === 0 && (
                     <>
                       <div style={g2}>
@@ -734,7 +772,7 @@ export default function SchedulePickup() {
                     </>
                   )}
 
-                  {/* Step 1 */}
+                  {/* Step 1 — Address */}
                   {cur === 1 && (
                     <>
                       <FF label={t("Street address *", "Dirección *")}>
@@ -761,28 +799,67 @@ export default function SchedulePickup() {
                     </>
                   )}
 
-                  {/* Step 2 */}
+                  {/* Step 2 — Service  *** ALL CHANGES HERE *** */}
                   {cur === 2 && (
                     <>
+                      {/* CHANGED: 3 cards — Pickup | Airbnb Host | Commercial */}
                       <FF label={t("Service type *", "Tipo de servicio *")}>
                         <OptionCards value={form.service_type} onChange={(v) => setF("service_type", v)}
                           options={[
-                            { val: "pickup_delivery", icon: "🚚", title: t("Pickup & Delivery", "Recogida y Entrega"), desc: t("We wash, fold & return", "Lavamos, doblamos y entregamos") },
-                            { val: "commercial",      icon: "🏢", title: t("Commercial / B2B",  "Comercial / B2B"),   desc: t("Bulk & business laundry", "Lavado masivo y empresas") },
+                            {
+                              val: "pickup_delivery", icon: "🚚",
+                              title: t("Pickup & Delivery", "Recogida y Entrega"),
+                              desc:  t("We wash, fold & return", "Lavamos, doblamos y entregamos"),
+                            },
+                            {
+                              val: "airbnb_host", icon: "🏠",
+                              title: t("Airbnb Host", "Anfitrión Airbnb"),
+                              desc:  t("Linens, towels & priority", "Sábanas, toallas y prioridad"),
+                              badge: t("NEW", "NUEVO"),
+                              badgeBg:     "rgba(255,92,37,.12)",
+                              badgeColor:  "#ff5c25",
+                              badgeBorder: "rgba(255,92,37,.3)",
+                              accentColor: "#ff5c25",
+                              accentBg:    "rgba(255,92,37,.07)",
+                              accentGlow:  "rgba(255,92,37,.18)",
+                            },
+                            {
+                              val: "commercial", icon: "🏢",
+                              title: t("Commercial / B2B",  "Comercial / B2B"),
+                              desc:  t("Bulk & business laundry", "Lavado masivo y empresas"),
+                            },
                           ]} />
-                        <p style={{ fontSize: 11, color: "hsl(var(--muted-foreground))", marginTop: 6 }}>
-                          {t("Need Wash & Fold?", "¿Necesitas Wash & Fold?")}{" "}
+                        {/* NEW: Airbnb detail panel */}
+                        {form.service_type === "airbnb_host" && <AirbnbInfoPanel t={t} />}
+                        <p style={{ fontSize: 11, color: "hsl(var(--muted-foreground))", marginTop: 8 }}>
+                          {t("Need Wash & Fold drop-off?", "¿Necesitas Wash & Fold drop-off?")}{" "}
                           <Link to="/wash-fold" style={{ color: "#0ea5e9", fontWeight: 600 }}>{t("Go to form →", "Ir al formulario →")}</Link>
                         </p>
                       </FF>
+
+                      {/* CHANGED: passes WASH_TEMP_OPTIONS */}
                       <FF label={t("Wash temperature", "Temperatura de lavado")}>
-                        <TempRow value={form.wash_temp} onChange={(v) => setF("wash_temp", v)} />
+                        <TempRow value={form.wash_temp} onChange={(v) => setF("wash_temp", v)} options={WASH_TEMP_OPTIONS} />
                       </FF>
-                      <FF label={t("Special instructions (optional)", "Instrucciones especiales (opcional)")}><FTextarea value={form.notes} onChange={(e) => setF("notes", e.target.value)} placeholder={t("Detergent type, hang-dry items, folding style…", "Tipo de detergente, prendas a secar, estilo de doblado…")} /></FF>
+
+                      {/* NEW: Dry temperature */}
+                      <FF label={t("Dry temperature", "Temperatura de secado")}>
+                        <TempRow value={form.dry_temp} onChange={(v) => setF("dry_temp", v)} options={DRY_TEMP_OPTIONS} />
+                        <p style={{ fontSize: 10, color: "hsl(var(--muted-foreground))", marginTop: 5, lineHeight: 1.5 }}>
+                          {t(
+                            "Choose low or air dry for delicates, knits and activewear.",
+                            "Elige baja o secado al aire para prendas delicadas, tejidos y ropa deportiva."
+                          )}
+                        </p>
+                      </FF>
+
+                      <FF label={t("Special instructions (optional)", "Instrucciones especiales (opcional)")}>
+                        <FTextarea value={form.notes} onChange={(e) => setF("notes", e.target.value)} placeholder={t("Detergent type, hang-dry items, folding style…", "Tipo de detergente, prendas a secar, estilo de doblado…")} />
+                      </FF>
                     </>
                   )}
 
-                  {/* Step 3 */}
+                  {/* Step 3 — Schedule */}
                   {cur === 3 && (
                     <>
                       <FF label={t("Preferred pickup date", "Fecha preferida")}><FInput type="date" value={form.pickup_date} onChange={(e) => setF("pickup_date", e.target.value)} min={new Date().toISOString().split("T")[0]} style={{ cursor: "pointer" }} /></FF>
@@ -795,13 +872,30 @@ export default function SchedulePickup() {
                     </>
                   )}
 
-                  {/* Step 4 */}
+                  {/* Step 4 — Confirm */}
                   {cur === 4 && (
                     <>
-                      <SumBlock title={`👤 ${t("Contact", "Contacto")}`} rows={[[t("Name","Nombre"),`${form.first_name} ${form.last_name}`.trim()],[t("Email","Correo"),form.email],[t("Phone","Teléfono"),`${form.dialCode} ${form.phone}`.trim()],[t("Contact via","Via"),cmMap[form.contact_method]]]} />
-                      <SumBlock title={`📍 ${t("Address", "Dirección")}`} rows={[[t("Street","Calle"),form.address_line1],[t("City / State / ZIP","Ciudad / Estado / CP"),[form.city,form.state,form.zip_code].filter(Boolean).join(", ")]]} />
-                      <SumBlock title={`🧺 ${t("Service", "Servicio")}`} rows={[[t("Type","Tipo"),svcMap[form.service_type]],[t("Temperature","Temperatura"),tempMap[form.wash_temp]],...(form.notes?[[t("Notes","Notas"),form.notes.slice(0,70)]]:[] )]} />
-                      <SumBlock title={`📅 ${t("Schedule", "Horario")}`} rows={[[t("Date","Fecha"),form.pickup_date||t("Flexible","Flexible")],[t("Window","Ventana"),timeMap[form.pickup_time]]]} />
+                      <SumBlock title={`👤 ${t("Contact", "Contacto")}`} rows={[
+                        [t("Name","Nombre"),     `${form.first_name} ${form.last_name}`.trim()],
+                        [t("Email","Correo"),    form.email],
+                        [t("Phone","Teléfono"), `${form.dialCode} ${form.phone}`.trim()],
+                        [t("Contact via","Via"), cmMap[form.contact_method]],
+                      ]} />
+                      <SumBlock title={`📍 ${t("Address", "Dirección")}`} rows={[
+                        [t("Street","Calle"),               form.address_line1],
+                        [t("City / State / ZIP","Ciudad / Estado / CP"), [form.city,form.state,form.zip_code].filter(Boolean).join(", ")],
+                      ]} />
+                      {/* CHANGED: wash_temp + NEW dry_temp row */}
+                      <SumBlock title={`🧺 ${t("Service", "Servicio")}`} rows={[
+                        [t("Type","Tipo"),              svcMap[form.service_type]],
+                        [t("Wash temp","Temp lavado"),  tempMap[form.wash_temp]],
+                        [t("Dry temp","Temp secado"),   dryMap[form.dry_temp]],
+                        ...(form.notes ? [[t("Notes","Notas"), form.notes.slice(0,70)]] : []),
+                      ]} />
+                      <SumBlock title={`📅 ${t("Schedule", "Horario")}`} rows={[
+                        [t("Date","Fecha"),    form.pickup_date || t("Flexible","Flexible")],
+                        [t("Window","Ventana"), timeMap[form.pickup_time]],
+                      ]} />
                       <div style={{ display: "flex", alignItems: "flex-start", gap: 9, padding: "10px 12px", background: "hsl(var(--secondary))", borderRadius: 9, border: "0.5px solid hsl(var(--border))" }}>
                         <input type="checkbox" id="sp-terms" checked={form.terms} onChange={(e) => setF("terms", e.target.checked)} style={{ width: 15, height: 15, flexShrink: 0, marginTop: 1, accentColor: "#0ea5e9", cursor: "pointer" }} />
                         <label htmlFor="sp-terms" style={{ fontSize: 11, color: "hsl(var(--muted-foreground))", lineHeight: 1.5, cursor: "pointer" }}>
@@ -835,7 +929,6 @@ export default function SchedulePickup() {
                     ) : (
                       <>🚀 {t("Start the wash cycle!", "¡Iniciar ciclo de lavado!")}</>
                     )}
-                    {/* Shimmer */}
                     <span style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg,transparent,rgba(255,255,255,.1),transparent)", transform: "translateX(-100%)", animation: "tl_shimmer 2s ease infinite", pointerEvents: "none" }} />
                   </button>
                 </div>
@@ -846,7 +939,6 @@ export default function SchedulePickup() {
         </div>
       </section>
 
-      <style>{`@keyframes tl_shimmer{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}`}</style>
       <PublicFooter />
     </div>
   );
