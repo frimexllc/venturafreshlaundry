@@ -31,41 +31,45 @@ AI-powered laundry management system (Ventura Fresh Laundry) with:
 - SMS consent checkboxes on all forms
 - SEO/Favicon with Ventura logo
 - Stripe checkout for memberships and store products
+- Finance Panel with revenue, payment methods, CSV export
+- Delivery Zones Management with Leaflet map + CRUD
 
 ### Address Autocomplete (Completed - March 20, 2026)
 - Reusable `AddressAutocomplete` component using OpenStreetMap/Nominatim
 - Integrated across 5 public forms: SchedulePickup, WashFoldRequest, RequestQuotePage, MembershipPage, StorePage
-- Features: debounce (350ms), dropdown suggestions, auto-fill city/state/ZIP, keyboard navigation (arrows, Enter, Escape)
-- 100% test pass rate (iteration_15)
+- Features: debounce (350ms), dropdown suggestions, auto-fill city/state/ZIP, keyboard navigation
+
+### AI Agent Metrics (Completed - March 20, 2026)
+- Backend: `GET /api/ai/metrics` — aggregates data from ai_command_logs and ai_daily_summaries
+- Frontend: `AiMetrics.jsx` — dashboard with stats cards, daily activity chart, action breakdown table, recent logs
+- Period filter (7d/30d/90d), refresh button, bilingual
+
+### Quick Approval Mode (Completed - March 20, 2026)
+- Backend: `GET /api/ai/pending-actions`, `POST /api/ai/pending-actions/{id}/approve`, `POST /api/ai/pending-actions/{id}/reject`
+- Frontend: `QuickApproval.jsx` — cards with action details, payload preview, Approve & Execute / Reject buttons
+- Real-time badge showing pending count, bilingual
+
+### OperatorDashboard Refactoring (Completed - March 20, 2026)
+- Reduced from 1779 to ~1310 lines (-26%)
+- Extracted: `components/operator-dashboard/OrderDetailDialog.jsx` (344 lines)
+- Extracted: `components/operator-dashboard/utils.js` (165 lines) — constants, formatters, helpers
 
 ## Prioritized Backlog
-
-### P1 — Finance Panel
-- Backend endpoints + UI for Admin/Finances.jsx
-- Revenue, payment methods, CSV export
-
-### P2 — Delivery Zone Management
-- Map-based interface for defining service areas
-
-### P2 — Operator AI Metrics
-- Performance tracking for the Operator AI agent
-
-### P2 — Quick Approval Mode
-- Approve/Reject buttons for operator AI critical actions
 
 ### PAUSED — Advanced Stripe Sync
 - Bidirectional sync (Customers, Products, Prices) between app and Stripe
 - User explicitly requested to discuss this on a call before implementing
 
-## Refactoring Needs
-- `OperatorDashboard.jsx` (~2000 lines) — needs to be split into smaller components
-
 ## Key Files
 - `frontend/src/components/AddressAutocomplete.jsx` — reusable address autocomplete
-- `frontend/src/pages/SchedulePickup.jsx`, `WashFoldRequest.jsx`, `RequestQuotePage.jsx`, `MembershipPage.jsx`, `StorePage.jsx` — public forms
+- `frontend/src/pages/AiMetrics.jsx` — AI agent metrics dashboard
+- `frontend/src/pages/QuickApproval.jsx` — quick approval panel
+- `frontend/src/components/operator-dashboard/OrderDetailDialog.jsx` — extracted order detail dialog
+- `frontend/src/components/operator-dashboard/utils.js` — shared constants and utilities
+- `frontend/src/pages/OperatorDashboard.jsx` — refactored operator dashboard
+- `backend/server.py` — FastAPI entry with AI metrics/approval endpoints
 - `backend/notifications.py` — Twilio/SendGrid templates
-- `backend/routes/ai.py` & `frontend/src/components/operator-agent/*` — Operator AI
-- `backend/server.py` — FastAPI entry
+- `backend/routes/ai.py` — Groq-powered AI endpoints
 
 ## Credentials
 - Admin: owner@frimexllc.com / admin123
