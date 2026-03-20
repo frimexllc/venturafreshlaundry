@@ -44,6 +44,7 @@ import PrivacyPolicy from "./pages/PrivacyPolicy";
 import SmsPolicyConsent from "./pages/SmsPolicyConsent";
 import PwaSplashScreen from "./components/PwaSplashScreen";
 import PublicVoiceAssistant from "./components/PublicVoiceAssistant";
+import OperatorAgentPage from "./pages/OperatorAgentPage";
 
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -150,6 +151,7 @@ function AppRoutes() {
         <Route path="store" element={<AdminStore />} />
         <Route path="blog" element={<AdminBlog />} />
         <Route path="operator" element={<OperatorDashboard />} />
+        <Route path="operator/agent" element={<OperatorAgentPage />} />
         <Route path="audit-log" element={<AuditLog />} />
         <Route path="settings" element={<Settings />} />
         <Route path="users" element={<UserManagement />} />
