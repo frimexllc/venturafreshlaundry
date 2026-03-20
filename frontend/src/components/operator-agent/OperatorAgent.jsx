@@ -27,6 +27,12 @@ import {
 } from "lucide-react";
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
+const AGENT_SESSION_KEY = "oa_session_id";
+
+const makeSessionId = () => {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  return `oa-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+};
 
 // ─── Alert builder ────────────────────────────────────────────────────────────
 function buildAlerts(dashboard, storeOrders) {
@@ -209,10 +215,22 @@ export default function OperatorAgent({ dashboard, storeOrders = [], onSelectOrd
   const [voiceOn, setVoiceOn]    = useState(true);   // toggle to mute Lau's voice
   const [speakingMsgId, setSpeakingMsgId] = useState(null); // which bubble is speaking
   const [showVoiceSettings, setShowVoiceSettings] = useState(false);
+  const [pendingConfirm, setPendingConfirm] = useState(null);
 
   const bodyRef    = useRef(null);
   const inputRef   = useRef(null);
   const prevAlerts = useRef([]);
+  const sessionRef = useRef((() => {
+    try {
+      const saved = localStorage.getItem(AGENT_SESSION_KEY);
+      if (saved) return saved;
+      const generated = makeSessionId();
+      localStorage.setItem(AGENT_SESSION_KEY, generated);
+      return generated;
+    } catch {
+      return makeSessionId();
+    }
+  })());
 
   // ── Voice synthesis ─────────────────────────────────────────────────────────
   const {
@@ -240,8 +258,8 @@ export default function OperatorAgent({ dashboard, storeOrders = [], onSelectOrd
   }, [lauSpeak]);
 
   // ── Message processor ────────────────────────────────────────────────────────
-  const processMessage = useCallback(async(text, inputType="text") => {
-    setMessages(m=>[...m,{id:Date.now()+Math.random(), role:inputType, text}]);
+  const processMessage = useCallback(async(text, inputType="text", confirmToken=null, appendUser=true) => {
+    if (appendUser) setMessages(m=>[...m,{id:Date.now()+Math.random(), role:inputType, text}]);
     setInput("");
     setLoading(true);
     if (!open) { setOpen(true); setUnread(0); }
@@ -249,6 +267,8 @@ export default function OperatorAgent({ dashboard, storeOrders = [], onSelectOrd
       const res = await axios.post(`${apiBaseUrl}/api/ai/operations`, {
         message: text, execute: true,
         voice_input: inputType==="voice",
+        session_id: sessionRef.current,
+        confirm_token: confirmToken,
         context: {
           pickups_today: dashboard?.stats?.pickups_remaining_today||0,
           in_processing: dashboard?.stats?.orders_in_processing||0,
@@ -257,21 +277,37 @@ export default function OperatorAgent({ dashboard, storeOrders = [], onSelectOrd
           locale,
         },
       });
+      if (res.data?.session_id) {
+        sessionRef.current = res.data.session_id;
+        try { localStorage.setItem(AGENT_SESSION_KEY, res.data.session_id); } catch {}
+      }
+
       const reply = res.data?.reply || (locale==="es" ? "¡Listo!" : "Done!");
       const msgId = Date.now()+Math.random();
       setMessages(m=>[...m,{id:msgId, role:"agent", text:reply}]);
       lauSpeak(reply, msgId);
 
+      if (res.data?.requires_confirmation && res.data?.confirm_token) {
+        setPendingConfirm({
+          token: res.data.confirm_token,
+          actions: res.data.critical_actions || []
+        });
+      } else {
+        setPendingConfirm(null);
+      }
+
       (res.data?.results||[]).forEach(r=>{
-        if (r.ok && r.type==="update_status")
+        if (r.ok && r.type==="update_order_status")
           setMessages(m=>[...m,{id:Date.now()+Math.random(),role:"action",title:"Status updated",
-            rows:[["Order",r.order_id||"—"],["New status",r.new_status||"—"]]}]);
+            rows:[["Order",r.order_id||"—"],["New status",r.status||"—"]]}]);
         if (r.ok && r.type==="register_payment")
           setMessages(m=>[...m,{id:Date.now()+Math.random(),role:"action",title:"Payment registered",
-            rows:[["Order",r.order_id||"—"],["Method",r.method||"—"],
-            ["Amount",r.amount?`$${Number(r.amount).toFixed(2)}`:"—"]]}]);
+            rows:[["Order",r.order_id||"—"],["Method",r?.updated?.payment_method||"—"],
+            ["Amount",r?.updated?.amount_received?`$${Number(r.updated.amount_received).toFixed(2)}`:"—"]]}]);
         if (r.ok && r.type==="print_ticket")
           addAgent(`🎫 Ticket printed for ${r.order_id||"order"}.`);
+        if (!r.ok)
+          addAgent((locale==="es" ? "No pude ejecutar una acción: " : "I could not execute one action: ") + (r.error || "Unknown error"), { speak:false });
       });
     } catch {
       addAgent(locale==="es" ? "No pude conectarme. Intenta de nuevo." : "Couldn't reach the server.");
@@ -309,13 +345,37 @@ export default function OperatorAgent({ dashboard, storeOrders = [], onSelectOrd
   useEffect(()=>{ try{localStorage.setItem("oa_open",String(open));}catch{} },[open]);
   useEffect(()=>{ bodyRef.current?.scrollTo({top:bodyRef.current.scrollHeight,behavior:"smooth"}); },[messages]);
 
+  useEffect(() => {
+    const loadSession = async () => {
+      if (!sessionRef.current) return;
+      try {
+        const res = await axios.get(`${apiBaseUrl}/api/ai/operations/session/${sessionRef.current}`);
+        const history = Array.isArray(res.data?.messages) ? res.data.messages : [];
+        if (!history.length) return;
+        setMessages((prev) => {
+          if (prev.length > 0) return prev;
+          return history.slice(-25).map((item) => ({
+            id: Date.now() + Math.random(),
+            role: item.role === "assistant" ? "agent" : item.role,
+            text: item.content
+          }));
+        });
+      } catch {
+        // ignore
+      }
+    };
+    loadSession();
+  }, [apiBaseUrl]);
+
   useEffect(()=>{
     const h = new Date().getHours();
-    const g = h<12 ? "¡Buenos días" : h<18 ? "¡Buenas tardes" : "¡Buenas noches";
-    const greeting = `${g}! Soy Lau, tu agente de turno. Activa "Hey Lau" para hablarme con voz.`;
+    const g = h<12 ? "Buenos días" : h<18 ? "Buenas tardes" : "Buenas noches";
+    const greeting = locale === "es"
+      ? `${g}. Soy Lau, asistente operativo de nivel Jarvis. Puedes activarme con "Hey Lau" para ejecutar acciones sobre todo el sistema con control seguro.`
+      : `Good ${h<12?"morning":h<18?"afternoon":"evening"}. I am Lau, your Jarvis-grade operations assistant. Say "Hey Lau" to run system actions with guarded execution.`;
     addAgent(greeting);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[]);
+  },[locale]);
 
   useEffect(()=>{
     if (!dashboard) return;
@@ -504,6 +564,22 @@ export default function OperatorAgent({ dashboard, storeOrders = [], onSelectOrd
                     onMouseEnter={e=>e.currentTarget.style.background="rgba(14,165,233,.14)"}
                     onMouseLeave={e=>e.currentTarget.style.background="rgba(14,165,233,.06)"}>{s}</button>
                 ))}
+              </div>
+            )}
+
+            {pendingConfirm && (
+              <div style={{padding:"0 12px 8px",display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
+                <button
+                  type="button"
+                  onClick={()=>processMessage(locale==="es"?"Confirmar acciones críticas":"Confirm critical actions","text",pendingConfirm.token,false)}
+                  style={{padding:"6px 10px",borderRadius:8,border:"1px solid rgba(239,68,68,.35)",background:"rgba(239,68,68,.1)",color:"#b91c1c",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}
+                  data-testid="operator-agent-confirm-critical-button"
+                >
+                  {locale==="es"?"Confirmar acciones críticas":"Confirm critical actions"}
+                </button>
+                <span style={{fontSize:10,color:"hsl(var(--muted-foreground))"}}>
+                  {pendingConfirm.actions?.length || 0} {locale==="es"?"acción(es) pendiente(s)":"pending action(s)"}
+                </span>
               </div>
             )}
 
