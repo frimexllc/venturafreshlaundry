@@ -42,7 +42,7 @@ const WAKE_WORDS = [
   "lau",       // solo el nombre (opcional — más sensible a falsos positivos)
 ];
 
-export default function useHeyLau({ lang = "es-MX", onWake, onCommand } = {}) {
+export default function useHeyLau({ lang = "es-MX", onWake, onCommand, continuous = false, autoStartCommandOnWake = true } = {}) {
   const [wakeState, setWakeState] = useState("off");
   const [transcript, setTranscript]  = useState("");
   const [supported, setSupported]    = useState(false);
@@ -130,16 +130,27 @@ export default function useHeyLau({ lang = "es-MX", onWake, onCommand } = {}) {
         updateState("processing");
         setTranscript(commandSuffix);
         onCommand?.(commandSuffix);
-        // Return to waiting after processing
-        setTimeout(() => { updateState("waiting"); startBackground(); }, 2000);
+        if (continuous && stateRef.current !== "off") {
+          setTimeout(() => {
+            setTranscript("");
+            startCommandListen();
+          }, 500);
+        } else {
+          // Return to waiting after processing
+          setTimeout(() => { updateState("waiting"); startBackground(); }, 2000);
+        }
       }, 300);
       return;
     }
 
     // Otherwise open single-utterance command listener
-    setTimeout(startCommandListen, 400);
+    if (autoStartCommandOnWake) {
+      setTimeout(startCommandListen, 400);
+    } else {
+      updateState("triggered");
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onWake, onCommand]);
+  }, [autoStartCommandOnWake, continuous, onWake, onCommand]);
 
   // ── Single-utterance command recognizer ────────────────────────────────────
   const startCommandListen = useCallback(() => {
@@ -171,17 +182,29 @@ export default function useHeyLau({ lang = "es-MX", onWake, onCommand } = {}) {
         updateState("processing");
         setTranscript(cmd);
         onCommand?.(cmd);
-        // Back to waiting
-        setTimeout(() => {
+        if (continuous && stateRef.current !== "off") {
+          setTimeout(() => {
+            setTranscript("");
+            startCommandListen();
+          }, 500);
+        } else {
+          setTimeout(() => {
+            updateState("waiting");
+            setTranscript("");
+            startBackground();
+          }, 2000);
+        }
+      } else {
+        if (continuous && stateRef.current !== "off") {
+          setTimeout(() => {
+            setTranscript("");
+            startCommandListen();
+          }, 400);
+        } else {
           updateState("waiting");
           setTranscript("");
           startBackground();
-        }, 2000);
-      } else {
-        // Nothing heard — go back to waiting
-        updateState("waiting");
-        setTranscript("");
-        startBackground();
+        }
       }
     };
 
@@ -193,7 +216,7 @@ export default function useHeyLau({ lang = "es-MX", onWake, onCommand } = {}) {
     cmdRecRef.current = rec;
     try { rec.start(); } catch {}
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lang, onCommand]);
+  }, [continuous, lang, onCommand, startBackground, updateState]);
 
   // ── Public API ─────────────────────────────────────────────────────────────
   const startWake = useCallback(() => {
@@ -214,5 +237,5 @@ export default function useHeyLau({ lang = "es-MX", onWake, onCommand } = {}) {
   // Cleanup on unmount
   useEffect(() => () => stopWake(), [stopWake]);
 
-  return { wakeState, transcript, startWake, stopWake, supported };
+  return { wakeState, transcript, startWake, stopWake, startCommand: startCommandListen, supported };
 }

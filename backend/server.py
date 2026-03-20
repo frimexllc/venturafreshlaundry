@@ -24,6 +24,8 @@ import zipfile
 import socketio
 import base64
 import html
+import time
+import re
 
 from normalization import (
     normalize_email,
@@ -747,20 +749,31 @@ def call_ollama(prompt: str):
     if not api_key:
         raise HTTPException(status_code=500, detail="Groq API key not configured")
     
-    try:
-        client = Groq(api_key=api_key)
-        chat_completion = client.chat.completions.create(
-            messages=[
-                {"role": "user", "content": prompt}
-            ],
-            model="llama-3.3-70b-versatile",  # Free tier model
-            temperature=0.7,
-            max_tokens=2048
-        )
-        return chat_completion.choices[0].message.content.strip()
-    except Exception as e:
-        logger.error(f"Groq API error: {e}")
-        raise HTTPException(status_code=502, detail=f"AI service error: {str(e)}")
+    client = Groq(api_key=api_key)
+    models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+    last_error = None
+
+    for model in models:
+        for attempt in range(3):
+            try:
+                chat_completion = client.chat.completions.create(
+                    messages=[
+                        {"role": "user", "content": prompt}
+                    ],
+                    model=model,
+                    temperature=0.65,
+                    max_tokens=2048
+                )
+                return chat_completion.choices[0].message.content.strip()
+            except Exception as e:
+                last_error = e
+                wait_seconds = 0.6 * (attempt + 1)
+                logger.warning(f"Groq API retry model={model} attempt={attempt + 1}: {e}")
+                time.sleep(wait_seconds)
+                continue
+
+    logger.error(f"Groq API error after retries: {last_error}")
+    raise HTTPException(status_code=502, detail=f"AI service error: {str(last_error)}")
 
 ai_indexes_ready = False
 
@@ -2875,6 +2888,74 @@ async def build_global_operations_context() -> dict:
     }
 
 
+async def try_direct_charge_answer(message: str) -> Optional[dict]:
+    text = normalize_spaces(message or "")
+    if not text:
+        return None
+
+    lower = text.lower()
+    trigger_phrases = [
+        "cuánto le cobro a", "cuanto le cobro a", "how much should i charge", "how much to charge"
+    ]
+    if not any(phrase in lower for phrase in trigger_phrases):
+        return None
+
+    name_guess = None
+    match_es = re.search(r"(?:cuánto le cobro a|cuanto le cobro a)\s+([\w\sÁÉÍÓÚÜÑáéíóúüñ'-]+)", text, flags=re.IGNORECASE)
+    match_en = re.search(r"(?:how much should i charge|how much to charge)\s+([\w\s'-]+)", text, flags=re.IGNORECASE)
+    if match_es:
+        name_guess = normalize_spaces(match_es.group(1))
+    elif match_en:
+        name_guess = normalize_spaces(match_en.group(1))
+
+    if not name_guess:
+        return None
+
+    customer = await db.customers.find_one(
+        {"name": {"$regex": name_guess, "$options": "i"}},
+        {"_id": 0, "id": 1, "name": 1}
+    )
+    if not customer:
+        return {
+            "reply": f"No encontré un cliente llamado {name_guess} en el sistema. ¿Quieres que busque por teléfono, correo o número de orden para calcular el cobro exacto?",
+            "actions": []
+        }
+
+    orders = await db.orders.find(
+        {"customer_id": customer.get("id")},
+        {"_id": 0, "order_number": 1, "total_amount": 1, "payment_status": 1, "status": 1, "updated_at": 1}
+    ).sort("updated_at", -1).limit(5).to_list(5)
+
+    if not orders:
+        return {
+            "reply": f"No encontré órdenes activas para {customer.get('name')}. ¿Quieres que cree una nueva orden o revise historial más antiguo?",
+            "actions": []
+        }
+
+    latest = orders[0]
+    due_amount = 0.0
+    for order in orders:
+        payment_status = normalize_status(order.get("payment_status") or "")
+        if payment_status not in {"PAID", "SETTLED"}:
+            try:
+                due_amount += float(order.get("total_amount") or 0)
+            except Exception:
+                continue
+
+    due_text = f"${due_amount:.2f}" if due_amount > 0 else "$0.00"
+    latest_total = latest.get("total_amount")
+    latest_total_text = f"${float(latest_total):.2f}" if latest_total is not None else "N/A"
+    latest_status = latest.get("status") or "N/A"
+    latest_order_number = latest.get("order_number") or "N/A"
+
+    reply = (
+        f"Para {customer.get('name')}, el saldo pendiente estimado es {due_text}. "
+        f"La orden más reciente es {latest_order_number} con total {latest_total_text} y estado {latest_status}. "
+        f"¿Quieres que registre pago ahora o te detalle cada orden pendiente?"
+    )
+    return {"reply": reply, "actions": []}
+
+
 async def execute_jarvis_action(action_type: str, action_payload: dict, current_user: dict, base_url: str) -> dict:
     action_type = normalize_status(action_type or "").lower()
     action_payload = action_payload or {}
@@ -3044,6 +3125,41 @@ async def ai_operations(
     session_id = session.get("session_id")
     history = session.get("messages", [])[-20:]
     context_bundle = await build_global_operations_context()
+
+    direct_answer = await try_direct_charge_answer(data.message)
+    if direct_answer:
+        now = datetime.now(timezone.utc).isoformat()
+        history.append({"role": "user", "content": data.message, "created_at": now})
+        history.append({"role": "assistant", "content": direct_answer.get("reply"), "created_at": now, "actions": []})
+        await save_ai_session_messages(session_id, history)
+        await db.ai_command_logs.insert_one({
+            "id": str(uuid.uuid4()),
+            "session_id": session_id,
+            "user_id": current_user.get("id"),
+            "user_role": current_user.get("role"),
+            "message": data.message,
+            "reply": direct_answer.get("reply"),
+            "actions": [],
+            "critical_actions": [],
+            "requires_confirmation": False,
+            "confirm_token": None,
+            "executed": False,
+            "results": [],
+            "confidence": 1,
+            "created_at": now,
+            "source": "direct_charge_answer"
+        })
+        return {
+            "session_id": session_id,
+            "reply": direct_answer.get("reply"),
+            "actions": [],
+            "critical_actions": [],
+            "requires_confirmation": False,
+            "confirm_token": None,
+            "results": [],
+            "global_context": context_bundle.get("stats", {}),
+            "generated_at": now
+        }
 
     history_lines = "\n".join([
         f"{item.get('role', 'user')}: {item.get('content', '')}" for item in history if item.get("content")

@@ -248,6 +248,17 @@ RECEIVED → PROCESSING → READY → OUT_FOR_DELIVERY → DELIVERED → COMPLET
   - experiencia “Hey Lau / Jarvis” formal-profesional.
 - ✅ Manejo resiliente de límite externo Groq: fallback operativo sin tumbar UI/flujo.
 
+## Cambios recientes (2026-03-20) – Hotfix “Hey Lau” conversación continua
+- ✅ Corregido error runtime en Operator Agent (`startCommand` before initialization).
+- ✅ Mejorado wake-word flow:
+  - al detectar “Hey Lau”, abre panel y responde primero
+  - luego activa escucha de comando automáticamente
+  - mantiene conversación continua (sin repetir wake word en cada turno mientras está activo)
+- ✅ Mejorada resiliencia Groq:
+  - reintentos con fallback de modelo (`llama-3.3-70b-versatile` → `llama-3.1-8b-instant`)
+  - fallback operativo si hay rate-limit.
+- ✅ Añadida respuesta directa para consultas de cobro por cliente (ej. “¿cuánto le cobro a X?”) sin depender siempre del LLM.
+
 ## Pendientes / Issues
 **P1**
 - Validar webhook Stripe end-to-end en entorno productivo con eventos reales entrantes

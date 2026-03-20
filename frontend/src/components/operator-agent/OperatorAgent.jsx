@@ -220,6 +220,7 @@ export default function OperatorAgent({ dashboard, storeOrders = [], onSelectOrd
   const bodyRef    = useRef(null);
   const inputRef   = useRef(null);
   const prevAlerts = useRef([]);
+  const startCommandRef = useRef(null);
   const sessionRef = useRef((() => {
     try {
       const saved = localStorage.getItem(AGENT_SESSION_KEY);
@@ -240,11 +241,11 @@ export default function OperatorAgent({ dashboard, storeOrders = [], onSelectOrd
     rate, setRate, pitch, setPitch,
   } = useLauVoice({ defaultRate: 1.0, defaultPitch: 1.05 });
 
-  const lauSpeak = useCallback((text, msgId) => {
+  const lauSpeak = useCallback((text, msgId, onDone) => {
     if (!voiceOn || !voiceSupported || !text) return;
     setSpeakingMsgId(msgId || null);
     speak(text, {
-      onEnd:   () => setSpeakingMsgId(null),
+      onEnd:   () => { setSpeakingMsgId(null); onDone?.(); },
       onError: () => setSpeakingMsgId(null),
     });
   }, [voiceOn, voiceSupported, speak]);
@@ -285,7 +286,16 @@ export default function OperatorAgent({ dashboard, storeOrders = [], onSelectOrd
       const reply = res.data?.reply || (locale==="es" ? "¡Listo!" : "Done!");
       const msgId = Date.now()+Math.random();
       setMessages(m=>[...m,{id:msgId, role:"agent", text:reply}]);
-      lauSpeak(reply, msgId);
+      const continueConversation = () => {
+        if (heyLauOn && inputType === "voice") {
+          setTimeout(() => startCommandRef.current?.(), 350);
+        }
+      };
+      if (voiceOn && voiceSupported) {
+        lauSpeak(reply, msgId, continueConversation);
+      } else {
+        continueConversation();
+      }
 
       if (res.data?.requires_confirmation && res.data?.confirm_token) {
         setPendingConfirm({
@@ -312,24 +322,33 @@ export default function OperatorAgent({ dashboard, storeOrders = [], onSelectOrd
     } catch {
       addAgent(locale==="es" ? "No pude conectarme. Intenta de nuevo." : "Couldn't reach the server.");
     } finally { setLoading(false); }
-  }, [apiBaseUrl, dashboard, locale, open, lauSpeak, addAgent]);
+  }, [apiBaseUrl, dashboard, locale, open, lauSpeak, addAgent, heyLauOn, voiceOn, voiceSupported]);
 
   // ── Hey Lau hook ─────────────────────────────────────────────────────────────
   const {
     wakeState, transcript: wakeTr,
     startWake, stopWake,
+    startCommand,
     supported: wakeSupported,
   } = useHeyLau({
     lang: locale==="es" ? "es-MX" : "en-US",
+    continuous: true,
+    autoStartCommandOnWake: false,
     onWake: () => {
       setOpen(true); setUnread(0);
-      const ack = locale==="es" ? "¡Dime! 👋" : "Hey! 👋 Go ahead.";
+      const ack = locale==="es" ? "Estoy aquí. Te escucho." : "I am here. I'm listening.";
       const id = Date.now()+Math.random();
       setMessages(m=>[...m,{id, role:"agent", text:ack}]);
-      lauSpeak(ack, id);
+      lauSpeak(ack, id, () => {
+        setTimeout(() => startCommandRef.current?.(), 250);
+      });
     },
     onCommand: (text) => processMessage(text, "voice"),
   });
+
+  useEffect(() => {
+    startCommandRef.current = startCommand;
+  }, [startCommand]);
 
   const toggleHeyLau = () => {
     if (!heyLauOn) { setHeyLauOn(true); startWake(); }
