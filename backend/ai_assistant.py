@@ -10,7 +10,7 @@ from groq import Groq
 logger = logging.getLogger(__name__)
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
-BUSINESS_NAME = os.environ.get("BUSINESS_NAME", "Ventura Fresh Laundromat")
+BUSINESS_NAME = os.environ.get("BUSINESS_NAME", "Ventura Fresh Laundry")
 
 def get_groq_client():
     """Get Groq client instance"""

@@ -41,7 +41,7 @@ ROOT_DIR = Path(__file__).parent
 app_url = os.environ.get("APP_URL", "")
 if not app_url or "preview" in app_url or "localhost" in app_url:
     load_dotenv(ROOT_DIR / '.env', override=False)
-BUSINESS_NAME = os.environ.get("BUSINESS_NAME", "Ventura Fresh Laundromat")
+BUSINESS_NAME = os.environ.get("BUSINESS_NAME", "Ventura Fresh Laundry")
 
 # Import AI Assistant
 try:
@@ -215,13 +215,22 @@ JWT_EXPIRATION_HOURS = 24
 
 fastapi_app = FastAPI(title="Ventura Fresh Laundry CRM")
 app = fastapi_app
-sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
+sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*", ping_timeout=60, ping_interval=25)
 api_router = APIRouter(prefix="/api")
 security = HTTPBearer()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# ==================== HEALTH CHECK ====================
+@fastapi_app.get("/api/health")
+async def health_check():
+    return {"status": "ok"}
+
+@fastapi_app.get("/health")
+async def health_check_root():
+    return {"status": "ok"}
 
 # ==================== MODELS ====================
 
