@@ -1,275 +1,71 @@
-# Ventura Fresh Laundry - PRD
+# Ventura Fresh Laundry — PRD
 
-## Problema y objetivo
-Construir un sistema integral de gestión de lavandería para Ventura Fresh Laundry (basado en el repo vfl) que centralice servicios, órdenes y pagos, con automatización operativa y un **asistente de IA tipo “gerente de negocio”**. El sistema debe reducir tareas manuales: el operador solo actualiza estados de órdenes y el resto se gestiona de forma automática dentro de la app (sin herramientas externas tipo n8n).
+## Original Problem Statement
+AI-powered laundry management system (Ventura Fresh Laundry) with:
+1. Laundry Management Module: CRUD services, order/ticket management, operator & admin panels
+2. Stripe Integration: Single payments and recurring memberships
+3. Twilio & SendGrid: SMS/WhatsApp/Email notifications for order status
+4. AI-Powered Management: AI assistants (Groq) for public users and operators
+5. Store & POS: In-store POS, product sales, dynamic shipping, cart management
+6. PWA & UX: Splash screens, bilingual (EN/ES), legal policies, optimized form UX
 
-## Arquitectura
-- **Frontend**: React 19 + Tailwind CSS
-- **Backend**: FastAPI (Python)
-- **Base de datos**: MongoDB
-- **Pagos**: Stripe (pagos únicos + membresías recurrentes)
-- **Notificaciones**: Twilio SMS/WhatsApp/Voice + SendGrid Email
-- **IA**: Groq (briefing diario + chat de gestión)
-- **Autenticación**: JWT (roles admin/operador)
+## Tech Stack
+- Frontend: React, Tailwind CSS, Shadcn/UI, Web Speech API
+- Backend: FastAPI, MongoDB (motor), Pydantic
+- Realtime: Socket.io
+- Integrations: Twilio (SMS/WhatsApp), SendGrid (Email), Groq (LLM via emergentintegrations), Stripe, OpenRouteService
 
-## Personas
-1. **Administrador/Owner**: acceso completo, reportes, finanzas, configuración
-2. **Operador**: solo lectura + actualización de estados
-3. **Ventas B2B**: gestión de cotizaciones comerciales
-4. **Clientes Públicos**: formularios web y portal básico
+## What's Been Implemented
 
-## Requerimientos clave
-1. **Módulo de servicios y precios** (CRUD)
-2. **Gestión de órdenes/tickets** con cálculo de precio y estados
-3. **Pagos**: servicios individuales + membresías recurrentes (Stripe)
-4. **Seguridad por roles** (Admin/Operador)
-5. **Notificaciones** por cambios de estado (Twilio)
-6. **IA Manager**: briefing diario + chat para insights/acciones
-7. **B2B Quotes**: formulario público + pipeline de leads
-8. **Panel de Finanzas** con resumen y transacciones
+### Core Features (Completed)
+- Role-based access (Admin, Operator, Customer)
+- Order/ticket management with status tracking
+- POS system for operators
+- Dynamic shipping quotes via OpenRouteService
+- Multi-channel notifications (Twilio SMS/WhatsApp + SendGrid Email)
+- Animated PWA Splash Screen (3 variants, 3.5s duration)
+- Public Voice Assistant for customer inquiries
+- "Jarvis" Operator Voice Assistant at /admin/operator/agent
+- Bilingual support (EN/ES)
+- Legal policies (TOS, Privacy Policy)
+- SMS consent checkboxes on all forms
+- SEO/Favicon with Ventura logo
+- Stripe checkout for memberships and store products
 
-## Flujo de estados de orden
-```
-RECEIVED → PROCESSING → READY → OUT_FOR_DELIVERY → DELIVERED → COMPLETED
-                  ↓
-              CANCELLED
-```
+### Address Autocomplete (Completed - March 20, 2026)
+- Reusable `AddressAutocomplete` component using OpenStreetMap/Nominatim
+- Integrated across 5 public forms: SchedulePickup, WashFoldRequest, RequestQuotePage, MembershipPage, StorePage
+- Features: debounce (350ms), dropdown suggestions, auto-fill city/state/ZIP, keyboard navigation (arrows, Enter, Escape)
+- 100% test pass rate (iteration_15)
 
-## Modelos principales
-- **users**: {email, hashed_password, full_name, role}
-- **customers**: {name, email, phone, address, membership_plan, ...}
-- **orders**: {customer_id, status, total_price, payment_status, ...}
-- **b2b_quotes**: {name, email, phone, company_legal_name, industry, ...}
-- **memberships**: {name, price, stripe_price_id, features}
+## Prioritized Backlog
 
-## Implementado ✅
-### Backend
-- JWT + roles (admin/operador)
-- CRUD de clientes/órdenes/cotizaciones
-- Finanzas: /api/finances/summary + transacciones de tienda
-- Stripe recurring para membresías
-- Groq AI (briefing y chat)
-- Exportación de clientes robusta
-- Preferencias de cliente (crear/editar/eliminar) + snapshot en órdenes
-- Normalización de datos en formularios públicos (pickup, B2B)
-- Envío de notificaciones Twilio (SMS/WhatsApp) con bloqueos de carrier en algunos números
+### P1 — Finance Panel
+- Backend endpoints + UI for Admin/Finances.jsx
+- Revenue, payment methods, CSV export
 
-### Frontend
-- Dashboard Admin + vista Operador
-- Página de Usuarios (admin)
-- B2B Quote Form `/request-quote`
-- Sidebar reorganizada por rol
-- Memberships centradas y CTAs
-- Formulario Elite Concierge con preferencias avanzadas
-- Portal de cliente con edición/eliminación de preferencias
-- Preferencias visibles en detalle de órdenes (Admin/Operador)
-- Ticket QR con formato de ticket y prefijo VFL en órdenes (incluye lbs estimadas/actuales)
-- Edición de libras estimadas/actuales en detalle de órdenes (Admin/Operador)
-- Panel Operador: impresión de tickets y registro de pagos (efectivo/tarjeta/transferencia/otro)
-- Asistente Operativo IA en panel de operador
-- Mejoras al asistente IA interno (contexto + acciones de órdenes)
-- Formulario separado Wash & Fold `/wash-fold`
-- Conversión de cotizaciones B2B → Lead
-- Páginas legales + links en footer
-- Checkbox de aceptación en login admin y login cliente (bloquea envío)
+### P2 — Delivery Zone Management
+- Map-based interface for defining service areas
 
-### Integraciones
-- Stripe (pagos/membresías)
-- Twilio (SMS/WhatsApp/Voice) **con error 30034 en algunos carriers**
-- SendGrid (emails)
-- Groq (IA gerente)
+### P2 — Operator AI Metrics
+- Performance tracking for the Operator AI agent
 
-## Cambios recientes (2026-02-22)
-- ✅ Refactor: endpoints públicos y voz movidos a routers (routes/public_forms.py, routes/voice.py) para reducir server.py
-- ✅ Panel Operador: impresión de tickets y registro de pagos (efectivo/tarjeta/transferencia/otro)
-- ✅ Asistente Operativo IA con acciones de órdenes/pagos/tickets
-- ✅ Preferencia de contacto desde formulario Pickup se guarda y se respeta en notificaciones
-- ✅ Normalización de teléfonos respeta prefijo + (MX/EU)
-- ✅ Envío de emails SendGrid verificado (host US temporal; EU residency desactivado)
-- ✅ Notificaciones según preferencia de contacto (email/sms/whatsapp/llamada)
-- ✅ Endpoints de voz Twilio (inbound/outbound) con mensajes IA
-- ✅ Edición de libras estimadas/actuales en órdenes (Admin/Operador) + ticket QR incluye lbs
-- ✅ Mejoras al asistente IA interno con contexto y acciones de órdenes
-- ✅ Flujo de órdenes actualizado (OUT_FOR_DELIVERY → DELIVERED/COMPLETED) y eventos tiempo real desde operador
-- ✅ Ticket QR con formato tipo ticket + prefijo VFL
-- ✅ Preferencias visibles en detalle de órdenes (Admin/Operador)
-- ✅ Formulario separado Wash & Fold + link desde pickup
-- ✅ Conversión de cotizaciones B2B → Lead
-- ✅ Normalización de datos en pickup y B2B
-- ✅ Páginas legales y aceptación en login (admin/cliente)
+### P2 — Quick Approval Mode
+- Approve/Reject buttons for operator AI critical actions
 
-## Cambios recientes (2026-02-25)
-- ✅ Panel Operador: lista de entregas en curso incluye OUT_FOR_DELIVERY y DELIVERED para completar el flujo de entrega.
-- ✅ Notificaciones por cambios de estado se envían para cualquier estado (excepto NEW).
-- ✅ Backend: carga de .env solo en preview/local (según APP_URL) para no sobrescribir MONGO_URL de producción.
-- ✅ Repo: .gitignore permite frontend/package.json para builds de deployment.
+### PAUSED — Advanced Stripe Sync
+- Bidirectional sync (Customers, Products, Prices) between app and Stripe
+- User explicitly requested to discuss this on a call before implementing
 
-## Cambios recientes (2026-02-26)
-- ✅ Deployment: se agregó CORS_ORIGINS=* en backend/.env para compatibilidad en producción.
-- ✅ Health check /api/health verificado en preview.
+## Refactoring Needs
+- `OperatorDashboard.jsx` (~2000 lines) — needs to be split into smaller components
 
-## Cambios recientes (2026-02-28)
-- ✅ Panel Operador POS: 6 cards con flujos separados para Pickup & Delivery y Wash & Fold Drop-Off.
-- ✅ Stripe Checkout en operador (tarjeta) con cálculo automático por lbs y membresía.
-- ✅ Reglas de notificación reducidas (Pickup & Delivery: ready/out for delivery/delivered; Wash & Fold: ready).
-- ✅ Cálculo automático de total al actualizar lbs reales.
-- ✅ Selector de idioma EN/ES persistente en frontend (inglés por defecto).
-- ✅ Tienda: checkout con Stripe y pagos manuales, cálculo de envío por km (OpenRouteService), validación de stock y desactivación automática.
-- ✅ Tienda: notificaciones de compra según preferencia del cliente.
-- ✅ Panel Operador: POS de tienda integrado con selección de productos en modal, checkout rápido y solicitud de pago para órdenes no pagadas.
-- ✅ POS tienda: fix para errores 422 al actualizar carrito (PUT con query param) + errores API normalizados en UI.
-- ✅ Checkout tienda: verificación de pago Stripe al regresar (actualiza estado y evita quedarse en pendiente).
-- ✅ Zonas de entrega: radio 10km + polígonos con tarifas desde panel operador.
-- ✅ Finanzas: KPIs + breakdown por métodos de pago y tienda/servicio.
-- ✅ WebSocket: client con upgrade a websocket + polling fallback.
+## Key Files
+- `frontend/src/components/AddressAutocomplete.jsx` — reusable address autocomplete
+- `frontend/src/pages/SchedulePickup.jsx`, `WashFoldRequest.jsx`, `RequestQuotePage.jsx`, `MembershipPage.jsx`, `StorePage.jsx` — public forms
+- `backend/notifications.py` — Twilio/SendGrid templates
+- `backend/routes/ai.py` & `frontend/src/components/operator-agent/*` — Operator AI
+- `backend/server.py` — FastAPI entry
 
-## Cambios recientes (2026-03-01)
-- ✅ **P0** corregido: el dashboard de operador ahora clasifica órdenes activas por estado/servicio sin filtro rígido de fecha; las órdenes no desaparecen al avanzar de estado.
-- ✅ **P0** Stripe tienda reforzado: normalización de estados de pago (`complete/paid`), actualización robusta de orden por `order_id` o `stripe_session_id`, y URL pública para webhook.
-- ✅ **P0/P1** frontend: polling de confirmación de pago en `/store` y `/admin/operator` para evitar quedarse en `pending` tras redirección.
-- ✅ **P1** shipping quote endurecido: geocoding con fallback (con y sin `boundary.country`) para reducir errores 400 en direcciones válidas.
-- ✅ **P1** robustez carrito multi-item: validaciones defensivas de respuesta de carrito para prevenir crashes de UI.
-- ✅ **Wash & Fold Drop-Off corregido**: flujo operativo sin pickup/delivery forzado a `NEW → PROCESSING → READY → COMPLETED` (backend + operator dashboard).
-- ✅ **Validación de estados wash_fold**: se bloquean transiciones inválidas (`PICKUP_*`, `OUT_FOR_DELIVERY`, `DELIVERED`, `CONFIRMED`) con error claro de negocio.
-- ✅ **Formulario público `/wash-fold` actualizado**: dirección ahora opcional y explícitamente “solo para contacto”; la orden se crea como drop-off/pickup en tienda.
-- ✅ **UX checkout de envío**: helper visible con formato correcto de dirección (`street + number, city, state, ZIP`) en tienda pública y POS operador.
-- ✅ **Notificaciones Wash & Fold ampliadas**: ahora se notifican estados `processing`, `ready`, `completed` y `cancelled` respetando la preferencia del cliente (`sms/email/whatsapp/call`).
-- ✅ **Persistencia de preferencia en orden**: el formulario público Wash & Fold guarda `preferred_contact` en la orden para trazabilidad; también se expone en `GET /api/orders`.
-
-## Cambios recientes (2026-03-04)
-- ✅ **Home sin fondo blanco**: se aplicó tema oscuro continuo en Landing (degradado + secciones oscuras + transiciones wave), eliminando el bloque blanco reportado.
-- ✅ **Store imágenes estilo Blog**: Admin Store ahora soporta **subida de archivo** y **URL de imagen**; Store pública renderiza imágenes reales con fallback seguro.
-- ✅ **Flujos operador refinados**:
-  - Pickup & Delivery: `Order Created → Pickup Confirmed → Order in Process → Ready → Out for Delivery → Delivered`
-  - Wash & Fold: `Order Received → Processing → Ready for Pickup → Completed`
-  Se validan transiciones inválidas en backend (ej. `PROCESSING -> COMPLETED` en wash_fold devuelve 400).
-- ✅ **Reducción de notificaciones anti-spam**:
-  - Wash & Fold: `order_received`, `ready_for_pickup`
-  - Pickup & Delivery: `pickup_confirmed`, `ready`, `out_for_delivery`, `delivered`
-  con dedupe por evento/canal en capa de notificaciones.
-- ✅ **Botones bilingües (EN/ES) reforzados**: fallback de traducción y auto-traducción en componente UI Button para cobertura transversal.
-- ✅ **Stripe avanzado (estructura preparada, no activa)**: nuevo scaffold en `/api/stripe-sync/*` controlado por feature flag `STRIPE_ADVANCED_SYNC_ENABLED=false`.
-- ✅ **Hardening backend**: mount robusto para `/uploads` con path absoluto y creación automática de directorio.
-
-## Cambios recientes (2026-03-04) – SMS Consent Compliance
-- ✅ **Consentimiento SMS en formularios públicos**: se agregó checkbox legal después de “Best way to contact you” en:
-  - `/schedule-pickup`
-  - `/wash-fold`
-  - `/contact`
-  - `/request-quote` (B2B)
-  - `/membership`
-- ✅ **Validación doble anti-rechazo Twilio**:
-  - Frontend bloquea envío si método de contacto es `text/sms/whatsapp` sin consentimiento.
-  - Backend devuelve `400` con mensaje claro si falta consentimiento.
-- ✅ **Evidencia de consentimiento**: se guardan `sms_consent` y `sms_consent_at` en documentos relevantes (órdenes/forms/tickets/quotes/signups).
-- ✅ **Nueva página legal**: ` /sms-policy-consent ` con política SMS completa (opt-in, frecuencia, tarifas, STOP/HELP, privacidad).
-- ✅ **Políticas legales actualizadas**: ` /privacy-policy ` y ` /terms-and-conditions ` con contenido detallado provisto.
-- ✅ **Notificaciones protegidas**: backend ahora evita SMS/WhatsApp sin consentimiento y hace fallback a email/call.
-
-## Cambios recientes (2026-03-04) – Premium Notifications + SEO Logo
-- ✅ **notifications.py corregido para envío real**:
-  - Se agregó flag `ENFORCE_QUIET_HOURS` (default `false`) para que no se bloqueen envíos por horario silencioso en operación normal.
-  - Se eliminó el prefijo duplicado de marca en Twilio (`send_sms` / `send_whatsapp` ahora envían mensaje limpio).
-- ✅ **Plantillas oficiales premium implementadas**:
-  - Wash & Fold: `order_received`, `ready_for_pickup`, `completed`
-  - Pickup & Delivery: `order_created`, `pickup_confirmed`, `ready`, `out_for_delivery`, `delivered`
-  - Regla aplicada: `ORDER_NUMBER` solo en primer evento (`order_received` y `order_created`).
-- ✅ **Hitos y mapeos ajustados** para respetar flujo premium y anti-spam en ambos servicios.
-- ✅ **Logo del nav en navegador y buscadores**:
-  - Nuevos assets públicos: `favicon-ventura.webp`, `logo-ventura.webp`, `manifest.json`
-  - `index.html` actualizado con `rel=icon`, `apple-touch-icon`, OpenGraph, Twitter cards y JSON-LD de organización (logo).
-
-## Cambios recientes (2026-03-05) – Favicon SEO hardening
-- ✅ Se agregó set completo de íconos estándar para buscadores/navegadores:
-  - `favicon.ico`
-  - `favicon-32x32.png`
-  - `favicon-16x16.png`
-  - `apple-touch-icon.png`
-  - `android-chrome-192x192.png`
-  - `android-chrome-512x512.png`
-- ✅ `index.html` actualizado para priorizar formatos recomendados por Google (`ico/png`) y metadata social con `logo-ventura.png`.
-- ✅ `manifest.json` actualizado con íconos PNG reales.
-- ✅ Se agregaron `robots.txt` y `sitemap.xml` públicos para reforzar crawling e indexación.
-
-## Cambios recientes (2026-03-06) – PWA Splash animada rotativa
-- ✅ Se implementó splash screen animada para arranque de PWA instalada (standalone), con duración configurada en **3.5s**.
-- ✅ Rotación automática entre 3 variantes en cada apertura (A/B/C) usando `localStorage` (`vfl_pwa_splash_variant_index`).
-- ✅ Modo preview para QA en navegador con `?pwa_splash=1`.
-- ✅ Incluye animaciones: fade+zoom, pulse rings, floating+bubbles, barra de progreso 3.5s, y auto-hide al finalizar.
-- ✅ Se agregaron `data-testid` para validación automatizada del splash y variantes.
-
-## Cambios recientes (2026-03-19) – Voice Assistant público (cliente)
-- ✅ Integrado asistente de voz/chat en frontend público (`PublicVoiceAssistant`) visible en rutas públicas y oculto en `/admin/*` y `/login`.
-- ✅ Adaptado al backend actual (sin exponer keys en frontend):
-  - `POST /api/public/voice-assistant/chat`
-  - `GET /api/public/voice-assistant/session/{session_id}`
-- ✅ Persistencia en backend con `session_id` (MongoDB colección `voice_assistant_sessions`) y recuperación de conversación al recargar.
-- ✅ Bilingüe automático según selector EN/ES (placeholder, estado, quick prompts y TTS/STT language).
-- ✅ Controles UX implementados: abrir/cerrar, minimizar, mute, micrófono, typing indicator, waveform.
-- ✅ Prompt comercial Ventura integrado en backend con servicios/precios y respuesta breve orientada a conversión.
-
-## Cambios recientes (2026-03-19) – Corrección Deployment Readiness
-- ✅ Se eliminó dependencia bloqueante `ollama` de `backend/requirements.txt`.
-- ✅ Se implementó paginación segura en endpoints críticos:
-  - `GET /api/customers` (`page`, `page_size`, default 50, max 100)
-  - `GET /api/orders` (`page`, `page_size`, default 50, max 100)
-  - `GET /api/leads` (`page`, `page_size`, default 50, max 100)
-- ✅ Se optimizó creación de preferencias: reemplazo de `find(...).limit(1).to_list(1)` por `find_one(..., sort=[("version", -1)])`.
-- ✅ Se endureció export QR para evitar lotes excesivos:
-  - límite operativo de 500 órdenes por export
-  - mensaje claro cuando excede el límite
-
-## Cambios recientes (2026-03-20) – Integración ZIP en Panel Operador (ruta nueva)
-- ✅ Integrado paquete del usuario (`OperatorAgent.jsx`, `useHeyLau.js`, `useLauVoice.js`) adaptado al sistema actual.
-- ✅ Nueva ruta funcional: ` /admin/operator/agent `.
-- ✅ Nuevo ítem en sidebar admin/operator: **Operator Agent**.
-- ✅ Componente reutilizable:
-  - `frontend/src/components/operator-agent/OperatorAgent.jsx`
-  - acepta `dashboard`, `storeOrders`, `apiBaseUrl` por props.
-- ✅ Nueva página contenedora reutilizable: `frontend/src/pages/OperatorAgentPage.jsx`
-  - carga contexto real desde `GET /api/automation/operator-dashboard` y `GET /api/store/orders`.
-  - integra métricas rápidas + workspace de agente.
-- ✅ Chat operativo conectado a backend existente `POST /api/ai/operations`.
-- ✅ Validado sin regresiones en `/admin/operator`.
-
-## Cambios recientes (2026-03-20) – Jarvis operativo global (Groq + contexto total)
-- ✅ `POST /api/ai/operations` evolucionado a modo Jarvis:
-  - contexto global en tiempo real (orders, store_orders, tickets, quotes, leads, signups, users + stats)
-  - memoria persistente por sesión en `ai_operator_sessions`
-  - auditoría completa en `ai_command_logs`
-  - resumen diario automático en `ai_daily_summaries`
-- ✅ Se añadió `GET /api/ai/operations/session/{session_id}` para recuperar historial persistente.
-- ✅ Ejecución multi-comando ampliada (15+ tipos de acción) para operar órdenes, pagos, tickets, quotes, leads, memberships, store, usuarios y settings.
-- ✅ Confirmación de acciones críticas con token (`ai_pending_actions`) antes de ejecutar cambios sensibles.
-- ✅ Frontend Operator Agent adaptado:
-  - envía `session_id` persistente
-  - consume historial de sesión
-  - muestra flujo de confirmación crítica (botón de confirmación)
-  - experiencia “Hey Lau / Jarvis” formal-profesional.
-- ✅ Manejo resiliente de límite externo Groq: fallback operativo sin tumbar UI/flujo.
-
-## Cambios recientes (2026-03-20) – Hotfix “Hey Lau” conversación continua
-- ✅ Corregido error runtime en Operator Agent (`startCommand` before initialization).
-- ✅ Mejorado wake-word flow:
-  - al detectar “Hey Lau”, abre panel y responde primero
-  - luego activa escucha de comando automáticamente
-  - mantiene conversación continua (sin repetir wake word en cada turno mientras está activo)
-- ✅ Mejorada resiliencia Groq:
-  - reintentos con fallback de modelo (`llama-3.3-70b-versatile` → `llama-3.1-8b-instant`)
-  - fallback operativo si hay rate-limit.
-- ✅ Añadida respuesta directa para consultas de cobro por cliente (ej. “¿cuánto le cobro a X?”) sin depender siempre del LLM.
-
-## Pendientes / Issues
-**P1**
-- Validar webhook Stripe end-to-end en entorno productivo con eventos reales entrantes
-- Export CSV avanzado con filtros por canal y método de pago
-- Módulo Admin para monitorear estados y errores de mensajes Twilio
-- Verificación de dominio SendGrid/Twilio Trust (DNS) pendiente en proveedor de dominio
-- Definir en llamada la activación real de Stripe Sync (customers/products/prices) y política de reconciliación
-
-**P2**
-- Estabilizar WebSocket en producción (fallback ya funcional en preview)
-- Corregir warnings React (jsx/keys)
-
-## Credenciales de prueba
-- **Admin**: owner@frimexllc.com / admin123
+## Credentials
+- Admin: owner@frimexllc.com / admin123
