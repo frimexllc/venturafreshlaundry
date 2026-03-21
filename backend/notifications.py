@@ -761,20 +761,20 @@ def _voice(event: str, name: str, order_number: str, language: str) -> str:
             f"Hi {n}, this is {biz} calling to confirm we received your order number {order_number}. We'll be in touch soon. Goodbye!"
         ),
         "pickup_confirmed": (
-            f"Hola {n}, tu recolección con {biz} ha sido programada correctamente. Estaremos en tu domicilio en el horario acordado. ¡Hasta pronto!",
-            f"Hi {n}, your pickup with {biz} has been successfully scheduled. We will arrive at your address during the scheduled time. Goodbye!"
+            f"Hola {n}, tu recolección con {biz} ha sido programada correctamente. Estaremos en tu domicilio en el horario acordado. Te recomendamos tener tu ropa lista para agilizar el servicio. ¡ Gracias por confiar en nosotros, hasta pronto!",
+            f"Hi {n}, your pickup with {biz} has been successfully scheduled.  We will arrive at your address during the scheduled time. We recommend having your laundry ready to ensure a smooth service. Thank you for choosing us, Goodbye!"
         ),
         "ready": (
-            f"Hola {n}, tu ropa con {biz} está lista y camino a tu domicilio. Por favor mantente disponible. ¡Hasta luego!",
-            f"Hi {n}, your laundry with {biz} is ready and on its way. Please be available to receive it. Goodbye!"
+            f"Hola {n}, tu ropa con {biz} está lista pronto estará en camino hacia tu domicilio. Gracias por confiar en nosotros!",
+            f"Hi {n}, your laundry with {biz} is ready It will be on its way to your address shortly. Thank you for trusting us!"
         ),
         "out_for_delivery": (
-            f"Hola {n}, tu entrega de {biz} está en camino ahora mismo. Por favor asegúrate de estar disponible. ¡Hasta pronto!",
-            f"Hi {n}, your {biz} delivery is on the way right now. Please make sure you're available. Goodbye!"
+            f"Hola {n}, tu entrega de {biz} está en camino en este momento. Llegaremos a tu domicilio en breve.  Agradecemos tu preferencia!",
+            f"Hi {n}, your {biz} delivery is on the way right now. We will be arriving shortly. We truly appreciate your preference!"
         ),
         "delivered": (
-            f"Hola {n}, {biz} completó tu entrega exitosamente. ¡Gracias por tu preferencia!",
-            f"Hi {n}, {biz} has completed your delivery successfully. Thank you for your business!"
+            f"Hola {n}, {biz} completó tu entrega exitosamente. Esperamos servirte pronto nuevamente. ¡Gracias por tu preferencia!",
+            f"Hi {n}, {biz} has completed your delivery successfully. We look forward to serving you again soon. Thank you for your business!"
         ),
         "cancelled": (
             f"Hola {n}, tu orden número {order_number} con {biz} fue cancelada. Si tienes preguntas, llámanos. ¡Hasta luego!",
@@ -786,7 +786,6 @@ def _voice(event: str, name: str, order_number: str, language: str) -> str:
         f"Hi {n}, you have a service update from {biz}. Please contact us. Goodbye!"
     ))
     return es_script if is_es else en_script
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # BUILDER PRINCIPAL — retorna subject, html, sms, voice_text

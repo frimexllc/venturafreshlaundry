@@ -17,7 +17,7 @@ import { useLocale } from "../context/LocaleContext";
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 // ─── IntersectionObserver hook ────────────────────────────────────────────────
-function useInView(threshold = 0.12) {
+function useInView(threshold = 0.08) {
   const ref = useRef(null);
   const [v, setV] = useState(false);
   useEffect(() => {
@@ -34,17 +34,20 @@ function useInView(threshold = 0.12) {
 
 // ─── Reveal ───────────────────────────────────────────────────────────────────
 const ORIGINS = {
-  up:    "opacity-0 translate-y-10",
-  left:  "opacity-0 translate-x-8",
-  right: "opacity-0 -translate-x-8",
-  scale: "opacity-0 scale-95",
-  blur:  "opacity-0 blur-sm scale-97",
+  up:    "opacity-0 translate-y-6",
+  left:  "opacity-0 translate-x-6",
+  right: "opacity-0 -translate-x-6",
+  scale: "opacity-0 scale-97",
+  blur:  "opacity-0 blur-sm scale-98",
 };
-const Reveal = ({ children, delay = 0, dir = "up", dur = 700, className = "" }) => {
+const Reveal = ({ children, delay = 0, dir = "up", dur = 350, className = "" }) => {
   const [ref, v] = useInView();
   return (
-    <div ref={ref} className={`${className} transition-all ease-out ${v ? "opacity-100 translate-y-0 translate-x-0 scale-100 blur-0" : ORIGINS[dir]}`}
-      style={{ transitionDuration: `${dur}ms`, transitionDelay: `${delay}ms` }}>
+    <div
+      ref={ref}
+      className={`${className} transition-all ease-out ${v ? "opacity-100 translate-y-0 translate-x-0 scale-100 blur-0" : ORIGINS[dir]}`}
+      style={{ transitionDuration: `${dur}ms`, transitionDelay: v ? `${delay}ms` : "0ms" }}
+    >
       {children}
     </div>
   );
@@ -60,7 +63,7 @@ const Mag = ({ children, className = "", strength = 0.32, as: Tag = "div", ...p 
   const onLeave = useCallback(() => { ref.current.style.transform = "translate(0,0)"; }, []);
   return (
     <Tag ref={ref} className={className}
-      style={{ transition: "transform 500ms cubic-bezier(0.34,1.56,0.64,1)" }}
+      style={{ transition: "transform 300ms cubic-bezier(0.34,1.56,0.64,1)" }}
       onMouseMove={onMove} onMouseLeave={onLeave} {...p}>
       {children}
     </Tag>
@@ -75,9 +78,9 @@ const Tilt = ({ children, className = "", depth = 6 }) => {
     const r = ref.current.getBoundingClientRect();
     const x = ((e.clientX - r.left) / r.width - 0.5) * depth * 2;
     const y = ((e.clientY - r.top) / r.height - 0.5) * -depth * 2;
-    setS({ transform: `perspective(900px) rotateX(${y}deg) rotateY(${x}deg) translateZ(8px)`, transition: "transform 80ms linear" });
+    setS({ transform: `perspective(900px) rotateX(${y}deg) rotateY(${x}deg) translateZ(8px)`, transition: "transform 60ms linear" });
   }, [depth]);
-  const onLeave = useCallback(() => setS({ transform: "perspective(900px) rotateX(0) rotateY(0) translateZ(0)", transition: "transform 600ms cubic-bezier(0.34,1.56,0.64,1)" }), []);
+  const onLeave = useCallback(() => setS({ transform: "perspective(900px) rotateX(0) rotateY(0) translateZ(0)", transition: "transform 350ms cubic-bezier(0.34,1.56,0.64,1)" }), []);
   return <div ref={ref} style={s} className={className} onMouseMove={onMove} onMouseLeave={onLeave}>{children}</div>;
 };
 
@@ -89,8 +92,8 @@ function useCursor() {
     const fn = (e) => { p.current = { x: e.clientX, y: e.clientY }; };
     window.addEventListener("mousemove", fn, { passive: true });
     const loop = () => {
-      l.current.x += (p.current.x - l.current.x) * 0.1;
-      l.current.y += (p.current.y - l.current.y) * 0.1;
+      l.current.x += (p.current.x - l.current.x) * 0.15;
+      l.current.y += (p.current.y - l.current.y) * 0.15;
       if (ring.current) ring.current.style.transform = `translate(${l.current.x - 18}px,${l.current.y - 18}px)`;
       if (dot.current)  dot.current.style.transform  = `translate(${p.current.x - 3}px,${p.current.y - 3}px)`;
       raf.current = requestAnimationFrame(loop);
@@ -104,7 +107,6 @@ function useCursor() {
 // ─── Marquee ─────────────────────────────────────────────────────────────────
 const Marquee = ({ items }) => (
   <div className="overflow-hidden py-3 border-y border-primary/10 bg-sky-50/50">
-    <style>{`@keyframes mq{from{transform:translateX(0)}to{transform:translateX(-33.333%)}}`}</style>
     <div className="flex gap-12 whitespace-nowrap" style={{ animation: "mq 30s linear infinite" }}>
       {[...items, ...items, ...items].map((it, i) => (
         <span key={i} className="text-[11px] font-bold uppercase tracking-[0.2em] text-primary/45 flex items-center gap-3">
@@ -115,21 +117,21 @@ const Marquee = ({ items }) => (
   </div>
 );
 
-// ─── Accordion (dark variant for FAQ) ────────────────────────────────────────
+// ─── Accordion ────────────────────────────────────────────────────────────────
 const AccordionItem = ({ title, children, isOpen, onClick }) => (
   <div className="border-b border-slate-200/70 last:border-0">
     <button onClick={onClick}
       className="w-full py-5 flex items-center justify-between text-left group focus:outline-none"
       aria-expanded={isOpen}>
-      <span className="text-base font-semibold text-slate-800 group-hover:text-primary transition-colors duration-200 pr-4">
+      <span className="text-base font-semibold text-slate-800 group-hover:text-primary transition-colors duration-150 pr-4">
         {title}
       </span>
-      <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-all duration-350
+      <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200
         ${isOpen ? "bg-primary text-white rotate-180" : "bg-slate-100 text-slate-400 group-hover:bg-primary/10 group-hover:text-primary"}`}>
         <ChevronDown className="w-4 h-4" />
       </div>
     </button>
-    <div className={`overflow-hidden transition-all duration-500 ease-in-out ${isOpen ? "max-h-[500px] pb-5 opacity-100" : "max-h-0 opacity-0"}`}>
+    <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isOpen ? "max-h-[500px] pb-5 opacity-100" : "max-h-0 opacity-0"}`}>
       <p className="text-slate-500 text-sm leading-relaxed">{children}</p>
     </div>
   </div>
@@ -142,16 +144,16 @@ const InfoCard = ({ icon: Icon, label, children, delay }) => {
     <Reveal delay={delay} dir="left">
       <Tilt depth={3}>
         <div
-          className={`relative flex items-start gap-4 p-5 rounded-2xl border transition-all duration-300 overflow-hidden
+          className={`relative flex items-start gap-4 p-5 rounded-2xl border transition-all duration-200 overflow-hidden
             ${h ? "border-primary/25 shadow-lg shadow-sky-100/60 -translate-y-0.5 bg-white" : "border-slate-100 bg-white shadow-md"}`}
           onMouseEnter={() => setH(true)} onMouseLeave={() => setH(false)}>
-          <div className={`absolute top-0 left-4 right-4 h-px bg-gradient-to-r from-transparent via-primary to-transparent transition-opacity duration-500 ${h ? "opacity-100" : "opacity-0"}`} />
-          <div className={`absolute inset-0 bg-gradient-to-br from-sky-50/50 to-transparent transition-opacity duration-500 ${h ? "opacity-100" : "opacity-0"}`} />
-          <div className={`relative w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 transition-all duration-300 ${h ? "bg-primary/15 scale-110" : "bg-sky-50"}`}>
-            <Icon className={`h-5 w-5 transition-colors duration-200 ${h ? "text-primary" : "text-sky-500"}`} />
+          <div className={`absolute top-0 left-4 right-4 h-px bg-gradient-to-r from-transparent via-primary to-transparent transition-opacity duration-300 ${h ? "opacity-100" : "opacity-0"}`} />
+          <div className={`absolute inset-0 bg-gradient-to-br from-sky-50/50 to-transparent transition-opacity duration-300 ${h ? "opacity-100" : "opacity-0"}`} />
+          <div className={`relative w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 transition-all duration-200 ${h ? "bg-primary/15 scale-110" : "bg-sky-50"}`}>
+            <Icon className={`h-5 w-5 transition-colors duration-150 ${h ? "text-primary" : "text-sky-500"}`} />
           </div>
           <div className="relative">
-            <p className={`font-bold text-sm mb-0.5 transition-colors duration-200 ${h ? "text-primary" : "text-slate-800"}`}>{label}</p>
+            <p className={`font-bold text-sm mb-0.5 transition-colors duration-150 ${h ? "text-primary" : "text-slate-800"}`}>{label}</p>
             <div className="text-slate-500 text-sm leading-relaxed">{children}</div>
           </div>
         </div>
@@ -252,8 +254,9 @@ export default function ContactPage() {
     </div>
 
     <style>{`
-      @keyframes fadeUp { from { opacity:0; transform:translateY(16px) } to { opacity:1; transform:translateY(0) } }
+      @keyframes fadeUp { from { opacity:0; transform:translateY(10px) } to { opacity:1; transform:translateY(0) } }
       @keyframes mq { from { transform:translateX(0) } to { transform:translateX(-33.333%) } }
+      * { font-style: normal !important; }
     `}</style>
 
     <div className="min-h-screen bg-white overflow-x-hidden">
@@ -269,18 +272,18 @@ export default function ContactPage() {
 
         <div className="relative z-10 text-center px-6 pb-20 max-w-4xl mx-auto">
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/8 backdrop-blur-md border border-white/15 mb-7"
-            style={{ animation: "fadeUp 0.8s 0.1s both ease-out" }}>
+            style={{ animation: "fadeUp 0.5s 0.05s both ease-out" }}>
             <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-            <span className="text-[11px] text-white/75 font-bold uppercase tracking-[0.18em]">{t("Get in touch", "Escríbenos")}</span>
+            <span className="text-[11px] text-white/75 font-bold uppercase tracking-[0.18em] not-italic">{t("Get in touch", "Escríbenos")}</span>
           </div>
-          <h1 className="text-5xl sm:text-6xl md:text-7xl font-light text-white leading-[1.05]  mb-4 tracking-tight"
-            style={{ animation: "fadeUp 0.9s 0.25s both ease-out" }}>
-            {t("We're here", "Estamos aquí")}
-            <span className="block" style={{ WebkitTextStroke: "1.5px rgba(255,255,255,0.8)", color: "transparent" }}>
+          <h1 className="text-5xl sm:text-6xl md:text-7xl  leading-[1.05] mb-4 tracking-tight not-italic"
+            style={{ animation: "fadeUp 0.5s 0.12s both ease-out" }}>
+            <span className="text-white">{t("We're here", "Estamos aquí")}</span>
+            <span className="block text-white not-italic">
               {t("for you.", "para ti.")}
             </span>
           </h1>
-          <p className="text-lg sm:text-xl text-white/70 max-w-xl mx-auto" style={{ animation: "fadeUp 0.9s 0.4s both ease-out" }}>
+          <p className="text-lg sm:text-xl text-white/70 max-w-xl mx-auto not-italic" style={{ animation: "fadeUp 0.5s 0.2s both ease-out" }}>
             {t("Let's take care of your laundry, so you can focus on what matters most.", "Nos encargamos de tu lavandería para que tú te concentres en lo que importa.")}
           </p>
         </div>
@@ -300,18 +303,17 @@ export default function ContactPage() {
         <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: "url('https://images.unsplash.com/photo-1582735689369-4fe89db7114c?w=1920&h=1080&fit=crop')", backgroundSize: "cover", backgroundPosition: "center", transform: `translateY(${scrollY * 0.1}px)` }} />
 
         <div className="relative z-10 max-w-6xl mx-auto px-6 sm:px-8 lg:px-12">
-          {/* Section header */}
-          <Reveal dir="blur">
-            <p className="text-center text-[11px] font-bold uppercase tracking-[0.22em] text-primary/50 mb-3">{t("Reach Out", "Escríbenos")}</p>
+          <Reveal dir="blur" dur={300}>
+            <p className="text-center text-[11px] font-bold uppercase tracking-[0.22em] text-primary/50 mb-3 not-italic">{t("Reach Out", "Escríbenos")}</p>
           </Reveal>
-          <Reveal delay={80}>
-            <h2 className="text-4xl sm:text-5xl font-bold text-slate-900 text-center mb-3 leading-tight">
+          <Reveal delay={50} dur={300}>
+            <h2 className="text-4xl sm:text-5xl font-bold text-slate-900 text-center mb-3 leading-tight not-italic">
               {t("Talk to us,", "Hablemos,")}
-              <em className="block text-primary font-extralight not-italic">{t("anytime.", "cuando quieras.")}</em>
+              <span className="block text-primary font-bold not-italic">{t("anytime.", "cuando quieras.")}</span>
             </h2>
           </Reveal>
-          <Reveal delay={140}>
-            <p className="text-slate-400 text-center mb-14 max-w-xl mx-auto text-lg">
+          <Reveal delay={100} dur={300}>
+            <p className="text-slate-400 text-center mb-14 max-w-xl mx-auto text-lg not-italic">
               {t("Call, text, email, or show up — we reply fast.", "Llama, escribe, correo o visítanos — respondemos rápido.")}
             </p>
           </Reveal>
@@ -321,22 +323,22 @@ export default function ContactPage() {
             {/* ── LEFT: Info + Map ── */}
             <div className="space-y-4">
               <InfoCard icon={Mail} label={t("Email", "Correo")} delay={0}>
-                <a href="mailto:info@venturafreshlaundry.com" className="text-primary hover:underline font-medium">
+                <a href="mailto:info@venturafreshlaundry.com" className="text-primary hover:underline font-medium not-italic">
                   info@venturafreshlaundry.com
                 </a>
               </InfoCard>
-              <InfoCard icon={Phone} label={t("Phone / Text", "Teléfono / Mensaje")} delay={80}>
-                <a href="tel:+18058368872" className="text-primary hover:underline font-medium">+1 (805) 836-8872</a>
+              <InfoCard icon={Phone} label={t("Phone / Text", "Teléfono / Mensaje")} delay={60}>
+                <a href="tel:+18058368872" className="text-primary hover:underline font-medium not-italic">+1 (805) 836-8872</a>
               </InfoCard>
-              <InfoCard icon={MapPin} label={t("Address", "Dirección")} delay={160}>
-                <span>5722 Telephone Rd #5, Ventura, CA 93003</span>
+              <InfoCard icon={MapPin} label={t("Address", "Dirección")} delay={120}>
+                <span className="not-italic">5722 Telephone Rd #5, Ventura, CA 93003</span>
               </InfoCard>
-              <InfoCard icon={Clock} label={t("Hours", "Horario")} delay={240}>
-                <span>{t("Monday – Sunday · 7:00 AM – 10:00 PM", "Lunes – Domingo · 7:00 AM – 10:00 PM")}</span>
+              <InfoCard icon={Clock} label={t("Hours", "Horario")} delay={180}>
+                <span className="not-italic">{t("Monday – Sunday · 7:00 AM – 10:00 PM", "Lunes – Domingo · 7:00 AM – 10:00 PM")}</span>
               </InfoCard>
 
               {/* Map */}
-              <Reveal delay={300} dir="up" dur={800}>
+              <Reveal delay={220} dir="up" dur={400}>
                 <Tilt depth={2}>
                   <div className="rounded-2xl overflow-hidden shadow-xl shadow-sky-100/40 border border-slate-100 h-60 mt-2">
                     <iframe
@@ -352,12 +354,10 @@ export default function ContactPage() {
             </div>
 
             {/* ── RIGHT: Contact Form ── */}
-            <Reveal delay={100} dir="right" dur={800}>
+            <Reveal delay={80} dir="right" dur={400}>
               <Tilt depth={2}>
                 <div className="relative bg-white rounded-2xl border border-slate-100 shadow-xl shadow-sky-50/60 overflow-hidden">
-                  {/* top accent */}
                   <div className="absolute top-0 left-8 right-8 h-px bg-gradient-to-r from-transparent via-primary to-transparent" />
-                  {/* inner glow */}
                   <div className="absolute inset-0 bg-gradient-to-br from-sky-50/40 to-transparent pointer-events-none" />
 
                   <div className="relative p-7 sm:p-8">
@@ -366,20 +366,19 @@ export default function ContactPage() {
                         <MessageSquare className="w-5 h-5 text-primary" />
                       </div>
                       <div>
-                        <h3 className="text-lg font-bold text-slate-900">{t("Send us a message", "Envíanos un mensaje")}</h3>
-                        <p className="text-slate-400 text-xs">{t("We usually reply within a few hours.", "Solemos responder en pocas horas.")}</p>
+                        <h3 className="text-lg font-bold text-slate-900 not-italic">{t("Send us a message", "Envíanos un mensaje")}</h3>
+                        <p className="text-slate-400 text-xs not-italic">{t("We usually reply within a few hours.", "Solemos responder en pocas horas.")}</p>
                       </div>
                     </div>
 
-                    {/* ── Success state ── */}
                     {submitted && (
                       <div className="mb-6 p-4 rounded-xl bg-emerald-50 border border-emerald-200/60 flex items-center gap-3">
                         <div className="w-8 h-8 bg-emerald-100 rounded-lg flex items-center justify-center flex-shrink-0">
                           <span className="text-emerald-600 text-lg">✓</span>
                         </div>
                         <div>
-                          <p className="text-emerald-800 font-semibold text-sm">{t("Message sent!", "¡Mensaje enviado!")}</p>
-                          <p className="text-emerald-600 text-xs">{t("We'll get back to you soon.", "Te responderemos pronto.")}</p>
+                          <p className="text-emerald-800 font-semibold text-sm not-italic">{t("Message sent!", "¡Mensaje enviado!")}</p>
+                          <p className="text-emerald-600 text-xs not-italic">{t("We'll get back to you soon.", "Te responderemos pronto.")}</p>
                         </div>
                       </div>
                     )}
@@ -387,22 +386,22 @@ export default function ContactPage() {
                     <form onSubmit={handleSubmit} className="space-y-4">
                       <div className="grid sm:grid-cols-2 gap-4">
                         <div>
-                          <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{t("Full Name", "Nombre Completo")} <span className="text-primary">*</span></label>
+                          <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 not-italic">{t("Full Name", "Nombre Completo")} <span className="text-primary">*</span></label>
                           <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required className={inputCls} data-testid="contact-name-input" />
                         </div>
                         <div>
-                          <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{t("Email", "Correo")} <span className="text-primary">*</span></label>
+                          <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 not-italic">{t("Email", "Correo")} <span className="text-primary">*</span></label>
                           <input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} required className={inputCls} data-testid="contact-email-input" />
                         </div>
                       </div>
 
                       <div className="grid sm:grid-cols-2 gap-4">
                         <div>
-                          <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{t("Phone", "Teléfono")}</label>
+                          <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 not-italic">{t("Phone", "Teléfono")}</label>
                           <input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="+1 (___) ___-____" className={inputCls} />
                         </div>
                         <div>
-                          <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{t("Best contact", "Contacto preferido")}</label>
+                          <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 not-italic">{t("Best contact", "Contacto preferido")}</label>
                           <Select value={form.contact_method} onValueChange={v => setForm({ ...form, contact_method: v })}>
                             <SelectTrigger className="mt-1.5 rounded-xl border-slate-200 focus:ring-2 focus:ring-primary/10 focus:border-primary/50 text-sm h-[44px]">
                               <SelectValue placeholder={t("Select", "Selecciona")} />
@@ -423,31 +422,31 @@ export default function ContactPage() {
                       />
 
                       <div>
-                        <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{t("Subject", "Asunto")} <span className="text-primary">*</span></label>
+                        <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 not-italic">{t("Subject", "Asunto")} <span className="text-primary">*</span></label>
                         <input value={form.subject} onChange={e => setForm({ ...form, subject: e.target.value })} required placeholder={t("How can we help?", "¿Cómo podemos ayudarte?")} className={inputCls} data-testid="contact-subject-input" />
                       </div>
 
                       <div>
-                        <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{t("Message", "Mensaje")} <span className="text-primary">*</span></label>
+                        <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 not-italic">{t("Message", "Mensaje")} <span className="text-primary">*</span></label>
                         <textarea value={form.message} onChange={e => setForm({ ...form, message: e.target.value })} required rows={5}
                           placeholder={t("Tell us more about your inquiry...", "Cuéntanos más sobre tu consulta...")}
                           className={`${inputCls} resize-none`} data-testid="contact-message-input" />
                       </div>
 
                       <button type="submit" disabled={submitting} data-testid="contact-submit-btn"
-                        className="group w-full flex items-center justify-center gap-2 bg-primary text-white rounded-xl px-6 py-3.5 text-sm font-bold uppercase tracking-wider hover:bg-primary/90 transition-all duration-300 shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/30 active:scale-95 overflow-hidden relative disabled:opacity-60 disabled:cursor-not-allowed">
+                        className="group w-full flex items-center justify-center gap-2 bg-primary text-white rounded-xl px-6 py-3.5 text-sm font-bold uppercase tracking-wider hover:bg-primary/90 transition-all duration-200 shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/30 active:scale-95 overflow-hidden relative disabled:opacity-60 disabled:cursor-not-allowed">
                         {submitting ? (
-                          <span className="flex items-center gap-2">
+                          <span className="flex items-center gap-2 not-italic">
                             <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                             {t("Sending...", "Enviando...")}
                           </span>
                         ) : (
-                          <span className="relative z-10 flex items-center gap-2">
+                          <span className="relative z-10 flex items-center gap-2 not-italic">
                             {t("Send Message", "Enviar Mensaje")}
-                            <Send className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-1" />
+                            <Send className="w-4 h-4 transition-transform duration-150 group-hover:translate-x-1" />
                           </span>
                         )}
-                        <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
+                        <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-500" />
                       </button>
                     </form>
                   </div>
@@ -459,21 +458,21 @@ export default function ContactPage() {
       </section>
 
       {/* ══ DARK TAGLINE ══════════════════════════════════════════════════ */}
-      <section className="relative py-28 overflow-hidden">
+      <section className="relative py-28 overflow-hidden bg-sky-950">
         <div className="absolute inset-0 will-change-transform"
           style={{ backgroundImage: "url('https://images.unsplash.com/photo-1517677208171-0bc6725a3e60?w=1920&h=1080&fit=crop')", backgroundSize: "cover", backgroundPosition: "center", transform: `translateY(${scrollY * 0.18}px) scale(1.1)` }} />
-        <div className="absolute inset-0 bg-gradient-to-br from-sky-950/92 to-sky-900/88" />
+        <div className="absolute inset-0 bg-sky-950/70" /><div className="absolute inset-0 bg-gradient-to-br from-sky-950/80 to-sky-900/75" />
         <div className="absolute inset-0 opacity-[0.04]" style={{ backgroundImage: "radial-gradient(rgba(255,255,255,0.8) 1px,transparent 1px)", backgroundSize: "28px 28px" }} />
         <div className="relative z-10 max-w-3xl mx-auto px-6 text-center">
-          <Reveal dir="scale" dur={900}>
+          <Reveal dir="scale" dur={400}>
             <div>
               <Sparkles className="w-7 h-7 text-sky-400/60 mx-auto mb-5" />
-              <h2 className="text-4xl sm:text-5xl font-bold text-white italic mb-4 leading-tight">
+              <h2 className="text-4xl sm:text-5xl font-bold text-white mb-4 leading-tight not-italic">
                 {t("Simplify your days.", "Simplifica tus días.")}
-                <span className="block font-extralight mt-1">{t("We'll handle the laundry.", "Nosotros manejamos la lavandería.")}</span>
+                <span className="block font-light mt-1 not-italic">{t("We'll handle the laundry.", "Nosotros manejamos la lavandería.")}</span>
               </h2>
               <div className="w-16 h-px bg-gradient-to-r from-transparent via-primary to-transparent mx-auto mb-6" />
-              <p className="text-white/55 text-lg italic">
+              <p className="text-white/55 text-lg not-italic">
                 {t("Clean • Bright • Trusted", "Limpio • Brillante • Confiable")}
               </p>
             </div>
@@ -485,20 +484,20 @@ export default function ContactPage() {
       <section className="py-20 sm:py-24 bg-gradient-to-b from-slate-50/60 to-white relative overflow-hidden">
         <div className="absolute inset-0 opacity-[0.35]" style={{ backgroundImage: "radial-gradient(rgba(14,165,233,0.07) 1px,transparent 1px)", backgroundSize: "24px 24px" }} />
         <div className="relative z-10 max-w-3xl mx-auto px-6 sm:px-8">
-          <Reveal dir="blur">
-            <p className="text-center text-[11px] font-bold uppercase tracking-[0.22em] text-primary/50 mb-3">{t("FAQ", "Preguntas Frecuentes")}</p>
+          <Reveal dir="blur" dur={300}>
+            <p className="text-center text-[11px] font-bold uppercase tracking-[0.22em] text-primary/50 mb-3 not-italic">{t("FAQ", "Preguntas Frecuentes")}</p>
           </Reveal>
-          <Reveal delay={80}>
-            <h2 className="text-4xl sm:text-5xl font-bold text-slate-900 text-center mb-3 leading-tight">
+          <Reveal delay={50} dur={300}>
+            <h2 className="text-4xl sm:text-5xl font-bold text-slate-900 text-center mb-3 leading-tight not-italic">
               {t("Common", "Preguntas")}
-              <em className="block text-primary font-extralight not-italic">{t("questions.", "comunes.")}</em>
+              <span className="block text-primary font-bold not-italic">{t("questions.", "comunes.")}</span>
             </h2>
           </Reveal>
-          <Reveal delay={140}>
-            <p className="text-slate-400 text-center mb-12 text-lg">{t("Can't find what you're looking for? Contact us directly.", "¿No encuentras lo que buscas? Contáctanos directamente.")}</p>
+          <Reveal delay={100} dur={300}>
+            <p className="text-slate-400 text-center mb-12 text-lg not-italic">{t("Can't find what you're looking for? Contact us directly.", "¿No encuentras lo que buscas? Contáctanos directamente.")}</p>
           </Reveal>
 
-          <Reveal delay={180} dir="scale">
+          <Reveal delay={140} dir="scale" dur={350}>
             <div className="bg-white rounded-2xl border border-slate-100 shadow-lg divide-y-0 px-6 sm:px-8 py-2">
               {faqs.map((faq, i) => (
                 <AccordionItem key={i} title={faq.q} isOpen={openFaq === i} onClick={() => toggleFaq(i)}>
@@ -508,17 +507,16 @@ export default function ContactPage() {
             </div>
           </Reveal>
 
-          {/* CTA under FAQ */}
-          <Reveal delay={300} dir="up">
+          <Reveal delay={220} dir="up" dur={300}>
             <div className="text-center mt-10">
-              <p className="text-slate-400 text-sm mb-5">{t("Still have questions?", "¿Todavía tienes preguntas?")}</p>
+              <p className="text-slate-400 text-sm mb-5 not-italic">{t("Still have questions?", "¿Todavía tienes preguntas?")}</p>
               <Mag as="a" href="tel:+18058368872" strength={0.25}
-                className="inline-flex items-center gap-2 overflow-hidden relative bg-primary text-white rounded-full px-10 py-4 text-[13px] font-bold uppercase tracking-widest shadow-lg shadow-primary/30 cursor-pointer hover:-translate-y-0.5 transition-transform duration-300 active:scale-95 group">
-                <span className="relative z-10 flex items-center gap-2">
+                className="inline-flex items-center gap-2 overflow-hidden relative bg-primary text-white rounded-full px-10 py-4 text-[13px] font-bold uppercase tracking-widest shadow-lg shadow-primary/30 cursor-pointer hover:-translate-y-0.5 transition-transform duration-200 active:scale-95 group">
+                <span className="relative z-10 flex items-center gap-2 not-italic">
                   📞 {t("Call Us Now", "Llámanos Ahora")}
-                  <ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-1" />
+                  <ArrowRight className="w-4 h-4 transition-transform duration-150 group-hover:translate-x-1" />
                 </span>
-                <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
+                <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-500" />
               </Mag>
             </div>
           </Reveal>

@@ -635,7 +635,7 @@ export default function ServicesPage() {
 
       {/* ══ COMMERCIAL ════════════════════════════════════════════════════ */}
       {/* Sección commercial: usa slate en vez de sky → diferenciación visual pero con el mismo sistema */}
-      <DarkSection bgImage="https://images.unsplash.com/photo-1521791055366-0d553872125f?w=1920&h=1080&fit=crop" from="from-slate-950/93" to="to-slate-900/90" scrollY={scrollY} parallaxStrength={0.1}>
+      <DarkSection bgImage="https://images.unsplash.com/photo-1521791055366-0d553872125f?w=1920&h=1080&fit=crop" from="from-sky-950/92" to="to-indigo-950/88" scrollY={scrollY} parallaxStrength={0.1}>
         <Reveal dir="blur">
           {/* Eyebrow commercial: slate-400/70 → diferencia visual respecto a sky pero mismo nivel de opacidad */}
           <p className="text-center text-[11px] font-bold uppercase tracking-[0.22em] text-slate-400/70 mb-4">{t("Commercial Services","Servicios Comerciales")}</p>
@@ -653,7 +653,7 @@ export default function ServicesPage() {
           </p>
         </Reveal>
         <Reveal delay={240} dir="scale">
-          <div className="bg-slate-950/80 rounded-2xl border border-white/15 p-6 mb-8">
+          <div className="bg-sky-950/80 rounded-2xl border border-white/15 p-6 mb-8">
             <AccordionItem title={t("About Commercial Services","Sobre Servicios Comerciales")} isOpen={openAccordions.commercial===0} onClick={()=>toggleAcc("commercial",0)} variant="dark">
               <p className="text-white/65 text-sm leading-relaxed pt-1">{t("Designed for high-traffic businesses — restaurants, hotels, spas, gyms, offices. Consistent results, dependable logistics, tailored to your needs.","Diseñado para negocios de alto tráfico — restaurantes, hoteles, spas, gimnasios. Resultados consistentes, logística confiable.")}</p>
             </AccordionItem>

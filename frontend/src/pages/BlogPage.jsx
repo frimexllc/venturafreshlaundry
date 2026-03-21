@@ -9,7 +9,7 @@ const API_URL = process.env.REACT_APP_BACKEND_URL;
 const DEFAULT_POST_IMAGE = "https://images.unsplash.com/photo-1582735689369-4fe89db7114c?w=800&h=600&fit=crop";
 
 // ─── IntersectionObserver hook ────────────────────────────────────────────────
-function useInView(threshold = 0.1) {
+function useInView(threshold = 0.08) {
   const ref = useRef(null);
   const [v, setV] = useState(false);
   useEffect(() => {
@@ -26,17 +26,20 @@ function useInView(threshold = 0.1) {
 
 // ─── Reveal ───────────────────────────────────────────────────────────────────
 const ORIGINS = {
-  up:    "opacity-0 translate-y-10",
-  left:  "opacity-0 translate-x-8",
-  right: "opacity-0 -translate-x-8",
-  scale: "opacity-0 scale-95",
-  blur:  "opacity-0 blur-sm scale-97",
+  up:    "opacity-0 translate-y-6",
+  left:  "opacity-0 translate-x-6",
+  right: "opacity-0 -translate-x-6",
+  scale: "opacity-0 scale-97",
+  blur:  "opacity-0 blur-sm scale-98",
 };
-const Reveal = ({ children, delay = 0, dir = "up", dur = 700, className = "" }) => {
+const Reveal = ({ children, delay = 0, dir = "up", dur = 350, className = "" }) => {
   const [ref, v] = useInView();
   return (
-    <div ref={ref} className={`${className} transition-all ease-out ${v ? "opacity-100 translate-y-0 translate-x-0 scale-100 blur-0" : ORIGINS[dir]}`}
-      style={{ transitionDuration: `${dur}ms`, transitionDelay: `${delay}ms` }}>
+    <div
+      ref={ref}
+      className={`${className} transition-all ease-out ${v ? "opacity-100 translate-y-0 translate-x-0 scale-100 blur-0" : ORIGINS[dir]}`}
+      style={{ transitionDuration: `${dur}ms`, transitionDelay: v ? `${delay}ms` : "0ms" }}
+    >
       {children}
     </div>
   );
@@ -52,28 +55,31 @@ const Mag = ({ children, className = "", strength = 0.32, as: Tag = "div", ...p 
   const onLeave = useCallback(() => { ref.current.style.transform = "translate(0,0)"; }, []);
   return (
     <Tag ref={ref} className={className}
-      style={{ transition: "transform 500ms cubic-bezier(0.34,1.56,0.64,1)" }}
+      style={{ transition: "transform 300ms cubic-bezier(0.34,1.56,0.64,1)" }}
       onMouseMove={onMove} onMouseLeave={onLeave} {...p}>
       {children}
     </Tag>
   );
 };
 
-// ─── 3-D Tilt ────────────────────────────────────────────────────────────────
+// ─── 3-D Tilt (disabled on touch) ────────────────────────────────────────────
 const Tilt = ({ children, className = "", depth = 5 }) => {
   const ref = useRef(null);
   const [s, setS] = useState({});
+  const [touch, setTouch] = useState(false);
+  useEffect(() => { setTouch(window.matchMedia("(hover: none)").matches); }, []);
   const onMove = useCallback((e) => {
+    if (touch) return;
     const r = ref.current.getBoundingClientRect();
     const x = ((e.clientX - r.left) / r.width - 0.5) * depth * 2;
     const y = ((e.clientY - r.top) / r.height - 0.5) * -depth * 2;
-    setS({ transform: `perspective(900px) rotateX(${y}deg) rotateY(${x}deg) translateZ(6px)`, transition: "transform 80ms linear" });
-  }, [depth]);
-  const onLeave = useCallback(() => setS({ transform: "perspective(900px) rotateX(0) rotateY(0) translateZ(0)", transition: "transform 600ms cubic-bezier(0.34,1.56,0.64,1)" }), []);
+    setS({ transform: `perspective(900px) rotateX(${y}deg) rotateY(${x}deg) translateZ(6px)`, transition: "transform 60ms linear" });
+  }, [depth, touch]);
+  const onLeave = useCallback(() => setS({ transform: "perspective(900px) rotateX(0) rotateY(0) translateZ(0)", transition: "transform 350ms cubic-bezier(0.34,1.56,0.64,1)" }), []);
   return <div ref={ref} style={s} className={className} onMouseMove={onMove} onMouseLeave={onLeave}>{children}</div>;
 };
 
-// ─── Custom Cursor ────────────────────────────────────────────────────────────
+// ─── Custom Cursor (desktop only) ────────────────────────────────────────────
 function useCursor() {
   const ring = useRef(null); const dot = useRef(null);
   const p = useRef({ x: -200, y: -200 }); const l = useRef({ x: -200, y: -200 }); const raf = useRef(null);
@@ -81,8 +87,8 @@ function useCursor() {
     const fn = (e) => { p.current = { x: e.clientX, y: e.clientY }; };
     window.addEventListener("mousemove", fn, { passive: true });
     const loop = () => {
-      l.current.x += (p.current.x - l.current.x) * 0.1;
-      l.current.y += (p.current.y - l.current.y) * 0.1;
+      l.current.x += (p.current.x - l.current.x) * 0.15;
+      l.current.y += (p.current.y - l.current.y) * 0.15;
       if (ring.current) ring.current.style.transform = `translate(${l.current.x - 18}px,${l.current.y - 18}px)`;
       if (dot.current)  dot.current.style.transform  = `translate(${p.current.x - 3}px,${p.current.y - 3}px)`;
       raf.current = requestAnimationFrame(loop);
@@ -96,9 +102,9 @@ function useCursor() {
 // ─── Marquee ─────────────────────────────────────────────────────────────────
 const Marquee = ({ items }) => (
   <div className="overflow-hidden py-3 border-y border-primary/10 bg-sky-50/50">
-    <div className="flex gap-12 whitespace-nowrap" style={{ animation: "mq 30s linear infinite" }}>
+    <div className="flex gap-8 sm:gap-12 whitespace-nowrap" style={{ animation: "mq 30s linear infinite" }}>
       {[...items, ...items, ...items].map((it, i) => (
-        <span key={i} className="text-[11px] font-bold uppercase tracking-[0.2em] text-primary/45 flex items-center gap-3">
+        <span key={i} className="text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.2em] text-primary/45 flex items-center gap-2 sm:gap-3">
           <span className="w-1 h-1 rounded-full bg-primary/30 inline-block" />{it}
         </span>
       ))}
@@ -110,61 +116,58 @@ const Marquee = ({ items }) => (
 const PostCard = ({ post, formatDate, delay }) => {
   const [h, setH] = useState(false);
   return (
-    <Reveal delay={delay} dir="up" dur={750}>
+    <Reveal delay={delay} dir="up" dur={350}>
       <Tilt depth={4}>
         <article
-          className={`relative bg-white rounded-2xl overflow-hidden h-full flex flex-col border transition-all duration-350
-            ${h ? "border-primary/25 shadow-2xl shadow-sky-100/60 -translate-y-1" : "border-slate-100 shadow-lg"}`}
+          className={`relative bg-white rounded-2xl overflow-hidden h-full flex flex-col border transition-all duration-200
+            ${h ? "border-primary/25 shadow-2xl shadow-sky-100/60 -translate-y-1" : "border-slate-100 shadow-md"}`}
           onMouseEnter={() => setH(true)} onMouseLeave={() => setH(false)}
           data-testid={`blog-post-${post.slug}`}>
 
-          {/* top accent line */}
-          <div className={`absolute top-0 left-6 right-6 h-px bg-gradient-to-r from-transparent via-primary to-transparent transition-opacity duration-500 z-10 ${h ? "opacity-100" : "opacity-0"}`} />
+          <div className={`absolute top-0 left-6 right-6 h-px bg-gradient-to-r from-transparent via-primary to-transparent transition-opacity duration-300 z-10 ${h ? "opacity-100" : "opacity-0"}`} />
 
           {/* Image */}
           <div className="aspect-video overflow-hidden relative">
             <img
               src={post.featured_image || DEFAULT_POST_IMAGE}
               alt={post.title}
-              className={`w-full h-full object-cover transition-transform duration-600 ${h ? "scale-108" : "scale-100"}`}
+              className={`w-full h-full object-cover transition-transform duration-350 ${h ? "scale-105" : "scale-100"}`}
               onError={e => { e.target.src = DEFAULT_POST_IMAGE; }}
             />
-            <div className={`absolute inset-0 bg-gradient-to-t from-slate-900/30 to-transparent transition-opacity duration-400 ${h ? "opacity-100" : "opacity-0"}`} />
-            {/* Category badge floating on image */}
+            <div className={`absolute inset-0 bg-gradient-to-t from-slate-900/30 to-transparent transition-opacity duration-300 ${h ? "opacity-100" : "opacity-0"}`} />
             <div className="absolute bottom-3 left-4">
-              <span className="px-3 py-1 bg-white/90 backdrop-blur-sm text-primary text-[10px] font-black uppercase tracking-widest rounded-full shadow-sm">
+              <span className="px-3 py-1 bg-white/90 backdrop-blur-sm text-primary text-[10px] font-black uppercase tracking-widest rounded-full shadow-sm not-italic">
                 {post.category}
               </span>
             </div>
           </div>
 
           {/* Body */}
-          <div className="p-6 flex flex-col flex-grow relative">
-            <div className={`absolute inset-0 bg-gradient-to-br from-sky-50/50 to-transparent transition-opacity duration-500 ${h ? "opacity-100" : "opacity-0"}`} />
+          <div className="p-4 sm:p-6 flex flex-col flex-grow relative">
+            <div className={`absolute inset-0 bg-gradient-to-br from-sky-50/50 to-transparent transition-opacity duration-300 ${h ? "opacity-100" : "opacity-0"}`} />
 
-            {/* Meta */}
-            <div className="relative flex items-center gap-4 text-xs text-slate-400 mb-3">
+            <div className="relative flex items-center gap-3 sm:gap-4 text-xs text-slate-400 mb-3">
               <span className="flex items-center gap-1.5">
-                <Calendar className="h-3.5 w-3.5" />
-                <time dateTime={post.created_at}>{formatDate(post.created_at)}</time>
+                <Calendar className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                <time dateTime={post.created_at} className="not-italic">{formatDate(post.created_at)}</time>
               </span>
               <span className="flex items-center gap-1.5">
-                <Eye className="h-3.5 w-3.5" />
-                {post.views}
+                <Eye className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                <span className="not-italic">{post.views}</span>
               </span>
             </div>
 
-            <h2 className={`relative text-xl font-bold mb-2 leading-snug transition-colors duration-200 ${h ? "text-primary" : "text-slate-900"}`}>
+            <h2 className={`relative text-base sm:text-xl font-bold mb-2 leading-snug transition-colors duration-150 not-italic ${h ? "text-primary" : "text-slate-900"}`}>
               {post.title}
             </h2>
-            <p className="relative text-slate-500 text-sm leading-relaxed line-clamp-3 flex-grow mb-5">
+            <p className="relative text-slate-500 text-xs sm:text-sm leading-relaxed line-clamp-3 flex-grow mb-4 sm:mb-5 not-italic">
               {post.excerpt}
             </p>
 
             <Link to={`/blog/${post.slug}`} className="relative mt-auto">
-              <div className={`inline-flex items-center gap-1.5 text-sm font-bold uppercase tracking-wider transition-colors duration-200 ${h ? "text-primary" : "text-sky-500"}`}>
+              <div className={`inline-flex items-center gap-1.5 text-xs sm:text-sm font-bold uppercase tracking-wider transition-colors duration-150 not-italic ${h ? "text-primary" : "text-sky-500"}`}>
                 <span>Read more</span>
-                <ArrowRight className={`h-4 w-4 transition-transform duration-200 ${h ? "translate-x-1" : ""}`} />
+                <ArrowRight className={`h-3.5 w-3.5 sm:h-4 sm:w-4 transition-transform duration-150 ${h ? "translate-x-1" : ""}`} />
               </div>
             </Link>
           </div>
@@ -215,7 +218,7 @@ function BlogList() {
     finally { setLoading(false); }
   };
 
-  const formatDate = (d) => new Date(d).toLocaleDateString(locale === "es" ? "es-ES" : "en-US", { year: "numeric", month: "long", day: "numeric" });
+  const formatDate = (d) => new Date(d).toLocaleDateString(locale === "es-MX" ? "es-MX" : "en-US", { year: "numeric", month: "long", day: "numeric" });
 
   const marqueeItems = [
     t("Blog", "Blog"), t("Laundry Tips", "Consejos de Lavandería"),
@@ -231,33 +234,40 @@ function BlogList() {
     </div>
 
     {/* ══ HERO ══════════════════════════════════════════════════════════ */}
-    <section className="relative min-h-[65vh] flex items-end justify-center overflow-hidden">
+    <section className="relative min-h-[55vh] sm:min-h-[65vh] flex items-end justify-center overflow-hidden">
       <div className="absolute inset-0 will-change-transform"
         style={{ backgroundImage: "url('https://images.unsplash.com/photo-1455390582262-044cdead277a?w=1920&h=1080&fit=crop')", backgroundSize: "cover", backgroundPosition: "center", transform: `translateY(${scrollY * 0.22}px) scale(1.08)` }} />
       <div className="absolute inset-0 bg-gradient-to-t from-slate-950/92 via-slate-900/60 to-slate-800/25" />
       <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse at center,transparent 40%,rgba(0,0,0,0.5) 100%)" }} />
       <div className="absolute inset-0 opacity-[0.025]" style={{ backgroundImage: "repeating-linear-gradient(0deg,#000 0px,#000 1px,transparent 1px,transparent 4px)" }} />
 
-      <div className="relative z-10 text-center px-6 pb-20 max-w-4xl mx-auto">
-        <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/8 backdrop-blur-md border border-white/15 mb-7"
-          style={{ animation: "fadeUp 0.8s 0.1s both ease-out" }}>
+      <div className="relative z-10 text-center px-4 sm:px-6 pb-14 sm:pb-20 max-w-4xl mx-auto">
+        <div className="inline-flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-white/10 backdrop-blur-md border border-white/20 mb-5 sm:mb-7"
+          style={{ animation: "fadeUp 0.5s 0.05s both ease-out" }}>
           <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-          <span className="text-[11px] text-white/75 font-bold uppercase tracking-[0.18em]">{t("Tips & News", "Consejos y Novedades")}</span>
+          <span className="text-[10px] sm:text-[11px] text-white/75 font-bold uppercase tracking-[0.18em] not-italic">
+            {t("Tips & News", "Consejos y Novedades")}
+          </span>
         </div>
-        <h1 className="text-5xl sm:text-6xl md:text-7xl font-light text-white leading-[1.05]  mb-4 tracking-tight"
-          style={{ animation: "fadeUp 0.9s 0.25s both ease-out" }}>
+
+        {/* Solid white + solid primary — no italic, no stroke */}
+        <h1 className="font-bold text-white leading-[1.08] mb-4 tracking-tight not-italic
+          text-3xl sm:text-5xl md:text-6xl lg:text-7xl"
+          style={{ animation: "fadeUp 0.5s 0.12s both ease-out" }}>
           {t("Stories &", "Historias y")}
-          <span className="block" style={{ WebkitTextStroke: "1.5px rgba(255,255,255,0.8)", color: "transparent" }}>
+          <span className="block text-white not-italic">
             {t("insights.", "consejos.")}
           </span>
         </h1>
-        <p className="text-lg sm:text-xl text-white/70 max-w-xl mx-auto" style={{ animation: "fadeUp 0.9s 0.4s both ease-out" }}>
+
+        <p className="text-sm sm:text-lg md:text-xl text-white/70 max-w-xl mx-auto not-italic px-2 sm:px-0"
+          style={{ animation: "fadeUp 0.5s 0.2s both ease-out" }}>
           {t("Tips, tricks, and advice for your laundry care and more.", "Tips, trucos y consejos para el cuidado de tu ropa y más.")}
         </p>
       </div>
 
       <div className="absolute bottom-0 left-0 right-0 z-20">
-        <svg viewBox="0 0 1440 90" preserveAspectRatio="none" className="w-full h-12 sm:h-16 lg:h-20">
+        <svg viewBox="0 0 1440 90" preserveAspectRatio="none" className="w-full h-8 sm:h-14 lg:h-20">
           <path d="M0,45 C300,0 600,90 1440,45 L1440,90 L0,90 Z" fill="white" />
         </svg>
       </div>
@@ -267,12 +277,13 @@ function BlogList() {
     <Marquee items={marqueeItems} />
 
     {/* ══ SEARCH + FILTER BAR ═══════════════════════════════════════════ */}
-    <section className="py-10 bg-white border-b border-slate-100">
-      <div className="max-w-6xl mx-auto px-6 sm:px-8 lg:px-12">
-        <div className="flex flex-col md:flex-row gap-5 items-center justify-between">
+    <section className="py-6 sm:py-10 bg-white border-b border-slate-100">
+      <div className="max-w-6xl mx-auto px-4 sm:px-8 lg:px-12">
+        <div className="flex flex-col sm:flex-row gap-4 sm:gap-5 items-stretch sm:items-center justify-between">
+
           {/* Search */}
-          <div className="flex gap-2 w-full md:w-auto">
-            <div className={`relative flex-1 md:w-80 transition-all duration-300 ${searchFocused ? "md:w-96" : ""}`}>
+          <div className="flex gap-2 w-full sm:w-auto">
+            <div className="relative flex-1 sm:w-72 lg:w-80">
               <Search className={`absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 transition-colors duration-200 ${searchFocused ? "text-primary" : "text-slate-400"}`} />
               <input
                 type="text"
@@ -282,28 +293,28 @@ function BlogList() {
                 onKeyDown={e => e.key === "Enter" && handleSearch()}
                 onFocus={() => setSearchFocused(true)}
                 onBlur={() => setSearchFocused(false)}
-                className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-full text-sm focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/10 transition-all duration-300 bg-slate-50 focus:bg-white"
+                className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-full text-sm focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/10 transition-all duration-200 bg-slate-50 focus:bg-white not-italic"
                 data-testid="blog-search"
               />
             </div>
             <button onClick={handleSearch}
-              className="group flex items-center gap-1.5 px-5 py-2.5 bg-primary text-white rounded-full text-sm font-bold uppercase tracking-wider shadow-md shadow-primary/20 hover:bg-primary/90 hover:shadow-lg transition-all duration-300 active:scale-95 overflow-hidden relative">
-              <span className="relative z-10">{t("Search", "Buscar")}</span>
-              <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
+              className="group flex items-center gap-1.5 px-4 sm:px-5 py-2.5 bg-primary text-white rounded-full text-sm font-bold uppercase tracking-wider shadow-md shadow-primary/20 hover:bg-primary/90 transition-all duration-200 active:scale-95 overflow-hidden relative whitespace-nowrap">
+              <span className="relative z-10 not-italic">{t("Search", "Buscar")}</span>
+              <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-500" />
             </button>
           </div>
 
-          {/* Categories */}
-          <div className="flex gap-2 flex-wrap justify-center">
+          {/* Categories — scrollable on mobile */}
+          <div className="flex gap-2 overflow-x-auto pb-1 sm:pb-0 sm:flex-wrap sm:justify-end scrollbar-hide">
             <button
               onClick={() => { setSelectedCategory(null); setSearchQuery(""); }}
-              className={`px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition-all duration-200 ${!selectedCategory ? "bg-primary text-white shadow-md shadow-primary/20" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
+              className={`flex-shrink-0 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full text-[11px] sm:text-xs font-bold uppercase tracking-wider transition-all duration-200 ${!selectedCategory ? "bg-primary text-white shadow-md shadow-primary/20" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
               {t("All", "Todos")}
             </button>
             {categories.map(cat => (
               <button key={cat.slug}
                 onClick={() => { setSelectedCategory(cat.slug); setSearchQuery(""); }}
-                className={`px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition-all duration-200 ${selectedCategory === cat.slug ? "bg-primary text-white shadow-md shadow-primary/20" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+                className={`flex-shrink-0 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full text-[11px] sm:text-xs font-bold uppercase tracking-wider transition-all duration-200 not-italic ${selectedCategory === cat.slug ? "bg-primary text-white shadow-md shadow-primary/20" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
                 data-testid={`category-${cat.slug}`}>
                 {cat.name} <span className="opacity-60">({cat.post_count})</span>
               </button>
@@ -314,16 +325,19 @@ function BlogList() {
     </section>
 
     {/* ══ POSTS GRID ════════════════════════════════════════════════════ */}
-    <section className="py-20 sm:py-24 relative overflow-hidden bg-white">
+    <section className="py-12 sm:py-20 lg:py-24 relative overflow-hidden bg-white">
       <div className="absolute inset-0 opacity-[0.025]" style={{ backgroundImage: "url('https://images.unsplash.com/photo-1545173168-9f1947eebb7f?w=1920&h=1080&fit=crop')", backgroundSize: "cover", backgroundPosition: "center", transform: `translateY(${scrollY * 0.08}px)` }} />
-      <div className="relative z-10 max-w-6xl mx-auto px-6 sm:px-8 lg:px-12">
-        <Reveal dir="blur">
-          <p className="text-center text-[11px] font-bold uppercase tracking-[0.22em] text-primary/50 mb-3">{t("Latest Posts", "Últimos Artículos")}</p>
+      <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-8 lg:px-12">
+
+        <Reveal dir="blur" dur={300}>
+          <p className="text-center text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.22em] text-primary/50 mb-3 not-italic">
+            {t("Latest Posts", "Últimos Artículos")}
+          </p>
         </Reveal>
-        <Reveal delay={80}>
-          <h2 className="text-4xl sm:text-5xl font-bold text-slate-900 text-center mb-12 leading-tight">
+        <Reveal delay={50} dur={300}>
+          <h2 className="text-2xl sm:text-4xl lg:text-5xl font-bold text-slate-900 text-center mb-8 sm:mb-12 leading-tight not-italic">
             {t("Fresh", "Contenido")}
-            <em className="block text-primary font-extralight not-">{t("content.", "fresco.")}</em>
+            <span className="block text-primary font-bold not-italic">{t("content.", "fresco.")}</span>
           </h2>
         </Reveal>
 
@@ -333,18 +347,27 @@ function BlogList() {
           </div>
         ) : posts.length === 0 ? (
           <Reveal dir="scale">
-            <div className="text-center py-20">
-              <div className="w-20 h-20 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto mb-6">
-                <Search className="h-9 w-9 text-slate-300" />
+            <div className="text-center py-16 sm:py-20">
+              <div className="w-16 h-16 sm:w-20 sm:h-20 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto mb-5">
+                <Search className="h-8 w-8 sm:h-9 sm:w-9 text-slate-300" />
               </div>
-              <h3 className="text-2xl font-bold text-slate-900 mb-3">{t("No articles available", "No hay artículos disponibles")}</h3>
-              <p className="text-slate-400 max-w-sm mx-auto">{t("We're working on new content. Check back soon!", "Estamos trabajando en nuevo contenido. ¡Vuelve pronto!")}</p>
+              <h3 className="text-xl sm:text-2xl font-bold text-slate-900 mb-3 not-italic">
+                {t("No articles available", "No hay artículos disponibles")}
+              </h3>
+              <p className="text-slate-400 max-w-sm mx-auto text-sm not-italic">
+                {t("We're working on new content. Check back soon!", "Estamos trabajando en nuevo contenido. ¡Vuelve pronto!")}
+              </p>
             </div>
           </Reveal>
         ) : (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+          /* 1 col mobile → 2 cols md → 3 cols lg */
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
             {posts.map((post, i) => (
-              <PostCard key={post.id} post={post} formatDate={date => new Date(date).toLocaleDateString(locale === "es" ? "es-ES" : "en-US", { year: "numeric", month: "long", day: "numeric" })} delay={i * 90} />
+              <PostCard
+                key={post.id} post={post}
+                formatDate={date => new Date(date).toLocaleDateString(locale === "es-MX" ? "es-MX" : "en-US", { year: "numeric", month: "long", day: "numeric" })}
+                delay={i * 50}
+              />
             ))}
           </div>
         )}
@@ -352,32 +375,32 @@ function BlogList() {
     </section>
 
     {/* ══ DARK CTA / NEWSLETTER ═════════════════════════════════════════ */}
-    <section className="relative py-28 overflow-hidden">
+    <section className="relative py-20 sm:py-28 overflow-hidden bg-sky-950">
       <div className="absolute inset-0 will-change-transform"
         style={{ backgroundImage: "url('https://images.unsplash.com/photo-1517677208171-0bc6725a3e60?w=1920&h=1080&fit=crop')", backgroundSize: "cover", backgroundPosition: "center", transform: `translateY(${scrollY * 0.18}px) scale(1.1)` }} />
-      <div className="absolute inset-0 bg-gradient-to-br from-sky-950/92 to-sky-900/88" />
+      <div className="absolute inset-0 bg-gradient-to-br from-sky-950/95 to-sky-900/90" />
       <div className="absolute inset-0 opacity-[0.04]" style={{ backgroundImage: "radial-gradient(rgba(255,255,255,0.8) 1px,transparent 1px)", backgroundSize: "28px 28px" }} />
 
-      <div className="relative z-10 max-w-3xl mx-auto px-6 text-center">
-        <Reveal dir="scale" dur={900}>
+      <div className="relative z-10 max-w-3xl mx-auto px-4 sm:px-6 text-center">
+        <Reveal dir="scale" dur={400}>
           <div>
             <Sparkles className="w-7 h-7 text-sky-400/60 mx-auto mb-5" />
-            <h2 className="text-4xl sm:text-5xl font-bold text-white  mb-4 leading-tight">
+            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white mb-4 leading-tight not-italic">
               {t("Stay", "Mantente")}
-              <span className="block font-extralight">{t("Informed.", "Informado.")}</span>
+              <span className="block font-light not-italic">{t("Informed.", "Informado.")}</span>
             </h2>
             <div className="w-16 h-px bg-gradient-to-r from-transparent via-primary to-transparent mx-auto mb-6" />
-            <p className="text-white/60 text-lg mb-10">
+            <p className="text-white/60 text-base sm:text-lg mb-8 sm:mb-10 not-italic">
               {t("Subscribe to receive the latest tips and news about laundry care.", "Suscríbete para recibir los últimos consejos y novedades sobre el cuidado de tu ropa.")}
             </p>
             <Link to="/contact">
               <Mag as="div" strength={0.25}
-                className="inline-flex items-center gap-2 overflow-hidden relative bg-white text-primary rounded-full px-10 py-4 text-[13px] font-bold uppercase tracking-widest shadow-xl cursor-pointer hover:-translate-y-0.5 transition-transform duration-300 active:scale-95 group">
-                <span className="relative z-10 flex items-center gap-2">
+                className="inline-flex items-center gap-2 overflow-hidden relative bg-white text-primary rounded-full px-8 sm:px-10 py-3.5 sm:py-4 text-[13px] font-bold uppercase tracking-widest shadow-xl cursor-pointer hover:-translate-y-0.5 transition-transform duration-200 active:scale-95 group">
+                <span className="relative z-10 flex items-center gap-2 not-italic">
                   ✉️ {t("Subscribe Now", "Suscribirme Ahora")}
-                  <ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-1" />
+                  <ArrowRight className="w-4 h-4 transition-transform duration-150 group-hover:translate-x-1" />
                 </span>
-                <span className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/8 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
+                <span className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/8 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-500" />
               </Mag>
             </Link>
           </div>
@@ -409,7 +432,7 @@ function BlogPost() {
       .then(setPost).catch(console.error).finally(() => setLoading(false));
   }, [slug]);
 
-  const formatDate = (d) => new Date(d).toLocaleDateString(locale === "es" ? "es-ES" : "en-US", { year: "numeric", month: "long", day: "numeric" });
+  const formatDate = (d) => new Date(d).toLocaleDateString(locale === "es-MX" ? "es-MX" : "en-US", { year: "numeric", month: "long", day: "numeric" });
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-white">
@@ -422,11 +445,11 @@ function BlogPost() {
       <div className="w-20 h-20 bg-slate-50 rounded-2xl flex items-center justify-center mb-6">
         <Search className="h-9 w-9 text-slate-300" />
       </div>
-      <h1 className="text-2xl font-bold text-slate-900 mb-3">{t("Article not found", "Artículo no encontrado")}</h1>
-      <p className="text-slate-400 mb-8">{t("The article you're looking for doesn't exist.", "El artículo que buscas no existe.")}</p>
+      <h1 className="text-xl sm:text-2xl font-bold text-slate-900 mb-3 not-italic">{t("Article not found", "Artículo no encontrado")}</h1>
+      <p className="text-slate-400 mb-8 text-sm not-italic">{t("The article you're looking for doesn't exist.", "El artículo que buscas no existe.")}</p>
       <Link to="/blog">
-        <Mag as="div" strength={0.25} className="inline-flex items-center gap-2 bg-primary text-white rounded-full px-8 py-3.5 text-sm font-bold uppercase tracking-wider shadow-lg shadow-primary/25 cursor-pointer hover:-translate-y-0.5 transition-transform duration-300 active:scale-95">
-          <ArrowLeft className="h-4 w-4" /> {t("Back to Blog", "Volver al Blog")}
+        <Mag as="div" strength={0.25} className="inline-flex items-center gap-2 bg-primary text-white rounded-full px-8 py-3.5 text-sm font-bold uppercase tracking-wider shadow-lg shadow-primary/25 cursor-pointer hover:-translate-y-0.5 transition-transform duration-200 active:scale-95">
+          <ArrowLeft className="h-4 w-4" /> <span className="not-italic">{t("Back to Blog", "Volver al Blog")}</span>
         </Mag>
       </Link>
     </div>
@@ -441,34 +464,33 @@ function BlogPost() {
 
     {/* ── Post Hero ── */}
     {post.featured_image && (
-      <section className="relative h-[55vh] flex items-end justify-center overflow-hidden">
+      <section className="relative h-[50vh] sm:h-[55vh] flex items-end justify-center overflow-hidden">
         <div className="absolute inset-0 will-change-transform"
           style={{ backgroundImage: `url('${post.featured_image}')`, backgroundSize: "cover", backgroundPosition: "center", transform: `translateY(${scrollY * 0.2}px) scale(1.08)` }} />
         <div className="absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-900/60 to-slate-800/20" />
 
-        <div className="relative z-10 px-6 pb-16 max-w-4xl mx-auto w-full">
-          <Link to="/blog" className="inline-flex items-center gap-2 text-white/60 hover:text-white text-sm font-medium mb-6 transition-colors duration-200 group">
-            <ArrowLeft className="h-4 w-4 transition-transform duration-200 group-hover:-translate-x-1" />
+        <div className="relative z-10 px-4 sm:px-6 pb-12 sm:pb-16 max-w-4xl mx-auto w-full">
+          <Link to="/blog" className="inline-flex items-center gap-2 text-white/60 hover:text-white text-sm font-medium mb-4 sm:mb-6 transition-colors duration-200 group not-italic">
+            <ArrowLeft className="h-4 w-4 transition-transform duration-150 group-hover:-translate-x-1" />
             {t("Back to Blog", "Volver al Blog")}
           </Link>
-          <div className="inline-flex items-center gap-2 mb-4">
-            <span className="px-3 py-1 bg-primary text-white text-[10px] font-black uppercase tracking-widest rounded-full">
+          <div className="inline-flex items-center gap-2 mb-3 sm:mb-4">
+            <span className="px-3 py-1 bg-primary text-white text-[10px] font-black uppercase tracking-widest rounded-full not-italic">
               {post.category}
             </span>
           </div>
-          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white leading-tight mb-5"
-            style={{ fontFamily: "'Playfair Display', serif" }}>
+          <h1 className="text-2xl sm:text-3xl lg:text-5xl font-bold text-white leading-tight mb-4 sm:mb-5 not-italic">
             {post.title}
           </h1>
-          <div className="flex flex-wrap items-center gap-5 text-white/55 text-sm">
-            <span className="flex items-center gap-1.5"><User className="h-4 w-4" />{post.author}</span>
-            <span className="flex items-center gap-1.5"><Calendar className="h-4 w-4" /><time dateTime={post.created_at}>{formatDate(post.created_at)}</time></span>
-            <span className="flex items-center gap-1.5"><Eye className="h-4 w-4" />{post.views} {t("views", "vistas")}</span>
+          <div className="flex flex-wrap items-center gap-3 sm:gap-5 text-white/55 text-xs sm:text-sm">
+            <span className="flex items-center gap-1.5 not-italic"><User className="h-3.5 w-3.5 sm:h-4 sm:w-4" />{post.author}</span>
+            <span className="flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5 sm:h-4 sm:w-4" /><time dateTime={post.created_at} className="not-italic">{formatDate(post.created_at)}</time></span>
+            <span className="flex items-center gap-1.5 not-italic"><Eye className="h-3.5 w-3.5 sm:h-4 sm:w-4" />{post.views} {t("views", "vistas")}</span>
           </div>
         </div>
 
         <div className="absolute bottom-0 left-0 right-0 z-20">
-          <svg viewBox="0 0 1440 60" preserveAspectRatio="none" className="w-full h-8 sm:h-12">
+          <svg viewBox="0 0 1440 60" preserveAspectRatio="none" className="w-full h-6 sm:h-10">
             <path d="M0,30 C300,0 600,60 1440,30 L1440,60 L0,60 Z" fill="white" />
           </svg>
         </div>
@@ -476,38 +498,38 @@ function BlogPost() {
     )}
 
     {/* ── Post Content ── */}
-    <article className={`${post.featured_image ? "py-16" : "pt-32 pb-16"} relative`}>
+    <article className={`${post.featured_image ? "py-12 sm:py-16" : "pt-24 sm:pt-32 pb-12 sm:pb-16"} relative`}>
       {!post.featured_image && (
-        <div className="max-w-4xl mx-auto px-6 mb-10">
-          <Link to="/blog" className="inline-flex items-center gap-2 text-slate-400 hover:text-primary text-sm font-medium mb-8 transition-colors duration-200 group">
-            <ArrowLeft className="h-4 w-4 transition-transform duration-200 group-hover:-translate-x-1" />
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 mb-8 sm:mb-10">
+          <Link to="/blog" className="inline-flex items-center gap-2 text-slate-400 hover:text-primary text-sm font-medium mb-6 sm:mb-8 transition-colors duration-200 group not-italic">
+            <ArrowLeft className="h-4 w-4 transition-transform duration-150 group-hover:-translate-x-1" />
             {t("Back to Blog", "Volver al Blog")}
           </Link>
-          <span className="inline-block px-3 py-1 bg-primary/10 text-primary text-[10px] font-black uppercase tracking-widest rounded-full mb-5">{post.category}</span>
-          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-slate-900 mb-6 leading-tight" style={{ fontFamily: "'Playfair Display', serif" }}>{post.title}</h1>
-          <div className="flex flex-wrap items-center gap-5 text-slate-400 text-sm mb-8">
-            <span className="flex items-center gap-1.5"><User className="h-4 w-4" />{post.author}</span>
-            <span className="flex items-center gap-1.5"><Calendar className="h-4 w-4" /><time>{formatDate(post.created_at)}</time></span>
-            <span className="flex items-center gap-1.5"><Eye className="h-4 w-4" />{post.views} {t("views", "vistas")}</span>
+          <span className="inline-block px-3 py-1 bg-primary/10 text-primary text-[10px] font-black uppercase tracking-widest rounded-full mb-4 sm:mb-5 not-italic">{post.category}</span>
+          <h1 className="text-2xl sm:text-3xl lg:text-5xl font-bold text-slate-900 mb-4 sm:mb-6 leading-tight not-italic">{post.title}</h1>
+          <div className="flex flex-wrap items-center gap-3 sm:gap-5 text-slate-400 text-xs sm:text-sm mb-6 sm:mb-8">
+            <span className="flex items-center gap-1.5 not-italic"><User className="h-3.5 w-3.5 sm:h-4 sm:w-4" />{post.author}</span>
+            <span className="flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5 sm:h-4 sm:w-4" /><time className="not-italic">{formatDate(post.created_at)}</time></span>
+            <span className="flex items-center gap-1.5 not-italic"><Eye className="h-3.5 w-3.5 sm:h-4 sm:w-4" />{post.views} {t("views", "vistas")}</span>
           </div>
         </div>
       )}
 
-      <div className="max-w-4xl mx-auto px-6 sm:px-8">
-        <Reveal dir="up">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        <Reveal dir="up" dur={350}>
           <div
-            className="prose prose-lg max-w-none prose-headings:font-bold prose-headings:text-slate-900 prose-p:text-slate-600 prose-p:leading-relaxed prose-a:text-primary prose-a:no-underline hover:prose-a:underline prose-img:rounded-2xl prose-blockquote:border-l-primary prose-blockquote:text-slate-500"
+            className="prose prose-base sm:prose-lg max-w-none prose-headings:font-bold prose-headings:text-slate-900 prose-p:text-slate-600 prose-p:leading-relaxed prose-a:text-primary prose-a:no-underline hover:prose-a:underline prose-img:rounded-2xl prose-blockquote:border-l-primary prose-blockquote:text-slate-500"
             dangerouslySetInnerHTML={{ __html: post.content }}
           />
         </Reveal>
 
         {/* Tags */}
         {post.tags && post.tags.length > 0 && (
-          <Reveal delay={100} dir="up">
-            <div className="mt-10 pt-8 border-t border-slate-100 flex items-center gap-3 flex-wrap">
-              <Tag className="h-4 w-4 text-slate-400" />
+          <Reveal delay={80} dir="up" dur={300}>
+            <div className="mt-8 sm:mt-10 pt-6 sm:pt-8 border-t border-slate-100 flex items-center gap-2 sm:gap-3 flex-wrap">
+              <Tag className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-slate-400" />
               {post.tags.map(tag => (
-                <span key={tag} className="px-3 py-1.5 bg-slate-100 hover:bg-primary/10 hover:text-primary text-slate-600 text-xs font-semibold rounded-full transition-colors duration-200 cursor-default">
+                <span key={tag} className="px-2.5 sm:px-3 py-1 sm:py-1.5 bg-slate-100 hover:bg-primary/10 hover:text-primary text-slate-600 text-[11px] sm:text-xs font-semibold rounded-full transition-colors duration-150 cursor-default not-italic">
                   {tag}
                 </span>
               ))}
@@ -516,24 +538,24 @@ function BlogPost() {
         )}
 
         {/* CTA Card */}
-        <Reveal delay={180} dir="scale">
-          <div className="mt-14 relative overflow-hidden bg-gradient-to-br from-sky-950 to-sky-900 rounded-2xl p-8 text-center">
+        <Reveal delay={150} dir="scale" dur={350}>
+          <div className="mt-10 sm:mt-14 relative overflow-hidden bg-gradient-to-br from-sky-950 to-sky-900 rounded-2xl p-6 sm:p-8 text-center">
             <div className="absolute inset-0 opacity-[0.04]" style={{ backgroundImage: "radial-gradient(rgba(255,255,255,0.8) 1px,transparent 1px)", backgroundSize: "22px 22px" }} />
             <div className="absolute top-0 left-10 right-10 h-px bg-gradient-to-r from-transparent via-sky-400/50 to-transparent" />
             <Sparkles className="w-6 h-6 text-sky-400/60 mx-auto mb-4" />
-            <h3 className="text-xl font-bold text-white mb-2">{t("Enjoyed this article?", "¿Te gustó este artículo?")}</h3>
-            <p className="text-white/55 text-sm mb-7">
+            <h3 className="text-lg sm:text-xl font-bold text-white mb-2 not-italic">{t("Enjoyed this article?", "¿Te gustó este artículo?")}</h3>
+            <p className="text-white/55 text-xs sm:text-sm mb-5 sm:mb-7 not-italic">
               {t("Share it with your friends or contact us for more information.", "Compártelo con tus amigos o contáctanos para más información.")}
             </p>
-            <div className="flex items-center justify-center flex-wrap gap-4">
+            <div className="flex items-center justify-center flex-wrap gap-3 sm:gap-4">
               <Link to="/contact">
-                <Mag as="div" strength={0.22} className="inline-flex items-center gap-2 bg-primary text-white rounded-full px-7 py-3 text-sm font-bold uppercase tracking-wider shadow-lg shadow-primary/30 cursor-pointer hover:-translate-y-0.5 transition-transform duration-300 active:scale-95">
-                  {t("Contact Us", "Contáctanos")} <ArrowRight className="w-4 h-4" />
+                <Mag as="div" strength={0.22} className="inline-flex items-center gap-2 bg-primary text-white rounded-full px-5 sm:px-7 py-2.5 sm:py-3 text-xs sm:text-sm font-bold uppercase tracking-wider shadow-lg shadow-primary/30 cursor-pointer hover:-translate-y-0.5 transition-transform duration-200 active:scale-95">
+                  <span className="not-italic">{t("Contact Us", "Contáctanos")}</span> <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 </Mag>
               </Link>
               <Link to="/blog">
-                <Mag as="div" strength={0.22} className="inline-flex items-center gap-2 bg-white/10 border border-white/20 text-white rounded-full px-7 py-3 text-sm font-bold uppercase tracking-wider cursor-pointer hover:-translate-y-0.5 hover:bg-white/15 transition-all duration-300 active:scale-95">
-                  <ArrowLeft className="w-4 h-4" /> {t("More Articles", "Más Artículos")}
+                <Mag as="div" strength={0.22} className="inline-flex items-center gap-2 bg-white/10 border border-white/20 text-white rounded-full px-5 sm:px-7 py-2.5 sm:py-3 text-xs sm:text-sm font-bold uppercase tracking-wider cursor-pointer hover:-translate-y-0.5 hover:bg-white/15 transition-all duration-200 active:scale-95">
+                  <ArrowLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> <span className="not-italic">{t("More Articles", "Más Artículos")}</span>
                 </Mag>
               </Link>
             </div>
@@ -551,8 +573,11 @@ export default function BlogPage() {
   return (
     <div className="min-h-screen bg-white overflow-x-hidden">
       <style>{`
-        @keyframes fadeUp { from { opacity:0; transform:translateY(16px) } to { opacity:1; transform:translateY(0) } }
+        @keyframes fadeUp { from { opacity:0; transform:translateY(10px) } to { opacity:1; transform:translateY(0) } }
         @keyframes mq { from { transform:translateX(0) } to { transform:translateX(-33.333%) } }
+        * { font-style: normal !important; }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
       `}</style>
       <PublicNav />
       {slug ? <BlogPost /> : <BlogList />}

@@ -8,6 +8,7 @@ import PublicFooter from "../components/PublicFooter";
 import SmsConsentField from "../components/SmsConsentField";
 import AddressAutocomplete from "../components/AddressAutocomplete";
 import { useLocale } from "../context/LocaleContext";
+import heroBanner from "../assets/WhatsApp Image 2026-03-20 at 2.51.26 PM (1).jpeg";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const getErr = (e) => {
@@ -642,30 +643,39 @@ export default function SchedulePickup() {
       `}</style>
 
       {/* Hero */}
-      <section ref={topRef} style={{
-        paddingTop: 176, paddingBottom: 0,
-        background: "linear-gradient(150deg,#0b1929 0%,#081320 55%,#040c16 100%)",
-        position: "relative", overflow: "hidden",
-      }}>
-        <div style={{ position: "absolute", inset: 0, backgroundImage: "linear-gradient(rgba(255,255,255,.022) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)", backgroundSize: "44px 44px", pointerEvents: "none" }} />
-        <div style={{ position: "absolute", top: -80, left: -60, width: 340, height: 340, borderRadius: "50%", background: "radial-gradient(circle,rgba(14,165,233,.14) 0%,transparent 65%)", filter: "blur(40px)", pointerEvents: "none" }} />
-        <div style={{ maxWidth: 900, margin: "0 auto", padding: "0 24px 40px", position: "relative", zIndex: 2 }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 20, padding: "4px 12px", marginBottom: 14 }}>
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#34d399", boxShadow: "0 0 6px rgba(52,211,153,.9)", display: "inline-block" }} />
-            <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".16em", color: "rgba(255,255,255,.5)" }}>
-              {t("Premium Laundry Service", "Servicio Premium de Lavandería")}
-            </span>
-          </div>
-          <h1 style={{ fontFamily: "'Manrope',sans-serif", fontSize: "clamp(24px,4vw,42px)", fontWeight: 800, color: "white", lineHeight: 1.15, letterSpacing: "-.02em", margin: "0 0 10px" }}>
-            {t("Your Pick-up", "Tu Recogida")}<br />
-            <span style={{ color: "#38bdf8" }}>{t("Begins Here.", "Comienza Aquí.")}</span>
-          </h1>
-          <p style={{ fontSize: 14, color: "rgba(255,255,255,.45)", lineHeight: 1.7, maxWidth: 380, margin: 0 }}>
-            {t("Follow the wash cycle — each stage is a step on the conveyor belt.", "Sigue el ciclo de lavado — cada etapa es un paso en la cinta transportadora.")}
-          </p>
-        </div>
-      </section>
+     <section ref={topRef} style={{
+  paddingTop: 80, paddingBottom: 0,
+  background: "linear-gradient(150deg,#0b1929 0%,#081320 55%,#040c16 100%)",
+  position: "relative", overflow: "hidden",
+}}>
+  <div style={{ position: "absolute", inset: 0, backgroundImage: "linear-gradient(rgba(255,255,255,.022) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)", backgroundSize: "44px 44px", pointerEvents: "none" }} />
+  <div style={{ position: "absolute", top: -80, left: -60, width: 340, height: 340, borderRadius: "50%", background: "radial-gradient(circle,rgba(14,165,233,.14) 0%,transparent 65%)", filter: "blur(40px)", pointerEvents: "none" }} />
 
+  {/* ── Banner image ── */}
+  <div style={{ width: "100%", maxHeight: 280, overflow: "hidden", position: "relative" }}>
+    <img src={heroBanner} alt="Ventura Fresh Laundry"
+      style={{ width: "100%", height: 280, objectFit: "cover", objectPosition: "center", display: "block", opacity: 0.75 }} />
+    <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 120, background: "linear-gradient(to bottom, transparent, #081320)", pointerEvents: "none" }} />
+    <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 60, background: "linear-gradient(to bottom, #0b1929, transparent)", pointerEvents: "none" }} />
+  </div>
+
+  {/* ── Text ── */}
+  <div style={{ maxWidth: 900, margin: "0 auto", padding: "20px 24px 40px", position: "relative", zIndex: 2 }}>
+    <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 20, padding: "4px 12px", marginBottom: 14 }}>
+      <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#34d399", boxShadow: "0 0 6px rgba(52,211,153,.9)", display: "inline-block" }} />
+      <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".16em", color: "rgba(255,255,255,.5)" }}>
+        {t("Premium Laundry Service", "Servicio Premium de Lavandería")}
+      </span>
+    </div>
+    <h1 style={{ fontFamily: "'Manrope',sans-serif", fontSize: "clamp(24px,4vw,42px)", fontWeight: 800, color: "white", lineHeight: 1.15, letterSpacing: "-.02em", margin: "0 0 10px" }}>
+      {t("Your Pick-up", "Tu Recogida")}<br />
+      <span style={{ color: "#38bdf8" }}>{t("Begins Here.", "Comienza Aquí.")}</span>
+    </h1>
+    <p style={{ fontSize: 14, color: "rgba(255,255,255,.45)", lineHeight: 1.7, maxWidth: 380, margin: 0 }}>
+      {t("Follow the wash cycle — each stage is a step on the conveyor belt.", "Sigue el ciclo de lavado — cada etapa es un paso en la cinta transportadora.")}
+    </p>
+  </div>
+</section>
       {/* Main content */}
       <section style={{ padding: "0 0 64px" }}>
         <div style={{ maxWidth: 800, margin: "0 auto", padding: "0 16px" }}>
