@@ -4,7 +4,6 @@ from fastapi.responses import StreamingResponse, HTMLResponse, FileResponse, Res
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 import io
@@ -37,11 +36,51 @@ from normalization import (
     normalize_preference_dict
 )
 
+# ── Shared modules ───────────────────────────────────────────────────
+from database import db, client, SKIP_SERVER_NOTIFICATIONS, BUSINESS_NAME, JWT_SECRET, JWT_ALGORITHM, JWT_EXPIRATION_HOURS
+from models import (
+    UserCreate, UserLogin, UserResponse, TokenResponse,
+    ROLE_ADMIN, ROLE_OPERATOR, VALID_ROLES, ROLE_PERMISSIONS,
+    CustomerCreate, CustomerResponse,
+    PreferenceCreate, CustomerPreferenceUpdate, PreferenceResponse,
+    OrderCreate, OrderResponse, OrderPaymentUpdate,
+    OrderStripeCheckoutRequest, OrderStripeCheckoutResponse,
+    QuoteCreate, QuoteResponse,
+    LeadCreate, LeadResponse,
+    TicketCreate, TicketResponse,
+    ServiceCreate, ServiceResponse,
+    MembershipSectionUpdate, MembershipSectionResponse,
+    MembershipPlanCreate, MembershipPlanResponse,
+    MembershipSignupResponse, MembershipSignupUpdate, MembershipCustomerUpdate,
+    AdminAIRequest, AdminAIInsightsRequest,
+    PatternScanRequest, ProposalGenerateRequest, ProposalActionRequest,
+    ImportMappingSuggestRequest, ImportMappingConfirmRequest,
+    RulesUpdateRequest, QrResolveRequest, IngestCreate,
+    AuditLogResponse, DashboardStats,
+)
+from auth import (
+    security,
+    hash_password, verify_password, create_token,
+    get_current_user, create_customer_token, get_current_customer,
+    require_admin, require_role, has_permission, require_permission,
+)
+from utils import (
+    generate_order_number, normalize_status, normalize_payment_method,
+    build_order_times, validate_order_payload,
+    is_active_member, calculate_service_amount, should_notify_order_status,
+    build_qr_svg, build_qr_payload, build_display_order_number,
+    format_time_window, build_ticket_lines, build_qr_png_base64,
+    build_ticket_svg, parse_qr_payload, build_address_parts,
+    extract_json_payload, call_ollama,
+    normalize_header, set_nested_value, suggest_mapping,
+    resolve_or_create_customer_from_row,
+    create_audit_log, ensure_ai_indexes, get_or_seed_business_rules,
+)
+
 ROOT_DIR = Path(__file__).parent
 app_url = os.environ.get("APP_URL", "")
 if not app_url or "preview" in app_url or "localhost" in app_url:
     load_dotenv(ROOT_DIR / '.env', override=False)
-BUSINESS_NAME = os.environ.get("BUSINESS_NAME", "Ventura Fresh Laundry")
 
 # Import AI Assistant
 try:
@@ -182,11 +221,7 @@ except ImportError:
     logger = logging.getLogger(__name__)
     logger.warning("Stripe sync scaffold not available")
 
-# MongoDB connection
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
-SKIP_SERVER_NOTIFICATIONS = os.environ.get('SKIP_SERVER_NOTIFICATIONS', 'false').lower() == 'true'
+# MongoDB connection imported from database.py
 
 # Set database for n8n integration
 if N8N_ENABLED:
@@ -208,480 +243,16 @@ if AUTOMATION_ENABLED:
 if STRIPE_SYNC_SCAFFOLD_ENABLED:
     set_stripe_sync_db(db)
 
-# JWT Config
-JWT_SECRET = os.environ.get('JWT_SECRET', 'ventura-fresh-laundry-secret-key-2024')
-JWT_ALGORITHM = "HS256"
-JWT_EXPIRATION_HOURS = 24
-
 # ── Import shared objects from the lightweight entry-point ──
 from server import fastapi_app, sio
 
 app = fastapi_app
 api_router = APIRouter(prefix="/api")
-security = HTTPBearer()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# ==================== MODELS ====================
-
-class UserCreate(BaseModel):
-    email: EmailStr
-    password: str
-    name: str
-    role: Optional[str] = "operator"  # Default to operator for new users
-
-class UserLogin(BaseModel):
-    email: EmailStr
-    password: str
-
-# Role-based access control constants
-ROLE_ADMIN = "admin"
-ROLE_OPERATOR = "operator"
-VALID_ROLES = [ROLE_ADMIN, ROLE_OPERATOR]
-
-# Permissions by role - what each role can access
-ROLE_PERMISSIONS = {
-    ROLE_ADMIN: ["all"],  # Admin has access to everything
-    ROLE_OPERATOR: [
-        "orders:read", "orders:update_status",
-        "customers:read",
-        "services:read",
-        "operator_dashboard"
-    ]
-}
-
-class UserResponse(BaseModel):
-    id: str
-    email: str
-    name: str
-    role: str
-    created_at: str
-
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str
-    user: UserResponse
-
-class CustomerCreate(BaseModel):
-    name: str
-    email: Optional[EmailStr] = None
-    phone: Optional[str] = None
-    address: Optional[str] = None
-    preferred_contact: Optional[str] = "email"
-    notes: Optional[str] = None
-    membership_plan: Optional[str] = None
-    membership_status: Optional[str] = None
-    membership_start_date: Optional[str] = None
-    preferences_id: Optional[str] = None
-
-class CustomerResponse(BaseModel):
-    id: str
-    name: Optional[str] = ""
-    email: Optional[str] = None
-    phone: Optional[str] = None
-    address: Optional[str] = None
-    preferred_contact: Optional[str] = "email"
-    notes: Optional[str] = None
-    status: Optional[str] = "active"
-    total_orders: Optional[int] = 0
-    membership_plan: Optional[str] = None
-    membership_status: Optional[str] = None
-    membership_start_date: Optional[str] = None
-    preferences_id: Optional[str] = None
-    created_at: Optional[str] = ""
-    updated_at: Optional[str] = ""
-
-class PreferenceCreate(BaseModel):
-    customer_id: str
-    detergent_type: Optional[str] = "standard"
-    water_temperature: Optional[str] = None
-    fabric_softener: Optional[str] = None
-    folding_style: Optional[str] = "standard"
-    hanging_instructions: Optional[str] = None
-    allergies: Optional[str] = None
-    special_instructions: Optional[str] = None
-    pickup_time_preference: Optional[str] = None
-    gate_code: Optional[str] = None
-    hang_dry_items: Optional[List[str]] = []
-    fragrance_preference: Optional[str] = "light"
-
-class CustomerPreferenceUpdate(BaseModel):
-    detergent_type: Optional[str] = "standard"
-    water_temperature: Optional[str] = None
-    fabric_softener: Optional[str] = None
-    folding_style: Optional[str] = "standard"
-    hanging_instructions: Optional[str] = None
-    allergies: Optional[str] = None
-    special_instructions: Optional[str] = None
-    pickup_time_preference: Optional[str] = None
-    gate_code: Optional[str] = None
-    hang_dry_items: Optional[List[str]] = []
-    fragrance_preference: Optional[str] = "light"
-
-class PreferenceResponse(BaseModel):
-    id: str
-    customer_id: str
-    detergent_type: str
-    water_temperature: Optional[str]
-    fabric_softener: Optional[str]
-    folding_style: str
-    hanging_instructions: Optional[str]
-    allergies: Optional[str]
-    special_instructions: Optional[str]
-    pickup_time_preference: Optional[str]
-    gate_code: Optional[str]
-    hang_dry_items: List[str]
-    fragrance_preference: str
-    version: int
-    created_at: str
-    updated_at: str
-
-class OrderCreate(BaseModel):
-    customer_id: str
-    service_type: str  # pickup_delivery, wash_fold, self_service
-    pickup_date: Optional[str] = None
-    pickup_time_window: Optional[str] = None
-    pickup_address: Optional[str] = None
-    delivery_address: Optional[str] = None
-    estimated_lbs: Optional[float] = None
-    notes: Optional[str] = None
-    gate_code: Optional[str] = None
-
-class OrderResponse(BaseModel):
-    id: str
-    order_number: Optional[str] = None
-    customer_id: Optional[str] = None
-    customer_name: Optional[str] = None
-    service_type: Optional[str] = "general"
-    pickup_date: Optional[str] = None
-    pickup_time_window: Optional[str] = None
-    pickup_address: Optional[str] = None
-    delivery_address: Optional[str] = None
-    estimated_lbs: Optional[float] = None
-    actual_lbs: Optional[float] = None
-    notes: Optional[str] = None
-    preferred_contact: Optional[str] = None
-    gate_code: Optional[str] = None
-    preferences_id: Optional[str] = None
-    preferences_snapshot: Optional[dict] = None
-    status: str = "new"
-    payment_status: Optional[str] = "pending"
-    payment_method: Optional[str] = None
-    amount_paid: Optional[float] = None
-    change_due: Optional[float] = None
-    paid_at: Optional[str] = None
-    total_amount: Optional[float] = None
-    created_at: Optional[str] = ""
-    updated_at: Optional[str] = ""
-
-class OrderPaymentUpdate(BaseModel):
-    payment_method: str
-    amount_received: Optional[float] = None
-
-class OrderStripeCheckoutRequest(BaseModel):
-    origin_url: str
-
-class OrderStripeCheckoutResponse(BaseModel):
-    session_id: str
-    url: str
-    amount: float
-    currency: str
-
-
-class QuoteCreate(BaseModel):
-    company_name: str
-    contact_name: str
-    email: Optional[EmailStr] = None
-    phone: Optional[str] = None
-    industry: Optional[str] = None
-    estimated_lbs_per_week: Optional[float] = None
-    service_needs: Optional[str] = None
-    notes: Optional[str] = None
-
-class QuoteResponse(BaseModel):
-    id: str
-    quote_number: str
-    company_name: str
-    contact_name: str
-    email: Optional[str] = None
-    phone: Optional[str] = None
-    industry: Optional[str] = None
-    estimated_lbs_per_week: Optional[float] = None
-    service_needs: Optional[str] = None
-    notes: Optional[str] = None
-    status: str
-    assigned_to: Optional[str] = None
-    follow_up_date: Optional[str] = None
-    created_at: str
-    updated_at: str
-
-class LeadCreate(BaseModel):
-    name: str
-    email: Optional[EmailStr] = None
-    phone: Optional[str] = None
-    source: Optional[str] = "website"
-    interest_type: Optional[str] = None
-    notes: Optional[str] = None
-
-class LeadResponse(BaseModel):
-    id: str
-    name: str
-    email: Optional[str] = None
-    phone: Optional[str] = None
-    source: str
-    interest_type: Optional[str] = None
-    notes: Optional[str] = None
-    status: str
-    converted_to_customer_id: Optional[str] = None
-    created_at: str
-    updated_at: str
-
-class TicketCreate(BaseModel):
-    customer_id: Optional[str] = None
-    subject: str
-    description: str
-    category: Optional[str] = "general"
-
-class TicketResponse(BaseModel):
-    id: str
-    ticket_number: str
-    customer_id: Optional[str] = None
-    customer_name: Optional[str] = None
-    subject: str
-    description: str
-    category: str
-    priority: str
-    status: str
-    assigned_to: Optional[str] = None
-    resolution: Optional[str] = None
-    created_at: str
-    updated_at: str
-
-class ServiceCreate(BaseModel):
-    name: str
-    category: Optional[str] = None
-    description: Optional[str] = None
-    price: Optional[float] = None
-    price_unit: Optional[str] = None
-    is_active: bool = True
-    sort_order: Optional[int] = 0
-
-class ServiceResponse(BaseModel):
-    id: str
-    name: str
-    category: Optional[str] = None
-    description: Optional[str] = None
-    price: Optional[float] = None
-    price_unit: Optional[str] = None
-    is_active: bool
-    sort_order: Optional[int] = 0
-    created_at: str
-    updated_at: str
-
-class MembershipSectionUpdate(BaseModel):
-    heading: str
-    subheading: Optional[str] = None
-    special_title: Optional[str] = None
-    special_text: Optional[str] = None
-    cta_title: Optional[str] = None
-    cta_text: Optional[str] = None
-    cta_button_label: Optional[str] = None
-    cta_button_url: Optional[str] = None
-    contact_phone: Optional[str] = None
-    is_active: bool = True
-
-class MembershipSectionResponse(BaseModel):
-    id: str
-    heading: str
-    subheading: Optional[str] = None
-    special_title: Optional[str] = None
-    special_text: Optional[str] = None
-    cta_title: Optional[str] = None
-    cta_text: Optional[str] = None
-    cta_button_label: Optional[str] = None
-    cta_button_url: Optional[str] = None
-    contact_phone: Optional[str] = None
-    is_active: bool
-    created_at: str
-    updated_at: str
-
-class MembershipPlanCreate(BaseModel):
-    name: str
-    price: str
-    image_url: Optional[str] = None
-    features: List[str]
-    is_popular: bool = False
-    is_active: bool = True
-    sort_order: Optional[int] = 0
-
-class MembershipPlanResponse(BaseModel):
-    id: str
-    name: str
-    price: str
-    image_url: Optional[str] = None
-    features: List[str]
-    is_popular: bool
-    is_active: bool
-    sort_order: Optional[int] = 0
-    created_at: str
-    updated_at: str
-
-class MembershipSignupResponse(BaseModel):
-    id: str
-    first_name: Optional[str] = ""
-    last_name: Optional[str] = ""
-    email: Optional[str] = ""
-    phone: Optional[str] = ""
-    contact_method: Optional[str] = ""
-    address_line1: Optional[str] = ""
-    address_line2: Optional[str] = None
-    city: Optional[str] = ""
-    state: Optional[str] = ""
-    zip_code: Optional[str] = ""
-    membership_plan: Optional[str] = ""
-    plan_name: Optional[str] = None
-    plan_id: Optional[str] = None
-    laundry_frequency: Optional[str] = ""
-    estimated_lbs: Optional[float] = 0
-    amount: Optional[float] = None
-    payment_status: Optional[str] = None
-    status: str = "pending"
-    customer_id: Optional[str] = None
-    preferences: Optional[dict] = None
-    customer_name: Optional[str] = None
-    customer_email: Optional[str] = None
-    customer_phone: Optional[str] = None
-    stripe_session_id: Optional[str] = None
-    created_at: Optional[str] = ""
-    updated_at: Optional[str] = ""
-
-class MembershipSignupUpdate(BaseModel):
-    status: Optional[str] = None
-    customer_id: Optional[str] = None
-
-class MembershipCustomerUpdate(BaseModel):
-    membership_plan: Optional[str] = None
-    membership_status: Optional[str] = None
-    membership_start_date: Optional[str] = None
-
-class AdminAIRequest(BaseModel):
-    message: str
-    execute: bool = True
-    session_id: Optional[str] = None
-    confirm_token: Optional[str] = None
-    context: Optional[dict] = None
-
-class AdminAIInsightsRequest(BaseModel):
-    type: str
-
-class PatternScanRequest(BaseModel):
-    periodo_desde: Optional[str] = None
-    periodo_hasta: Optional[str] = None
-    scope: Optional[str] = "orders"
-    filtros: Optional[dict] = None
-
-class ProposalGenerateRequest(BaseModel):
-    patrones_ids: Optional[List[str]] = None
-    max_propuestas: Optional[int] = 10
-
-class ProposalActionRequest(BaseModel):
-    accion: str
-    modificaciones: Optional[dict] = None
-    comentarios: Optional[str] = None
-
-class ImportMappingSuggestRequest(BaseModel):
-    campos_legacy: List[str]
-
-class ImportMappingConfirmRequest(BaseModel):
-    mapping_campos: Dict[str, str]
-
-class RulesUpdateRequest(BaseModel):
-    rules: Dict[str, Any]
-
-class QrResolveRequest(BaseModel):
-    qr_token: Optional[str] = None
-    payload: Optional[str] = None
-
-class IngestCreate(BaseModel):
-    source_form: str
-    data: dict
-
-class AuditLogResponse(BaseModel):
-    id: str
-    event_type: str
-    entity_type: str
-    entity_id: str
-    user_id: Optional[str] = None
-    details: Optional[dict] = None
-    created_at: str
-
-class DashboardStats(BaseModel):
-    total_customers: int
-    total_orders: int
-    pending_orders: int
-    open_tickets: int
-    active_quotes: int
-    new_leads: int
-    orders_today: int
-    revenue_this_month: float
-
-# ==================== AUTH HELPERS ====================
-
-def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-
-def verify_password(password: str, hashed: str) -> bool:
-    return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
-
-def create_token(user_id: str, email: str) -> str:
-    payload = {
-        "sub": user_id,
-        "email": email,
-        "exp": datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRATION_HOURS)
-    }
-    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
-
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    try:
-        payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        user_id = payload.get("sub")
-        if not user_id:
-            raise HTTPException(status_code=401, detail="Invalid token")
-        user = await db.users.find_one({"id": user_id}, {"_id": 0})
-        if not user:
-            raise HTTPException(status_code=401, detail="User not found")
-        return user
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-def create_customer_token(customer_id: str, email: str) -> str:
-    payload = {
-        "sub": customer_id,
-        "email": email,
-        "type": "customer",
-        "exp": datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRATION_HOURS * 7)
-    }
-    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
-
-async def get_current_customer(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    try:
-        payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        customer_id = payload.get("sub")
-        token_type = payload.get("type")
-        if not customer_id or token_type != "customer":
-            raise HTTPException(status_code=401, detail="Invalid token")
-        customer = await db.customers.find_one({"id": customer_id}, {"_id": 0})
-        if not customer:
-            raise HTTPException(status_code=401, detail="Customer not found")
-        return customer
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
 
 async def emit_realtime(event: str, payload: dict):
     try:
@@ -692,368 +263,6 @@ async def emit_realtime(event: str, payload: dict):
 if AUTOMATION_ENABLED and set_realtime_emitter:
     set_realtime_emitter(emit_realtime)
 
-
-def require_admin(current_user: dict):
-    if current_user.get("role") != ROLE_ADMIN:
-        raise HTTPException(status_code=403, detail="Admin access required")
-
-def require_role(allowed_roles: List[str]):
-    """Dependency factory that creates a role checker"""
-    def checker(current_user: dict = Depends(get_current_user)):
-        user_role = current_user.get("role", ROLE_OPERATOR)
-        if user_role == ROLE_ADMIN:  # Admin always passes
-            return current_user
-        if user_role not in allowed_roles:
-            raise HTTPException(
-                status_code=403, 
-                detail=f"Access denied. Required roles: {allowed_roles}"
-            )
-        return current_user
-    return checker
-
-def has_permission(current_user: dict, permission: str) -> bool:
-    """Check if user has specific permission"""
-    user_role = current_user.get("role", ROLE_OPERATOR)
-    if user_role == ROLE_ADMIN:
-        return True
-    permissions = ROLE_PERMISSIONS.get(user_role, [])
-    return "all" in permissions or permission in permissions
-
-def require_permission(permission: str):
-    """Dependency factory for permission-based access"""
-    def checker(current_user: dict = Depends(get_current_user)):
-        if not has_permission(current_user, permission):
-            raise HTTPException(
-                status_code=403,
-                detail=f"Permission denied: {permission}"
-            )
-        return current_user
-    return checker
-
-def extract_json_payload(text: str):
-    cleaned = text.strip()
-    if "```" in cleaned:
-        start = cleaned.find("```")
-        end = cleaned.rfind("```")
-        if end > start:
-            cleaned = cleaned[start + 3:end].strip()
-            if cleaned.startswith("json"):
-                cleaned = cleaned[4:].strip()
-    return json.loads(cleaned)
-
-def call_ollama(prompt: str):
-    """Use Groq API for AI responses - faster than local Ollama"""
-    import os
-    from groq import Groq
-    
-    api_key = os.environ.get("GROQ_API_KEY")
-    if not api_key:
-        raise HTTPException(status_code=500, detail="Groq API key not configured")
-    
-    client = Groq(api_key=api_key)
-    models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
-    last_error = None
-
-    for model in models:
-        for attempt in range(3):
-            try:
-                chat_completion = client.chat.completions.create(
-                    messages=[
-                        {"role": "user", "content": prompt}
-                    ],
-                    model=model,
-                    temperature=0.65,
-                    max_tokens=2048
-                )
-                return chat_completion.choices[0].message.content.strip()
-            except Exception as e:
-                last_error = e
-                wait_seconds = 0.6 * (attempt + 1)
-                logger.warning(f"Groq API retry model={model} attempt={attempt + 1}: {e}")
-                time.sleep(wait_seconds)
-                continue
-
-    logger.error(f"Groq API error after retries: {last_error}")
-    raise HTTPException(status_code=502, detail=f"AI service error: {str(last_error)}")
-
-ai_indexes_ready = False
-
-async def ensure_ai_indexes():
-    global ai_indexes_ready
-    if ai_indexes_ready:
-        return
-    await db.patrones_detectados.create_index([("fecha_deteccion", -1)])
-    await db.propuestas_ia.create_index([("estado", 1), ("fecha_generacion", -1)])
-    await db.importaciones_legacy.create_index([("origen", 1), ("fecha_importacion", -1)])
-    await db.audit_logs.create_index([("created_at", -1)])
-    ai_indexes_ready = True
-
-async def get_or_seed_business_rules():
-    rules = await db.reglas_negocio.find_one({"id": "order_rules_v1"}, {"_id": 0})
-    if rules:
-        return rules
-    now = datetime.now(timezone.utc).isoformat()
-    rules = {
-        "id": "order_rules_v1",
-        "type": "order_rules",
-        "auto_transitions": {
-            "pickup_delivery": {"notify_status": "out_for_delivery"},
-            "wash_fold": {"notify_status": "ready"},
-            "self_service": {"notify_status": "ready"}
-        },
-        "sla_hours": {
-            "pickup_delivery": 48,
-            "wash_fold": 36,
-            "self_service": 24
-        },
-        "created_at": now,
-        "updated_at": now
-    }
-    await db.reglas_negocio.insert_one(rules)
-    return rules
-
-def build_order_times(now_iso: str, status_value: str):
-    return {
-        "creacion": now_iso,
-        "ultimo_cambio_estado": now_iso,
-        "fechas_estado": {status_value: now_iso}
-    }
-
-def validate_order_payload(data: OrderCreate):
-    errors = []
-    if data.service_type == "pickup_delivery":
-        if not data.pickup_date:
-            errors.append({"codigo": "MISSING_PICKUP_DATE", "campo": "pickup_date"})
-        if not data.pickup_time_window:
-            errors.append({"codigo": "MISSING_PICKUP_TIME", "campo": "pickup_time_window"})
-        if not data.pickup_address:
-            errors.append({"codigo": "MISSING_PICKUP_ADDRESS", "campo": "pickup_address"})
-    return errors
-
-def normalize_header(value: str):
-    return value.strip().lower()
-
-def set_nested_value(target: dict, path: str, value):
-    parts = path.split(".")
-    current = target
-    for key in parts[:-1]:
-        if key not in current or not isinstance(current[key], dict):
-            current[key] = {}
-        current = current[key]
-    current[parts[-1]] = value
-
-def build_qr_svg(payload: str):
-    img = qrcode.make(payload, image_factory=SvgImage, box_size=10, border=2)
-    buffer = io.BytesIO()
-    img.save(buffer)
-    return buffer.getvalue()
-
-def build_qr_payload(order: dict):
-    return json.dumps({
-        "order_id": order.get("id"),
-        "order_number": order.get("order_number"),
-        "qr_token": order.get("qr_token")
-    })
-
-
-def build_display_order_number(order: dict) -> str:
-    order_number = order.get("order_number")
-    if order_number and order_number.startswith("VFL-"):
-        return order_number
-    created_at = order.get("created_at") or datetime.now(timezone.utc).isoformat()
-    date_part = created_at[:10].replace("-", "")
-    base_id = order_number or order.get("id") or "00000000"
-    short = "".join([c for c in str(base_id) if c.isalnum()]).lower()[:8]
-    if len(short) < 8:
-        short = (short + "00000000")[:8]
-    return f"VFL-{date_part}-{short}"
-
-
-def format_time_window(window: Optional[str]) -> str:
-    if not window:
-        return "-"
-    cleaned = window.replace(" ", "")
-    if "-" in cleaned:
-        start, end = cleaned.split("-", 1)
-        return f"{start} - {end}"
-    return window
-
-
-def build_ticket_lines(order: dict, customer: Optional[dict]) -> List[str]:
-    customer = customer or {}
-    display_id = build_display_order_number(order)
-    status = normalize_status(order.get("status") or "new").upper()
-    name = order.get("customer_name") or customer.get("name") or "-"
-    phone = customer.get("phone") or order.get("customer_phone") or "-"
-    contact = customer.get("preferred_contact") or order.get("preferred_contact") or "-"
-    contact_label = str(contact).capitalize() if contact else "-"
-    pickup_date = order.get("pickup_date") or "-"
-    window = format_time_window(order.get("pickup_time_window") or order.get("pickup_time"))
-    address = order.get("pickup_address") or order.get("delivery_address") or customer.get("address") or "-"
-    membership = "yes" if customer.get("membership_plan") or customer.get("membership_status") else "no"
-    notes = order.get("notes") or "N/A"
-    def format_lbs(value):
-        if value is None or value == "":
-            return "N/A"
-        try:
-            return f"{float(value):g}"
-        except Exception:
-            return str(value)
-    est_lbs = format_lbs(order.get("estimated_lbs"))
-    act_lbs = format_lbs(order.get("actual_lbs"))
-    pref_id = order.get("preferences_id") or "N/A"
-    customer_id = order.get("customer_id") or customer.get("id") or "N/A"
-    email = customer.get("email") or order.get("customer_email") or ""
-    source = order.get("origen") or "crm"
-    dedup = f"e:{email}|f:{source}"
-    if len(dedup) > 45:
-        dedup = dedup[:42] + "..."
-    summary = f"{display_id} | {pickup_date} {window} | {name}"
-    return [
-        "VENTURA FRESH LAUNDRY",
-        f"ORDER: {display_id}",
-        f"STATUS: {status or 'NEW'}",
-        f"NAME: {name}",
-        f"PHONE: {phone}    CONTACT: {contact_label}",
-        f"PICKUP: {pickup_date}    WINDOW: {window}",
-        f"ADDR: {address}",
-        f"MEMBERSHIP: {membership}",
-        f"NOTES: {notes}",
-        f"EST_LBS: {est_lbs}",
-        f"ACT_LBS: {act_lbs}",
-        f"PREF: {pref_id}",
-        f"CUS_ID: {customer_id}",
-        f"DEDUP: {dedup}",
-        "",
-        summary
-    ]
-
-
-def build_qr_png_base64(payload: str) -> str:
-    qr = qrcode.QRCode(box_size=6, border=2)
-    qr.add_data(payload)
-    qr.make(fit=True)
-    img = qr.make_image(fill_color="black", back_color="white")
-    buffer = io.BytesIO()
-    img.save(buffer, format="PNG")
-    return base64.b64encode(buffer.getvalue()).decode("utf-8")
-
-
-def build_ticket_svg(order: dict, customer: Optional[dict], qr_payload: str) -> bytes:
-    lines = build_ticket_lines(order, customer)
-    qr_base64 = build_qr_png_base64(qr_payload)
-    qr_size = 180
-    padding = 20
-    line_height = 16
-    font_size = 12
-    text_x = padding + qr_size + 20
-    height = max(qr_size + padding * 2, padding * 2 + line_height * len(lines))
-    width = 760
-
-    text_lines = []
-    for index, line in enumerate(lines):
-        dy = line_height if index > 0 else 0
-        text_lines.append(
-            f"<tspan x='{text_x}' dy='{dy}'>{html.escape(line)}</tspan>"
-        )
-
-    svg = f"""
-<svg xmlns='http://www.w3.org/2000/svg' width='{width}' height='{height}'>
-  <rect width='100%' height='100%' fill='white'/>
-  <image href='data:image/png;base64,{qr_base64}' x='{padding}' y='{padding}' width='{qr_size}' height='{qr_size}' />
-  <text x='{text_x}' y='{padding + font_size}' font-family='Courier New, monospace' font-size='{font_size}' fill='#111'>
-    {''.join(text_lines)}
-  </text>
-</svg>
-"""
-    return svg.encode("utf-8")
-
-def parse_qr_payload(payload: str):
-    try:
-        data = json.loads(payload)
-        if isinstance(data, dict):
-            return data
-    except Exception:
-        return {}
-    return {}
-
-def build_address_parts(address: Optional[str]):
-    if not address:
-        return {"full": None, "street": None, "city": None, "postal_code": None}
-    parts = [p.strip() for p in address.split(",") if p.strip()]
-    street = parts[0] if parts else address
-    city = parts[1] if len(parts) > 1 else None
-    postal_code = None
-    if len(parts) > 2:
-        postal_code = parts[-1].split()[-1]
-    return {"full": address, "street": street, "city": city, "postal_code": postal_code}
-
-def suggest_mapping(headers: List[str]):
-    mapping = {}
-    for header in headers:
-        key = normalize_header(header)
-        if key in ["issue key", "key", "id", "order_number", "order number"]:
-            mapping[header] = "order_number"
-        elif key in ["status", "estado", "state"]:
-            mapping[header] = "estado_actual"
-        elif key in ["created", "created_at", "fecha", "creation date"]:
-            mapping[header] = "tiempos.creacion"
-        elif key in ["customer", "customer_name", "name", "cliente"]:
-            mapping[header] = "customer_name"
-        elif key in ["email", "correo", "customer_email"]:
-            mapping[header] = "customer_email"
-        elif key in ["phone", "telefono", "customer_phone"]:
-            mapping[header] = "customer_phone"
-        elif key in ["service_type", "service", "tipo servicio"]:
-            mapping[header] = "service_type"
-        elif key in ["notes", "summary", "descripcion", "description"]:
-            mapping[header] = "notes"
-    return mapping
-
-async def resolve_or_create_customer_from_row(row: dict):
-    email = row.get("customer_email")
-    phone = row.get("customer_phone")
-    name = row.get("customer_name") or "Legacy"
-    query = []
-    if email:
-        query.append({"email": email.lower()})
-    if phone:
-        query.append({"phone": phone})
-    if query:
-        existing = await db.customers.find_one({"$or": query}, {"_id": 0})
-        if existing:
-            return existing["id"]
-    customer_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc).isoformat()
-    customer = {
-        "id": customer_id,
-        "name": name,
-        "email": email.lower() if email else None,
-        "phone": phone,
-        "address": None,
-        "preferred_contact": "email",
-        "notes": "Importación legacy",
-        "status": "active",
-        "total_orders": 0,
-        "created_at": now,
-        "updated_at": now
-    }
-    await db.customers.insert_one(customer)
-    return customer_id
-
-# ==================== AUDIT LOG HELPER ====================
-
-async def create_audit_log(event_type: str, entity_type: str, entity_id: str, user_id: str = None, details: dict = None):
-    log = {
-        "id": str(uuid.uuid4()),
-        "event_type": event_type,
-        "entity_type": entity_type,
-        "entity_id": entity_id,
-        "user_id": user_id,
-        "details": details,
-        "created_at": datetime.now(timezone.utc).isoformat()
-    }
-    await db.audit_logs.insert_one(log)
 
 # ==================== AUTH ENDPOINTS ====================
 
@@ -1339,11 +548,6 @@ async def delete_customer_preferences(current_customer: dict = Depends(get_curre
 
 # ==================== ORDERS ====================
 
-async def generate_order_number():
-    today = datetime.now(timezone.utc).strftime("%Y%m%d")
-    unique = uuid.uuid4().hex[:8]
-    return f"VFL-{today}-{unique}"
-
 @api_router.post("/orders", response_model=OrderResponse)
 async def create_order(data: OrderCreate, notify: bool = True, current_user: dict = Depends(get_current_user)):
     customer = await db.customers.find_one({"id": data.customer_id}, {"_id": 0})
@@ -1596,86 +800,6 @@ async def update_order(order_id: str, data: dict, current_user: dict = Depends(g
     await create_audit_log("ORDER_UPDATED", "order", order_id, current_user["id"], {"changes": list(data.keys())})
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     return OrderResponse(**order)
-
-def normalize_status(value: Optional[str]) -> str:
-    if not value:
-        return ""
-    return value.strip().lower().replace(" ", "_")
-
-
-def normalize_payment_method(value: Optional[str]) -> str:
-    if not value:
-        return ""
-    normalized = value.strip().lower()
-    mapping = {
-        "efectivo": "cash",
-        "cash": "cash",
-        "tarjeta": "card",
-        "card": "card",
-        "credito": "card",
-        "débito": "card",
-        "debito": "card",
-        "transferencia": "transfer",
-        "transfer": "transfer",
-        "transferencia_bancaria": "transfer",
-        "otro": "other",
-        "other": "other"
-    }
-    return mapping.get(normalized, normalized)
-
-
-def is_active_member(order: dict, customer: Optional[dict]) -> bool:
-    status_value = ""
-    if order:
-        status_value = order.get("membership_status") or ""
-    if customer:
-        status_value = customer.get("membership_status") or status_value
-    status_normalized = normalize_spaces(status_value).lower() if status_value else ""
-    if status_normalized in ["inactive", "cancelled", "canceled", "expired"]:
-        return False
-    if status_normalized in ["active", "current", "paid", "yes", "true"]:
-        return True
-    plan = None
-    if order:
-        plan = order.get("membership_plan")
-    if customer and not plan:
-        plan = customer.get("membership_plan")
-    return bool(plan)
-
-
-def calculate_service_amount(order: dict, customer: Optional[dict]) -> Optional[float]:
-    service_type = normalize_status(order.get("service_type") or "pickup_delivery")
-    lbs_value = order.get("actual_lbs")
-    if lbs_value is None:
-        return None
-    try:
-        lbs_value = float(lbs_value)
-    except Exception:
-        return None
-    if lbs_value <= 0:
-        return None
-
-    if service_type == "wash_fold":
-        billable_lbs = max(lbs_value, 10)
-        amount = billable_lbs * 2.25
-    else:
-        rate = 2.50 if is_active_member(order, customer) else 2.75
-        amount = max(lbs_value * rate, 40)
-
-    return round(float(amount), 2)
-
-
-def should_notify_order_status(order: dict, status_value: str) -> bool:
-    """Determine if order status change should trigger notification"""
-    status_normalized = normalize_status(status_value)
-    if not status_normalized or status_normalized == "new":
-        return False
-
-    service_type = normalize_status(order.get("service_type") or "pickup_delivery")
-    if service_type in ["wash_fold", "self_service"]:
-        return status_normalized == "ready"
-
-    return status_normalized in ["confirmed", "pickup_scheduled", "ready", "out_for_delivery", "delivered"]
 
 @api_router.patch("/orders/{order_id}/status")
 async def update_order_status(order_id: str, status: str, notify: bool = True, current_user: dict = Depends(get_current_user)):
