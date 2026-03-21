@@ -1,8 +1,10 @@
 """
 Lightweight entry-point so uvicorn can bind port 8001 in < 2 seconds.
-Heavy imports and route registration are deferred to the startup event.
+Heavy imports and route registration run in a background thread AFTER
+the port is already open and responding to health checks.
 """
 import os
+import asyncio
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -47,11 +49,21 @@ app = socketio.ASGIApp(
 )
 
 
-# ── Deferred heavy initialisation ───────────────────────────────────
+# ── Deferred heavy initialisation (runs AFTER port opens) ───────────
+def _load_server_core():
+    """Synchronous import executed in a thread pool worker."""
+    import server_core  # noqa: F401
+
+
+async def _deferred_init():
+    """Import server_core in a background thread so the event loop
+    stays free to answer health-check probes."""
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, _load_server_core)
+
+
 @fastapi_app.on_event("startup")
 async def _bootstrap():
-    """Import the real application (server_core) which registers every
-    route on *this* FastAPI instance.  Because server_core reads
-    `fastapi_app`, `sio` and other objects from this module at import
-    time, all decorators attach to the correct app automatically."""
-    import server_core  # noqa: F401 – side-effect import
+    # Schedule heavy loading as a background task.
+    # The startup event returns immediately → uvicorn opens the port.
+    asyncio.create_task(_deferred_init())
