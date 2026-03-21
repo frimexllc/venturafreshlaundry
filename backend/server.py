@@ -1,6 +1,6 @@
 """
 Lightweight entry-point so uvicorn can bind port 8001 in < 2 seconds.
-Heavy imports and route registration run in a background thread AFTER
+Heavy imports (socketio, server_core) run in a background thread AFTER
 the port is already open and responding to health checks.
 """
 import os
@@ -13,9 +13,8 @@ load_dotenv(ROOT_DIR / ".env", override=False)
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import socketio
 
-# ── Create ASGI app immediately ──────────────────────────────────────
+# ── Create FastAPI app immediately (no heavy deps) ───────────────────
 fastapi_app = FastAPI(title="Ventura Fresh Laundry CRM")
 
 cors_origins = os.environ.get("CORS_ORIGINS", "*")
@@ -27,12 +26,8 @@ fastapi_app.add_middleware(
     allow_headers=["*"],
 )
 
-sio = socketio.AsyncServer(
-    async_mode="asgi",
-    cors_allowed_origins="*",
-    ping_timeout=60,
-    ping_interval=25,
-)
+# Placeholder — replaced by background thread once socketio loads
+sio = None
 
 # ── Health-check available before any heavy import ───────────────────
 @fastapi_app.get("/api/health")
@@ -41,29 +36,59 @@ async def health_check():
     return {"status": "ok"}
 
 
-# ── ASGI app that uvicorn exposes ────────────────────────────────────
-app = socketio.ASGIApp(
-    sio,
-    other_asgi_app=fastapi_app,
-    socketio_path="api/socket.io",
-)
+# ── Lazy ASGI wrapper ────────────────────────────────────────────────
+class _SwappableASGI:
+    """Starts delegating to plain FastAPI; swapped to socketio.ASGIApp later."""
+
+    def __init__(self, initial):
+        self._inner = initial
+
+    async def __call__(self, scope, receive, send):
+        await self._inner(scope, receive, send)
+
+    def mount(self, new_app):
+        self._inner = new_app
+
+
+app = _SwappableASGI(fastapi_app)
 
 
 # ── Deferred heavy initialisation (runs AFTER port opens) ───────────
-def _load_server_core():
-    """Synchronous import executed in a thread pool worker."""
+def _load_heavy():
+    """Run in a thread-pool worker so the event loop stays free."""
+    import server  # self-reference to update module globals
+
+    # 1. Import socketio (heavy) and create the AsyncServer
+    import socketio as _sio_mod
+
+    sio_obj = _sio_mod.AsyncServer(
+        async_mode="asgi",
+        cors_allowed_origins="*",
+        ping_timeout=60,
+        ping_interval=25,
+    )
+
+    # 2. Expose sio at module level BEFORE importing server_core
+    server.sio = sio_obj
+
+    # 3. Import server_core (5 000+ lines, all routes, DB, etc.)
     import server_core  # noqa: F401
+
+    # 4. Wrap fastapi_app with socketio ASGI and swap the live app
+    socketio_asgi = _sio_mod.ASGIApp(
+        sio_obj,
+        other_asgi_app=fastapi_app,
+        socketio_path="api/socket.io",
+    )
+    app.mount(socketio_asgi)
 
 
 async def _deferred_init():
-    """Import server_core in a background thread so the event loop
-    stays free to answer health-check probes."""
     loop = asyncio.get_event_loop()
-    await loop.run_in_executor(None, _load_server_core)
+    await loop.run_in_executor(None, _load_heavy)
 
 
 @fastapi_app.on_event("startup")
 async def _bootstrap():
-    # Schedule heavy loading as a background task.
-    # The startup event returns immediately → uvicorn opens the port.
+    # Fire-and-forget: heavy loading happens while health probes pass
     asyncio.create_task(_deferred_init())
