@@ -12,8 +12,32 @@ AI-powered laundry management system (Ventura Fresh Laundry) with:
 ## Tech Stack
 - Frontend: React, Tailwind CSS, Shadcn/UI, Web Speech API
 - Backend: FastAPI, MongoDB (motor), Pydantic
-- Realtime: Socket.io
+- Realtime: Socket.io (lazy-loaded)
 - Integrations: Twilio (SMS/WhatsApp), SendGrid (Email), Groq (LLM via emergentintegrations), Stripe, OpenRouteService
+
+## Architecture (Post-Refactoring)
+```
+backend/
+├── server.py          # Lightweight entry (lazy socketio via _SwappableASGI)
+├── server_core.py     # Route endpoints (~4489 lines)
+├── database.py        # MongoDB connection singleton, JWT config
+├── models.py          # All Pydantic models + role constants
+├── auth.py            # JWT helpers, role-based access
+├── utils.py           # QR, ticket formatting, order helpers, AI helpers
+├── normalization.py   # Data normalization functions
+├── notifications.py   # Twilio/SendGrid
+├── ai_assistant.py    # AI briefing/analysis
+├── automation_engine.py
+├── blog.py
+├── store.py
+├── n8n_integration.py
+├── stripe_sync_scaffold.py
+└── routes/
+    ├── ai.py
+    ├── orders.py        # (orphaned — not yet connected)
+    ├── public_forms.py
+    └── voice.py
+```
 
 ## What's Been Implemented
 
@@ -36,23 +60,35 @@ AI-powered laundry management system (Ventura Fresh Laundry) with:
 
 ### Address Autocomplete (Completed - March 20, 2026)
 - Reusable `AddressAutocomplete` component using OpenStreetMap/Nominatim
-- Integrated across 5 public forms: SchedulePickup, WashFoldRequest, RequestQuotePage, MembershipPage, StorePage
-- Features: debounce (350ms), dropdown suggestions, auto-fill city/state/ZIP, keyboard navigation
+- Integrated across 5 public forms
 
 ### AI Agent Metrics (Completed - March 20, 2026)
-- Backend: `GET /api/ai/metrics` — aggregates data from ai_command_logs and ai_daily_summaries
-- Frontend: `AiMetrics.jsx` — dashboard with stats cards, daily activity chart, action breakdown table, recent logs
-- Period filter (7d/30d/90d), refresh button, bilingual
+- Backend: `GET /api/ai/metrics`
+- Frontend: `AiMetrics.jsx` dashboard with stats, charts, filters
 
 ### Quick Approval Mode (Completed - March 20, 2026)
-- Backend: `GET /api/ai/pending-actions`, `POST /api/ai/pending-actions/{id}/approve`, `POST /api/ai/pending-actions/{id}/reject`
-- Frontend: `QuickApproval.jsx` — cards with action details, payload preview, Approve & Execute / Reject buttons
-- Real-time badge showing pending count, bilingual
+- Backend: CRUD for pending AI actions
+- Frontend: `QuickApproval.jsx` with approve/reject flows
 
 ### OperatorDashboard Refactoring (Completed - March 20, 2026)
-- Reduced from 1779 to ~1310 lines (-26%)
-- Extracted: `components/operator-dashboard/OrderDetailDialog.jsx` (344 lines)
-- Extracted: `components/operator-dashboard/utils.js` (165 lines) — constants, formatters, helpers
+- Reduced from 1779 to ~1310 lines
+- Extracted: OrderDetailDialog.jsx, utils.js
+
+### Deployment Fix — Lazy SocketIO (Completed - March 21, 2026)
+- Removed `import socketio` from server.py top-level
+- Created `_SwappableASGI` wrapper class for hot-swapping ASGI app
+- Port binds in ~0.30s (was timing out at 60s)
+- Health check `/api/health` responds before any heavy imports
+- Deployment agent verified: PASS
+
+### Backend Modularization (Completed - March 21, 2026)
+- Extracted ~877 lines from server_core.py into 4 shared modules:
+  - `database.py` — MongoDB singleton, JWT config
+  - `models.py` — All Pydantic models + role constants
+  - `auth.py` — JWT, password hashing, role-based access
+  - `utils.py` — QR generation, ticket formatting, order/AI helpers
+- server_core.py reduced from 5366 → 4489 lines
+- All 15 API tests passed + frontend verified
 
 ## Prioritized Backlog
 
@@ -60,16 +96,18 @@ AI-powered laundry management system (Ventura Fresh Laundry) with:
 - Bidirectional sync (Customers, Products, Prices) between app and Stripe
 - User explicitly requested to discuss this on a call before implementing
 
+### Future Tasks
+- Further modularization: extract route groups into routes/ directory
+- Connect orphaned routes/orders.py and routes/ai.py
+- Performance optimization of heavy AI endpoints
+
 ## Key Files
-- `frontend/src/components/AddressAutocomplete.jsx` — reusable address autocomplete
-- `frontend/src/pages/AiMetrics.jsx` — AI agent metrics dashboard
-- `frontend/src/pages/QuickApproval.jsx` — quick approval panel
-- `frontend/src/components/operator-dashboard/OrderDetailDialog.jsx` — extracted order detail dialog
-- `frontend/src/components/operator-dashboard/utils.js` — shared constants and utilities
-- `frontend/src/pages/OperatorDashboard.jsx` — refactored operator dashboard
-- `backend/server.py` — FastAPI entry with AI metrics/approval endpoints
-- `backend/notifications.py` — Twilio/SendGrid templates
-- `backend/routes/ai.py` — Groq-powered AI endpoints
+- `backend/server.py` — Lightweight entry point with lazy socketio
+- `backend/server_core.py` — Main routes (~4489 lines)
+- `backend/database.py` — DB connection singleton
+- `backend/models.py` — Shared Pydantic models
+- `backend/auth.py` — Auth helpers
+- `backend/utils.py` — Shared utilities
 
 ## Credentials
 - Admin: owner@frimexllc.com / admin123
