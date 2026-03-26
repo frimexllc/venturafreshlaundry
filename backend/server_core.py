@@ -4396,6 +4396,14 @@ try:
 except Exception as e:
     logger.warning(f"TIM router not loaded: {e}")
 
+# Include Logistics router (unified order feed for operator map)
+try:
+    from routes.logistics import router as logistics_router
+    app.include_router(logistics_router)
+    logger.info("Logistics router enabled at /api/logistics/*")
+except Exception as e:
+    logger.warning(f"Logistics router not loaded: {e}")
+
 # Stripe webhook endpoint
 @app.post("/api/webhook/stripe")
 async def stripe_webhook(request: Request):

@@ -94,16 +94,23 @@ export function LogisticsMap() {
     prevHeavyRef.current = heavyNow;
   }, [trafficEvents]);
 
-  // Fetch orders from backend, fall back to mock
+  // Fetch orders from the unified logistics endpoint, fall back to mock
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (!token || !API_URL) { setLoadingBackend(false); return; }
-    fetch(`${API_URL}/api/store/orders`, { headers: { Authorization: `Bearer ${token}` } })
+    fetch(`${API_URL}/api/logistics/orders`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(data => {
-        const arr = Array.isArray(data) ? data : data.orders || [];
+        const arr = Array.isArray(data) ? data : [];
         if (arr.length > 0) {
-          const mapped = arr.map(mapBackendOrder);
+          // Data already comes in the correct format from the logistics endpoint
+          const mapped = arr.map(o => ({
+            ...o,
+            _backendId: o.id,
+            pricing: o.pricing || { subtotal: 0, tax: 0, total: 0 },
+            payment: o.payment || { method: 'card', status: 'pending' },
+            schedule: o.schedule || { pickupDate: '', pickupTime: '', deliveryDate: '', deliveryTime: '' },
+          }));
           setOrders(mapped);
         }
       })
@@ -182,11 +189,10 @@ export function LogisticsMap() {
   function updateOrderStatus(orderId, newStatus) {
     setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o)));
     setSelectedOrder((prev) => prev?.id === orderId ? { ...prev, status: newStatus } : prev);
-    // Also update backend if the order came from there
-    const order = orders.find(o => o.id === orderId);
-    if (order?._backendId) {
-      const token = localStorage.getItem('token');
-      fetch(`${API_URL}/api/store/orders/${order._backendId}/status`, {
+    // Update backend via the unified logistics endpoint
+    const token = localStorage.getItem('token');
+    if (token) {
+      fetch(`${API_URL}/api/logistics/orders/${orderId}/status`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ status: newStatus }),
       }).catch(() => {});
