@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { 
   Truck, Package, Clock, AlertTriangle, CheckCircle, 
   RefreshCw, Phone, MapPin, MessageSquare, ChevronRight,
-  Calendar, User, Zap, Bot, DollarSign, ShoppingBag
+  Calendar, User, Zap, Bot, DollarSign, ShoppingBag, Printer, Search
 } from "lucide-react";
 import { toast } from "sonner";
 import { createNotificationsSocket } from "../utils/notificationsSocket";
@@ -22,7 +22,64 @@ import {
 } from "../components/operator-dashboard/utils";
 import { useLocale } from "../context/LocaleContext";
 
+// Importaciones de Leaflet y React Leaflet
+import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
+
+// Iconos por defecto de Leaflet (para evitar problemas con la carga de imágenes)
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png",
+  iconUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png",
+  shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
+});
+
 const API_URL = process.env.REACT_APP_BACKEND_URL;
+
+// Coordenadas de la tienda (Ventura, CA 93001)
+const STORE_COORDINATES = { lat: 34.283, lng: -119.293 };
+
+// Mapeo de códigos postales a coordenadas aproximadas
+const cpCoordinates = {
+  "93001": { lat: 34.283, lng: -119.293 },
+  "93003": { lat: 34.254, lng: -119.215 },
+  "93004": { lat: 34.302, lng: -119.186 },
+  "93030": { lat: 34.187, lng: -119.179 },
+  "93036": { lat: 34.237, lng: -119.181 },
+};
+
+// Función para extraer código postal de una dirección (5 dígitos)
+const extractCP = (address) => {
+  if (!address) return null;
+  const match = address.match(/\b(\d{5})\b/);
+  return match ? match[1] : null;
+};
+
+// Obtener coordenadas a partir de la dirección
+const getCoordinatesFromAddress = (address) => {
+  const cp = extractCP(address);
+  return cp && cpCoordinates[cp] ? cpCoordinates[cp] : null;
+};
+
+// Cálculo de distancia en millas (fórmula de Haversine)
+function getDistanceFromLatLonInMiles(lat1, lon1, lat2, lon2) {
+  const R = 3959; // radio de la Tierra en millas
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+// Calcular tarifa de envío: primeras 3 millas gratis, luego $2.99/milla
+function calculateDeliveryFee(distanceMiles) {
+  if (distanceMiles <= 3) return 0;
+  const extraMiles = distanceMiles - 3;
+  return extraMiles * 2.99;
+}
 
 export default function OperatorDashboard() {
   const { t } = useLocale();
@@ -56,7 +113,42 @@ export default function OperatorDashboard() {
   const [aiReply, setAiReply] = useState("");
   const [aiResults, setAiResults] = useState([]);
   const [aiLoading, setAiLoading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
 
+  // Funciones de filtrado
+  const filterOrders = (orders) => {
+    if (!searchTerm.trim()) return orders;
+    const term = searchTerm.toLowerCase();
+    return orders.filter(order => {
+      const orderNumber = (order.order_number || "").toLowerCase();
+      const customerName = (order.customer_name || "").toLowerCase();
+      const address = (order.pickup_address || order.delivery_address || "").toLowerCase();
+      return orderNumber.includes(term) || customerName.includes(term) || address.includes(term);
+    });
+  };
+
+  // Obtener todas las órdenes para el mapa
+  const getAllOrders = () => {
+    const allOrders = [
+      ...(dashboard?.todays_pickups || []),
+      ...(dashboard?.ready_for_delivery || []),
+      ...(dashboard?.wash_fold_dropoffs || []),
+      ...(dashboard?.wash_fold_ready || [])
+    ];
+    return dedupeOrders(allOrders);
+  };
+
+  // Órdenes con coordenadas para el mapa
+  const ordersWithCoordinates = getAllOrders()
+    .map(order => {
+      const address = order.pickup_address || order.delivery_address;
+      const coords = getCoordinatesFromAddress(address);
+      if (!coords) return null;
+      return { ...order, coords };
+    })
+    .filter(Boolean);
+
+  // Funciones de helpers existentes
   const getErrorMessage = (error, defaultMessage) => {
     if (typeof error === 'string') return error;
     if (error?.response?.data?.detail) return error.response.data.detail;
@@ -266,17 +358,161 @@ export default function OperatorDashboard() {
   const handlePrintTicket = async (order) => {
     if (!order) return;
     const orderPrimaryId = order.id || order.order_id;
-    if (!orderPrimaryId) { toast.error(t("Invalid order", "Orden inválida")); return; }
+    if (!orderPrimaryId) {
+      toast.error(t("Invalid order", "Orden inválida"));
+      return;
+    }
+
+    let qrBlobUrl = null;
     try {
       const res = await axios.get(`${API_URL}/api/orders/${orderPrimaryId}/qr.svg`, { responseType: "blob" });
-      const blobUrl = window.URL.createObjectURL(res.data);
-      const printWindow = window.open("");
-      if (!printWindow) { toast.error(t("Allow pop-ups to print", "Permite ventanas emergentes para imprimir")); return; }
-      printWindow.document.write(`<html><body style="margin:0;display:flex;align-items:center;justify-content:center;"><img src="${blobUrl}" style="max-width:100%;" onload="window.print();window.onafterprint=function(){window.close();};" /></body></html>`);
-      printWindow.document.close();
-    } catch {
-      toast.error(t("Could not generate ticket", "No se pudo generar el ticket"));
+      qrBlobUrl = window.URL.createObjectURL(res.data);
+    } catch (error) {
+      console.warn("No se pudo obtener el QR", error);
     }
+
+    const escapeHtml = (str) => {
+      if (!str) return "";
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    };
+
+    const printDate = new Date(order.created_at || order.pickup_date || Date.now()).toLocaleString(t("en-US", "es-MX"), {
+      dateStyle: "short",
+      timeStyle: "short"
+    });
+
+    const isWashFold = isWashFoldService(order.service_type);
+    const serviceLabel = isWashFold
+      ? t("Wash & Fold", "Lavado y Doblado")
+      : t("Pickup & Delivery", "Recogida y Entrega");
+
+    let itemsHtml = "";
+    if (order.items && order.items.length > 0) {
+      itemsHtml = order.items.map(item => `
+        <div class="item-row">
+          <span>${escapeHtml(item.name || item.product_name)}</span>
+          <span>${item.quantity} × ${formatCurrency(item.price)}</span>
+        </div>
+      `).join("");
+    } else if (isWashFold && order.weight_lbs) {
+      const pricePerLb = order.price_per_lb || 0;
+      itemsHtml = `
+        <div class="item-row">
+          <span>Peso: ${order.weight_lbs} lb</span>
+          <span>${formatCurrency(pricePerLb)}/lb</span>
+        </div>
+        <div class="item-row total-row">
+          <span>Total lavado</span>
+          <span>${formatCurrency(order.total)}</span>
+        </div>
+      `;
+    } else {
+      itemsHtml = `<div class="item-row">${t("No items", "Sin ítems")}</div>`;
+    }
+
+    const printContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Ticket ${order.order_number || order.id}</title>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: #f9fafb;
+            padding: 40px 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+          }
+          .ticket {
+            max-width: 380px;
+            width: 100%;
+            background: white;
+            border-radius: 24px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+            overflow: hidden;
+          }
+          .ticket-inner { padding: 24px; }
+          .header { text-align: center; margin-bottom: 20px; }
+          .logo { font-size: 28px; font-weight: 800; letter-spacing: -0.5px; background: linear-gradient(135deg, #0f172a, #1e293b); -webkit-background-clip: text; background-clip: text; color: transparent; margin-bottom: 4px; }
+          .order-number { font-family: 'SF Mono', 'Courier New', monospace; font-size: 20px; font-weight: 600; background: #f1f5f9; display: inline-block; padding: 4px 12px; border-radius: 40px; margin: 12px 0 6px; }
+          .date { font-size: 12px; color: #64748b; margin-top: 4px; }
+          .divider { height: 1px; background: #e2e8f0; margin: 16px 0; }
+          .info-grid { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
+          .info-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 14px; line-height: 1.4; }
+          .label { font-weight: 600; color: #334155; }
+          .value { text-align: right; color: #0f172a; max-width: 60%; word-break: break-word; }
+          .items-section { background: #f8fafc; border-radius: 16px; padding: 16px; margin: 20px 0; }
+          .items-title { font-weight: 600; font-size: 14px; margin-bottom: 12px; color: #0f172a; display: flex; justify-content: space-between; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; }
+          .item-row { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 8px; color: #1e293b; }
+          .total-row { margin-top: 12px; padding-top: 8px; border-top: 1px solid #cbd5e1; font-weight: 600; }
+          .total-amount { font-size: 18px; font-weight: 800; color: #0f172a; }
+          .qr-container { text-align: center; margin: 20px 0 16px; }
+          .qr-code { display: inline-block; background: white; padding: 8px; border-radius: 16px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05); border: 1px solid #e2e8f0; }
+          .qr-code img { width: 180px; height: 180px; display: block; }
+          .qr-label { font-size: 10px; color: #64748b; margin-top: 8px; }
+          .footer { text-align: center; font-size: 10px; color: #94a3b8; margin-top: 16px; padding-top: 16px; border-top: 1px solid #e2e8f0; }
+          @media print { body { background: white; padding: 0; margin: 0; } .ticket { box-shadow: none; border-radius: 0; } .qr-code { box-shadow: none; border: none; } }
+        </style>
+      </head>
+      <body>
+        <div class="ticket">
+          <div class="ticket-inner">
+            <div class="header">
+              <div class="logo">VENTURA</div>
+              <div class="order-number">${escapeHtml(order.order_number || order.id)}</div>
+              <div class="date">${printDate}</div>
+            </div>
+            <div class="info-grid">
+              <div class="info-row"><span class="label">${t("Service", "Servicio")}</span><span class="value">${escapeHtml(serviceLabel)}</span></div>
+              <div class="info-row"><span class="label">${t("Customer", "Cliente")}</span><span class="value">${escapeHtml(order.customer_name || t("N/A", "N/D"))}</span></div>
+              <div class="info-row"><span class="label">${t("Status", "Estado")}</span><span class="value">${escapeHtml(getStatusLabel(order.status, order.service_type))}</span></div>
+              <div class="info-row"><span class="label">${t("Payment", "Pago")}</span><span class="value">${escapeHtml(getPaymentStatusLabel(order.payment_status))}</span></div>
+            </div>
+            <div class="items-section">
+              <div class="items-title"><span>${t("Items", "Artículos")}</span><span>${t("Amount", "Importe")}</span></div>
+              ${itemsHtml}
+            </div>
+            ${order.delivery_address ? `<div class="info-row"><span class="label">${t("Delivery address", "Dirección")}</span><span class="value">${escapeHtml(order.delivery_address)}</span></div>` : ''}
+            ${order.pickup_address ? `<div class="info-row"><span class="label">${t("Pickup address", "Recogida")}</span><span class="value">${escapeHtml(order.pickup_address)}</span></div>` : ''}
+            <div class="info-row" style="margin-top: 16px; font-size: 16px;">
+              <span class="label" style="font-weight: 700;">${t("Total", "Total")}</span>
+              <span class="total-amount">${formatCurrency(order.total)}</span>
+            </div>
+            <div class="qr-container">
+              <div class="qr-code">
+                ${qrBlobUrl ? `<img src="${qrBlobUrl}" alt="QR Code" />` : `<div style="width:180px;height:180px;display:flex;align-items:center;justify-content:center;background:#f1f5f9;color:#64748b;">${t("QR not available", "QR no disponible")}</div>`}
+              </div>
+              <div class="qr-label">${t("Scan to view order details", "Escanea para ver los detalles de la orden")}</div>
+            </div>
+            <div class="footer">
+              ${t("Generated on", "Generado el")} ${new Date().toLocaleString()}<br/>
+              ${escapeHtml(t("Thank you for your business", "Gracias por su preferencia"))}
+            </div>
+          </div>
+        </div>
+        <script>window.onload = function() { window.print(); window.onafterprint = function() { window.close(); }; };</script>
+      </body>
+      </html>
+    `;
+
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) {
+      toast.error(t("Allow pop-ups to print", "Permite ventanas emergentes para imprimir"));
+      return;
+    }
+    printWindow.document.write(printContent);
+    printWindow.document.close();
+    if (qrBlobUrl) setTimeout(() => URL.revokeObjectURL(qrBlobUrl), 1000);
   };
 
   const handleAiRequest = async () => {
@@ -500,21 +736,31 @@ export default function OperatorDashboard() {
       ? "bg-slate-100 text-slate-500"
       : "bg-orange-100 text-orange-700";
 
-  const pickupOrders = dedupeOrders(dashboard?.todays_pickups || []).filter(
+  // Aplicar filtro a las órdenes
+  const filteredPickupOrders = filterOrders(dedupeOrders(dashboard?.todays_pickups || []).filter(
     (order) => !order.service_type || order.service_type === "pickup_delivery"
-  );
-  const pickupDeliveries = dedupeOrders(dashboard?.ready_for_delivery || []).filter(
+  ));
+  const filteredPickupDeliveries = filterOrders(dedupeOrders(dashboard?.ready_for_delivery || []).filter(
     (order) => !order.service_type || order.service_type === "pickup_delivery"
-  );
-  const washFoldDropoffs = dedupeOrders(dashboard?.wash_fold_dropoffs || []);
-  const washFoldReady = dedupeOrders(dashboard?.wash_fold_ready || []);
+  ));
+  const filteredWashFoldDropoffs = filterOrders(dedupeOrders(dashboard?.wash_fold_dropoffs || []));
+  const filteredWashFoldReady = filterOrders(dedupeOrders(dashboard?.wash_fold_ready || []));
 
-  const pickupPaymentQueue = dedupeOrders([...pickupOrders, ...pickupDeliveries]).filter(
+  const filteredPickupPaymentQueue = filterOrders(dedupeOrders([...filteredPickupOrders, ...filteredPickupDeliveries]).filter(
     (order) => (order.payment_status || "pending") !== "paid"
-  );
-  const washFoldPaymentQueue = dedupeOrders([...washFoldDropoffs, ...washFoldReady]).filter(
+  ));
+  const filteredWashFoldPaymentQueue = filterOrders(dedupeOrders([...filteredWashFoldDropoffs, ...filteredWashFoldReady]).filter(
     (order) => (order.payment_status || "pending") !== "paid"
-  );
+  ));
+
+  const pickupOrdersCount = dedupeOrders(dashboard?.todays_pickups || []).filter(
+    (order) => !order.service_type || order.service_type === "pickup_delivery"
+  ).length;
+  const ordersInProcessingCount = dashboard?.stats?.orders_in_processing || 0;
+  const deliveriesCount = dedupeOrders(dashboard?.ready_for_delivery || []).filter(
+    (order) => !order.service_type || order.service_type === "pickup_delivery"
+  ).length;
+  const urgentCount = dashboard?.stats?.urgent_tickets || 0;
 
   const storeCartSubtotal = storeCart?.total || 0;
   const storeShippingFee = storeCheckoutForm.fulfillment_type === "delivery" ? (storeShippingQuote.fee || 0) : 0;
@@ -538,7 +784,7 @@ export default function OperatorDashboard() {
   return (
     <div className="space-y-4 sm:space-y-6 px-2 sm:px-0">
 
-      {/* ── Header ── */}
+      {/* Header con buscador */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900 flex items-center gap-2">
@@ -549,8 +795,18 @@ export default function OperatorDashboard() {
             {t("Just update order status – the system does the rest", "Solo actualiza el estado de las órdenes - el sistema hace el resto")}
           </p>
         </div>
-
         <div className="flex flex-wrap items-center gap-2">
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <Input
+              type="text"
+              placeholder={t("Search by order #, customer or CP", "Buscar por orden, cliente o CP")}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-8 text-sm w-64"
+              data-testid="order-search-input"
+            />
+          </div>
           <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${realtimeClass}`} data-testid="operator-realtime-status">
             {realtimeLabel}
           </span>
@@ -567,13 +823,13 @@ export default function OperatorDashboard() {
         </div>
       </div>
 
-      {/* ── Quick Stats ── */}
+      {/* Quick Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {[
-          { icon: <Truck className="h-5 w-5 text-sky-600" />, bg: "bg-sky-100", count: dashboard?.stats?.pickups_remaining_today || 0, label: t("Pickups Today", "Pickups Hoy"), testId: "pickups" },
-          { icon: <Package className="h-5 w-5 text-yellow-600" />, bg: "bg-yellow-100", count: dashboard?.stats?.orders_in_processing || 0, label: t("In Process", "En Proceso"), testId: "processing" },
-          { icon: <CheckCircle className="h-5 w-5 text-green-600" />, bg: "bg-green-100", count: dashboard?.stats?.orders_ready || 0, label: t("Deliveries Ongoing", "Entregas en curso"), testId: "deliveries" },
-          { icon: <AlertTriangle className="h-5 w-5 text-red-600" />, bg: "bg-red-100", count: dashboard?.stats?.urgent_tickets || 0, label: t("Urgent Tickets", "Tickets Urgentes"), testId: "urgent" }
+          { icon: <Truck className="h-5 w-5 text-sky-600" />, bg: "bg-sky-100", count: pickupOrdersCount, label: t("Pickups Today", "Pickups Hoy"), testId: "pickups" },
+          { icon: <Package className="h-5 w-5 text-yellow-600" />, bg: "bg-yellow-100", count: ordersInProcessingCount, label: t("In Process", "En Proceso"), testId: "processing" },
+          { icon: <CheckCircle className="h-5 w-5 text-green-600" />, bg: "bg-green-100", count: deliveriesCount, label: t("Deliveries Ongoing", "Entregas en curso"), testId: "deliveries" },
+          { icon: <AlertTriangle className="h-5 w-5 text-red-600" />, bg: "bg-red-100", count: urgentCount, label: t("Urgent Tickets", "Tickets Urgentes"), testId: "urgent" }
         ].map(({ icon, bg, count, label, testId }) => (
           <div key={testId} className="bg-white rounded-xl border border-slate-200 p-3 sm:p-4">
             <div className="flex items-center gap-2 sm:gap-3">
@@ -589,7 +845,7 @@ export default function OperatorDashboard() {
         ))}
       </div>
 
-      {/* ── AI Assistant ── */}
+      {/* AI Assistant */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="px-4 sm:px-6 py-4 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
           <Bot className="h-5 w-5 text-sky-600 shrink-0" />
@@ -640,29 +896,28 @@ export default function OperatorDashboard() {
         </div>
       </div>
 
-      {/* ── POS Grid ── */}
+      {/* POS Grid con órdenes filtradas */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-6" data-testid="operator-pos-grid">
 
         {/* LEFT COLUMN */}
         <div className="space-y-4 sm:space-y-6">
-
           {/* Pickup Created/Confirmed */}
           <div className="bg-white rounded-xl border border-slate-200 overflow-hidden" data-testid="pos-pickup-today-card">
             <div className="px-4 sm:px-5 py-3 sm:py-4 border-b border-slate-100 bg-slate-50">
               <h2 className="font-semibold text-slate-900 flex items-center gap-2 text-sm sm:text-base">
                 <Truck className="h-4 w-4 sm:h-5 sm:w-5 text-sky-600 shrink-0" />
                 <span className="truncate">{t("Pickup & Delivery — Created / Confirmed", "Pickup & Delivery — Creadas / Confirmadas")}</span>
-                <span className="ml-auto shrink-0 text-xs sm:text-sm font-semibold text-slate-600" data-testid="pos-pickup-today-count">({pickupOrders.length})</span>
+                <span className="ml-auto shrink-0 text-xs sm:text-sm font-semibold text-slate-600" data-testid="pos-pickup-today-count">({filteredPickupOrders.length})</span>
               </h2>
             </div>
             <div className="divide-y divide-slate-100">
-              {pickupOrders.length === 0 ? (
+              {filteredPickupOrders.length === 0 ? (
                 <div className="p-6 text-center text-slate-500" data-testid="pos-pickup-today-empty">
                   <Truck className="h-8 w-8 mx-auto mb-2 text-slate-300" />
                   <p className="text-sm">{t("No created or confirmed orders", "No hay órdenes creadas o confirmadas")}</p>
                 </div>
               ) : (
-                pickupOrders.map((order) => (
+                filteredPickupOrders.map((order) => (
                   <div key={order.order_id || Math.random()} className="p-3 sm:p-4 hover:bg-slate-50 transition-colors cursor-pointer" data-testid={`pos-pickup-item-${order.order_id || 'unknown'}`} role="button" onClick={() => setSelectedOrder(order)}>
                     <div className="flex items-start justify-between gap-2 sm:gap-3">
                       <div className="min-w-0 flex-1">
@@ -701,16 +956,16 @@ export default function OperatorDashboard() {
               <h2 className="font-semibold text-slate-900 flex items-center gap-2 text-sm sm:text-base">
                 <DollarSign className="h-4 w-4 sm:h-5 sm:w-5 text-emerald-600 shrink-0" />
                 <span className="truncate">{t("Pickup & Delivery — Request Payment", "Pickup & Delivery — Solicitar pago")}</span>
-                <span className="ml-auto shrink-0 text-xs sm:text-sm font-semibold text-slate-600" data-testid="pos-pickup-payment-count">({pickupPaymentQueue.length})</span>
+                <span className="ml-auto shrink-0 text-xs sm:text-sm font-semibold text-slate-600" data-testid="pos-pickup-payment-count">({filteredPickupPaymentQueue.length})</span>
               </h2>
             </div>
             <div className="divide-y divide-slate-100">
-              {pickupPaymentQueue.length === 0 ? (
+              {filteredPickupPaymentQueue.length === 0 ? (
                 <div className="p-6 text-center text-slate-500 text-sm" data-testid="pos-pickup-payment-empty">
                   <p>{t("No pickup payments pending", "Sin pagos pendientes")}</p>
                 </div>
               ) : (
-                pickupPaymentQueue.map((order) => {
+                filteredPickupPaymentQueue.map((order) => {
                   const amount = calculateServiceCharge(order);
                   return (
                     <div key={order.order_id || Math.random()} className="p-3 sm:p-4 hover:bg-slate-50 transition-colors cursor-pointer" data-testid={`pos-pickup-payment-${order.order_id || 'unknown'}`} role="button" onClick={() => setSelectedOrder(order)}>
@@ -744,17 +999,17 @@ export default function OperatorDashboard() {
               <h2 className="font-semibold text-slate-900 flex items-center gap-2 text-sm sm:text-base" data-testid="operator-delivery-section-title">
                 <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5 text-emerald-600 shrink-0" />
                 <span className="truncate">{t("Pickup & Delivery — In Process / Ready / Out for Delivery", "Pickup & Delivery — En proceso / Lista / En camino")}</span>
-                <span className="ml-auto shrink-0 text-xs sm:text-sm font-semibold text-slate-600" data-testid="pos-pickup-delivery-count">({pickupDeliveries.length})</span>
+                <span className="ml-auto shrink-0 text-xs sm:text-sm font-semibold text-slate-600" data-testid="pos-pickup-delivery-count">({filteredPickupDeliveries.length})</span>
               </h2>
             </div>
             <div className="divide-y divide-slate-100">
-              {pickupDeliveries.length === 0 ? (
+              {filteredPickupDeliveries.length === 0 ? (
                 <div className="p-6 text-center text-slate-500" data-testid="operator-delivery-empty">
                   <Package className="h-8 w-8 mx-auto mb-2 text-slate-300" />
                   <p className="text-sm">{t("No active process or delivery orders", "No hay órdenes activas en proceso o entrega")}</p>
                 </div>
               ) : (
-                pickupDeliveries.map((order) => (
+                filteredPickupDeliveries.map((order) => (
                   <div key={order.order_id || Math.random()} className="p-3 sm:p-4 hover:bg-slate-50 transition-colors cursor-pointer" data-testid={`pos-pickup-delivery-${order.order_id || 'unknown'}`} role="button" onClick={() => setSelectedOrder(order)}>
                     <div className="flex items-start justify-between gap-2 sm:gap-3">
                       <div className="min-w-0 flex-1">
@@ -782,23 +1037,22 @@ export default function OperatorDashboard() {
 
         {/* RIGHT COLUMN */}
         <div className="space-y-4 sm:space-y-6">
-
           {/* Wash & Fold Dropoffs */}
           <div className="bg-white rounded-xl border border-slate-200 overflow-hidden" data-testid="pos-washfold-dropoff-card">
             <div className="px-4 sm:px-5 py-3 sm:py-4 border-b border-slate-100 bg-slate-50">
               <h2 className="font-semibold text-slate-900 flex items-center gap-2 text-sm sm:text-base">
                 <Package className="h-4 w-4 sm:h-5 sm:w-5 text-purple-600 shrink-0" />
                 <span className="truncate">{t("Wash & Fold — Order Received / Processing", "Wash & Fold — Orden recibida / Procesando")}</span>
-                <span className="ml-auto shrink-0 text-xs sm:text-sm font-semibold text-slate-600" data-testid="pos-washfold-dropoff-count">({washFoldDropoffs.length})</span>
+                <span className="ml-auto shrink-0 text-xs sm:text-sm font-semibold text-slate-600" data-testid="pos-washfold-dropoff-count">({filteredWashFoldDropoffs.length})</span>
               </h2>
             </div>
             <div className="divide-y divide-slate-100">
-              {washFoldDropoffs.length === 0 ? (
+              {filteredWashFoldDropoffs.length === 0 ? (
                 <div className="p-6 text-center text-slate-500 text-sm" data-testid="pos-washfold-dropoff-empty">
                   <p>{t("No drop-offs waiting", "Sin entregas pendientes")}</p>
                 </div>
               ) : (
-                washFoldDropoffs.map((order) => (
+                filteredWashFoldDropoffs.map((order) => (
                   <div key={order.order_id || Math.random()} className="p-3 sm:p-4 hover:bg-slate-50 transition-colors cursor-pointer" data-testid={`pos-washfold-dropoff-${order.order_id || 'unknown'}`} role="button" onClick={() => setSelectedOrder(order)}>
                     <div className="flex items-start justify-between gap-2 sm:gap-3">
                       <div className="min-w-0 flex-1">
@@ -811,11 +1065,18 @@ export default function OperatorDashboard() {
                         <div className="text-sm text-slate-600 truncate">{safeString(order.customer_name, t("Customer", "Cliente"))}</div>
                         <div className="text-xs text-slate-500 mt-0.5">{safeString(order.pickup_date, t("Drop-off today", "Entrega hoy"))}</div>
                       </div>
-                      {(order.next_status || getNextStatus(order.status, order.service_type)) && (
-                        <Button size="sm" className="bg-purple-600 hover:bg-purple-700 text-xs shrink-0" onClick={(e) => { e.stopPropagation(); updateOrderStatus(order.order_id, order.next_status || getNextStatus(order.status, order.service_type)); }} disabled={updating[order.order_id]} data-testid={`pos-washfold-update-${order.order_id}`}>
-                          {updating[order.order_id] ? <RefreshCw className="h-3 w-3 animate-spin" /> : <><span className="hidden sm:inline">{getStatusInfo(order.next_status || getNextStatus(order.status, order.service_type), order.service_type).label}</span><ChevronRight className="h-3 w-3 ml-0.5" /></>}
+                      <div className="flex flex-col gap-1.5 shrink-0">
+                        {(order.next_status || getNextStatus(order.status, order.service_type)) && (
+                          <Button size="sm" className="bg-purple-600 hover:bg-purple-700 text-xs" onClick={(e) => { e.stopPropagation(); updateOrderStatus(order.order_id, order.next_status || getNextStatus(order.status, order.service_type)); }} disabled={updating[order.order_id]} data-testid={`pos-washfold-update-${order.order_id}`}>
+                            {updating[order.order_id] ? <RefreshCw className="h-3 w-3 animate-spin" /> : <><span className="hidden sm:inline">{getStatusInfo(order.next_status || getNextStatus(order.status, order.service_type), order.service_type).label}</span><ChevronRight className="h-3 w-3 ml-0.5" /></>}
+                          </Button>
+                        )}
+                        <Button variant="outline" size="sm" className="text-xs" onClick={(e) => { e.stopPropagation(); handlePrintTicket(order); }} data-testid={`pos-washfold-print-${order.order_id}`}>
+                          <Printer className="h-3 w-3 mr-1 sm:mr-0" />
+                          <span className="hidden sm:inline">{t("Print Ticket", "Imprimir Ticket")}</span>
+                          <span className="sm:hidden">{t("Print", "Imprimir")}</span>
                         </Button>
-                      )}
+                      </div>
                     </div>
                   </div>
                 ))
@@ -829,16 +1090,16 @@ export default function OperatorDashboard() {
               <h2 className="font-semibold text-slate-900 flex items-center gap-2 text-sm sm:text-base">
                 <DollarSign className="h-4 w-4 sm:h-5 sm:w-5 text-emerald-600 shrink-0" />
                 <span className="truncate">{t("Wash & Fold — Request Payment", "Wash & Fold — Solicitar pago")}</span>
-                <span className="ml-auto shrink-0 text-xs sm:text-sm font-semibold text-slate-600" data-testid="pos-washfold-payment-count">({washFoldPaymentQueue.length})</span>
+                <span className="ml-auto shrink-0 text-xs sm:text-sm font-semibold text-slate-600" data-testid="pos-washfold-payment-count">({filteredWashFoldPaymentQueue.length})</span>
               </h2>
             </div>
             <div className="divide-y divide-slate-100">
-              {washFoldPaymentQueue.length === 0 ? (
+              {filteredWashFoldPaymentQueue.length === 0 ? (
                 <div className="p-6 text-center text-slate-500 text-sm" data-testid="pos-washfold-payment-empty">
                   <p>{t("No wash & fold payments pending", "Sin pagos pendientes")}</p>
                 </div>
               ) : (
-                washFoldPaymentQueue.map((order) => {
+                filteredWashFoldPaymentQueue.map((order) => {
                   const amount = calculateServiceCharge(order);
                   return (
                     <div key={order.order_id || Math.random()} className="p-3 sm:p-4 hover:bg-slate-50 transition-colors cursor-pointer" data-testid={`pos-washfold-payment-${order.order_id || 'unknown'}`} role="button" onClick={() => setSelectedOrder(order)}>
@@ -855,9 +1116,16 @@ export default function OperatorDashboard() {
                             {t("Charge", "Cobro")}: {amount ? formatCurrency(amount) : t("Set actual lbs", "Ingresa lbs reales")}
                           </div>
                         </div>
-                        <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-xs shrink-0" onClick={(e) => { e.stopPropagation(); setSelectedOrder(order); }} data-testid={`pos-washfold-collect-${order.order_id}`}>
-                          {t("Collect", "Cobrar")}
-                        </Button>
+                        <div className="flex flex-col gap-1.5 shrink-0">
+                          <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-xs" onClick={(e) => { e.stopPropagation(); setSelectedOrder(order); }} data-testid={`pos-washfold-collect-${order.order_id}`}>
+                            {t("Collect", "Cobrar")}
+                          </Button>
+                          <Button variant="outline" size="sm" className="text-xs" onClick={(e) => { e.stopPropagation(); handlePrintTicket(order); }} data-testid={`pos-washfold-print-payment-${order.order_id}`}>
+                            <Printer className="h-3 w-3 mr-1 sm:mr-0" />
+                            <span className="hidden sm:inline">{t("Print Ticket", "Imprimir Ticket")}</span>
+                            <span className="sm:hidden">{t("Print", "Imprimir")}</span>
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   );
@@ -872,16 +1140,16 @@ export default function OperatorDashboard() {
               <h2 className="font-semibold text-slate-900 flex items-center gap-2 text-sm sm:text-base">
                 <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5 text-emerald-600 shrink-0" />
                 <span className="truncate">{t("Wash & Fold — Ready for customer pickup", "Wash & Fold — Lista para recoger en tienda")}</span>
-                <span className="ml-auto shrink-0 text-xs sm:text-sm font-semibold text-slate-600" data-testid="pos-washfold-ready-count">({washFoldReady.length})</span>
+                <span className="ml-auto shrink-0 text-xs sm:text-sm font-semibold text-slate-600" data-testid="pos-washfold-ready-count">({filteredWashFoldReady.length})</span>
               </h2>
             </div>
             <div className="divide-y divide-slate-100">
-              {washFoldReady.length === 0 ? (
+              {filteredWashFoldReady.length === 0 ? (
                 <div className="p-6 text-center text-slate-500 text-sm" data-testid="pos-washfold-ready-empty">
                   <p>{t("No wash & fold orders ready", "No hay órdenes listas")}</p>
                 </div>
               ) : (
-                washFoldReady.map((order) => (
+                filteredWashFoldReady.map((order) => (
                   <div key={order.order_id || Math.random()} className="p-3 sm:p-4 hover:bg-slate-50 transition-colors cursor-pointer" data-testid={`pos-washfold-ready-${order.order_id || 'unknown'}`} role="button" onClick={() => setSelectedOrder(order)}>
                     <div className="flex items-start justify-between gap-2 sm:gap-3">
                       <div className="min-w-0 flex-1">
@@ -896,11 +1164,18 @@ export default function OperatorDashboard() {
                           {t("Payment", "Pago")}: {getPaymentStatusLabel(order.payment_status)}
                         </div>
                       </div>
-                      {(order.next_status || getNextStatus(order.status, order.service_type)) && (
-                        <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-xs shrink-0" onClick={(e) => { e.stopPropagation(); updateOrderStatus(order.order_id, order.next_status || getNextStatus(order.status, order.service_type)); }} disabled={updating[order.order_id]} data-testid={`pos-washfold-ready-update-${order.order_id}`}>
-                          {updating[order.order_id] ? <RefreshCw className="h-3 w-3 animate-spin" /> : <><span className="hidden sm:inline">{getStatusInfo(order.next_status || getNextStatus(order.status, order.service_type), order.service_type).label}</span><ChevronRight className="h-3 w-3 ml-0.5" /></>}
+                      <div className="flex flex-col gap-1.5 shrink-0">
+                        {(order.next_status || getNextStatus(order.status, order.service_type)) && (
+                          <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-xs" onClick={(e) => { e.stopPropagation(); updateOrderStatus(order.order_id, order.next_status || getNextStatus(order.status, order.service_type)); }} disabled={updating[order.order_id]} data-testid={`pos-washfold-ready-update-${order.order_id}`}>
+                            {updating[order.order_id] ? <RefreshCw className="h-3 w-3 animate-spin" /> : <><span className="hidden sm:inline">{getStatusInfo(order.next_status || getNextStatus(order.status, order.service_type), order.service_type).label}</span><ChevronRight className="h-3 w-3 ml-0.5" /></>}
+                          </Button>
+                        )}
+                        <Button variant="outline" size="sm" className="text-xs" onClick={(e) => { e.stopPropagation(); handlePrintTicket(order); }} data-testid={`pos-washfold-ready-print-${order.order_id}`}>
+                          <Printer className="h-3 w-3 mr-1 sm:mr-0" />
+                          <span className="hidden sm:inline">{t("Print Ticket", "Imprimir Ticket")}</span>
+                          <span className="sm:hidden">{t("Print", "Imprimir")}</span>
                         </Button>
-                      )}
+                      </div>
                     </div>
                   </div>
                 ))
@@ -910,7 +1185,125 @@ export default function OperatorDashboard() {
         </div>
       </div>
 
-      {/* ── Store Orders ── */}
+      {/* Mapa interactivo mejorado */}
+      <div className="mt-6 sm:mt-10 bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="px-4 sm:px-6 py-4 border-b border-slate-100 bg-slate-50">
+          <h3 className="font-semibold text-slate-900 text-sm sm:text-base flex items-center gap-2">
+            <MapPin className="h-4 w-4 text-sky-600" />
+            {t("Order Locations", "Ubicaciones de órdenes")}
+          </h3>
+          <p className="text-xs text-slate-500 mt-0.5">
+            {t("Click on a marker to update status, print ticket, collect payment or view details", "Haz clic en un marcador para actualizar estado, imprimir ticket, cobrar o ver detalles")}
+          </p>
+        </div>
+        <div className="h-[450px] w-full">
+          <MapContainer center={[STORE_COORDINATES.lat, STORE_COORDINATES.lng]} zoom={12} style={{ height: "100%", width: "100%" }}>
+            <TileLayer
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            />
+            {ordersWithCoordinates.map((order) => {
+              const isDelivery = !order.service_type || order.service_type === "pickup_delivery";
+              const distance = getDistanceFromLatLonInMiles(
+                STORE_COORDINATES.lat,
+                STORE_COORDINATES.lng,
+                order.coords.lat,
+                order.coords.lng
+              );
+              const deliveryFee = calculateDeliveryFee(distance);
+              const exceedsLimit = distance > 9;
+
+              const statusInfo = getStatusInfo(order.status, order.service_type);
+              const nextStatus = order.next_status || getNextStatus(order.status, order.service_type);
+
+              const markerColor = isDelivery ? "#3b82f6" : "#a855f7";
+              const icon = L.divIcon({
+                html: `<div style="background-color: ${markerColor}; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">📍</div>`,
+                className: "custom-marker",
+                iconSize: [24, 24],
+                popupAnchor: [0, -12]
+              });
+
+              return (
+                <Marker
+                  key={order.id || order.order_id}
+                  position={[order.coords.lat, order.coords.lng]}
+                  icon={icon}
+                >
+                  <Popup minWidth={280} maxWidth={320}>
+                    <div className="space-y-2 text-sm">
+                      <div className="font-bold text-base">{formatOrderNumber(order)}</div>
+                      <div className="text-slate-700">{order.customer_name}</div>
+                      <div className="text-xs text-slate-500 break-words">
+                        {order.pickup_address || order.delivery_address}
+                      </div>
+                      {isDelivery && (
+                        <div className="text-xs">
+                          📍 Distancia: <strong>{distance.toFixed(1)} mi</strong><br />
+                          🚚 Envío: {deliveryFee > 0 ? formatCurrency(deliveryFee) : "Gratis"}
+                          {exceedsLimit && (
+                            <span className="ml-2 text-red-500 font-semibold">(⚠️ Excede 9 millas)</span>
+                          )}
+                        </div>
+                      )}
+                      <div className="flex items-center gap-1 flex-wrap">
+                        <span className={`px-1.5 py-0.5 rounded-full text-xs ${statusInfo.color}`}>
+                          {statusInfo.label}
+                        </span>
+                        {order.payment_status !== "paid" && (
+                          <span className="text-xs text-amber-600">💰 Pendiente</span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-2 pt-2">
+                        {nextStatus && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs"
+                            onClick={() => updateOrderStatus(order.order_id, nextStatus)}
+                          >
+                            {getStatusLabel(nextStatus, order.service_type)}
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs"
+                          onClick={() => handlePrintTicket(order)}
+                        >
+                          <Printer className="h-3 w-3 mr-1" />
+                          Imprimir
+                        </Button>
+                        {order.payment_status !== "paid" && (
+                          <Button
+                            size="sm"
+                            variant="default"
+                            className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700"
+                            onClick={() => setSelectedOrder(order)}
+                          >
+                            <DollarSign className="h-3 w-3 mr-1" />
+                            Cobrar
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="link"
+                          className="h-7 text-xs"
+                          onClick={() => setSelectedOrder(order)}
+                        >
+                          Ver detalles
+                        </Button>
+                      </div>
+                    </div>
+                  </Popup>
+                </Marker>
+              );
+            })}
+          </MapContainer>
+        </div>
+      </div>
+
+      {/* Store Orders y demás módulos (sin cambios) */}
       <div className="mt-6 sm:mt-10 space-y-4 sm:space-y-6">
         <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden" data-testid="store-orders-panel">
           <div className="px-4 sm:px-6 py-4 border-b border-slate-100 bg-slate-50">
@@ -1069,7 +1462,7 @@ export default function OperatorDashboard() {
         <DeliveryZonesManager />
       </div>
 
-      {/* ── Store POS Modal ── */}
+      {/* Store POS Modal */}
       <Dialog open={storePosOpen} onOpenChange={(open) => !open ? resetStorePos() : setStorePosOpen(true)}>
         <DialogContent className="w-[95vw] max-w-5xl bg-white max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -1079,7 +1472,6 @@ export default function OperatorDashboard() {
             </DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6" data-testid="store-pos-modal">
-
             {/* Products */}
             <div className="space-y-3">
               <Input
@@ -1223,7 +1615,7 @@ export default function OperatorDashboard() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Store Payment Modal ── */}
+      {/* Store Payment Modal */}
       <Dialog open={!!storePaymentOrder} onOpenChange={(open) => !open && setStorePaymentOrder(null)}>
         <DialogContent className="w-[95vw] max-w-lg bg-white">
           <DialogHeader>
@@ -1262,14 +1654,14 @@ export default function OperatorDashboard() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Order Detail Modal ── */}
+      {/* Order Detail Modal */}
       <OrderDetailDialog
         order={selectedOrder}
         onClose={() => setSelectedOrder(null)}
         onRefresh={loadDashboard}
       />
 
-      {/* ── Urgent Tickets ── */}
+      {/* Urgent Tickets */}
       {dashboard?.urgent_tickets?.length > 0 && (
         <div className="bg-white rounded-xl border border-red-200 overflow-hidden">
           <div className="px-4 sm:px-6 py-4 border-b border-red-100 bg-red-50">

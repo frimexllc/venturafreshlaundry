@@ -397,7 +397,7 @@ export default function AboutPage() {
               <Tilt depth={3}>
                 <div className="rounded-2xl overflow-hidden shadow-2xl shadow-sky-100/40 border border-slate-100 h-80">
                   <iframe
-                    src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3279.5!2d-119.2!3d34.27!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2zMzTCsDE2JzEyLjAiTiAxMTnCsDEyJzAwLjAiVw!5e0!3m2!1sen!2sus!4v1234567890"
+                    src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3155.7033613506883!2d-119.21371459999997!3d34.264156799999995!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x80e84d4c078097ed%3A0x5e2cf7ad62ef27e9!2sLaunderland!5e1!3m2!1ses-419!2smx!4v1774195699048!5m2!1ses-419!2smx"
                     width="100%" height="100%"
                     style={{ border: 0 }}
                     allowFullScreen loading="lazy"

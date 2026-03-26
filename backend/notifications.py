@@ -780,6 +780,19 @@ def _voice(event: str, name: str, order_number: str, language: str) -> str:
             f"Hola {n}, tu orden número {order_number} con {biz} fue cancelada. Si tienes preguntas, llámanos. ¡Hasta luego!",
             f"Hi {n}, your order number {order_number} with {biz} was cancelled. If you have questions, please call us. Goodbye!"
         ),
+        # ── Nuevas entradas para wash & fold ──
+        "order_received": (
+            "Hola, le habla Ventura Fresh Laundry. Solo para confirmarle que hemos recibido su orden y pronto será procesada con el máximo cuidado. Le avisaremos en cuanto esté lista. Gracias por confiar en nosotros.",
+            "Hello, this is Ventura Fresh Laundry. We’re calling to confirm that your order has been received and will be processed shortly with the utmost care. We’ll notify you as soon as it’s ready. Thank you for trusting us."
+        ),
+        "ready_for_pickup": (
+            "Hola, le habla Ventura Fresh Laundry. Nos complace informarle que su orden ya está lista. Gracias por permitirnos cuidar de su ropa — estamos para servirle.",
+            "Hello, this is Ventura Fresh Laundry. We’re pleased to let you know that your order is now ready. Thank you for allowing us to care for your garments — we’re here for you."
+        ),
+        "completed": (
+            "Hola, le habla Ventura Fresh Laundry. Le confirmamos que su orden ha sido completada exitosamente. Ha sido un placer atenderle — esperamos verle nuevamente muy pronto.",
+            "Hello, this is Ventura Fresh Laundry. We’re calling to confirm that your order has been completed successfully. It’s been a pleasure serving you — we look forward to seeing you again soon."
+        ),
     }
     es_script, en_script = scripts.get(event, (
         f"Hola {n}, tienes una actualización de tu servicio con {biz}. Por favor contáctanos. ¡Hasta luego!",

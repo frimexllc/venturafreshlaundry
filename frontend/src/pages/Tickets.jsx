@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Textarea } from "../components/ui/textarea";
 import { toast } from "sonner";
-import { Plus, HeadphonesIcon, MoreHorizontal, Eye, AlertCircle, CheckCircle } from "lucide-react";
+import { Plus, HeadphonesIcon, MoreHorizontal, Eye, AlertCircle, CheckCircle, Printer } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "../components/ui/dropdown-menu";
 import { useLocale } from "../context/LocaleContext";
 
@@ -29,7 +29,6 @@ export default function Tickets() {
   const [submitting, setSubmitting] = useState(false);
   const [viewTicket, setViewTicket] = useState(null);
 
-  // Status labels with translation
   const statusLabels = {
     open: { label: t("Open", "Abierto"), class: "badge-pending" },
     in_progress: { label: t("In Progress", "En Progreso"), class: "badge-processing" },
@@ -37,14 +36,12 @@ export default function Tickets() {
     closed: { label: t("Closed", "Cerrado"), class: "badge-cancelled" }
   };
 
-  // Priority labels with translation
   const priorityLabels = {
     high: { label: t("High", "Alta"), class: "badge-high" },
     medium: { label: t("Medium", "Media"), class: "badge-medium" },
     low: { label: t("Low", "Baja"), class: "badge-low" }
   };
 
-  // Category labels with translation
   const categoryLabels = {
     general: t("General", "General"),
     complaint: t("Complaint", "Queja"),
@@ -90,7 +87,6 @@ export default function Tickets() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitting(true);
-
     try {
       const data = {
         ...form,
@@ -128,6 +124,167 @@ export default function Tickets() {
     });
   };
 
+  // Función mejorada para imprimir ticket con formato convencional
+  const handlePrintTicket = (ticket) => {
+    if (!ticket) return;
+
+    // URL para el código QR (página de detalle del ticket)
+    const ticketUrl = `${window.location.origin}/tickets/${ticket.id}`;
+    const qrSize = 100;
+    const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=${qrSize}x${qrSize}&data=${encodeURIComponent(ticketUrl)}`;
+
+    // Función auxiliar para escapar HTML
+    const escapeHtml = (str) => {
+      if (!str) return "";
+      return str
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    };
+
+    // Formatear fecha larga para ticket
+    const printDate = new Date(ticket.created_at).toLocaleString(t("en-US", "es-MX"), {
+      dateStyle: "short",
+      timeStyle: "short"
+    });
+
+    // Contenido del ticket
+    const printContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Ticket ${ticket.ticket_number}</title>
+        <meta charset="UTF-8">
+        <style>
+          * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+          }
+          body {
+            font-family: 'Courier New', 'Monaco', monospace;
+            font-size: 12px;
+            line-height: 1.3;
+            background: #fff;
+            padding: 20px;
+          }
+          .ticket {
+            max-width: 280px;
+            margin: 0 auto;
+            border: 1px solid #000;
+            padding: 12px;
+          }
+          .center {
+            text-align: center;
+          }
+          .divider {
+            border-top: 1px dashed #888;
+            margin: 8px 0;
+          }
+          .row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 4px;
+          }
+          .label {
+            font-weight: bold;
+          }
+          .description {
+            margin: 8px 0;
+            padding: 4px 0;
+            border-top: 1px dotted #aaa;
+            border-bottom: 1px dotted #aaa;
+          }
+          .qr {
+            text-align: center;
+            margin-top: 12px;
+          }
+          .qr img {
+            width: ${qrSize}px;
+            height: ${qrSize}px;
+            margin: 0 auto;
+          }
+          .footer {
+            text-align: center;
+            font-size: 9px;
+            margin-top: 12px;
+            color: #666;
+          }
+          @media print {
+            body { padding: 0; margin: 0; }
+            .ticket { border: none; padding: 0; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="ticket">
+          <div class="center">
+            <strong>SOPORTE TÉCNICO</strong><br/>
+            Ticket: ${ticket.ticket_number}<br/>
+            ${printDate}
+          </div>
+          <div class="divider"></div>
+          <div class="row">
+            <span class="label">Asunto:</span>
+            <span>${escapeHtml(ticket.subject)}</span>
+          </div>
+          <div class="row">
+            <span class="label">Cliente:</span>
+            <span>${escapeHtml(ticket.customer_name || "Sin cliente")}</span>
+          </div>
+          <div class="row">
+            <span class="label">Categoría:</span>
+            <span>${escapeHtml(categoryLabels[ticket.category])}</span>
+          </div>
+          <div class="row">
+            <span class="label">Prioridad:</span>
+            <span>${escapeHtml(priorityLabels[ticket.priority]?.label || ticket.priority)}</span>
+          </div>
+          <div class="row">
+            <span class="label">Estado:</span>
+            <span>${escapeHtml(statusLabels[ticket.status]?.label || ticket.status)}</span>
+          </div>
+          <div class="description">
+            <strong>Descripción:</strong><br/>
+            ${escapeHtml(ticket.description).replace(/\n/g, '<br/>')}
+          </div>
+          ${ticket.resolution ? `
+          <div class="row">
+            <span class="label">Resolución:</span>
+            <span>${escapeHtml(ticket.resolution)}</span>
+          </div>
+          ` : ''}
+          <div class="divider"></div>
+          <div class="qr">
+            <img src="${qrImageUrl}" alt="QR" />
+            <div style="font-size: 8px;">Escanea para ver el ticket</div>
+          </div>
+          <div class="footer">
+            Generado el ${new Date().toLocaleString()}<br/>
+            Sistema de Soporte
+          </div>
+        </div>
+        <script>
+          window.onload = function() {
+            window.print();
+            window.onafterprint = function() { window.close(); };
+          };
+        </script>
+      </body>
+      </html>
+    `;
+
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) {
+      toast.error(t("Allow pop-ups to print", "Permite ventanas emergentes para imprimir"));
+      return;
+    }
+    printWindow.document.write(printContent);
+    printWindow.document.close();
+  };
+
   return (
     <div data-testid="tickets-page" className="space-y-6 bg-white">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -142,7 +299,7 @@ export default function Tickets() {
               {t("New Ticket", "Nuevo Ticket")}
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-lg bg-white" style={{ backgroundColor: 'white', opacity: 1 }}>
+          <DialogContent className="sm:max-w-lg bg-white">
             <DialogHeader>
               <DialogTitle>{t("New Support Ticket", "Nuevo Ticket de Soporte")}</DialogTitle>
             </DialogHeader>
@@ -230,7 +387,7 @@ export default function Tickets() {
 
       {/* Ticket Detail Dialog */}
       <Dialog open={!!viewTicket} onOpenChange={() => setViewTicket(null)}>
-        <DialogContent className="sm:max-w-lg bg-white" style={{ backgroundColor: 'white', opacity: 1 }}>
+        <DialogContent className="sm:max-w-lg bg-white">
           <DialogHeader>
             <DialogTitle>{t("Ticket", "Ticket")} {viewTicket?.ticket_number}</DialogTitle>
           </DialogHeader>
@@ -344,6 +501,10 @@ export default function Tickets() {
                           <DropdownMenuItem onClick={() => setViewTicket(ticket)}>
                             <Eye className="h-4 w-4 mr-2" />
                             {t("View details", "Ver detalles")}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handlePrintTicket(ticket)}>
+                            <Printer className="h-4 w-4 mr-2" />
+                            {t("Print Ticket", "Imprimir Ticket")}
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           {ticket.status === "open" && (
