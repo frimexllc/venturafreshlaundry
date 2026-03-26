@@ -6,7 +6,7 @@ Comprehensive AI-powered laundry management system with: CRUD services, order/ti
 ## Architecture
 - **Frontend**: React (CRA via Craco), Tailwind CSS, Leaflet, Stripe SDK, Shadcn/UI, Sonner toasts
 - **Backend**: FastAPI, MongoDB (motor), Pydantic, JWT Auth
-- **Integrations**: Groq LLM, Stripe, Twilio, SendGrid, OpenRouteService, OSRM
+- **Integrations**: Groq LLM, Stripe, Twilio, SendGrid, OpenRouteService, OSRM, Nominatim (geocoding)
 - **Deployment**: Deferred-load backend (server.py → server_core.py via background thread)
 
 ## Core Modules
@@ -24,9 +24,11 @@ Comprehensive AI-powered laundry management system with: CRUD services, order/ti
 - AI Metrics (/admin/ai-metrics)
 - Quick Approval (/admin/quick-approval)
 
-### 3. Logistics Map / Operator Panel (/admin/operator) — **NEW**
+### 3. Logistics Map / Operator Panel (/admin/operator) — COMPLETE
 - Interactive OpenStreetMap with real-time route optimization (2-opt + Time Windows)
 - OSRM road-following route polylines
+- **Real backend data** via unified `/api/logistics/orders` endpoint (CRM + Store orders merged)
+- **Geocoding** via Nominatim with MongoDB cache (`geocode_cache` collection)
 - Order markers with pickup/delivery/processing status colors
 - Sidebar: Route stats (distance, fuel, ETA), stop list, progress bar
 - Filter by order type (Pickup, Airbnb, B2B, Wash & Fold)
@@ -41,6 +43,7 @@ Comprehensive AI-powered laundry management system with: CRUD services, order/ti
 - Dark mode, search, route history panel
 - Real-time traffic alerts (simulated)
 - Nearby Wash & Fold opportunity detection
+- Status updates persist to backend DB (both CRM and Store orders)
 
 ### 4. POS & Store System
 - In-store POS, product sales, cart management
@@ -49,16 +52,28 @@ Comprehensive AI-powered laundry management system with: CRUD services, order/ti
 ### 5. Notifications
 - Multi-channel: Twilio SMS/WhatsApp/Voice, SendGrid Email
 
-## Database
-- MongoDB collections: users, orders, ai_operator_sessions, ai_pending_actions, delivery_zones, services, memberships, customers, quotes, leads, tickets, blog_posts
+## Key API Endpoints
+- `GET /api/health` — Deployment health check
+- `GET /api/logistics/orders` — Unified order feed with geocoded coordinates
+- `PUT /api/logistics/orders/{id}/status` — Update order status from map
+- `POST /api/tim/chat` — TIM AI assistant (proxies to Groq)
+- `GET /api/orders` — CRM orders
+- `GET /api/store/orders` — Store orders
+- `POST /api/auth/login` — Authentication
+
+## Database Collections
+- users, orders, store_orders, customers, quotes, leads, tickets
+- services, memberships, delivery_zones, blog_posts
+- ai_operator_sessions, ai_pending_actions
+- **geocode_cache** — Cached Nominatim geocoding results (address → lat/lng)
 
 ## Credentials
 - Admin: owner@frimexllc.com / Fr!m3x##$$
 
-## What's Implemented (as of Feb 2026)
+## What's Implemented
 - Full public website with all pages
 - Admin CRM dashboard with all modules
-- **Logistics Map Operator Panel (COMPLETE)** — Map, route optimization, TIM AI, Stripe modal, order management
+- Logistics Map Operator Panel with real backend data (COMPLETE)
 - AI Metrics and Quick Approval admin pages
 - Address Autocomplete on public forms
 - Multi-channel notifications (Twilio/SendGrid)
@@ -67,7 +82,6 @@ Comprehensive AI-powered laundry management system with: CRUD services, order/ti
 ## Known Issues
 - Deployment timeout (120s) — Backend starts but K8s health check may fail intermittently
 - Traffic events are MOCKED (client-side simulation)
-- MOCK_ORDERS used as fallback when backend has no orders
 
 ## Backlog
 - P0: Fix 120s deployment timeout
