@@ -4388,6 +4388,14 @@ if STRIPE_SYNC_SCAFFOLD_ENABLED and stripe_sync_router:
     app.include_router(stripe_sync_router, prefix="/api")
     logger.info("Stripe sync scaffold enabled at /api/stripe-sync/*")
 
+# Include TIM (Transportation Intelligence Module) router
+try:
+    from routes.tim import router as tim_router
+    app.include_router(tim_router)
+    logger.info("TIM router enabled at /api/tim/*")
+except Exception as e:
+    logger.warning(f"TIM router not loaded: {e}")
+
 # Stripe webhook endpoint
 @app.post("/api/webhook/stripe")
 async def stripe_webhook(request: Request):
