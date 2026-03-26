@@ -1,113 +1,75 @@
 # Ventura Fresh Laundry — PRD
 
-## Original Problem Statement
-AI-powered laundry management system (Ventura Fresh Laundry) with:
-1. Laundry Management Module: CRUD services, order/ticket management, operator & admin panels
-2. Stripe Integration: Single payments and recurring memberships
-3. Twilio & SendGrid: SMS/WhatsApp/Email notifications for order status
-4. AI-Powered Management: AI assistants (Groq) for public users and operators
-5. Store & POS: In-store POS, product sales, dynamic shipping, cart management
-6. PWA & UX: Splash screens, bilingual (EN/ES), legal policies, optimized form UX
+## Problem Statement
+Comprehensive AI-powered laundry management system with: CRUD services, order/ticket management, operator logistics panel, admin panel, Stripe integration, Twilio & SendGrid notifications, AI assistants (Groq), POS system, dynamic shipping, PWA, and bilingual support (EN/ES).
 
-## Tech Stack
-- Frontend: React, Tailwind CSS, Shadcn/UI, Web Speech API
-- Backend: FastAPI, MongoDB (motor), Pydantic
-- Realtime: Socket.io (lazy-loaded)
-- Integrations: Twilio (SMS/WhatsApp), SendGrid (Email), Groq (LLM via emergentintegrations), Stripe, OpenRouteService
+## Architecture
+- **Frontend**: React (CRA via Craco), Tailwind CSS, Leaflet, Stripe SDK, Shadcn/UI, Sonner toasts
+- **Backend**: FastAPI, MongoDB (motor), Pydantic, JWT Auth
+- **Integrations**: Groq LLM, Stripe, Twilio, SendGrid, OpenRouteService, OSRM
+- **Deployment**: Deferred-load backend (server.py → server_core.py via background thread)
 
-## Architecture (Post-Refactoring)
-```
-backend/
-├── server.py          # Lightweight entry (lazy socketio via _SwappableASGI)
-├── server_core.py     # Route endpoints (~4489 lines)
-├── database.py        # MongoDB connection singleton, JWT config
-├── models.py          # All Pydantic models + role constants
-├── auth.py            # JWT helpers, role-based access
-├── utils.py           # QR, ticket formatting, order helpers, AI helpers
-├── normalization.py   # Data normalization functions
-├── notifications.py   # Twilio/SendGrid
-├── ai_assistant.py    # AI briefing/analysis
-├── automation_engine.py
-├── blog.py
-├── store.py
-├── n8n_integration.py
-├── stripe_sync_scaffold.py
-└── routes/
-    ├── ai.py
-    ├── orders.py        # (orphaned — not yet connected)
-    ├── public_forms.py
-    └── voice.py
-```
+## Core Modules
 
-## What's Been Implemented
+### 1. Public Website
+- Landing page with services, pricing, about, contact
+- Schedule Pickup, Wash & Fold request, Membership, Store, Blog
+- Address Autocomplete (Nominatim/OpenStreetMap)
+- Bilingual EN/ES
 
-### Core Features (Completed)
-- Role-based access (Admin, Operator, Customer)
-- Order/ticket management with status tracking
-- POS system for operators
-- Dynamic shipping quotes via OpenRouteService
-- Multi-channel notifications (Twilio SMS/WhatsApp + SendGrid Email)
-- Animated PWA Splash Screen (3 variants, 3.5s duration)
-- Public Voice Assistant for customer inquiries
-- "Jarvis" Operator Voice Assistant at /admin/operator/agent
-- Bilingual support (EN/ES)
-- Legal policies (TOS, Privacy Policy)
-- SMS consent checkboxes on all forms
-- SEO/Favicon with Ventura logo
-- Stripe checkout for memberships and store products
-- Finance Panel with revenue, payment methods, CSV export
-- Delivery Zones Management with Leaflet map + CRUD
+### 2. Admin Dashboard (/admin)
+- Dashboard, Customers, Orders, Calendar, Quotes, Leads, Tickets
+- Services, Memberships, AI assistant, Store, Blog management
+- User Management, Finances, Audit Log, Settings
+- AI Metrics (/admin/ai-metrics)
+- Quick Approval (/admin/quick-approval)
 
-### Address Autocomplete (Completed - March 20, 2026)
-- Reusable `AddressAutocomplete` component using OpenStreetMap/Nominatim
-- Integrated across 5 public forms
+### 3. Logistics Map / Operator Panel (/admin/operator) — **NEW**
+- Interactive OpenStreetMap with real-time route optimization (2-opt + Time Windows)
+- OSRM road-following route polylines
+- Order markers with pickup/delivery/processing status colors
+- Sidebar: Route stats (distance, fuel, ETA), stop list, progress bar
+- Filter by order type (Pickup, Airbnb, B2B, Wash & Fold)
+- Complete stops workflow with End-of-Day summary modal
+- TIM (Transportation Intelligence Module) — AI copilot powered by Groq
+  - Text and voice interface (Web Speech API STT/TTS)
+  - Wake word "Oye TIM" / "Hey TIM"
+  - Voice commands for status changes and stop completion
+  - Proactive alerts (traffic, route updates)
+- Stripe Payment modal for on-route collections
+- Google Maps deep-link for turn-by-turn navigation
+- Dark mode, search, route history panel
+- Real-time traffic alerts (simulated)
+- Nearby Wash & Fold opportunity detection
 
-### AI Agent Metrics (Completed - March 20, 2026)
-- Backend: `GET /api/ai/metrics`
-- Frontend: `AiMetrics.jsx` dashboard with stats, charts, filters
+### 4. POS & Store System
+- In-store POS, product sales, cart management
+- Dynamic delivery zones with OpenRouteService
 
-### Quick Approval Mode (Completed - March 20, 2026)
-- Backend: CRUD for pending AI actions
-- Frontend: `QuickApproval.jsx` with approve/reject flows
+### 5. Notifications
+- Multi-channel: Twilio SMS/WhatsApp/Voice, SendGrid Email
 
-### OperatorDashboard Refactoring (Completed - March 20, 2026)
-- Reduced from 1779 to ~1310 lines
-- Extracted: OrderDetailDialog.jsx, utils.js
-
-### Deployment Fix — Lazy SocketIO (Completed - March 21, 2026)
-- Removed `import socketio` from server.py top-level
-- Created `_SwappableASGI` wrapper class for hot-swapping ASGI app
-- Port binds in ~0.30s (was timing out at 60s)
-- Health check `/api/health` responds before any heavy imports
-- Deployment agent verified: PASS
-
-### Backend Modularization (Completed - March 21, 2026)
-- Extracted ~877 lines from server_core.py into 4 shared modules:
-  - `database.py` — MongoDB singleton, JWT config
-  - `models.py` — All Pydantic models + role constants
-  - `auth.py` — JWT, password hashing, role-based access
-  - `utils.py` — QR generation, ticket formatting, order/AI helpers
-- server_core.py reduced from 5366 → 4489 lines
-- All 15 API tests passed + frontend verified
-
-## Prioritized Backlog
-
-### PAUSED — Advanced Stripe Sync
-- Bidirectional sync (Customers, Products, Prices) between app and Stripe
-- User explicitly requested to discuss this on a call before implementing
-
-### Future Tasks
-- Further modularization: extract route groups into routes/ directory
-- Connect orphaned routes/orders.py and routes/ai.py
-- Performance optimization of heavy AI endpoints
-
-## Key Files
-- `backend/server.py` — Lightweight entry point with lazy socketio
-- `backend/server_core.py` — Main routes (~4489 lines)
-- `backend/database.py` — DB connection singleton
-- `backend/models.py` — Shared Pydantic models
-- `backend/auth.py` — Auth helpers
-- `backend/utils.py` — Shared utilities
+## Database
+- MongoDB collections: users, orders, ai_operator_sessions, ai_pending_actions, delivery_zones, services, memberships, customers, quotes, leads, tickets, blog_posts
 
 ## Credentials
-- Admin: owner@frimexllc.com / admin123
+- Admin: owner@frimexllc.com / Fr!m3x##$$
+
+## What's Implemented (as of Feb 2026)
+- Full public website with all pages
+- Admin CRM dashboard with all modules
+- **Logistics Map Operator Panel (COMPLETE)** — Map, route optimization, TIM AI, Stripe modal, order management
+- AI Metrics and Quick Approval admin pages
+- Address Autocomplete on public forms
+- Multi-channel notifications (Twilio/SendGrid)
+- Deferred-loading backend for K8s deployment
+
+## Known Issues
+- Deployment timeout (120s) — Backend starts but K8s health check may fail intermittently
+- Traffic events are MOCKED (client-side simulation)
+- MOCK_ORDERS used as fallback when backend has no orders
+
+## Backlog
+- P0: Fix 120s deployment timeout
+- P1: Advanced Stripe Sync (PAUSED — pending user call)
+- P2: Refactor server_core.py into modular route files (~4400 lines remaining)
