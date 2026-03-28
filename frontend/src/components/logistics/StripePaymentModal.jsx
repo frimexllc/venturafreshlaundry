@@ -32,7 +32,16 @@ function CheckoutForm({ order, onSuccess, onCancel }) {
     setErrorMsg('');
     const { error } = await stripe.confirmPayment({ elements, redirect: 'if_required' });
     if (error) { setErrorMsg(error.message ?? 'Error al procesar el pago.'); setLoading(false); }
-    else { onSuccess(); }
+    else {
+      // Confirm payment in backend
+      const token = localStorage.getItem('token');
+      fetch(`${API_URL}/api/stripe/confirm-payment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ orderId: order.id }),
+      }).catch(() => {});
+      onSuccess();
+    }
   }
 
   return (

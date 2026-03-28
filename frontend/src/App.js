@@ -47,6 +47,7 @@ import SmsPolicyConsent from "./pages/SmsPolicyConsent";
 import PwaSplashScreen from "./components/PwaSplashScreen";
 import PublicVoiceAssistant from "./components/PublicVoiceAssistant";
 import OperatorAgentPage from "./pages/OperatorAgentPage";
+import LogisticsMapPage from "./pages/LogisticsMapPage";
 
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -160,7 +161,7 @@ function AppRoutes() {
         <Route path="finances" element={<Finances />} />
         <Route path="ai-metrics" element={<AiMetrics />} />
         <Route path="quick-approval" element={<QuickApproval />} />
-      </Route>
+        <Route path="logistics/map" element={<LogisticsMapPage />} />      </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

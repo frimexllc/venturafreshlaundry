@@ -179,6 +179,14 @@ export default function ContactPage() {
     contact_method: "", sms_consent: false, message: ""
   });
 
+  // Reset sms_consent if the selected contact method does not require it
+  useEffect(() => {
+    const requiresConsent = ["text", "sms", "whatsapp"].includes(form.contact_method);
+    if (!requiresConsent && form.sms_consent) {
+      setForm(prev => ({ ...prev, sms_consent: false }));
+    }
+  }, [form.contact_method]);
+
   useEffect(() => {
     let tick = false;
     const fn = () => { if (!tick) { requestAnimationFrame(() => { setScrollY(window.pageYOffset); tick = false; }); tick = true; } };
@@ -246,284 +254,310 @@ export default function ContactPage() {
     },
   ];
 
-  return (<>
-    {/* Cursor */}
-    <div className="pointer-events-none fixed inset-0 z-[9999] hidden lg:block">
-      <div ref={ring} className="absolute w-9 h-9 rounded-full border border-primary/50 will-change-transform" style={{ top: 0, left: 0 }} />
-      <div ref={dot}  className="absolute w-1.5 h-1.5 rounded-full bg-primary will-change-transform" style={{ top: 0, left: 0 }} />
-    </div>
+  return (
+    <>
+      {/* Cursor */}
+      <div className="pointer-events-none fixed inset-0 z-[9999] hidden lg:block">
+        <div ref={ring} className="absolute w-9 h-9 rounded-full border border-primary/50 will-change-transform" style={{ top: 0, left: 0 }} />
+        <div ref={dot}  className="absolute w-1.5 h-1.5 rounded-full bg-primary will-change-transform" style={{ top: 0, left: 0 }} />
+      </div>
 
-    <style>{`
-      @keyframes fadeUp { from { opacity:0; transform:translateY(10px) } to { opacity:1; transform:translateY(0) } }
-      @keyframes mq { from { transform:translateX(0) } to { transform:translateX(-33.333%) } }
-      * { font-style: normal !important; }
-    `}</style>
+      <style>{`
+        @keyframes fadeUp { from { opacity:0; transform:translateY(10px) } to { opacity:1; transform:translateY(0) } }
+        @keyframes mq { from { transform:translateX(0) } to { transform:translateX(-33.333%) } }
+        * { font-style: normal !important; }
+      `}</style>
 
-    <div className="min-h-screen bg-white overflow-x-hidden">
-      <PublicNav />
+      <div className="min-h-screen bg-white overflow-x-hidden">
+        <PublicNav />
 
-      {/* ══ HERO ══════════════════════════════════════════════════════════ */}
-      <section className="relative min-h-[65vh] flex items-end justify-center overflow-hidden">
-        <div className="absolute inset-0 will-change-transform"
-          style={{ backgroundImage: "url('https://images.unsplash.com/photo-1423666639041-f56000c27a9a?w=1920&h=1080&fit=crop')", backgroundSize: "cover", backgroundPosition: "center", transform: `translateY(${scrollY * 0.22}px) scale(1.08)` }} />
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/92 via-slate-900/65 to-slate-800/25" />
-        <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse at center,transparent 40%,rgba(0,0,0,0.5) 100%)" }} />
-        <div className="absolute inset-0 opacity-[0.025]" style={{ backgroundImage: "repeating-linear-gradient(0deg,#000 0px,#000 1px,transparent 1px,transparent 4px)" }} />
+        {/* ══ HERO ══════════════════════════════════════════════════════════ */}
+        <section className="relative min-h-[65vh] flex items-end justify-center overflow-hidden">
+          <div className="absolute inset-0 will-change-transform"
+            style={{ backgroundImage: "url('https://images.unsplash.com/photo-1423666639041-f56000c27a9a?w=1920&h=1080&fit=crop')", backgroundSize: "cover", backgroundPosition: "center", transform: `translateY(${scrollY * 0.22}px) scale(1.08)` }} />
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/92 via-slate-900/65 to-slate-800/25" />
+          <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse at center,transparent 40%,rgba(0,0,0,0.5) 100%)" }} />
+          <div className="absolute inset-0 opacity-[0.025]" style={{ backgroundImage: "repeating-linear-gradient(0deg,#000 0px,#000 1px,transparent 1px,transparent 4px)" }} />
 
-        <div className="relative z-10 text-center px-6 pb-20 max-w-4xl mx-auto">
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/8 backdrop-blur-md border border-white/15 mb-7"
-            style={{ animation: "fadeUp 0.5s 0.05s both ease-out" }}>
-            <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-            <span className="text-[11px] text-white/75 font-bold uppercase tracking-[0.18em] not-italic">{t("Get in touch", "Escríbenos")}</span>
-          </div>
-          <h1 className="text-5xl sm:text-6xl md:text-7xl  leading-[1.05] mb-4 tracking-tight not-italic"
-            style={{ animation: "fadeUp 0.5s 0.12s both ease-out" }}>
-            <span className="text-white">{t("We're here", "Estamos aquí")}</span>
-            <span className="block text-white not-italic">
-              {t("for you.", "para ti.")}
-            </span>
-          </h1>
-          <p className="text-lg sm:text-xl text-white/70 max-w-xl mx-auto not-italic" style={{ animation: "fadeUp 0.5s 0.2s both ease-out" }}>
-            {t("Let's take care of your laundry, so you can focus on what matters most.", "Nos encargamos de tu lavandería para que tú te concentres en lo que importa.")}
-          </p>
-        </div>
-
-        <div className="absolute bottom-0 left-0 right-0 z-20">
-          <svg viewBox="0 0 1440 90" preserveAspectRatio="none" className="w-full h-12 sm:h-16 lg:h-20">
-            <path d="M0,45 C300,0 600,90 1440,45 L1440,90 L0,90 Z" fill="white" />
-          </svg>
-        </div>
-      </section>
-
-      {/* ══ MARQUEE ═══════════════════════════════════════════════════════ */}
-      <Marquee items={marqueeItems} />
-
-      {/* ══ CONTACT GRID ══════════════════════════════════════════════════ */}
-      <section className="py-20 sm:py-24 relative overflow-hidden bg-white">
-        <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: "url('https://images.unsplash.com/photo-1582735689369-4fe89db7114c?w=1920&h=1080&fit=crop')", backgroundSize: "cover", backgroundPosition: "center", transform: `translateY(${scrollY * 0.1}px)` }} />
-
-        <div className="relative z-10 max-w-6xl mx-auto px-6 sm:px-8 lg:px-12">
-          <Reveal dir="blur" dur={300}>
-            <p className="text-center text-[11px] font-bold uppercase tracking-[0.22em] text-primary/50 mb-3 not-italic">{t("Reach Out", "Escríbenos")}</p>
-          </Reveal>
-          <Reveal delay={50} dur={300}>
-            <h2 className="text-4xl sm:text-5xl font-bold text-slate-900 text-center mb-3 leading-tight not-italic">
-              {t("Talk to us,", "Hablemos,")}
-              <span className="block text-primary font-bold not-italic">{t("anytime.", "cuando quieras.")}</span>
-            </h2>
-          </Reveal>
-          <Reveal delay={100} dur={300}>
-            <p className="text-slate-400 text-center mb-14 max-w-xl mx-auto text-lg not-italic">
-              {t("Call, text, email, or show up — we reply fast.", "Llama, escribe, correo o visítanos — respondemos rápido.")}
+          <div className="relative z-10 text-center px-6 pb-20 max-w-4xl mx-auto">
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/8 backdrop-blur-md border border-white/15 mb-7"
+              style={{ animation: "fadeUp 0.5s 0.05s both ease-out" }}>
+              <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+              <span className="text-[11px] text-white/75 font-bold uppercase tracking-[0.18em] not-italic">{t("Get in touch", "Escríbenos")}</span>
+            </div>
+            <h1 className="text-5xl sm:text-6xl md:text-7xl leading-[1.05] mb-4 tracking-tight not-italic"
+              style={{ animation: "fadeUp 0.5s 0.12s both ease-out" }}>
+              <span className="text-white">{t("We're here", "Estamos aquí")}</span>
+              <span className="block text-white not-italic">
+                {t("for you.", "para ti.")}
+              </span>
+            </h1>
+            <p className="text-lg sm:text-xl text-white/70 max-w-xl mx-auto not-italic" style={{ animation: "fadeUp 0.5s 0.2s both ease-out" }}>
+              {t("Let's take care of your laundry, so you can focus on what matters most.", "Nos encargamos de tu lavandería para que tú te concentres en lo que importa.")}
             </p>
-          </Reveal>
+          </div>
 
-          <div className="grid lg:grid-cols-2 gap-10 items-start">
+          <div className="absolute bottom-0 left-0 right-0 z-20">
+            <svg viewBox="0 0 1440 90" preserveAspectRatio="none" className="w-full h-12 sm:h-16 lg:h-20">
+              <path d="M0,45 C300,0 600,90 1440,45 L1440,90 L0,90 Z" fill="white" />
+            </svg>
+          </div>
+        </section>
 
-            {/* ── LEFT: Info + Map ── */}
-            <div className="space-y-4">
-              <InfoCard icon={Mail} label={t("Email", "Correo")} delay={0}>
-                <a href="mailto:info@venturafreshlaundry.com" className="text-primary hover:underline font-medium not-italic">
-                  info@venturafreshlaundry.com
-                </a>
-              </InfoCard>
-              <InfoCard icon={Phone} label={t("Phone / Text", "Teléfono / Mensaje")} delay={60}>
-                <a href="tel:+18058368872" className="text-primary hover:underline font-medium not-italic">+1 (805) 836-8872</a>
-              </InfoCard>
-              <InfoCard icon={MapPin} label={t("Address", "Dirección")} delay={120}>
-                <span className="not-italic">5722 Telephone Rd #5, Ventura, CA 93003</span>
-              </InfoCard>
-              <InfoCard icon={Clock} label={t("Hours", "Horario")} delay={180}>
-                <span className="not-italic">{t("Monday – Sunday · 7:00 AM – 10:00 PM", "Lunes – Domingo · 7:00 AM – 10:00 PM")}</span>
-              </InfoCard>
+        {/* ══ MARQUEE ═══════════════════════════════════════════════════════ */}
+        <Marquee items={marqueeItems} />
 
-              {/* Map */}
-              <Reveal delay={220} dir="up" dur={400}>
+        {/* ══ CONTACT GRID ══════════════════════════════════════════════════ */}
+        <section className="py-20 sm:py-24 relative overflow-hidden bg-white">
+          <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: "url('https://images.unsplash.com/photo-1582735689369-4fe89db7114c?w=1920&h=1080&fit=crop')", backgroundSize: "cover", backgroundPosition: "center", transform: `translateY(${scrollY * 0.1}px)` }} />
+
+          <div className="relative z-10 max-w-6xl mx-auto px-6 sm:px-8 lg:px-12">
+            <Reveal dir="blur" dur={300}>
+              <p className="text-center text-[11px] font-bold uppercase tracking-[0.22em] text-primary/50 mb-3 not-italic">{t("Reach Out", "Escríbenos")}</p>
+            </Reveal>
+            <Reveal delay={50} dur={300}>
+              <h2 className="text-4xl sm:text-5xl font-bold text-slate-900 text-center mb-3 leading-tight not-italic">
+                {t("Talk to us,", "Hablemos,")}
+                <span className="block text-primary font-bold not-italic">{t("anytime.", "cuando quieras.")}</span>
+              </h2>
+            </Reveal>
+            <Reveal delay={100} dur={300}>
+              <p className="text-slate-400 text-center mb-14 max-w-xl mx-auto text-lg not-italic">
+                {t("Call, text, email, or show up — we reply fast.", "Llama, escribe, correo o visítanos — respondemos rápido.")}
+              </p>
+            </Reveal>
+
+            <div className="grid lg:grid-cols-2 gap-10 items-start">
+
+              {/* ── LEFT: Info + Map ── */}
+              <div className="space-y-4">
+                <InfoCard icon={Mail} label={t("Email", "Correo")} delay={0}>
+                  <a href="mailto:info@venturafreshlaundry.com" className="text-primary hover:underline font-medium not-italic">
+                    info@venturafreshlaundry.com
+                  </a>
+                </InfoCard>
+                <InfoCard icon={Phone} label={t("Phone / Text", "Teléfono / Mensaje")} delay={60}>
+                  <a href="tel:+18058368872" className="text-primary hover:underline font-medium not-italic">+1 (805) 836-8872</a>
+                </InfoCard>
+                <InfoCard icon={MapPin} label={t("Address", "Dirección")} delay={120}>
+                  <span className="not-italic">5722 Telephone Rd #5, Ventura, CA 93003</span>
+                </InfoCard>
+                <InfoCard icon={Clock} label={t("Hours", "Horario")} delay={180}>
+                  <span className="not-italic">{t("Monday – Sunday · 7:00 AM – 10:00 PM", "Lunes – Domingo · 7:00 AM – 10:00 PM")}</span>
+                </InfoCard>
+
+                {/* Map */}
+                <Reveal delay={220} dir="up" dur={400}>
+                  <Tilt depth={2}>
+                    <div className="rounded-2xl overflow-hidden shadow-xl shadow-sky-100/40 border border-slate-100 h-60 mt-2">
+                      <iframe
+                        src="https://www.google.com/maps/embed?pb=!1m14!1m8!1m3!1d13189.551976893248!2d-119.213715!3d34.264157!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x80e84d4c078097ed%3A0x5e2cf7ad62ef27e9!2sLaunderland!5e0!3m2!1ses-419!2smx!4v1774668361862!5m2!1ses-419!2smx"
+                        width="100%"
+                        height="100%"
+                        style={{ border: 0 }}
+                        allowFullScreen
+                        loading="lazy"
+                        referrerPolicy="no-referrer-when-downgrade"
+                        title="Ventura Fresh Laundry Location"
+                      />
+                    </div>
+                  </Tilt>
+                </Reveal>
+              </div>
+
+              {/* ── RIGHT: Contact Form ── */}
+              <Reveal delay={80} dir="right" dur={400}>
                 <Tilt depth={2}>
-                  <div className="rounded-2xl overflow-hidden shadow-xl shadow-sky-100/40 border border-slate-100 h-60 mt-2">
-                    <iframe
-                      src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3155.7033613506883!2d-119.21371459999997!3d34.264156799999995!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x80e84d4c078097ed%3A0x5e2cf7ad62ef27e9!2sLaunderland!5e1!3m2!1ses-419!2smx!4v1774195699048!5m2!1ses-419!2smx"
-                      width="100%" height="100%"
-                      style={{ border: 0 }} allowFullScreen loading="lazy"
-                      referrerPolicy="no-referrer-when-downgrade"
-                      title="Ventura Fresh Laundry Location"
-                    />
+                  <div className="relative bg-white rounded-2xl border border-slate-100 shadow-xl shadow-sky-50/60 overflow-hidden">
+                    <div className="absolute top-0 left-8 right-8 h-px bg-gradient-to-r from-transparent via-primary to-transparent" />
+                    <div className="absolute inset-0 bg-gradient-to-br from-sky-50/40 to-transparent pointer-events-none" />
+
+                    <div className="relative p-7 sm:p-8">
+                      <div className="flex items-center gap-3 mb-7">
+                        <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
+                          <MessageSquare className="w-5 h-5 text-primary" />
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-bold text-slate-900 not-italic">{t("Send us a message", "Envíanos un mensaje")}</h3>
+                          <p className="text-slate-400 text-xs not-italic">{t("We usually reply within a few hours.", "Solemos responder en pocas horas.")}</p>
+                        </div>
+                      </div>
+
+                      {submitted && (
+                        <div className="mb-6 p-4 rounded-xl bg-emerald-50 border border-emerald-200/60 flex items-center gap-3">
+                          <div className="w-8 h-8 bg-emerald-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <span className="text-emerald-600 text-lg">✓</span>
+                          </div>
+                          <div>
+                            <p className="text-emerald-800 font-semibold text-sm not-italic">{t("Message sent!", "¡Mensaje enviado!")}</p>
+                            <p className="text-emerald-600 text-xs not-italic">{t("We'll get back to you soon.", "Te responderemos pronto.")}</p>
+                          </div>
+                        </div>
+                      )}
+
+                      <form onSubmit={handleSubmit} className="space-y-4">
+                        <div className="grid sm:grid-cols-2 gap-4">
+                          <div>
+                            <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 not-italic">{t("Full Name", "Nombre Completo")} <span className="text-primary">*</span></label>
+                            <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required className={inputCls} data-testid="contact-name-input" />
+                          </div>
+                          <div>
+                            <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 not-italic">{t("Email", "Correo")} <span className="text-primary">*</span></label>
+                            <input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} required className={inputCls} data-testid="contact-email-input" />
+                          </div>
+                        </div>
+
+                        <div className="grid sm:grid-cols-2 gap-4">
+                          <div>
+                            <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 not-italic">{t("Phone", "Teléfono")}</label>
+                            <input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="+1 (___) ___-____" className={inputCls} />
+                          </div>
+                          <div>
+                            <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 not-italic">
+                              {t("Best contact", "Contacto preferido")}
+                            </label>
+                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
+                              {[
+                                { val: "phone", icon: "📞", en: t("Phone Call", "Llamada") },
+                                { val: "text",  icon: "💬", en: "Text/SMS" },
+                                { val: "email", icon: "✉️", en: "Email" },
+                              ].map((o) => (
+                                <button
+                                  key={o.val}
+                                  type="button"
+                                  onClick={() => setForm({ ...form, contact_method: o.val })}
+                                  style={{
+                                    display: "flex", alignItems: "center", gap: 6,
+                                    padding: "8px 14px", borderRadius: 999,
+                                    border: `1.5px solid ${form.contact_method === o.val ? "#0ea5e9" : "#e2e8f0"}`,
+                                    background: form.contact_method === o.val ? "rgba(14,165,233,.08)" : "white",
+                                    color: form.contact_method === o.val ? "#0ea5e9" : "#64748b",
+                                    fontSize: 12, fontWeight: form.contact_method === o.val ? 700 : 500,
+                                    cursor: "pointer", transition: "all .15s",
+                                    boxShadow: form.contact_method === o.val ? "0 0 0 3px rgba(14,165,233,.12)" : "none",
+                                  }}
+                                >
+                                  <span style={{ fontSize: 14 }}>{o.icon}</span>
+                                  {o.en}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Condicional: solo mostrar el campo de consentimiento si el método seleccionado requiere SMS */}
+                        {["text", "sms", "whatsapp"].includes(form.contact_method) && (
+                          <SmsConsentField
+                            checked={form.sms_consent}
+                            onChange={e => setForm({ ...form, sms_consent: e.target.checked })}
+                            idPrefix="contact-sms-consent"
+                          />
+                        )}
+
+                        <div>
+                          <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 not-italic">{t("Subject", "Asunto")} <span className="text-primary">*</span></label>
+                          <input value={form.subject} onChange={e => setForm({ ...form, subject: e.target.value })} required placeholder={t("How can we help?", "¿Cómo podemos ayudarte?")} className={inputCls} data-testid="contact-subject-input" />
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 not-italic">{t("Message", "Mensaje")} <span className="text-primary">*</span></label>
+                          <textarea value={form.message} onChange={e => setForm({ ...form, message: e.target.value })} required rows={5}
+                            placeholder={t("Tell us more about your inquiry...", "Cuéntanos más sobre tu consulta...")}
+                            className={`${inputCls} resize-none`} data-testid="contact-message-input" />
+                        </div>
+
+                        <button type="submit" disabled={submitting} data-testid="contact-submit-btn"
+                          className="group w-full flex items-center justify-center gap-2 bg-primary text-white rounded-xl px-6 py-3.5 text-sm font-bold uppercase tracking-wider hover:bg-primary/90 transition-all duration-200 shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/30 active:scale-95 overflow-hidden relative disabled:opacity-60 disabled:cursor-not-allowed">
+                          {submitting ? (
+                            <span className="flex items-center gap-2 not-italic">
+                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                              {t("Sending...", "Enviando...")}
+                            </span>
+                          ) : (
+                            <span className="relative z-10 flex items-center gap-2 not-italic">
+                              {t("Send Message", "Enviar Mensaje")}
+                              <Send className="w-4 h-4 transition-transform duration-150 group-hover:translate-x-1" />
+                            </span>
+                          )}
+                          <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-500" />
+                        </button>
+                      </form>
+                    </div>
                   </div>
                 </Tilt>
               </Reveal>
             </div>
+          </div>
+        </section>
 
-            {/* ── RIGHT: Contact Form ── */}
-            <Reveal delay={80} dir="right" dur={400}>
-              <Tilt depth={2}>
-                <div className="relative bg-white rounded-2xl border border-slate-100 shadow-xl shadow-sky-50/60 overflow-hidden">
-                  <div className="absolute top-0 left-8 right-8 h-px bg-gradient-to-r from-transparent via-primary to-transparent" />
-                  <div className="absolute inset-0 bg-gradient-to-br from-sky-50/40 to-transparent pointer-events-none" />
-
-                  <div className="relative p-7 sm:p-8">
-                    <div className="flex items-center gap-3 mb-7">
-                      <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
-                        <MessageSquare className="w-5 h-5 text-primary" />
-                      </div>
-                      <div>
-                        <h3 className="text-lg font-bold text-slate-900 not-italic">{t("Send us a message", "Envíanos un mensaje")}</h3>
-                        <p className="text-slate-400 text-xs not-italic">{t("We usually reply within a few hours.", "Solemos responder en pocas horas.")}</p>
-                      </div>
-                    </div>
-
-                    {submitted && (
-                      <div className="mb-6 p-4 rounded-xl bg-emerald-50 border border-emerald-200/60 flex items-center gap-3">
-                        <div className="w-8 h-8 bg-emerald-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                          <span className="text-emerald-600 text-lg">✓</span>
-                        </div>
-                        <div>
-                          <p className="text-emerald-800 font-semibold text-sm not-italic">{t("Message sent!", "¡Mensaje enviado!")}</p>
-                          <p className="text-emerald-600 text-xs not-italic">{t("We'll get back to you soon.", "Te responderemos pronto.")}</p>
-                        </div>
-                      </div>
-                    )}
-
-                    <form onSubmit={handleSubmit} className="space-y-4">
-                      <div className="grid sm:grid-cols-2 gap-4">
-                        <div>
-                          <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 not-italic">{t("Full Name", "Nombre Completo")} <span className="text-primary">*</span></label>
-                          <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required className={inputCls} data-testid="contact-name-input" />
-                        </div>
-                        <div>
-                          <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 not-italic">{t("Email", "Correo")} <span className="text-primary">*</span></label>
-                          <input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} required className={inputCls} data-testid="contact-email-input" />
-                        </div>
-                      </div>
-
-                      <div className="grid sm:grid-cols-2 gap-4">
-                        <div>
-                          <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 not-italic">{t("Phone", "Teléfono")}</label>
-                          <input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="+1 (___) ___-____" className={inputCls} />
-                        </div>
-                        <div>
-                          <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 not-italic">{t("Best contact", "Contacto preferido")}</label>
-                          <Select value={form.contact_method} onValueChange={v => setForm({ ...form, contact_method: v })}>
-                            <SelectTrigger className="mt-1.5 rounded-xl border-slate-200 focus:ring-2 focus:ring-primary/10 focus:border-primary/50 text-sm h-[44px]">
-                              <SelectValue placeholder={t("Select", "Selecciona")} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="email">{t("Email", "Correo")}</SelectItem>
-                              <SelectItem value="phone">{t("Phone Call", "Llamada")}</SelectItem>
-                              <SelectItem value="text">{t("Text Message", "Mensaje de texto")}</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-
-                      <SmsConsentField
-                        checked={form.sms_consent}
-                        onChange={e => setForm({ ...form, sms_consent: e.target.checked })}
-                        idPrefix="contact-sms-consent"
-                      />
-
-                      <div>
-                        <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 not-italic">{t("Subject", "Asunto")} <span className="text-primary">*</span></label>
-                        <input value={form.subject} onChange={e => setForm({ ...form, subject: e.target.value })} required placeholder={t("How can we help?", "¿Cómo podemos ayudarte?")} className={inputCls} data-testid="contact-subject-input" />
-                      </div>
-
-                      <div>
-                        <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 not-italic">{t("Message", "Mensaje")} <span className="text-primary">*</span></label>
-                        <textarea value={form.message} onChange={e => setForm({ ...form, message: e.target.value })} required rows={5}
-                          placeholder={t("Tell us more about your inquiry...", "Cuéntanos más sobre tu consulta...")}
-                          className={`${inputCls} resize-none`} data-testid="contact-message-input" />
-                      </div>
-
-                      <button type="submit" disabled={submitting} data-testid="contact-submit-btn"
-                        className="group w-full flex items-center justify-center gap-2 bg-primary text-white rounded-xl px-6 py-3.5 text-sm font-bold uppercase tracking-wider hover:bg-primary/90 transition-all duration-200 shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/30 active:scale-95 overflow-hidden relative disabled:opacity-60 disabled:cursor-not-allowed">
-                        {submitting ? (
-                          <span className="flex items-center gap-2 not-italic">
-                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            {t("Sending...", "Enviando...")}
-                          </span>
-                        ) : (
-                          <span className="relative z-10 flex items-center gap-2 not-italic">
-                            {t("Send Message", "Enviar Mensaje")}
-                            <Send className="w-4 h-4 transition-transform duration-150 group-hover:translate-x-1" />
-                          </span>
-                        )}
-                        <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-500" />
-                      </button>
-                    </form>
-                  </div>
-                </div>
-              </Tilt>
+        {/* ══ DARK TAGLINE ══════════════════════════════════════════════════ */}
+        <section className="relative py-28 overflow-hidden bg-sky-950">
+          <div className="absolute inset-0 will-change-transform"
+            style={{ backgroundImage: "url('https://images.unsplash.com/photo-1517677208171-0bc6725a3e60?w=1920&h=1080&fit=crop')", backgroundSize: "cover", backgroundPosition: "center", transform: `translateY(${scrollY * 0.18}px) scale(1.1)` }} />
+          <div className="absolute inset-0 bg-sky-950/70" /><div className="absolute inset-0 bg-gradient-to-br from-sky-950/80 to-sky-900/75" />
+          <div className="absolute inset-0 opacity-[0.04]" style={{ backgroundImage: "radial-gradient(rgba(255,255,255,0.8) 1px,transparent 1px)", backgroundSize: "28px 28px" }} />
+          <div className="relative z-10 max-w-3xl mx-auto px-6 text-center">
+            <Reveal dir="scale" dur={400}>
+              <div>
+                <Sparkles className="w-7 h-7 text-sky-400/60 mx-auto mb-5" />
+                <h2 className="text-4xl sm:text-5xl font-bold text-white mb-4 leading-tight not-italic">
+                  {t("Simplify your days.", "Simplifica tus días.")}
+                  <span className="block font-light mt-1 not-italic">{t("We'll handle the laundry.", "Nosotros manejamos la lavandería.")}</span>
+                </h2>
+                <div className="w-16 h-px bg-gradient-to-r from-transparent via-primary to-transparent mx-auto mb-6" />
+                <p className="text-white/55 text-lg not-italic">
+                  {t("Clean • Bright • Trusted", "Limpio • Brillante • Confiable")}
+                </p>
+              </div>
             </Reveal>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* ══ DARK TAGLINE ══════════════════════════════════════════════════ */}
-      <section className="relative py-28 overflow-hidden bg-sky-950">
-        <div className="absolute inset-0 will-change-transform"
-          style={{ backgroundImage: "url('https://images.unsplash.com/photo-1517677208171-0bc6725a3e60?w=1920&h=1080&fit=crop')", backgroundSize: "cover", backgroundPosition: "center", transform: `translateY(${scrollY * 0.18}px) scale(1.1)` }} />
-        <div className="absolute inset-0 bg-sky-950/70" /><div className="absolute inset-0 bg-gradient-to-br from-sky-950/80 to-sky-900/75" />
-        <div className="absolute inset-0 opacity-[0.04]" style={{ backgroundImage: "radial-gradient(rgba(255,255,255,0.8) 1px,transparent 1px)", backgroundSize: "28px 28px" }} />
-        <div className="relative z-10 max-w-3xl mx-auto px-6 text-center">
-          <Reveal dir="scale" dur={400}>
-            <div>
-              <Sparkles className="w-7 h-7 text-sky-400/60 mx-auto mb-5" />
-              <h2 className="text-4xl sm:text-5xl font-bold text-white mb-4 leading-tight not-italic">
-                {t("Simplify your days.", "Simplifica tus días.")}
-                <span className="block font-light mt-1 not-italic">{t("We'll handle the laundry.", "Nosotros manejamos la lavandería.")}</span>
+        {/* ══ FAQ ═══════════════════════════════════════════════════════════ */}
+        <section className="py-20 sm:py-24 bg-gradient-to-b from-slate-50/60 to-white relative overflow-hidden">
+          <div className="absolute inset-0 opacity-[0.35]" style={{ backgroundImage: "radial-gradient(rgba(14,165,233,0.07) 1px,transparent 1px)", backgroundSize: "24px 24px" }} />
+          <div className="relative z-10 max-w-3xl mx-auto px-6 sm:px-8">
+            <Reveal dir="blur" dur={300}>
+              <p className="text-center text-[11px] font-bold uppercase tracking-[0.22em] text-primary/50 mb-3 not-italic">{t("FAQ", "Preguntas Frecuentes")}</p>
+            </Reveal>
+            <Reveal delay={50} dur={300}>
+              <h2 className="text-4xl sm:text-5xl font-bold text-slate-900 text-center mb-3 leading-tight not-italic">
+                {t("Common", "Preguntas")}
+                <span className="block text-primary font-bold not-italic">{t("questions.", "comunes.")}</span>
               </h2>
-              <div className="w-16 h-px bg-gradient-to-r from-transparent via-primary to-transparent mx-auto mb-6" />
-              <p className="text-white/55 text-lg not-italic">
-                {t("Clean • Bright • Trusted", "Limpio • Brillante • Confiable")}
-              </p>
-            </div>
-          </Reveal>
-        </div>
-      </section>
+            </Reveal>
+            <Reveal delay={100} dur={300}>
+              <p className="text-slate-400 text-center mb-12 text-lg not-italic">{t("Can't find what you're looking for? Contact us directly.", "¿No encuentras lo que buscas? Contáctanos directamente.")}</p>
+            </Reveal>
 
-      {/* ══ FAQ ═══════════════════════════════════════════════════════════ */}
-      <section className="py-20 sm:py-24 bg-gradient-to-b from-slate-50/60 to-white relative overflow-hidden">
-        <div className="absolute inset-0 opacity-[0.35]" style={{ backgroundImage: "radial-gradient(rgba(14,165,233,0.07) 1px,transparent 1px)", backgroundSize: "24px 24px" }} />
-        <div className="relative z-10 max-w-3xl mx-auto px-6 sm:px-8">
-          <Reveal dir="blur" dur={300}>
-            <p className="text-center text-[11px] font-bold uppercase tracking-[0.22em] text-primary/50 mb-3 not-italic">{t("FAQ", "Preguntas Frecuentes")}</p>
-          </Reveal>
-          <Reveal delay={50} dur={300}>
-            <h2 className="text-4xl sm:text-5xl font-bold text-slate-900 text-center mb-3 leading-tight not-italic">
-              {t("Common", "Preguntas")}
-              <span className="block text-primary font-bold not-italic">{t("questions.", "comunes.")}</span>
-            </h2>
-          </Reveal>
-          <Reveal delay={100} dur={300}>
-            <p className="text-slate-400 text-center mb-12 text-lg not-italic">{t("Can't find what you're looking for? Contact us directly.", "¿No encuentras lo que buscas? Contáctanos directamente.")}</p>
-          </Reveal>
+            <Reveal delay={140} dir="scale" dur={350}>
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-lg divide-y-0 px-6 sm:px-8 py-2">
+                {faqs.map((faq, i) => (
+                  <AccordionItem key={i} title={faq.q} isOpen={openFaq === i} onClick={() => toggleFaq(i)}>
+                    {faq.a}
+                  </AccordionItem>
+                ))}
+              </div>
+            </Reveal>
 
-          <Reveal delay={140} dir="scale" dur={350}>
-            <div className="bg-white rounded-2xl border border-slate-100 shadow-lg divide-y-0 px-6 sm:px-8 py-2">
-              {faqs.map((faq, i) => (
-                <AccordionItem key={i} title={faq.q} isOpen={openFaq === i} onClick={() => toggleFaq(i)}>
-                  {faq.a}
-                </AccordionItem>
-              ))}
-            </div>
-          </Reveal>
+            <Reveal delay={220} dir="up" dur={300}>
+              <div className="text-center mt-10">
+                <p className="text-slate-400 text-sm mb-5 not-italic">{t("Still have questions?", "¿Todavía tienes preguntas?")}</p>
+                <Mag as="a" href="tel:+18058368872" strength={0.25}
+                  className="inline-flex items-center gap-2 overflow-hidden relative bg-primary text-white rounded-full px-10 py-4 text-[13px] font-bold uppercase tracking-widest shadow-lg shadow-primary/30 cursor-pointer hover:-translate-y-0.5 transition-transform duration-200 active:scale-95 group">
+                  <span className="relative z-10 flex items-center gap-2 not-italic">
+                    📞 {t("Call Us Now", "Llámanos Ahora")}
+                    <ArrowRight className="w-4 h-4 transition-transform duration-150 group-hover:translate-x-1" />
+                  </span>
+                  <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-500" />
+                </Mag>
+              </div>
+            </Reveal>
+          </div>
+        </section>
 
-          <Reveal delay={220} dir="up" dur={300}>
-            <div className="text-center mt-10">
-              <p className="text-slate-400 text-sm mb-5 not-italic">{t("Still have questions?", "¿Todavía tienes preguntas?")}</p>
-              <Mag as="a" href="tel:+18058368872" strength={0.25}
-                className="inline-flex items-center gap-2 overflow-hidden relative bg-primary text-white rounded-full px-10 py-4 text-[13px] font-bold uppercase tracking-widest shadow-lg shadow-primary/30 cursor-pointer hover:-translate-y-0.5 transition-transform duration-200 active:scale-95 group">
-                <span className="relative z-10 flex items-center gap-2 not-italic">
-                  📞 {t("Call Us Now", "Llámanos Ahora")}
-                  <ArrowRight className="w-4 h-4 transition-transform duration-150 group-hover:translate-x-1" />
-                </span>
-                <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-500" />
-              </Mag>
-            </div>
-          </Reveal>
-        </div>
-      </section>
-
-      <PublicFooter />
-    </div>
-  </>);
+        <PublicFooter />
+      </div>
+    </>
+  );
 }

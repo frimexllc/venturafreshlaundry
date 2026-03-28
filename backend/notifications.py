@@ -70,9 +70,10 @@ def _mark_sent(key: str) -> None:        _sent_cache.add(key)
 def _log_attempt(entry: dict) -> None:   _audit_log.append(entry); logger.debug(f"Audit: {entry}")
 
 MILESTONES = {
-    "wash_fold":        {"order_received", "ready_for_pickup", "completed"},
+    "wash_fold":        {"order_created", "ready_for_pickup", "completed"},
     "pickup_delivery":  {"order_created", "pickup_confirmed", "ready",
                          "out_for_delivery", "delivered", "cancelled"},
+     "quote":{"order_created"}                    
 }
 EVENT_MAPPING = {
     "order_created":    "order_created",

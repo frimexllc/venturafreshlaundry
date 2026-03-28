@@ -4404,6 +4404,14 @@ try:
 except Exception as e:
     logger.warning(f"Logistics router not loaded: {e}")
 
+# Include Stripe Payments router (PaymentIntents, tap-to-pay, POS)
+try:
+    from routes.stripe_payments import router as stripe_payments_router
+    app.include_router(stripe_payments_router)
+    logger.info("Stripe Payments router enabled at /api/stripe/*")
+except Exception as e:
+    logger.warning(f"Stripe Payments router not loaded: {e}")
+
 # Stripe webhook endpoint
 @app.post("/api/webhook/stripe")
 async def stripe_webhook(request: Request):

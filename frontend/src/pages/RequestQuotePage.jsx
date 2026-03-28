@@ -7,6 +7,7 @@ import PublicFooter from "../components/PublicFooter";
 import SmsConsentField from "../components/SmsConsentField";
 import AddressAutocomplete from "../components/AddressAutocomplete";
 import { useLocale } from "../context/LocaleContext";
+import heroBanner from "../assets/WhatsApp Image 2026-03-20 at 2.51.26 PM (1).jpeg";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -43,10 +44,9 @@ const FREQUENCY_OPTIONS = [
 ];
 
 const CONTACT_METHODS = [
-  { value: "phone",    en: "Phone Call",    es: "Llamada",        icon: "📞" },
-  { value: "text",     en: "Text/SMS",      es: "Mensaje de texto", icon: "💬" },
-  { value: "email",    en: "Email",         es: "Correo",         icon: "✉️" },
-  { value: "whatsapp", en: "WhatsApp",      es: "WhatsApp",       icon: "📱" },
+  { value: "phone", en: "Phone Call", es: "Llamada",          icon: "📞" },
+  { value: "text",  en: "Text/SMS",   es: "Mensaje de texto", icon: "💬" },
+  { value: "email", en: "Email",      es: "Correo",           icon: "✉️" },
 ];
 
 const STAGES = [
@@ -406,50 +406,62 @@ export default function RequestQuotePage() {
       `}</style>
 
       {/* ── Hero ── */}
-      <section ref={topRef} style={{ paddingTop: 80, paddingBottom: 0, background: "linear-gradient(150deg,#0b1929 0%,#081320 55%,#040c16 100%)", position: "relative", overflow: "hidden" }}>
-        <div style={{ position: "absolute", inset: 0, backgroundImage: "linear-gradient(rgba(255,255,255,.022) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)", backgroundSize: "44px 44px", pointerEvents: "none" }} />
-        <div style={{ position: "absolute", top: -80, left: -60, width: 380, height: 380, borderRadius: "50%", background: "radial-gradient(circle,rgba(14,165,233,.13) 0%,transparent 65%)", filter: "blur(40px)", pointerEvents: "none" }} />
-        <div style={{ position: "absolute", bottom: 0, right: -40, width: 300, height: 300, borderRadius: "50%", background: "radial-gradient(circle,rgba(56,189,248,.07) 0%,transparent 65%)", filter: "blur(30px)", pointerEvents: "none" }} />
+<section ref={topRef} style={{
+  paddingTop: 80, paddingBottom: 0,
+  background: "linear-gradient(150deg,#0b1929 0%,#081320 55%,#040c16 100%)",
+  position: "relative", overflow: "hidden",
+}}>
+  <div style={{ position: "absolute", inset: 0, backgroundImage: "linear-gradient(rgba(255,255,255,.022) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)", backgroundSize: "44px 44px", pointerEvents: "none" }} />
+  <div style={{ position: "absolute", top: -80, left: -60, width: 380, height: 380, borderRadius: "50%", background: "radial-gradient(circle,rgba(14,165,233,.13) 0%,transparent 65%)", filter: "blur(40px)", pointerEvents: "none" }} />
 
-        <div style={{ maxWidth: 900, margin: "0 auto", padding: "36px 24px 48px", position: "relative", zIndex: 2 }}>
-          {/* Badge */}
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 20, padding: "4px 12px", marginBottom: 18 }}>
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#34d399", boxShadow: "0 0 6px rgba(52,211,153,.9)", display: "inline-block", animation: "rq_glow 2s ease-in-out infinite" }} />
-            <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".18em", color: "rgba(255,255,255,.5)" }}>
-              {t("Commercial Laundry Services", "Servicios Comerciales de Lavandería")}
-            </span>
-          </div>
+  {/* ── Banner image ── */}
+  <div style={{ width: "100%", maxHeight: 280, overflow: "hidden", position: "relative" }}>
+    <img src={heroBanner} alt="Ventura Fresh Laundry"
+      style={{ width: "100%", height: 280, objectFit: "cover", objectPosition: "center", display: "block", opacity: 0.75 }} />
+    <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 120, background: "linear-gradient(to bottom, transparent, #081320)", pointerEvents: "none" }} />
+    <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 60, background: "linear-gradient(to bottom, #0b1929, transparent)", pointerEvents: "none" }} />
+  </div>
 
-          {/* Heading */}
-          <h1 style={{ fontFamily: "'Manrope',sans-serif", fontSize: "clamp(26px,4.5vw,48px)", fontWeight: 800, color: "white", lineHeight: 1.1, letterSpacing: "-.025em", margin: "0 0 12px" }}>
-            {t("Get a Custom", "Solicita una")} <span style={{ color: "#38bdf8" }}>{t("Commercial Quote", "Cotización Comercial")}</span>
-          </h1>
+  {/* ── Text ── */}
+  <div style={{ maxWidth: 900, margin: "0 auto", padding: "20px 24px 48px", position: "relative", zIndex: 2 }}>
+    {/* Badge */}
+    <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 20, padding: "4px 12px", marginBottom: 18 }}>
+      <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#34d399", boxShadow: "0 0 6px rgba(52,211,153,.9)", display: "inline-block", animation: "rq_glow 2s ease-in-out infinite" }} />
+      <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".18em", color: "rgba(255,255,255,.5)" }}>
+        {t("Commercial Laundry Services", "Servicios Comerciales de Lavandería")}
+      </span>
+    </div>
 
-          <p style={{ fontSize: 14, color: "rgba(255,255,255,.45)", lineHeight: 1.75, maxWidth: 420, margin: "0 0 28px" }}>
-            {t(
-              "Follow each stage on the conveyor belt — fill in your business details and our team will respond within 24–48 hours.",
-              "Completa cada etapa en la cinta — ingresa los datos de tu negocio y te respondemos en 24–48 horas."
-            )}
-          </p>
+    {/* Heading */}
+    <h1 style={{ fontFamily: "'Manrope',sans-serif", fontSize: "clamp(26px,4.5vw,48px)", fontWeight: 800, color: "white", lineHeight: 1.1, letterSpacing: "-.025em", margin: "0 0 12px" }}>
+      {t("Get a Custom", "Solicita una")} <span style={{ color: "#38bdf8" }}>{t("Commercial Quote", "Cotización Comercial")}</span>
+    </h1>
 
-          {/* Industry icons row */}
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            {[
-              { icon: "🏨", en: "Hotels", es: "Hoteles" },
-              { icon: "🏠", en: "Airbnb", es: "Airbnb" },
-              { icon: "🍽️", en: "Restaurants", es: "Restaurantes" },
-              { icon: "🏥", en: "Healthcare", es: "Salud" },
-              { icon: "💪", en: "Gyms", es: "Gimnasios" },
-              { icon: "🏢", en: "Corporate", es: "Corporativo" },
-            ].map((item) => (
-              <div key={item.en} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 12px", borderRadius: 20, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)" }}>
-                <span style={{ fontSize: 13 }}>{item.icon}</span>
-                <span style={{ fontSize: 11, color: "rgba(255,255,255,.5)", fontWeight: 600 }}>{locale === "es" ? item.es : item.en}</span>
-              </div>
-            ))}
-          </div>
+    <p style={{ fontSize: 14, color: "rgba(255,255,255,.45)", lineHeight: 1.75, maxWidth: 420, margin: "0 0 28px" }}>
+      {t(
+        "Follow each stage on the conveyor belt — fill in your business details and our team will respond within 24–48 hours.",
+        "Completa cada etapa en la cinta — ingresa los datos de tu negocio y te respondemos en 24–48 horas."
+      )}
+    </p>
+
+    {/* Industry icons row */}
+    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+      {[
+        { icon: "🏨", en: "Hotels",      es: "Hoteles"      },
+        { icon: "🏠", en: "Airbnb",      es: "Airbnb"       },
+        { icon: "🍽️", en: "Restaurants", es: "Restaurantes" },
+        { icon: "🏥", en: "Healthcare",  es: "Salud"        },
+        { icon: "💪", en: "Gyms",        es: "Gimnasios"    },
+        { icon: "🏢", en: "Corporate",   es: "Corporativo"  },
+      ].map((item) => (
+        <div key={item.en} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 12px", borderRadius: 20, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)" }}>
+          <span style={{ fontSize: 13 }}>{item.icon}</span>
+          <span style={{ fontSize: 11, color: "rgba(255,255,255,.5)", fontWeight: 600 }}>{locale === "es" ? item.es : item.en}</span>
         </div>
-      </section>
+      ))}
+    </div>
+  </div>
+</section>
 
       {/* ── Main ── */}
       <section style={{ padding: "0 0 72px" }}>
@@ -530,12 +542,17 @@ export default function RequestQuotePage() {
                         <FF label={t("Job title / Role", "Cargo / Rol")}>
                           <FInput value={form.job_title} onChange={(e) => setF("job_title", e.target.value)} placeholder={t("e.g. Operations Manager", "ej. Gerente de operaciones")} />
                         </FF>
-                        <FF label={t("Best way to contact you", "Cómo contactarte")}>
-                          <FSelect value={form.contact_method} onChange={(e) => setF("contact_method", e.target.value)}>
-                            <option value="">{t("Select…", "Selecciona…")}</option>
-                            {CONTACT_METHODS.map((m) => <option key={m.value} value={m.value}>{m.icon} {locale === "es" ? m.es : m.en}</option>)}
-                          </FSelect>
-                        </FF>
+                     <FF label={t("Best way to contact you", "Cómo contactarte")}>
+  <ChipSet
+    value={form.contact_method}
+    onChange={(v) => setF("contact_method", v)}
+    options={CONTACT_METHODS.map((m) => ({
+      ...m,
+      val: m.value,
+      en: locale === "es" ? m.es : m.en,
+    }))}
+  />
+</FF>
                       </div>
                       {["text", "sms", "whatsapp"].includes(form.contact_method) && (
                         <SmsConsentField checked={form.sms_consent} onChange={(e) => setF("sms_consent", e.target.checked)} idPrefix="rq-sms" />

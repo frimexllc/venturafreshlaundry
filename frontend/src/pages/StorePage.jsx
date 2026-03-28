@@ -6,6 +6,7 @@ import {
 import PublicNav from "../components/PublicNav";
 import PublicFooter from "../components/PublicFooter";
 import AddressAutocomplete from "../components/AddressAutocomplete";
+import { StorePaymentModal } from "./StorePaymentModal";
 import { toast } from "sonner";
 import { useLocale } from "../context/LocaleContext";
 
@@ -215,6 +216,8 @@ export default function StorePage() {
   const [shippingQuote, setShippingQuote] = useState({ distance_km: null, fee: 0 });
   const [shippingError, setShippingError] = useState("");
   const [scrollY, setScrollY] = useState(0);
+  const [stripeModalOpen, setStripeModalOpen] = useState(false);
+  const [stripeOrderData, setStripeOrderData] = useState(null);
   const [checkoutForm, setCheckoutForm] = useState({
     name: "", email: "", phone: "", address: "", apt: "",
     instructions: "", notes: "", preferred_contact: "sms", payment_method: "card"
@@ -328,12 +331,31 @@ export default function StorePage() {
     if (!checkoutForm.name || !checkoutForm.email || !checkoutForm.phone || !checkoutForm.address) { toast.error(t("Please complete required fields", "Completa los campos obligatorios")); return; }
     if (shippingError) { toast.error(shippingError); return; }
     if (!shippingQuote.fee) { toast.error(t("Enter full address (street, city, state, ZIP)", "Ingresa dirección completa")); return; }
+
+    // Inline Stripe Payment (tap/Apple Pay/Google Pay/Card)
+    if (checkoutForm.payment_method === "card") {
+      // First create the order via manual checkout, then open Stripe Payment modal
+      setCheckingOut(true);
+      try {
+        const payload = { cart_id: cart.id, origin_url: window.location.origin, customer_name: checkoutForm.name, customer_email: checkoutForm.email, customer_phone: checkoutForm.phone, shipping_address: checkoutForm.address, shipping_apt: checkoutForm.apt, delivery_instructions: checkoutForm.instructions, notes: checkoutForm.notes, preferred_contact: checkoutForm.preferred_contact, fulfillment_type: "delivery", payment_method: "card" };
+        const res = await fetch(`${API_URL}/api/store/checkout/manual`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+        if (res.ok) {
+          const d = await res.json();
+          const total = cart.total + (shippingQuote.fee || 0);
+          setStripeOrderData({ orderId: d.order_id || d.id, amount: total, description: `Tienda - ${checkoutForm.name}` });
+          setStripeModalOpen(true);
+        } else { const e = await res.json(); toast.error(formatApiError(e.detail, t("Error processing order", "Error al procesar orden"))); }
+      } catch { toast.error(t("Connection error", "Error de conexión")); }
+      finally { setCheckingOut(false); }
+      return;
+    }
+
+    // Manual payment (cash, zelle, etc.)
     setCheckingOut(true);
     try {
-      const payload = { cart_id: cart.id, origin_url: window.location.origin, customer_name: checkoutForm.name, customer_email: checkoutForm.email, customer_phone: checkoutForm.phone, shipping_address: checkoutForm.address, shipping_apt: checkoutForm.apt, delivery_instructions: checkoutForm.instructions, notes: checkoutForm.notes, preferred_contact: checkoutForm.preferred_contact, fulfillment_type: "delivery" };
-      const endpoint = checkoutForm.payment_method === "card" ? `${API_URL}/api/store/checkout` : `${API_URL}/api/store/checkout/manual`;
-      const res = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(checkoutForm.payment_method === "card" ? payload : { ...payload, payment_method: checkoutForm.payment_method }) });
-      if (res.ok) { const d = await res.json(); if (checkoutForm.payment_method === "card") { window.location.href = d.checkout_url; } else { toast.success(t("Order confirmed. Payment registered.", "Orden confirmada.")); localStorage.removeItem("cartId"); setCart(null); } }
+      const payload = { cart_id: cart.id, origin_url: window.location.origin, customer_name: checkoutForm.name, customer_email: checkoutForm.email, customer_phone: checkoutForm.phone, shipping_address: checkoutForm.address, shipping_apt: checkoutForm.apt, delivery_instructions: checkoutForm.instructions, notes: checkoutForm.notes, preferred_contact: checkoutForm.preferred_contact, fulfillment_type: "delivery", payment_method: checkoutForm.payment_method };
+      const res = await fetch(`${API_URL}/api/store/checkout/manual`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      if (res.ok) { toast.success(t("Order confirmed. Payment registered.", "Orden confirmada.")); localStorage.removeItem("cartId"); setCart(null); }
       else { const e = await res.json(); toast.error(formatApiError(e.detail, t("Error processing payment", "Error al procesar el pago"))); }
     } catch { toast.error(t("Connection error", "Error de conexión")); }
     finally { setCheckingOut(false); }
@@ -599,7 +621,7 @@ export default function StorePage() {
                       </Field>
                       <Field label={t("Payment method", "Método de pago")}>
                         <select value={checkoutForm.payment_method} onChange={e => setField("payment_method", e.target.value)} className={inputCls} data-testid="checkout-payment-method">
-                          <option value="card">{t("Card (Stripe)", "Tarjeta")}</option>
+                          <option value="card">{t("Card / Apple Pay / Google Pay", "Tarjeta / Apple Pay / Google Pay")}</option>
                           <option value="cash">{t("Cash", "Efectivo")}</option>
                           <option value="transfer">{t("Transfer", "Transferencia")}</option>
                           <option value="other">{t("Other", "Otro")}</option>
@@ -645,7 +667,7 @@ export default function StorePage() {
                     </span>
                   ) : (
                     <span className="relative z-10 flex items-center gap-2 not-italic">
-                      {checkoutForm.payment_method === "card" ? t("Pay with Stripe", "Pagar con Stripe") : t("Confirm order", "Confirmar orden")}
+                      {checkoutForm.payment_method === "card" ? t("Pay with Stripe (Tap / Card)", "Pagar con Stripe (Tap / Tarjeta)") : t("Confirm order", "Confirmar orden")}
                       <ArrowRight className="w-4 h-4 transition-transform duration-150 group-hover:translate-x-1" />
                     </span>
                   )}
@@ -658,6 +680,14 @@ export default function StorePage() {
       )}
 
       <PublicFooter />
+      <StorePaymentModal
+        open={stripeModalOpen}
+        onClose={() => { setStripeModalOpen(false); setStripeOrderData(null); }}
+        amount={stripeOrderData?.amount}
+        description={stripeOrderData?.description}
+        orderId={stripeOrderData?.orderId}
+        onPaymentSuccess={() => { toast.success(t("Payment completed!", "Pago completado!")); localStorage.removeItem("cartId"); setCart(null); setStripeModalOpen(false); }}
+      />
     </div>
   </>);
 }

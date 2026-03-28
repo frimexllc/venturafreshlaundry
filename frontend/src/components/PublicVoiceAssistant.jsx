@@ -6,6 +6,17 @@ import { useLocale } from "../context/LocaleContext";
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const SESSION_STORAGE_KEY = "vfl_voice_assistant_session_id";
 
+// Definir keywords fuera del componente
+const SCHEDULE_KEYWORDS = [
+  "schedule", "book", "order", "pickup", "appointment", "reserve",
+  "agendar", "programar", "orden", "cita", "reservar", "recogida"
+];
+
+const isSchedulingRequest = (text) => {
+  const lower = text.toLowerCase();
+  return SCHEDULE_KEYWORDS.some((kw) => lower.includes(kw));
+};
+
 const TypingDots = () => (
   <div className="flex items-center gap-1 py-1" data-testid="voice-assistant-typing-dots">
     {[0, 1, 2].map((i) => (
@@ -172,6 +183,21 @@ const PublicVoiceAssistantWidget = ({ pathname }) => {
 
   const sendMessage = useCallback(async (text) => {
     if (!text?.trim()) return;
+    
+    // Verificar si es solicitud de agendamiento
+    if (isSchedulingRequest(text)) {
+      const redirect = t(
+        "I can't schedule pickups directly, but you can book easily at our Schedule Pickup page or call us at (805) 836-8872.",
+        "No puedo agendar recogidas directamente, pero puedes hacerlo fácilmente en nuestra página de Programar Recogida o llamarnos al (805) 836-8872."
+      );
+      setMessages((prev) => [
+        ...prev,
+        { id: `user-${Date.now()}`, role: "user", content: text.trim() },
+        { id: `assistant-redirect-${Date.now()}`, role: "assistant", content: redirect },
+      ]);
+      speak(redirect);
+      return; // No continúa con el fetch
+    }
 
     setIsThinking(true);
     setInputText("");
@@ -192,7 +218,8 @@ const PublicVoiceAssistantWidget = ({ pathname }) => {
         body: JSON.stringify({
           message: text.trim(),
           session_id: sessionIdRef.current,
-          locale
+          locale,
+          system_hint: "You are an information assistant only. You can answer questions about services, pricing, memberships, and hours. You CANNOT schedule, book, or create orders. If asked to schedule, politely redirect the user to the Schedule Pickup form at /schedule-pickup or call (805) 836-8872."
         })
       });
 

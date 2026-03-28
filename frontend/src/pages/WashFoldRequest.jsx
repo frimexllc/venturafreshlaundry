@@ -10,7 +10,79 @@ import AddressAutocomplete from "../components/AddressAutocomplete";
 import { useLocale } from "../context/LocaleContext";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+const PreferenceGrid = ({ title, options, selected, onSelect }) => {
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <div style={{
+        fontSize: 11,
+        fontWeight: 700,
+        letterSpacing: ".12em",
+        color: "#64748b",
+        marginBottom: 10
+      }}>
+        {title}
+      </div>
 
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+        gap: 12
+      }}>
+        {options.map(opt => {
+          const active = selected === opt.value;
+
+          return (
+            <div
+              key={opt.value}
+              onClick={() => onSelect(opt.value)}
+              style={{
+                padding: "16px 12px",
+                borderRadius: 14,
+                border: `1.5px solid ${active ? "#0ea5e9" : "#e2e8f0"}`,
+                background: active ? "rgba(14,165,233,0.08)" : "#f8fafc",
+                cursor: "pointer",
+                textAlign: "center",
+                transition: "all .2s",
+                transform: active ? "scale(1.03)" : "scale(1)"
+              }}
+            >
+              <div style={{ fontSize: 22 }}>{opt.icon}</div>
+
+              <div style={{
+                fontSize: 13,
+                fontWeight: 600,
+                marginTop: 6
+              }}>
+                {opt.label}
+              </div>
+
+              <div style={{
+                fontSize: 11,
+                color: "#94a3b8"
+              }}>
+                {opt.sub}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+const WASH_OPTIONS = [
+  { value: "cold", icon: "❄️", label: "Cold", sub: "≤30°C" },
+  { value: "warm", icon: "🌡️", label: "Warm", sub: "40°C" },
+  { value: "hot", icon: "🔥", label: "Hot", sub: "60°C+" },
+  { value: "any", icon: "✨", label: "Any", sub: "Trust us" },
+];
+
+const DRY_OPTIONS = [
+  { value: "low", icon: "🧊", label: "Low", sub: "Delicates" },
+  { value: "medium", icon: "🌤️", label: "Medium", sub: "Normal" },
+  { value: "high", icon: "☀️", label: "High", sub: "Heavy duty" },
+  { value: "air", icon: "🌿", label: "Air dry", sub: "No heat" },
+];
 const getErr = (e) => {
   const d = e.response?.data?.detail;
   if (typeof d === "string") return d;
@@ -389,6 +461,8 @@ const EMPTY={
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function WashFoldRequest() {
+  const [washTemp, setWashTemp] = useState("");
+const [dryTemp, setDryTemp] = useState("");
   const {t,locale}=useLocale();
   const topRef=useRef(null);
   const [cur,setCur]=useState(0);
@@ -720,34 +794,35 @@ export default function WashFoldRequest() {
                   )}
 
                   {/* Step 2 — Laundry prefs */}
-                  {cur===2 && (
-                    <>
-                      <FF label={t("Quick preferences (tap to add)","Preferencias rápidas (toca para agregar)")}>
-                        <div style={{ display:"flex", gap:7, flexWrap:"wrap" }}>
-                          {QUICK_OPTS.map(o=>(
-                            <button key={o.label} type="button"
-                              onClick={()=>setF("notes",(form.notes?form.notes+"\n":"")+o.icon+" "+o.label)}
-                              style={{ display:"flex", alignItems:"center", gap:5, padding:"6px 12px",
-                                borderRadius:16, border:"1px solid #bae6fd", background:"#f0f9ff",
-                                color:"#0369a1", fontSize:11, fontWeight:600, cursor:"pointer",
-                                transition:"all .15s", fontFamily:"inherit" }}
-                              onMouseEnter={e=>e.currentTarget.style.background="#e0f2fe"}
-                              onMouseLeave={e=>e.currentTarget.style.background="#f0f9ff"}>
-                              <span style={{ fontSize:14 }}>{o.icon}</span>{o.label}
-                            </button>
-                          ))}
-                        </div>
-                      </FF>
-                      <FF label={t("Special instructions (optional)","Instrucciones especiales (opcional)")}>
-                        <FTextarea value={form.notes} onChange={e=>setF("notes",e.target.value)} rows={5}
-                          placeholder={t(
-                            "Detergent type, folding style, hang-dry items, fabric softener, delicates…",
-                            "Tipo de detergente, estilo de doblado, prendas a secar al aire, suavizante, delicados…"
-                          )}
-                          data-testid="washfold-notes"/>
-                      </FF>
-                    </>
-                  )}
+                 {cur === 2 && (
+  <>
+    <PreferenceGrid
+      title="WASH TEMPERATURE"
+      options={WASH_OPTIONS}
+      selected={washTemp}
+      onSelect={setWashTemp}
+    />
+
+    <PreferenceGrid
+      title="DRY TEMPERATURE"
+      options={DRY_OPTIONS}
+      selected={dryTemp}
+      onSelect={setDryTemp}
+    />
+
+    <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 6 }}>
+      Choose low or air dry for delicates, knits and activewear.
+    </div>
+
+    <FF label="Special instructions (optional)">
+      <FTextarea
+        value={form.notes}
+        onChange={e => setF("notes", e.target.value)}
+        rows={5}
+      />
+    </FF>
+  </>
+)}
 
                   {/* Step 3 — Confirm */}
                   {cur===3 && (

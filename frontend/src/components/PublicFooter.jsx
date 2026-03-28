@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { useLocale } from "../context/LocaleContext";
 import { MapPin, Clock, Phone } from "lucide-react";
 import logoVFL from "../assets/LOGO2-fotor-bg-remover-2026011719450.webp";
+import logoFrimexai from "../assets/logoFrimexai.jpeg"; // nuevo import
 
 export default function PublicFooter() {
   const { t } = useLocale();
@@ -91,9 +92,19 @@ export default function PublicFooter() {
           </div>
         </div>
 
+        {/* Logo Frimexai justo arriba del copyright */}
+        <div className="flex justify-center mb-4">
+          <img
+            src={logoFrimexai}
+            alt="FRIMEX LLC"
+            className="h-8 w-auto opacity-80 hover:opacity-100 transition-opacity"
+            onError={(e) => { e.currentTarget.style.display = "none"; }}
+          />
+        </div>
+
         <div className="border-t border-slate-800 pt-8">
           <p className="text-center text-slate-500 text-sm">
-            © {new Date().getFullYear()} Ventura Fresh Laundry. {t("All rights reserved.", "Todos los derechos reservados.")}
+            © {new Date().getFullYear()} Ventura Fresh Laundry, operated by FRIMEX LLC. {t("All rights reserved.", "Todos los derechos reservados.")}
           </p>
         </div>
       </div>

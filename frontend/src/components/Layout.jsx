@@ -24,37 +24,191 @@ import {
   Shield,
   DollarSign,
   BarChart3,
-  ShieldCheck
+  ShieldCheck,
+  MapPin,
+  Truck,
+  Route,
+  Package,
+  Warehouse,
+  Boxes,
+  ShoppingCart,
+  TrendingUp,
+  Receipt,
+  Fuel,
+  Camera,
+  Building2,
+  CreditCard,
+  FolderTree,
+  Car,
+  PieChart,
+  LineChart,
+  Users2,
+  FileBarChart,
+  Clock,
+  Bell,
+  Key,
+  Link,
+  // Importar iconos adicionales según necesidad
 } from "lucide-react";
 import { useState } from "react";
 import { useLocale } from "../context/LocaleContext";
 import LanguageToggle from "./LanguageToggle";
 import { Button } from "./ui/button";
 import AdminFloatingChat from "./AdminFloatingChat";
+import { ChevronDown, ChevronRight } from "lucide-react";
 
-// Navigation items with role restrictions - REORGANIZED
-const allNavItems = [
-  { path: "/admin", icon: LayoutDashboard, key: "dashboard", adminOnly: true },
-  { path: "/admin/ai", icon: Bot, key: "ai_assistant", adminOnly: true },
-  { path: "/admin/operator", icon: Zap, key: "operator_panel", highlight: true },
-  { path: "/admin/operator/agent", icon: Bot, key: "operator_agent", highlight: true },
-  { path: "/admin/calendar", icon: CalendarDays, key: "calendar", adminOnly: true },
-  { path: "/admin/orders", icon: ShoppingBag, key: "orders", adminOnly: true },
-  { path: "/admin/customers", icon: Users, key: "customers", adminOnly: true },
-  { path: "/admin/memberships", icon: Star, key: "memberships", adminOnly: true },
-  { path: "/admin/quotes", icon: FileText, key: "b2b_quotes", adminOnly: true },
-  { path: "/admin/leads", icon: UserPlus, key: "leads", adminOnly: true },
-  { path: "/admin/services", icon: Layers, key: "services", adminOnly: true },
-  { path: "/admin/finances", icon: DollarSign, key: "finances", adminOnly: true },
-  { path: "/admin/ai-metrics", icon: BarChart3, key: "ai_metrics", adminOnly: true },
-  { path: "/admin/quick-approval", icon: ShieldCheck, key: "quick_approval", highlight: true },
-  { path: "/admin/tickets", icon: HeadphonesIcon, key: "support" },
-  { path: "/admin/store", icon: Store, key: "store", adminOnly: true },
-  { path: "/admin/blog", icon: BookOpen, key: "blog", adminOnly: true },
-  { path: "/admin/users", icon: Shield, key: "users", adminOnly: true },
-  { path: "/admin/audit-log", icon: ClipboardList, key: "audit_log", adminOnly: true },
-  { path: "/admin/settings", icon: Settings, key: "settings", adminOnly: true },
+// ---------- Navigation structure with groups (full tree) ----------
+const navigationGroups = [
+  {
+    title: "MAIN",
+    emoji: "🏠",
+    items: [
+      { path: "/admin", icon: LayoutDashboard, key: "dashboard", adminOnly: true },
+      { path: "/admin/ai", icon: Bot, key: "ai_assistant", adminOnly: true },
+      { path: "/admin/calendar", icon: CalendarDays, key: "calendar", adminOnly: true }
+    ]
+  },
+  {
+    title: "OPERATIONS",
+    emoji: "⚙️",
+    items: [
+      { path: "/admin/orders", icon: ShoppingBag, key: "orders", adminOnly: true },
+      { path: "/admin/operator", icon: Zap, key: "operator_panel", highlight: true },
+      { path: "/admin/operator/agent", icon: Bot, key: "operator_agent", highlight: true },
+      { path: "/admin/customers", icon: Users, key: "customers", adminOnly: true },
+      { path: "/admin/memberships", icon: Star, key: "memberships", adminOnly: true }
+    ]
+  },
+  {
+    title: "LOGISTICS",
+    emoji: "🚚",
+    items: [
+      // Placeholders for future routes (commented)
+      // { path: "/admin/logistics/route", icon: Route, key: "route_optimization", adminOnly: true },
+      // { path: "/admin/logistics/pickups", icon: Truck, key: "pickups_deliveries", adminOnly: true },
+      // { path: "/admin/logistics/zones", icon: MapPin, key: "delivery_zones", adminOnly: true },
+      // { path: "/admin/logistics/drivers", icon: Users, key: "drivers_staff", adminOnly: true },
+      // Por ahora solo el mapa logístico
+      { path: "/admin/logistics-map", icon: MapPin, key: "logistics_map", adminOnly: true }
+    ]
+  },
+  {
+    title: "SALES & GROWTH",
+    emoji: "📦",
+    items: [
+      { path: "/admin/store", icon: Store, key: "store", adminOnly: true },
+      { path: "/admin/leads", icon: UserPlus, key: "leads", adminOnly: true },
+      { path: "/admin/quotes", icon: FileText, key: "b2b_quotes", adminOnly: true },
+      // Membership Plans (CONTROL) - already in OPERATIONS, but can be here too? Avoid duplication.
+      { path: "/admin/services", icon: Layers, key: "services", adminOnly: true }
+    ]
+  },
+  {
+    title: "INVENTORY & SUPPLIERS",
+    emoji: "🏭",
+    items: [
+      // All placeholder
+      // { path: "/admin/inventory/suppliers", icon: Building2, key: "suppliers", adminOnly: true },
+      // { path: "/admin/inventory/products", icon: Boxes, key: "products", adminOnly: true },
+      // { path: "/admin/inventory/tracking", icon: Package, key: "inventory_tracking", adminOnly: true },
+      // { path: "/admin/inventory/purchase-orders", icon: ShoppingCart, key: "purchase_orders", adminOnly: true },
+      // { path: "/admin/inventory/stock-movements", icon: Warehouse, key: "stock_movements", adminOnly: true }
+    ]
+  },
+  {
+    title: "FINANCES",
+    emoji: "💰",
+    items: [
+      { path: "/admin/finances", icon: DollarSign, key: "finances", adminOnly: true },
+      // Submenus would be handled by nested routes inside Finances page, not separate sidebar items
+    ]
+  },
+  {
+    title: "ANALYTICS & KPIs",
+    emoji: "📊",
+    items: [
+      { path: "/admin/ai-metrics", icon: BarChart3, key: "ai_metrics", adminOnly: true },
+      // Placeholders for other analytics
+      // { path: "/admin/analytics/operational", icon: TrendingUp, key: "operational_kpis", adminOnly: true },
+      // { path: "/admin/analytics/financial", icon: LineChart, key: "financial_kpis", adminOnly: true },
+      // { path: "/admin/analytics/customers", icon: Users2, key: "customer_analytics", adminOnly: true },
+      // { path: "/admin/analytics/reports", icon: FileBarChart, key: "reports", adminOnly: true }
+    ]
+  },
+  {
+    title: "ACTIONS",
+    emoji: "⚡",
+    items: [
+      { path: "/admin/quick-approval", icon: ShieldCheck, key: "quick_approval", highlight: true },
+      { path: "/admin/tickets", icon: HeadphonesIcon, key: "support" },
+      // { path: "/admin/notifications", icon: Bell, key: "notifications", adminOnly: true }
+    ]
+  },
+  {
+    title: "SYSTEM / ADMIN",
+    emoji: "🧩",
+    items: [
+      { path: "/admin/users", icon: Shield, key: "users", adminOnly: true },
+      // { path: "/admin/roles", icon: Key, key: "roles_permissions", adminOnly: true },
+      { path: "/admin/audit-log", icon: ClipboardList, key: "audit_log", adminOnly: true },
+      { path: "/admin/settings", icon: Settings, key: "settings", adminOnly: true },
+      // { path: "/admin/integrations", icon: Link, key: "integrations", adminOnly: true },
+      { path: "/admin/blog", icon: BookOpen, key: "blog", adminOnly: true }
+    ]
+  }
 ];
+
+// Flatten all items to generate labels map
+const allItemsFlat = navigationGroups.flatMap(g => g.items);
+const navLabels = allItemsFlat.reduce((acc, item) => {
+  acc[item.key] = {
+    en: item.key === "dashboard" ? "Dashboard" :
+        item.key === "ai_assistant" ? "AI Assistant" :
+        item.key === "operator_panel" ? "Operator Panel" :
+        item.key === "operator_agent" ? "Operator Agent" :
+        item.key === "calendar" ? "Calendar" :
+        item.key === "orders" ? "Orders" :
+        item.key === "customers" ? "Customers" :
+        item.key === "memberships" ? "Memberships" :
+        item.key === "b2b_quotes" ? "B2B Quotes" :
+        item.key === "leads" ? "Leads" :
+        item.key === "services" ? "Services" :
+        item.key === "finances" ? "Finances" :
+        item.key === "ai_metrics" ? "AI Metrics" :
+        item.key === "quick_approval" ? "Quick Approval" :
+        item.key === "support" ? "Support" :
+        item.key === "store" ? "Store" :
+        item.key === "blog" ? "Blog" :
+        item.key === "users" ? "Users" :
+        item.key === "audit_log" ? "Audit Log" :
+        item.key === "settings" ? "Settings" :
+        item.key === "logistics_map" ? "Logistics Map" :
+        item.key,
+    es: item.key === "dashboard" ? "Panel" :
+        item.key === "ai_assistant" ? "Asistente IA" :
+        item.key === "operator_panel" ? "Panel Operador" :
+        item.key === "operator_agent" ? "Agente Operador" :
+        item.key === "calendar" ? "Calendario" :
+        item.key === "orders" ? "Órdenes" :
+        item.key === "customers" ? "Clientes" :
+        item.key === "memberships" ? "Membresías" :
+        item.key === "b2b_quotes" ? "Cotizaciones B2B" :
+        item.key === "leads" ? "Prospectos" :
+        item.key === "services" ? "Servicios" :
+        item.key === "finances" ? "Finanzas" :
+        item.key === "ai_metrics" ? "Métricas IA" :
+        item.key === "quick_approval" ? "Aprobación Rápida" :
+        item.key === "support" ? "Soporte" :
+        item.key === "store" ? "Tienda" :
+        item.key === "blog" ? "Blog" :
+        item.key === "users" ? "Usuarios" :
+        item.key === "audit_log" ? "Bitácora" :
+        item.key === "settings" ? "Configuración" :
+        item.key === "logistics_map" ? "Mapa Logístico" :
+        item.key
+  };
+  return acc;
+}, {});
 
 export default function Layout() {
   const { user, logout } = useAuth();
@@ -62,35 +216,42 @@ export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { t } = useLocale();
 
-  // Filter nav items based on user role
-  const isAdmin = user?.role === "admin";
-  const navItems = allNavItems.filter(item => {
-    if (item.adminOnly && !isAdmin) return false;
-    if (item.operatorOnly && isAdmin) return false;
-    return true;
+  // Estado para controlar qué grupos están abiertos
+  const [openGroups, setOpenGroups] = useState(() => {
+    // Inicialmente abrir el grupo MAIN y quizás el grupo de la ruta activa
+    const defaultOpen = {};
+    navigationGroups.forEach((group, idx) => {
+      // Por defecto abrir MAIN, OPERATIONS, LOGISTICS (los más comunes)
+      if (group.title === "MAIN" || group.title === "OPERATIONS" || group.title === "LOGISTICS") {
+        defaultOpen[idx] = true;
+      } else {
+        defaultOpen[idx] = false;
+      }
+    });
+    return defaultOpen;
   });
 
-  const navLabels = {
-    dashboard: t("Dashboard", "Panel"),
-    ai_assistant: t("AI Assistant", "Asistente IA"),
-    operator_panel: t("Operator Panel", "Panel Operador"),
-    operator_agent: t("Operator Agent", "Agente Operador"),
-    calendar: t("Calendar", "Calendario"),
-    orders: t("Orders", "Órdenes"),
-    customers: t("Customers", "Clientes"),
-    memberships: t("Memberships", "Membresías"),
-    b2b_quotes: t("B2B Quotes", "Cotizaciones B2B"),
-    leads: t("Leads", "Prospectos"),
-    services: t("Services", "Servicios"),
-    finances: t("Finances", "Finanzas"),
-    ai_metrics: t("AI Metrics", "Métricas IA"),
-    quick_approval: t("Quick Approval", "Aprobación Rápida"),
-    support: t("Support", "Soporte"),
-    store: t("Store", "Tienda"),
-    blog: t("Blog", "Blog"),
-    users: t("Users", "Usuarios"),
-    audit_log: t("Audit Log", "Bitácora"),
-    settings: t("Settings", "Configuración")
+  const toggleGroup = (idx) => {
+    setOpenGroups(prev => ({ ...prev, [idx]: !prev[idx] }));
+  };
+
+  const isAdmin = user?.role === "admin";
+
+  // Filter groups based on role visibility of items
+  const visibleGroups = navigationGroups
+    .map(group => ({
+      ...group,
+      items: group.items.filter(item => {
+        if (item.adminOnly && !isAdmin) return false;
+        return true;
+      })
+    }))
+    .filter(group => group.items.length > 0);
+
+  const getLabel = (key) => {
+    const labels = navLabels[key];
+    if (!labels) return key;
+    return t(labels.en, labels.es);
   };
 
   const handleLogout = () => {
@@ -98,12 +259,10 @@ export default function Layout() {
     navigate("/login");
   };
 
-  // Get role display name
   const getRoleDisplay = (role) => {
     return role === "admin" ? t("Administrator", "Administrador") : t("Operator", "Operador");
   };
 
-  // Get role badge color
   const getRoleBadgeColor = (role) => {
     return role === "admin" 
       ? "bg-purple-100 text-purple-700" 
@@ -152,26 +311,48 @@ export default function Layout() {
             </div>
           </div>
 
-          {/* Navigation */}
+          {/* Navigation with collapsible groups */}
           <nav className="flex-1 overflow-y-auto py-4 px-3">
-            <ul className="space-y-1">
-              {navItems.map((item) => (
-                <li key={item.path}>
-                  <NavLink
-                    to={item.path}
-                    end={item.path === "/admin"}
-                    onClick={() => setSidebarOpen(false)}
-                    className={({ isActive }) =>
-                      `sidebar-link ${isActive ? "active" : ""}`
-                    }
-                    data-testid={`nav-${item.key}`}
-                  >
-                    <item.icon className="h-5 w-5" />
-                    <span>{navLabels[item.key]}</span>
-                  </NavLink>
-                </li>
-              ))}
-            </ul>
+            {visibleGroups.map((group, idx) => (
+              <div key={idx} className="mb-4">
+                {/* Group header (clickable) */}
+                <button
+                  onClick={() => toggleGroup(idx)}
+                  className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-slate-100 transition-colors text-left"
+                >
+                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-600 uppercase tracking-wider">
+                    <span className="text-base">{group.emoji}</span>
+                    <span>{group.title}</span>
+                  </div>
+                  {openGroups[idx] ? (
+                    <ChevronDown className="h-4 w-4 text-slate-400" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 text-slate-400" />
+                  )}
+                </button>
+                {/* Group items (collapsible) */}
+                {openGroups[idx] && (
+                  <ul className="mt-2 ml-2 space-y-1">
+                    {group.items.map((item) => (
+                      <li key={item.path}>
+                        <NavLink
+                          to={item.path}
+                          end={item.path === "/admin"}
+                          onClick={() => setSidebarOpen(false)}
+                          className={({ isActive }) =>
+                            `sidebar-link ${isActive ? "active" : ""} ${item.highlight ? "highlight" : ""}`
+                          }
+                          data-testid={`nav-${item.key}`}
+                        >
+                          <item.icon className="h-5 w-5" />
+                          <span>{getLabel(item.key)}</span>
+                        </NavLink>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))}
             <div className="mt-4 pt-4 border-t border-slate-100">
               <a
                 href="/home"
@@ -185,7 +366,7 @@ export default function Layout() {
             </div>
           </nav>
 
-          {/* User section */}
+          {/* User section (unchanged) */}
           <div className="p-4 border-t border-slate-100">
             <div className="flex items-center gap-3 mb-3">
               <div className="h-9 w-9 rounded-full bg-sky-100 flex items-center justify-center">

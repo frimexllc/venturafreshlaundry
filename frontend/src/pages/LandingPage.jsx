@@ -337,7 +337,7 @@ export default function LandingPage() {
               </h1>
             </HR>
             <HR delay={310}>
-              <h1 className="text-5xl sm:text-6xl md:text-7xl lg:text-[88px] font-bold text-primary leading-[1.0] mb-5 tracking-tight">
+              <h1 className="text-5xl sm:text-6xl md:text-7xl lg:text-[88px] font-bold text-white leading-[1.0] mb-5 tracking-tight">
                 {t("laundry.","lavandería.")}
               </h1>
             </HR>

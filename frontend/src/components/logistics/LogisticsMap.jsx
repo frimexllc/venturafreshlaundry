@@ -4,11 +4,12 @@ import { OrderDetailsModal } from './OrderDetailsModal';
 import { EndOfDayModal } from './EndOfDayModal';
 import { MapView } from './MapView';
 import { TimAssistant } from './TimAssistant';
+import { QuickSaleModal } from './QuickSaleModal';
 import {
   Navigation, Package, Loader2, Clock, TrendingDown, AlertTriangle,
   ChevronDown, ChevronUp, ExternalLink, PlayCircle, RefreshCw,
   ArrowDownToLine, ArrowUpFromLine, MapPin, Bell, BellRing, Zap, Radio,
-  Menu, X, CheckCircle2, Search, Moon, Sun, BarChart2, History,
+  Menu, X, CheckCircle2, Search, Moon, Sun, BarChart2, History, ShoppingBag,
 } from 'lucide-react';
 import {
   MOCK_ORDERS, ORDER_TYPE_LABELS, ORDER_STATUS_LABELS,
@@ -21,7 +22,7 @@ import { toast } from 'sonner';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
 const NEARBY_THRESHOLD_KM = 1.2;
-const HQ = { lat: 34.2519, lng: -119.2290 };
+const HQ = { lat: 34.264157, lng: -119.213715 };
 const TRAFFIC_REFRESH_MS = 5 * 60 * 1000;
 
 function buildGoogleMapsUrl(stops) {
@@ -75,6 +76,7 @@ export function LogisticsMap() {
   const dragStartH = useRef(260);
   const timRef = useRef(null);
   const prevHeavyRef = useRef(new Set());
+  const [quickSaleOpen, setQuickSaleOpen] = useState(false);
 
   // Dark mode
   useEffect(() => {
@@ -400,6 +402,7 @@ export function LogisticsMap() {
           {trafficEvents.length > 0 && <div className="flex items-center gap-1 text-[10px] text-red-600 bg-red-50 border border-red-200 rounded-lg px-2 py-1"><Radio className="w-3 h-3 animate-pulse" /><span className="font-bold hidden sm:inline">Trafico</span><span className="font-bold">+{trafficDelay}m</span></div>}
           <div className="flex items-center gap-1 text-xs text-orange-600 bg-orange-50 border border-orange-200 rounded-lg px-2.5 py-1.5"><ArrowUpFromLine className="w-3.5 h-3.5" /><span className="font-semibold">{pickupCount}</span><span className="text-orange-500 hidden sm:inline">recogidas</span></div>
           <div className="flex items-center gap-1 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-2.5 py-1.5"><ArrowDownToLine className="w-3.5 h-3.5" /><span className="font-semibold">{deliveryCount}</span><span className="text-green-600 hidden sm:inline">entregas</span></div>
+          <button onClick={() => setQuickSaleOpen(true)} data-testid="quick-sale-btn" title="Venta en Tienda (POS)" className="flex items-center gap-1.5 text-xs text-white bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 rounded-lg px-3 py-1.5 font-semibold transition-colors shadow-sm"><ShoppingBag className="w-3.5 h-3.5" /><span className="hidden sm:inline">Venta POS</span></button>
           <button onClick={() => setShowHistory((v) => !v)} data-testid="history-btn" title="Historial de rutas" className={`p-1.5 rounded-lg border transition-colors ${showHistory ? 'bg-blue-50 border-blue-200 text-blue-600' : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-100'}`}><History className="w-4 h-4" /></button>
           <button onClick={() => setDarkMode((v) => !v)} data-testid="dark-mode-btn" title={darkMode ? 'Modo dia' : 'Modo noche'} className="p-1.5 rounded-lg border bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">{darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}</button>
         </div>
@@ -484,6 +487,7 @@ export function LogisticsMap() {
         onUpdateOrderStatus={updateOrderStatus}
       />
       <EndOfDayModal open={showEndOfDay} onClose={() => setShowEndOfDay(false)} routeResult={routeResult} completedCount={completedStops.size} trafficDelay={trafficDelay} startTime={routeStartTime} />
+      <QuickSaleModal open={quickSaleOpen} onClose={() => setQuickSaleOpen(false)} />
       {selectedOrder && (
         <OrderDetailsModal order={selectedOrder} open={modalOpen} onClose={() => setModalOpen(false)} onStatusChange={(newStatus) => updateOrderStatus(selectedOrder.id, newStatus)} onPaymentSuccess={(orderId) => markOrderPaid(orderId)} />
       )}
