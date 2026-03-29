@@ -128,14 +128,33 @@ export function LogisticsMap() {
     }
   }, [loadingBackend, orders]);
 
-  // Traffic refresh
+  // Traffic refresh — fetch from backend (TomTom real-time)
   useEffect(() => {
-    const refresh = () => {
+    const token = localStorage.getItem('token');
+    const refresh = async () => {
+      if (!token || !API_URL) {
+        // Fallback to simulated if no auth
+        const events = getCurrentTrafficEvents();
+        setTrafficEvents(events);
+        return;
+      }
+      try {
+        const res = await fetch(`${API_URL}/api/traffic/incidents`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const events = data.events || [];
+          setTrafficEvents(events);
+          if (events.some((e) => e.severity === 'heavy')) {
+            toast.warning(`Trafico pesado: ${events.filter((e) => e.severity === 'heavy').map((e) => e.road).join(', ')}. TIM recomienda re-optimizar.`, { duration: 6000 });
+          }
+          return;
+        }
+      } catch { /* fallback */ }
+      // Fallback to simulated
       const events = getCurrentTrafficEvents();
       setTrafficEvents(events);
-      if (events.some((e) => e.severity === 'heavy')) {
-        toast.warning(`Trafico pesado: ${events.filter((e) => e.severity === 'heavy').map((e) => e.road).join(', ')}. TIM recomienda re-optimizar.`, { duration: 6000 });
-      }
     };
     refresh();
     const interval = setInterval(refresh, TRAFFIC_REFRESH_MS);

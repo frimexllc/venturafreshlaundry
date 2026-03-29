@@ -280,6 +280,7 @@ for _mod, _name in [
     ("routes.ai_admin", "AI Admin"),
     ("routes.ai_patterns", "AI Patterns"),
     ("routes.admin_import", "Admin Import"),
+    ("routes.traffic", "Traffic"),
 ]:
     try:
         _m = importlib.import_module(_mod)

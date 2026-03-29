@@ -164,10 +164,23 @@ async def ocr_extract(file_id: str, current_user: dict = Depends(get_current_use
     if not ct.startswith("image/"):
         raise HTTPException(status_code=400, detail="OCR only works with images")
 
+    # Track the OCR attempt
+    ocr_log = {
+        "id": str(uuid.uuid4()),
+        "file_id": file_id,
+        "user_id": current_user["id"],
+        "filename": record.get("original_filename", ""),
+        "status": "processing",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
     try:
         image_data, _ = get_object(record["storage_path"])
     except Exception as e:
         logger.error(f"OCR download failed: {e}")
+        ocr_log["status"] = "error"
+        ocr_log["error"] = "download_failed"
+        await db.ocr_logs.insert_one(ocr_log)
         raise HTTPException(status_code=500, detail="Failed to download image")
 
     import base64
@@ -175,6 +188,9 @@ async def ocr_extract(file_id: str, current_user: dict = Depends(get_current_use
 
     llm_key = os.environ.get("EMERGENT_LLM_KEY")
     if not llm_key:
+        ocr_log["status"] = "error"
+        ocr_log["error"] = "no_llm_key"
+        await db.ocr_logs.insert_one(ocr_log)
         raise HTTPException(status_code=500, detail="LLM key not configured")
 
     try:
@@ -204,14 +220,28 @@ async def ocr_extract(file_id: str, current_user: dict = Depends(get_current_use
         if cleaned.startswith("```"):
             cleaned = cleaned.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
         result = _json.loads(cleaned)
-        return {
+
+        extracted = {
             "amount": float(result.get("amount", 0)),
             "description": str(result.get("description", "")),
             "date": str(result.get("date", "")),
             "vendor": str(result.get("vendor", "")),
         }
+
+        # Log successful OCR
+        ocr_log["status"] = "success"
+        ocr_log["result"] = extracted
+        ocr_log["amount_extracted"] = extracted["amount"] > 0
+        ocr_log["vendor_extracted"] = len(extracted["vendor"]) > 0
+        ocr_log["date_extracted"] = len(extracted["date"]) > 0
+        await db.ocr_logs.insert_one(ocr_log)
+
+        return extracted
     except Exception as e:
         logger.error(f"OCR LLM failed: {e}")
+        ocr_log["status"] = "error"
+        ocr_log["error"] = str(e)[:200]
+        await db.ocr_logs.insert_one(ocr_log)
         raise HTTPException(status_code=500, detail=f"OCR analysis failed: {str(e)}")
 
 
@@ -224,3 +254,53 @@ async def soft_delete_file(file_id: str, current_user: dict = Depends(get_curren
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="File not found")
     return {"ok": True}
+
+
+@router.get("/ocr-analytics")
+async def get_ocr_analytics(current_user: dict = Depends(get_current_user)):
+    """Return OCR usage analytics for the dashboard."""
+    total_scans = await db.ocr_logs.count_documents({})
+    successful = await db.ocr_logs.count_documents({"status": "success"})
+    failed = await db.ocr_logs.count_documents({"status": "error"})
+
+    # Field extraction rates
+    amount_ok = await db.ocr_logs.count_documents({"status": "success", "amount_extracted": True})
+    vendor_ok = await db.ocr_logs.count_documents({"status": "success", "vendor_extracted": True})
+    date_ok = await db.ocr_logs.count_documents({"status": "success", "date_extracted": True})
+
+    # Total amount captured via OCR
+    pipeline = [
+        {"$match": {"status": "success", "result.amount": {"$gt": 0}}},
+        {"$group": {"_id": None, "total": {"$sum": "$result.amount"}}},
+    ]
+    agg = await db.ocr_logs.aggregate(pipeline).to_list(1)
+    total_captured = agg[0]["total"] if agg else 0
+
+    # Recent scans
+    recent = await db.ocr_logs.find(
+        {}, {"_id": 0, "id": 1, "filename": 1, "status": 1, "result": 1, "created_at": 1}
+    ).sort("created_at", -1).limit(20).to_list(20)
+
+    # Top vendors
+    vendor_pipeline = [
+        {"$match": {"status": "success", "result.vendor": {"$ne": ""}}},
+        {"$group": {"_id": "$result.vendor", "count": {"$sum": 1}, "total": {"$sum": "$result.amount"}}},
+        {"$sort": {"count": -1}},
+        {"$limit": 10},
+    ]
+    top_vendors = await db.ocr_logs.aggregate(vendor_pipeline).to_list(10)
+
+    return {
+        "total_scans": total_scans,
+        "successful": successful,
+        "failed": failed,
+        "success_rate": round(successful / total_scans * 100, 1) if total_scans > 0 else 0,
+        "field_rates": {
+            "amount": round(amount_ok / successful * 100, 1) if successful > 0 else 0,
+            "vendor": round(vendor_ok / successful * 100, 1) if successful > 0 else 0,
+            "date": round(date_ok / successful * 100, 1) if successful > 0 else 0,
+        },
+        "total_amount_captured": round(total_captured, 2),
+        "recent_scans": recent,
+        "top_vendors": [{"vendor": v["_id"], "count": v["count"], "total": round(v["total"], 2)} for v in top_vendors],
+    }
