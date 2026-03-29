@@ -11,11 +11,11 @@ Comprehensive AI-powered laundry management system with enterprise modules, AI a
 - **Languages**: Bilingual EN/ES via LocaleContext + t() function
 - **Integrations**: Groq LLM, Stripe, Twilio, SendGrid, Nominatim, GPT-4o Vision (OCR)
 
-## Modular Backend Architecture (31 route files + shared modules)
+## Modular Backend Architecture (36+ route files + shared modules)
 ```
 /app/backend/
   server.py          → Lightweight FastAPI entry point (lazy socket.io)
-  server_core.py     → 2195 lines remaining (AI endpoints, admin/import, static routes)
+  server_core.py     → 531 lines — Pure bootstrap/mount point (REFACTORING COMPLETE)
   realtime.py        → Shared socket.io emission helper
   routes/
     auth_routes.py   → /api/auth/*
@@ -42,6 +42,11 @@ Comprehensive AI-powered laundry management system with enterprise modules, AI a
     delivery_rules.py → /api/delivery-rules/*
     kpis.py          → /api/kpis/*
     file_uploads.py  → /api/files/* (upload, download, OCR with GPT-4o vision)
+    ai_assistant.py  → /api/ai/briefing, suggestions, chat, operations, sessions
+    ai_metrics.py    → /api/ai/metrics, pending-actions (approve/reject)
+    ai_admin.py      → /api/admin/ai, admin/ai/insights
+    ai_patterns.py   → /api/ai/patrones/scan, propuestas (CRUD, simulation, action)
+    admin_import.py  → /api/admin/import (CSV/Excel with AI mapping)
     logistics.py, stripe_payments.py, tim.py, voice.py, ai.py, public_forms.py
 ```
 
@@ -61,6 +66,7 @@ Comprehensive AI-powered laundry management system with enterprise modules, AI a
 - Operator limited-view order management
 - Bilingual EN/ES on all pages
 - Pacific Time (PT) timezone throughout
+- **server_core.py fully refactored to pure bootstrap (531 lines)**
 
 ## Credentials
 - Admin: owner@frimexllc.com / Fr!m3x##$$
@@ -71,6 +77,6 @@ Comprehensive AI-powered laundry management system with enterprise modules, AI a
 - Inventory alert SMS/email requires Twilio/SendGrid env vars
 
 ## Backlog
-- P1: Continue server_core.py refactoring — AI section (~1700 lines remaining, deeply coupled)
 - P2: Replace simulated traffic with real traffic API
+- P2: OCR Analytics Dashboard
 - PAUSED: Advanced Stripe Sync (bidirectional) — pending user call
