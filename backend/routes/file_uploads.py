@@ -153,6 +153,66 @@ async def list_files_by_context(
     return files
 
 
+@router.post("/ocr/{file_id}")
+async def ocr_extract(file_id: str, current_user: dict = Depends(get_current_user)):
+    """Extract amount and description from an uploaded receipt image using AI vision"""
+    record = await db.files.find_one({"id": file_id, "is_deleted": False}, {"_id": 0})
+    if not record:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    ct = record.get("content_type", "")
+    if not ct.startswith("image/"):
+        raise HTTPException(status_code=400, detail="OCR only works with images")
+
+    try:
+        image_data, _ = get_object(record["storage_path"])
+    except Exception as e:
+        logger.error(f"OCR download failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to download image")
+
+    import base64
+    b64 = base64.b64encode(image_data).decode("utf-8")
+
+    llm_key = os.environ.get("EMERGENT_LLM_KEY")
+    if not llm_key:
+        raise HTTPException(status_code=500, detail="LLM key not configured")
+
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
+
+        chat = LlmChat(
+            api_key=llm_key,
+            session_id=f"ocr-{file_id}",
+            system_message=(
+                "You are a receipt/invoice OCR assistant. "
+                "Analyze the image and extract the total amount and a short description of what was purchased. "
+                "Return ONLY valid JSON: {\"amount\": <number>, \"description\": \"<text>\"} "
+                "If you cannot determine amount, use 0. If you cannot determine description, use empty string."
+            ),
+        )
+        chat.with_model("openai", "gpt-4o")
+
+        img = ImageContent(image_base64=b64)
+        user_msg = UserMessage(
+            text="Extract the total amount and a short description from this receipt.",
+            file_contents=[img],
+        )
+        response_text = await chat.send_message(user_msg)
+
+        import json as _json
+        cleaned = response_text.strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+        result = _json.loads(cleaned)
+        return {
+            "amount": float(result.get("amount", 0)),
+            "description": str(result.get("description", "")),
+        }
+    except Exception as e:
+        logger.error(f"OCR LLM failed: {e}")
+        raise HTTPException(status_code=500, detail=f"OCR analysis failed: {str(e)}")
+
+
 @router.delete("/{file_id}")
 async def soft_delete_file(file_id: str, current_user: dict = Depends(get_current_user)):
     result = await db.files.update_one(

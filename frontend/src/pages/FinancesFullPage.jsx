@@ -37,16 +37,54 @@ export default function FinancesPage() {
   const [editId, setEditId] = useState(null);
   const [attachments, setAttachments] = useState([]); // [{file, preview, uploading}]
   const [existingFiles, setExistingFiles] = useState([]);
+  const [ocrLoading, setOcrLoading] = useState(false);
   const cameraRef = useRef(null);
   const fileRef = useRef(null);
 
-  const handleFileSelect = (e) => {
+  const handleFileSelect = async (e) => {
     const files = Array.from(e.target.files || []);
+    const newAttachments = [];
     files.forEach(file => {
       const preview = file.type.startsWith("image/") ? URL.createObjectURL(file) : null;
-      setAttachments(prev => [...prev, { file, preview, uploading: false, uploaded: false }]);
+      newAttachments.push({ file, preview, uploading: false, uploaded: false });
     });
+    setAttachments(prev => [...prev, ...newAttachments]);
     e.target.value = "";
+
+    const imageFile = files.find(f => f.type.startsWith("image/"));
+    if (imageFile && modal === "expense") {
+      setOcrLoading(true);
+      try {
+        const token = localStorage.getItem("token");
+        const fd = new FormData();
+        fd.append("file", imageFile);
+        const uploadRes = await fetch(`${API}/api/files/upload?context=ocr-temp`, {
+          method: "POST", headers: { Authorization: `Bearer ${token}` }, body: fd,
+        });
+        if (uploadRes.ok) {
+          const uploadData = await uploadRes.json();
+          const idx = attachments.length + newAttachments.findIndex(a => a.file === imageFile);
+          setAttachments(prev => { const a = [...prev]; if (a[idx]) a[idx] = { ...a[idx], uploaded: true, uploadedId: uploadData.id }; return a; });
+          const ocrRes = await fetch(`${API}/api/files/ocr/${uploadData.id}`, {
+            headers: { Authorization: `Bearer ${token}` },
+            method: "POST",
+          });
+          if (ocrRes.ok) {
+            const ocrData = await ocrRes.json();
+            setForm(prev => ({
+              ...prev,
+              ...(ocrData.amount ? { amount: String(ocrData.amount) } : {}),
+              ...(ocrData.description ? { description: ocrData.description } : {}),
+            }));
+            toast.success(t("Receipt scanned! Fields auto-filled.", "Recibo escaneado. Campos llenados automaticamente."));
+          }
+        }
+      } catch (err) {
+        console.error("OCR failed:", err);
+      } finally {
+        setOcrLoading(false);
+      }
+    }
   };
 
   const removeAttachment = (idx) => {
@@ -268,6 +306,12 @@ export default function FinancesPage() {
                     <Paperclip className="w-4 h-4 mr-1.5" /> {t("Attach","Adjuntar")}
                   </Button>
                 </div>
+                {ocrLoading && (
+                  <div className="flex items-center gap-2 p-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700" data-testid="ocr-loading">
+                    <div className="w-3.5 h-3.5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+                    {t("Scanning receipt with AI...","Escaneando recibo con IA...")}
+                  </div>
+                )}
                 {/* Preview new attachments */}
                 {attachments.length > 0 && (
                   <div className="flex flex-wrap gap-2 mt-2">
