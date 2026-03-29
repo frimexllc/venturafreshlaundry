@@ -9,9 +9,9 @@ Comprehensive AI-powered laundry management system with enterprise modules, AI a
 - **Storage**: Emergent Object Storage (file uploads/receipts)
 - **Timezone**: America/Los_Angeles (Pacific Time)
 - **Languages**: Bilingual EN/ES via LocaleContext + t() function
-- **Integrations**: Groq LLM, Stripe, Twilio, SendGrid, Nominatim
+- **Integrations**: Groq LLM, Stripe, Twilio, SendGrid, Nominatim, GPT-4o Vision (OCR)
 
-## Modular Backend Architecture (23 route files)
+## Modular Backend Architecture (29 route files)
 ```
 /app/backend/routes/
   auth_routes.py      → /api/auth/*
@@ -26,14 +26,20 @@ Comprehensive AI-powered laundry management system with enterprise modules, AI a
   suppliers.py        → /api/suppliers/*
   catalog.py          → /api/catalog/*
   inventory.py        → /api/inventory/*
-  inventory_alerts.py → /api/inventory/alerts (low stock + stale PO notifications)
+  inventory_alerts.py → /api/inventory/alerts
   finances.py         → /api/finances/*
-  delivery_rules.py   → /api/delivery-rules/* (ZIP zones, pricing, payments)
+  delivery_rules.py   → /api/delivery-rules/*
   kpis.py             → /api/kpis/*
-  file_uploads.py     → /api/files/* (camera/receipt uploads)
-  logistics.py, stripe_payments.py, tim.py, voice.py, ai.py, public_forms.py
+  file_uploads.py     → /api/files/* (upload, download, OCR)
+  services.py         → /api/services/*, /api/memberships/*, /api/public/services
+  ingest.py           → /api/ingest
+  audit.py            → /api/audit-logs
+  settings.py         → /api/settings/*, /api/test/*
+  customer_auth.py    → /api/customer/auth/*, /api/customer/me, /api/customer/orders
+  operator.py         → /api/operator/orders
+  logistics.py, stripe_payments.py, tim.py, voice.py, ai.py, public_forms.py, orders.py
 ```
-server_core.py: ~3800 lines (Orders, Services, AI, Notifications, Operator endpoints)
+server_core.py: ~2830 lines (Orders, AI endpoints, finances/summary, static web routes)
 
 ## Business Rules
 - **Delivery Zones**: 7 ZIP codes: 93001/93003/93004/93010/93030/93035/93036
@@ -50,13 +56,15 @@ server_core.py: ~3800 lines (Orders, Services, AI, Notifications, Operator endpo
 - Enterprise: Suppliers, Catalog, Inventory, Finances
 - KPIs Operational Dashboard
 - Ticket SVG (QR + price breakdown + weight)
-- Camera/File Upload for expense receipts
+- Camera/File Upload for expense receipts + OCR auto-fill via GPT-4o Vision
 - Delivery zone rules + payment validation
 - Inventory Alerts (low stock + stale PO) with SMS/Email capability
 - Bilingual EN/ES on all pages
 - Pacific Time (PT) timezone throughout
-- 16 backend modules extracted from monolith (755 lines removed)
+- 22 backend modules extracted from monolith (~978 additional lines removed this session)
 - CSV export for customers, orders, leads, quotes, tickets
+- Customer portal auth (register/login)
+- Operator limited-view order management
 
 ## Credentials
 - Admin: owner@frimexllc.com / Fr!m3x##$$
@@ -66,7 +74,6 @@ server_core.py: ~3800 lines (Orders, Services, AI, Notifications, Operator endpo
 - Inventory alert SMS/email requires Twilio/SendGrid env vars (functional but unconfigured)
 
 ## Backlog
-- P1: Continue server_core.py refactoring (Orders, Services, AI — ~3800 lines remaining)
+- P1: Continue server_core.py refactoring (Orders, AI — ~2830 lines remaining)
 - P2: Replace simulated traffic with Google Traffic API
-- P2: OCR for receipt photos (auto-fill expense amount/description)
 - PAUSED: Advanced Stripe Sync (bidirectional) — pending user call
