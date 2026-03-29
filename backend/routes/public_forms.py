@@ -19,7 +19,7 @@ def normalize_yes_no(value):
     if v in ("no", "0", "false"): return "no"
     return value.strip()
 
-from notifications import notify_order_created, send_sms, normalize_preferred_contact
+from notifications import notify_order_created, send_sms, send_email, send_whatsapp, normalize_preferred_contact, build_premium_message, detect_language
 from ai_assistant import get_groq_client
 
 
@@ -471,6 +471,28 @@ PERSONALITY GUIDELINES:
         await db.tickets.insert_one(ticket)
         await create_audit_log("TICKET_CREATED", "ticket", ticket_id, None, {"source": "public_form"})
 
+        # Send confirmation notification based on user's preferred contact
+        try:
+            contact_pref = preferred_contact or "email"
+            lang = "es" if any(c in (normalized_message or "").lower() for c in ["hola", "gracias", "solicitud"]) else "en"
+            is_es = lang == "es"
+            msg = (f"Hola {normalized_name or data.name}, hemos recibido tu solicitud ({ticket_number}). Nos pondremos en contacto contigo pronto. — {os.environ.get('BUSINESS_NAME', 'Ventura Fresh Laundry')}"
+                   if is_es else
+                   f"Hi {normalized_name or data.name}, we've received your request ({ticket_number}). We'll get back to you soon. — {os.environ.get('BUSINESS_NAME', 'Ventura Fresh Laundry')}")
+            subj = "Solicitud recibida" if is_es else "Request received"
+            if contact_pref == "email" and normalized_email:
+                await send_email(normalized_email, subj, msg)
+            elif contact_pref == "whatsapp" and normalized_phone:
+                await send_whatsapp(normalized_phone, msg)
+            elif contact_pref in ("sms", "text") and normalized_phone:
+                await send_sms(normalized_phone, msg)
+            elif normalized_email:
+                await send_email(normalized_email, subj, msg)
+            elif normalized_phone:
+                await send_sms(normalized_phone, msg)
+        except Exception as e:
+            logger.error(f"Contact notification failed: {e}")
+
         return {
             "success": True,
             "ticket_number": ticket_number,
@@ -512,6 +534,18 @@ PERSONALITY GUIDELINES:
         }
         await db.quotes.insert_one(quote)
         await create_audit_log("QUOTE_CREATED", "quote", quote_id, None, {"source": "public_form"})
+
+        # Send confirmation notification
+        try:
+            lang = "es"
+            msg = f"Hola {normalized_contact or data.contact_name}, hemos recibido tu solicitud de cotización ({quote_number}). Te contactaremos pronto. — {os.environ.get('BUSINESS_NAME', 'Ventura Fresh Laundry')}"
+            subj = "Cotización recibida"
+            if normalized_email:
+                await send_email(normalized_email, subj, msg)
+            if normalized_phone:
+                await send_sms(normalized_phone, msg)
+        except Exception as e:
+            logger.error(f"Quote notification failed: {e}")
 
         return {
             "success": True,

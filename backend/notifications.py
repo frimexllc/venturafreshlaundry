@@ -70,10 +70,12 @@ def _mark_sent(key: str) -> None:        _sent_cache.add(key)
 def _log_attempt(entry: dict) -> None:   _audit_log.append(entry); logger.debug(f"Audit: {entry}")
 
 MILESTONES = {
-    "wash_fold":        {"order_created", "ready_for_pickup", "completed"},
-    "pickup_delivery":  {"order_created", "pickup_confirmed", "ready",
-                         "out_for_delivery", "delivered", "cancelled"},
-     "quote":{"order_created"}                    
+    "wash_fold":        {"order_created", "order_received", "processing", "ready_for_pickup", "completed"},
+    "pickup_delivery":  {"order_created", "pickup_confirmed", "processing",
+                         "ready", "out_for_delivery", "delivered", "cancelled"},
+    "quote":            {"order_created"},
+    "contact":          {"order_created"},
+    "support":          {"order_created"},
 }
 EVENT_MAPPING = {
     "order_created":    "order_created",
@@ -973,8 +975,9 @@ async def send_preferred_notification(
     mapped_event = event
     if event == "status_changed":
         status_norm = normalize_status_value(status)
-        wf_map = {"ready": "ready_for_pickup", "completed": "completed"}
+        wf_map = {"confirmed": "order_received", "processing": "processing", "ready": "ready_for_pickup", "completed": "completed"}
         pd_map = {"confirmed": "pickup_confirmed", "pickup_scheduled": "pickup_confirmed",
+                  "picked_up": "processing", "processing": "processing",
                   "ready": "ready", "out_for_delivery": "out_for_delivery",
                   "delivered": "delivered", "cancelled": "cancelled"}
         mapped_event = (wf_map if flow == "wash_fold" else pd_map).get(status_norm, "status_changed")
