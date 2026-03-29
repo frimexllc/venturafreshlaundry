@@ -9,74 +9,52 @@ Comprehensive AI-powered laundry management system with enterprise modules, AI a
 - **Storage**: Emergent Object Storage (file uploads/receipts)
 - **Timezone**: America/Los_Angeles (Pacific Time)
 - **Languages**: Bilingual EN/ES via LocaleContext + t() function
-- **Integrations**: Groq LLM, Stripe, Twilio, SendGrid, Nominatim, GPT-4o Vision (OCR)
+- **Integrations**: Groq LLM, Stripe, Twilio, SendGrid, Nominatim, GPT-4o Vision (OCR), TomTom Traffic
 
-## Modular Backend Architecture (36+ route files + shared modules)
+## Modular Backend Architecture
 ```
 /app/backend/
-  server.py          → Lightweight FastAPI entry point (lazy socket.io)
-  server_core.py     → 531 lines — Pure bootstrap/mount point (REFACTORING COMPLETE)
+  server.py          → Lightweight FastAPI entry point
+  server_core.py     → 531 lines — Pure bootstrap/mount point (COMPLETE)
   realtime.py        → Shared socket.io emission helper
   routes/
-    auth_routes.py   → /api/auth/*
-    dashboard.py     → /api/dashboard/*
-    customers.py     → /api/customers/*, /api/preferences/*
-    orders.py        → /api/orders/* (CRUD, status, payment, QR, Stripe checkout)
-    quotes.py        → /api/quotes/*
-    leads.py         → /api/leads/*
-    tickets.py       → /api/tickets/*
-    users.py         → /api/admin/users/*, /api/admin/roles
-    exports.py       → /api/export/*
-    calendar.py      → /api/calendar/*
-    services.py      → /api/services/*, /api/memberships/*, /api/public/services, /api/public/membership-*
-    ingest.py        → /api/ingest
-    audit.py         → /api/audit-logs
-    settings.py      → /api/settings/*, /api/test/*
-    customer_auth.py → /api/customer/auth/*, /api/customer/me, /api/customer/orders
-    operator.py      → /api/operator/orders
-    suppliers.py     → /api/suppliers/*
-    catalog.py       → /api/catalog/*
-    inventory.py     → /api/inventory/*
-    inventory_alerts.py → /api/inventory/alerts
-    finances.py      → /api/finances/* (expenses, mileage, vehicles, summary)
-    delivery_rules.py → /api/delivery-rules/*
-    kpis.py          → /api/kpis/*
-    file_uploads.py  → /api/files/* (upload, download, OCR with GPT-4o vision)
-    ai_assistant.py  → /api/ai/briefing, suggestions, chat, operations, sessions
-    ai_metrics.py    → /api/ai/metrics, pending-actions (approve/reject)
-    ai_admin.py      → /api/admin/ai, admin/ai/insights
-    ai_patterns.py   → /api/ai/patrones/scan, propuestas (CRUD, simulation, action)
-    admin_import.py  → /api/admin/import (CSV/Excel with AI mapping)
+    auth_routes.py, dashboard.py, customers.py, orders.py, quotes.py, leads.py,
+    tickets.py, users.py, exports.py, calendar.py, services.py, ingest.py,
+    audit.py, settings.py, customer_auth.py, operator.py, suppliers.py,
+    catalog.py, inventory.py, inventory_alerts.py, finances.py, delivery_rules.py,
+    kpis.py, file_uploads.py (+ OCR + analytics), ai_assistant.py, ai_metrics.py,
+    ai_admin.py, ai_patterns.py, admin_import.py, traffic.py (TomTom real-time),
     logistics.py, stripe_payments.py, tim.py, voice.py, ai.py, public_forms.py
 ```
 
 ## What's Implemented
-- Full public website + FAQ + Legal pages
+- Full public website + FAQ + Legal pages + Bilingual EN/ES
 - Admin CRM with all enterprise modules
-- Orders CRUD with QR tickets (SVG), Stripe checkout, notification workflows
-- Logistics Map with backend data (traffic MOCKED)
+- Orders CRUD with QR tickets, Stripe checkout, notification workflows
+- Logistics Map with real-time TomTom traffic data (15 incidents in Ventura area)
 - AI Metrics + Quick Approval + Jarvis operator assistant
 - Stripe Payment Elements (inline, tap-to-pay)
-- Enterprise: Suppliers, Catalog, Inventory (with alerts), Finances (expenses, mileage, vehicles)
+- Enterprise: Suppliers, Catalog, Inventory (with alerts), Finances
 - KPIs Operational Dashboard
-- Camera/File Upload for expense receipts + OCR auto-fill (amount, description, date, vendor) via GPT-4o Vision
+- Camera/File Upload for expense receipts + OCR auto-fill via GPT-4o Vision
+- OCR Analytics Dashboard — tracks success rate, field extraction accuracy, top vendors, total amount captured
 - Delivery zone rules + payment validation
-- CSV export for all entities
-- Customer portal auth (register/login)
-- Operator limited-view order management
-- Bilingual EN/ES on all pages
-- Pacific Time (PT) timezone throughout
-- **server_core.py fully refactored to pure bootstrap (531 lines)**
+- CSV export, Customer portal, Operator limited-view
+- server_core.py fully refactored to pure bootstrap (531 lines)
 
 ## Credentials
 - Admin: owner@frimexllc.com / Fr!m3x##$$
 
+## API Keys in .env
+- TOMTOM_API_KEY — Real-time traffic for logistics map
+- EMERGENT_LLM_KEY — Vision OCR + AI assistant
+- STRIPE_API_KEY / STRIPE_PUBLISHABLE_KEY
+- TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN
+- SENDGRID_API_KEY
+- ORS_API_KEY — OpenRouteService
+
 ## Known Issues
-- Traffic events in logistics map are MOCKED (simulated data)
-- Stripe Checkout conditionally available (requires STRIPE_API_KEY env var)
-- Inventory alert SMS/email requires Twilio/SendGrid env vars
+- None currently broken
 
 ## Backlog
-- P2: Replace simulated traffic with real traffic API
-- P2: OCR Analytics Dashboard
 - PAUSED: Advanced Stripe Sync (bidirectional) — pending user call
