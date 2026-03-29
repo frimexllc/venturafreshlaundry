@@ -15,9 +15,33 @@ from fastapi import HTTPException
 
 from database import db
 from models import OrderCreate
-from normalization import normalize_spaces, normalize_address
 
 logger = logging.getLogger(__name__)
+
+# ── Normalization helpers (merged from normalization.py) ─────────────
+import re as _re
+import unicodedata as _ud
+
+def normalize_spaces(value):
+    if not value or not isinstance(value, str): return value
+    return " ".join(value.split()).strip()
+
+def normalize_email(value):
+    if not value or not isinstance(value, str): return value
+    return value.strip().lower()
+
+def normalize_phone(value):
+    if not value or not isinstance(value, str): return value
+    digits = _re.sub(r"[^\d+]", "", value.strip())
+    return digits if digits else value.strip()
+
+def normalize_address(value):
+    if not value or not isinstance(value, str): return value
+    return normalize_spaces(value)
+
+def normalize_preference_dict(data):
+    if not data or not isinstance(data, dict): return data
+    return {k: normalize_spaces(v) if isinstance(v, str) else v for k, v in data.items()}
 
 
 # ── Order helpers ────────────────────────────────────────────────────

@@ -26,15 +26,24 @@ import html
 import time
 import re
 
-from normalization import (
+from utils import (
     normalize_email,
     normalize_phone,
     normalize_spaces,
-    normalize_name,
     normalize_address,
-    normalize_yes_no,
     normalize_preference_dict
 )
+
+def normalize_name(value):
+    if not value or not isinstance(value, str): return value
+    return " ".join(value.split()).strip().title()
+
+def normalize_yes_no(value):
+    if not value or not isinstance(value, str): return value
+    v = value.strip().lower()
+    if v in ("yes", "si", "sí", "1", "true"): return "yes"
+    if v in ("no", "0", "false"): return "no"
+    return value.strip()
 
 # ── Shared modules ───────────────────────────────────────────────────
 from database import db, client, SKIP_SERVER_NOTIFICATIONS, BUSINESS_NAME, JWT_SECRET, JWT_ALGORITHM, JWT_EXPIRATION_HOURS
@@ -4411,6 +4420,38 @@ try:
     logger.info("Stripe Payments router enabled at /api/stripe/*")
 except Exception as e:
     logger.warning(f"Stripe Payments router not loaded: {e}")
+
+# Include Suppliers router
+try:
+    from routes.suppliers import router as suppliers_router
+    app.include_router(suppliers_router)
+    logger.info("Suppliers router enabled at /api/suppliers/*")
+except Exception as e:
+    logger.warning(f"Suppliers router not loaded: {e}")
+
+# Include Finances router (expenses, mileage, vehicles)
+try:
+    from routes.finances import router as finances_router
+    app.include_router(finances_router)
+    logger.info("Finances router enabled at /api/finances/*")
+except Exception as e:
+    logger.warning(f"Finances router not loaded: {e}")
+
+# Include Catalog router (authorized products)
+try:
+    from routes.catalog import router as catalog_router
+    app.include_router(catalog_router)
+    logger.info("Catalog router enabled at /api/catalog/*")
+except Exception as e:
+    logger.warning(f"Catalog router not loaded: {e}")
+
+# Include Inventory router (stock, purchase orders)
+try:
+    from routes.inventory import router as inventory_router
+    app.include_router(inventory_router)
+    logger.info("Inventory router enabled at /api/inventory/*")
+except Exception as e:
+    logger.warning(f"Inventory router not loaded: {e}")
 
 # Stripe webhook endpoint
 @app.post("/api/webhook/stripe")

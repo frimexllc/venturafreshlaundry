@@ -13,7 +13,7 @@ from pathlib import Path
 import openrouteservice
 import requests
 from motor.motor_asyncio import AsyncIOMotorClient
-from normalization import normalize_email, normalize_phone, normalize_spaces, normalize_preference_dict
+from utils import normalize_email, normalize_phone, normalize_spaces, normalize_preference_dict
 from notifications import notify_store_order
 UPLOAD_DIR = Path("uploads/products")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)

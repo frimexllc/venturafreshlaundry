@@ -6,15 +6,19 @@ import uuid
 import os
 import asyncio
 
-from normalization import (
-    normalize_name,
-    normalize_email,
-    normalize_phone,
-    normalize_address,
-    normalize_spaces,
-    normalize_preference_dict,
-    normalize_yes_no
-)
+from utils import normalize_email, normalize_phone, normalize_spaces, normalize_address, normalize_preference_dict
+
+def normalize_name(value):
+    if not value or not isinstance(value, str): return value
+    return " ".join(value.split()).strip().title()
+
+def normalize_yes_no(value):
+    if not value or not isinstance(value, str): return value
+    v = value.strip().lower()
+    if v in ("yes", "si", "sí", "1", "true"): return "yes"
+    if v in ("no", "0", "false"): return "no"
+    return value.strip()
+
 from notifications import notify_order_created, send_sms, normalize_preferred_contact
 from ai_assistant import get_groq_client
 
