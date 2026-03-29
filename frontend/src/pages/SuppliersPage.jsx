@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useLocale } from "../context/LocaleContext";
 import { Plus, Search, Truck, Phone, Mail, MapPin, Globe, Edit, Trash2, X, ChevronDown, Package } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -17,6 +18,7 @@ const CAT_COLORS = { chemicals: "bg-blue-100 text-blue-800", packaging: "bg-ambe
 const empty = { name: "", contact_name: "", email: "", phone: "", address: "", website: "", category: "general", products_services: [], payment_terms: "", notes: "", status: "active" };
 
 export default function SuppliersPage() {
+  const { t } = useLocale();
   const [suppliers, setSuppliers] = useState([]);
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState("");
@@ -56,15 +58,15 @@ export default function SuppliersPage() {
     <div className="space-y-6" data-testid="suppliers-page">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Proveedores</h1>
-          <p className="text-sm text-gray-500">{suppliers.length} proveedores registrados</p>
+          <h1 className="text-2xl font-bold text-gray-900">{t("Suppliers", "Proveedores")}</h1>
+          <p className="text-sm text-gray-500">{suppliers.length} {t("registered suppliers", "proveedores registrados")}</p>
         </div>
-        <Button onClick={openNew} data-testid="add-supplier-btn"><Plus className="w-4 h-4 mr-1.5" /> Nuevo Proveedor</Button>
+        <Button onClick={openNew} data-testid="add-supplier-btn"><Plus className="w-4 h-4 mr-1.5" /> {t("New Supplier","Nuevo Proveedor")}</Button>
       </div>
       <div className="flex flex-wrap gap-2">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <Input placeholder="Buscar proveedor..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" data-testid="supplier-search" />
+          <Input placeholder={t("Search supplier...","Buscar proveedor...")} value={search} onChange={e => setSearch(e.target.value)} className="pl-9" data-testid="supplier-search" />
         </div>
         <select value={catFilter} onChange={e => setCatFilter(e.target.value)} className="border rounded-lg px-3 py-2 text-sm" data-testid="supplier-cat-filter">
           <option value="">Todas las categorias</option>
@@ -109,7 +111,7 @@ export default function SuppliersPage() {
       </div>
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto" data-testid="supplier-modal">
-          <DialogHeader><DialogTitle>{editId ? "Editar Proveedor" : "Nuevo Proveedor"}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{editId ? t("Edit Supplier","Editar Proveedor") : t("New Supplier","Nuevo Proveedor")}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <div><Label>Nombre *</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} data-testid="supplier-name" /></div>

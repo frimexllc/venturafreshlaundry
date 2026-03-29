@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useLocale } from "../context/LocaleContext";
 import { Package, Search, Plus, Trash2, AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, ShoppingCart, TrendingDown, Box, FileText } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -12,6 +13,7 @@ const API = process.env.REACT_APP_BACKEND_URL;
 const h = () => ({ "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` });
 
 export default function InventoryPage() {
+  const { t } = useLocale();
   const [tab, setTab] = useState("stock");
   const [stock, setStock] = useState([]);
   const [lowStock, setLowStock] = useState([]);
@@ -55,20 +57,20 @@ export default function InventoryPage() {
   return (
     <div className="space-y-6" data-testid="inventory-page">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <div><h1 className="text-2xl font-bold text-gray-900">Inventario</h1><p className="text-sm text-gray-500">{stock.length} productos en inventario</p></div>
+        <div><h1 className="text-2xl font-bold text-gray-900">{t("Inventory", "Inventario")}</h1><p className="text-sm text-gray-500">{stock.length} {t("products in inventory", "productos en inventario")}</p></div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => { setForm({ product_name: "", category: "", quantity: "", movement_type: "in", reason: "" }); setModal("movement"); }} data-testid="add-movement-btn"><ArrowUpDown className="w-4 h-4 mr-1" /> Movimiento</Button>
-          <Button onClick={() => { setForm({ supplier_id: "", items: [{ name: "", quantity: 1, unit_price: 0 }], notes: "", expected_date: "" }); setModal("po"); }} data-testid="add-po-btn"><ShoppingCart className="w-4 h-4 mr-1" /> Orden de Compra</Button>
+          <Button variant="outline" onClick={() => { setForm({ product_name: "", category: "", quantity: "", movement_type: "in", reason: "" }); setModal("movement"); }} data-testid="add-movement-btn"><ArrowUpDown className="w-4 h-4 mr-1" /> {t("Movement","Movimiento")}</Button>
+          <Button onClick={() => { setForm({ supplier_id: "", items: [{ name: "", quantity: 1, unit_price: 0 }], notes: "", expected_date: "" }); setModal("po"); }} data-testid="add-po-btn"><ShoppingCart className="w-4 h-4 mr-1" /> {t("Purchase Order","Orden de Compra")}</Button>
         </div>
       </div>
       {lowStock.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4" data-testid="low-stock-alert">
-          <div className="flex items-center gap-2 text-amber-800 font-semibold text-sm mb-2"><AlertTriangle className="w-4 h-4" /> {lowStock.length} productos con stock bajo</div>
-          <div className="flex flex-wrap gap-2">{lowStock.map(i => <Badge key={i.id || i.name} className="bg-amber-100 text-amber-800">{i.name}: {i.quantity} unid.</Badge>)}</div>
+          <div className="flex items-center gap-2 text-amber-800 font-semibold text-sm mb-2"><AlertTriangle className="w-4 h-4" /> {lowStock.length} {t("products with low stock","productos con stock bajo")}</div>
+          <div className="flex flex-wrap gap-2">{lowStock.map(i => <Badge key={i.id || i.name} className="bg-amber-100 text-amber-800">{i.name}: {i.quantity} {t("units","unid.")}</Badge>)}</div>
         </div>
       )}
       <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-        {[["stock", "Stock Actual"], ["movements", "Movimientos"], ["po", "Ordenes de Compra"]].map(([key, label]) => (
+        {[["stock", t("Current Stock","Stock Actual")], ["movements", t("Movements","Movimientos")], ["po", t("Purchase Orders","Ordenes de Compra")]].map(([key, label]) => (
           <button key={key} onClick={() => setTab(key)} data-testid={`inv-tab-${key}`} className={`flex-1 text-sm font-medium py-2 rounded-md transition-colors ${tab === key ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700"}`}>{label}</button>
         ))}
       </div>

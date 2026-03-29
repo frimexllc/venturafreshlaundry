@@ -8,6 +8,7 @@ import time
 import logging
 from typing import List, Optional
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 import qrcode
 from qrcode.image.svg import SvgImage
@@ -17,6 +18,44 @@ from database import db
 from models import OrderCreate
 
 logger = logging.getLogger(__name__)
+
+# ── Timezone: Ventura, California ────────────────────────────────────
+TZ_PACIFIC = ZoneInfo("America/Los_Angeles")
+
+def now_utc():
+    """Current time in UTC (for storage)."""
+    return datetime.now(timezone.utc)
+
+def now_pacific():
+    """Current time in America/Los_Angeles (for display)."""
+    return datetime.now(TZ_PACIFIC)
+
+def to_pacific(dt_str):
+    """Convert an ISO datetime string (UTC) to Pacific time string."""
+    if not dt_str:
+        return dt_str
+    try:
+        if isinstance(dt_str, datetime):
+            dt = dt_str
+        else:
+            dt_str = str(dt_str)
+            if dt_str.endswith("Z"):
+                dt_str = dt_str[:-1] + "+00:00"
+            dt = datetime.fromisoformat(dt_str)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(TZ_PACIFIC).isoformat()
+    except Exception:
+        return dt_str
+
+def now_iso():
+    """Current UTC time as ISO string (for DB storage)."""
+    return now_utc().isoformat()
+
+def now_pacific_display():
+    """Current Pacific time formatted for display: 'Mar 28, 2026 6:30 PM PT'."""
+    dt = now_pacific()
+    return dt.strftime("%b %d, %Y %I:%M %p PT")
 
 # ── Normalization helpers (merged from normalization.py) ─────────────
 import re as _re

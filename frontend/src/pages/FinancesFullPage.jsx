@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useLocale } from "../context/LocaleContext";
 import { Plus, Search, DollarSign, TrendingUp, TrendingDown, Fuel, Car, Trash2, Edit, Receipt, Calendar, Filter, ArrowUpDown, Camera, Paperclip, X, Image } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -21,6 +22,7 @@ const emptyMileage = { date: new Date().toISOString().split("T")[0], vehicle_id:
 const emptyVehicle = { name: "", plate: "", make: "", model: "", year: "", status: "active" };
 
 export default function FinancesPage() {
+  const { t } = useLocale();
   const [tab, setTab] = useState("expenses");
   const [dashboard, setDashboard] = useState(null);
   const [expenses, setExpenses] = useState([]);
@@ -140,7 +142,7 @@ export default function FinancesPage() {
   return (
     <div className="space-y-6" data-testid="finances-page">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <div><h1 className="text-2xl font-bold text-gray-900">Finanzas</h1><p className="text-sm text-gray-500">Control financiero operativo</p></div>
+        <div><h1 className="text-2xl font-bold text-gray-900">{t("Finances", "Finanzas")}</h1><p className="text-sm text-gray-500">{t("Operational financial control", "Control financiero operativo")} (PT)</p></div>
         <div className="flex items-center gap-2">
           <select value={period} onChange={e => setPeriod(e.target.value)} className="border rounded-lg px-3 py-2 text-sm" data-testid="period-select">
             <option value="day">Hoy</option><option value="week">Semana</option><option value="month">Mes</option><option value="year">Ano</option>
@@ -149,10 +151,10 @@ export default function FinancesPage() {
       </div>
       {dashboard && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <StatCard label="Ingresos" value={`$${dashboard.revenue?.toFixed(2) || '0'}`} icon={TrendingUp} color="text-green-700" bg="bg-green-50" />
-          <StatCard label="Gastos" value={`$${dashboard.total_expenses?.toFixed(2) || '0'}`} icon={TrendingDown} color="text-red-700" bg="bg-red-50" />
-          <StatCard label="Utilidad Neta" value={`$${dashboard.net_income?.toFixed(2) || '0'}`} icon={DollarSign} color={dashboard.net_income >= 0 ? "text-green-700" : "text-red-700"} bg={dashboard.net_income >= 0 ? "bg-green-50" : "bg-red-50"} />
-          <StatCard label="Millaje" value={`${dashboard.mileage?.total_miles?.toFixed(0) || '0'} mi`} icon={Car} color="text-blue-700" bg="bg-blue-50" />
+          <StatCard label={t("Revenue","Ingresos")} value={`$${dashboard.revenue?.toFixed(2) || '0'}`} icon={TrendingUp} color="text-green-700" bg="bg-green-50" />
+          <StatCard label={t("Expenses","Gastos")} value={`$${dashboard.total_expenses?.toFixed(2) || '0'}`} icon={TrendingDown} color="text-red-700" bg="bg-red-50" />
+          <StatCard label={t("Net Income","Utilidad Neta")} value={`$${dashboard.net_income?.toFixed(2) || '0'}`} icon={DollarSign} color={dashboard.net_income >= 0 ? "text-green-700" : "text-red-700"} bg={dashboard.net_income >= 0 ? "bg-green-50" : "bg-red-50"} />
+          <StatCard label={t("Mileage","Millaje")} value={`${dashboard.mileage?.total_miles?.toFixed(0) || '0'} mi`} icon={Car} color="text-blue-700" bg="bg-blue-50" />
         </div>
       )}
       {dashboard?.by_category && Object.keys(dashboard.by_category).length > 0 && (
@@ -173,7 +175,7 @@ export default function FinancesPage() {
         </div>
       )}
       <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-        {[["expenses", "Gastos"], ["mileage", "Millaje"], ["vehicles", "Vehiculos"]].map(([key, label]) => (
+        {[["expenses", t("Expenses","Gastos")], ["mileage", t("Mileage","Millaje")], ["vehicles", t("Vehicles","Vehiculos")]].map(([key, label]) => (
           <button key={key} onClick={() => setTab(key)} data-testid={`tab-${key}`} className={`flex-1 text-sm font-medium py-2 rounded-md transition-colors ${tab === key ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700"}`}>{label}</button>
         ))}
       </div>
@@ -182,7 +184,7 @@ export default function FinancesPage() {
           <div className="flex flex-wrap gap-2">
             <div className="relative flex-1 min-w-[200px]"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" /><Input placeholder="Buscar gasto..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" /></div>
             <select value={expenseType} onChange={e => setExpenseType(e.target.value)} className="border rounded-lg px-3 py-2 text-sm"><option value="">Todos</option><option value="fixed">Fijos</option><option value="variable">Variables</option><option value="subscription">Suscripciones</option></select>
-            <Button onClick={() => { setEditId(null); setForm({ ...emptyExpense }); setAttachments([]); setExistingFiles([]); setModal("expense"); }} data-testid="add-expense-btn"><Plus className="w-4 h-4 mr-1" /> Nuevo Gasto</Button>
+            <Button onClick={() => { setEditId(null); setForm({ ...emptyExpense }); setAttachments([]); setExistingFiles([]); setModal("expense"); }} data-testid="add-expense-btn"><Plus className="w-4 h-4 mr-1" /> {t("New Expense","Nuevo Gasto")}</Button>
           </div>
           <div className="bg-white border rounded-xl overflow-hidden">
             <table className="w-full text-sm">
@@ -245,7 +247,7 @@ export default function FinancesPage() {
       )}
       <Dialog open={!!modal} onOpenChange={() => setModal(null)}>
         <DialogContent className="max-w-md" data-testid="finance-modal">
-          <DialogHeader><DialogTitle>{modal === "expense" ? (editId ? "Editar Gasto" : "Nuevo Gasto") : modal === "mileage" ? "Registrar Millaje" : (editId ? "Editar Vehiculo" : "Nuevo Vehiculo")}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{modal === "expense" ? (editId ? t("Edit Expense","Editar Gasto") : t("New Expense","Nuevo Gasto")) : modal === "mileage" ? t("Log Mileage","Registrar Millaje") : (editId ? t("Edit Vehicle","Editar Vehiculo") : t("New Vehicle","Nuevo Vehiculo"))}</DialogTitle></DialogHeader>
           {modal === "expense" && (
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3"><div><Label>Fecha</Label><Input type="date" value={form.date || ""} onChange={e => setForm({ ...form, date: e.target.value })} /></div><div><Label>Monto ($)</Label><Input type="number" step="0.01" value={form.amount || ""} onChange={e => setForm({ ...form, amount: e.target.value })} data-testid="expense-amount" /></div></div>
@@ -255,15 +257,15 @@ export default function FinancesPage() {
               <div><Label>Notas</Label><Textarea value={form.notes || ""} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} /></div>
               {/* Camera & File Upload Section */}
               <div className="space-y-2">
-                <Label>Comprobante / Recibo</Label>
+                <Label>{t("Receipt / Proof","Comprobante / Recibo")}</Label>
                 <div className="flex gap-2">
                   <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileSelect} data-testid="camera-input" />
                   <input ref={fileRef} type="file" accept="image/*,.pdf,.csv,.txt" multiple className="hidden" onChange={handleFileSelect} data-testid="file-input" />
                   <Button type="button" variant="outline" size="sm" onClick={() => cameraRef.current?.click()} data-testid="camera-btn" className="flex-1">
-                    <Camera className="w-4 h-4 mr-1.5" /> Tomar Foto
+                    <Camera className="w-4 h-4 mr-1.5" /> {t("Take Photo","Tomar Foto")}
                   </Button>
                   <Button type="button" variant="outline" size="sm" onClick={() => fileRef.current?.click()} data-testid="attach-btn" className="flex-1">
-                    <Paperclip className="w-4 h-4 mr-1.5" /> Adjuntar
+                    <Paperclip className="w-4 h-4 mr-1.5" /> {t("Attach","Adjuntar")}
                   </Button>
                 </div>
                 {/* Preview new attachments */}
@@ -304,7 +306,7 @@ export default function FinancesPage() {
                   </div>
                 )}
               </div>
-              <Button onClick={saveExpense} className="w-full" data-testid="save-expense-btn">{editId ? "Actualizar" : "Guardar Gasto"}</Button>
+              <Button onClick={saveExpense} className="w-full" data-testid="save-expense-btn">{editId ? t("Update","Actualizar") : t("Save Expense","Guardar Gasto")}</Button>
             </div>
           )}
           {modal === "mileage" && (
@@ -313,7 +315,7 @@ export default function FinancesPage() {
               <div><Label>Conductor</Label><Input value={form.driver_name || ""} onChange={e => setForm({ ...form, driver_name: e.target.value })} /></div>
               <div className="grid grid-cols-2 gap-3"><div><Label>Odometro Inicio</Label><Input type="number" value={form.start_odometer || ""} onChange={e => setForm({ ...form, start_odometer: e.target.value })} /></div><div><Label>Odometro Final</Label><Input type="number" value={form.end_odometer || ""} onChange={e => setForm({ ...form, end_odometer: e.target.value })} /></div></div>
               <div><Label>Proposito</Label><Input value={form.purpose || ""} onChange={e => setForm({ ...form, purpose: e.target.value })} placeholder="Entregas zona norte, etc." /></div>
-              <Button onClick={saveMileage} className="w-full" data-testid="save-mileage-btn">Registrar Millaje</Button>
+              <Button onClick={saveMileage} className="w-full" data-testid="save-mileage-btn">{t("Log Mileage","Registrar Millaje")}</Button>
             </div>
           )}
           {modal === "vehicle" && (

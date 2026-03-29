@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useLocale } from "../context/LocaleContext";
 import { Package, Search, Plus, Trash2, Edit, Check, X, ChevronDown } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -15,6 +16,7 @@ const CAT_COLORS = { detergent: "bg-blue-500", softener: "bg-pink-500", dryer_sh
 const CAT_BG = { detergent: "bg-blue-50 border-blue-200", softener: "bg-pink-50 border-pink-200", dryer_sheet: "bg-amber-50 border-amber-200", bleach: "bg-cyan-50 border-cyan-200" };
 
 export default function CatalogPage() {
+  const { t } = useLocale();
   const [items, setItems] = useState([]);
   const [filter, setFilter] = useState("");
   const [search, setSearch] = useState("");
@@ -44,7 +46,7 @@ export default function CatalogPage() {
   return (
     <div className="space-y-6" data-testid="catalog-page">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <div><h1 className="text-2xl font-bold text-gray-900">Catalogo Autorizado</h1><p className="text-sm text-gray-500">{items.length} productos — Solo marcas autorizadas</p></div>
+        <div><h1 className="text-2xl font-bold text-gray-900">{t("Authorized Catalog", "Catalogo Autorizado")}</h1><p className="text-sm text-gray-500">{items.length} {t("products — Authorized brands only", "productos — Solo marcas autorizadas")}</p></div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={seed}>Reiniciar Catalogo</Button>
           <Button onClick={() => { setEditId(null); setForm({ name: "", category: "detergent", brand: "", price: "", in_stock: true, default: false }); setModalOpen(true); }} data-testid="add-catalog-btn"><Plus className="w-4 h-4 mr-1" /> Agregar Producto</Button>

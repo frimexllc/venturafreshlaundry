@@ -3300,166 +3300,9 @@ async def root():
 async def health_check():
     return {"status": "healthy", "timestamp": datetime.now(timezone.utc).isoformat()}
 
-# ==================== EXPORT ENDPOINTS ====================
+# ==================== EXPORT ENDPOINTS (Extracted → routes/exports.py) ====================
 
-@api_router.get("/export/customers")
-async def export_customers_csv(current_user: dict = Depends(get_current_user)):
-    """Export customers to CSV"""
-    customers = await db.customers.find({}, {"_id": 0}).to_list(10000)
-
-    output = io.StringIO()
-    if customers:
-        all_keys = set()
-        for customer in customers:
-            if isinstance(customer, dict):
-                all_keys.update([str(key) for key in customer.keys()])
-        fieldnames = sorted(list(all_keys))
-
-        writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction="ignore")
-        writer.writeheader()
-        for customer in customers:
-            normalized = {}
-            for key in fieldnames:
-                value = customer.get(key, "")
-                if isinstance(value, (dict, list)):
-                    value = json.dumps(value, default=str)
-                elif value is None:
-                    value = ""
-                elif not isinstance(value, (str, int, float, bool)):
-                    value = str(value)
-                normalized[key] = value
-            writer.writerow(normalized)
-
-    output.seek(0)
-    return StreamingResponse(
-        iter([output.getvalue()]),
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=customers.csv"}
-    )
-
-@api_router.get("/export/orders")
-async def export_orders_csv(current_user: dict = Depends(get_current_user)):
-    """Export orders to CSV"""
-    orders = await db.orders.find({}, {"_id": 0}).to_list(10000)
-    
-    output = io.StringIO()
-    if orders:
-        base_fields = [
-            "id",
-            "order_number",
-            "customer_id",
-            "customer_name",
-            "service_type",
-            "pickup_date",
-            "pickup_time_window",
-            "pickup_address",
-            "delivery_address",
-            "estimated_lbs",
-            "notes",
-            "gate_code",
-            "status",
-            "payment_status",
-            "total_amount",
-            "created_at",
-            "updated_at"
-        ]
-        fieldnames = [field for field in base_fields if any(field in o for o in orders)]
-        extra_fields = sorted({key for o in orders for key in o.keys()} - set(fieldnames))
-        fieldnames.extend(extra_fields)
-        writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction="ignore")
-        writer.writeheader()
-        writer.writerows(orders)
-    
-    output.seek(0)
-    return StreamingResponse(
-        iter([output.getvalue()]),
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=orders.csv"}
-    )
-
-@api_router.get("/export/leads")
-async def export_leads_csv(current_user: dict = Depends(get_current_user)):
-    """Export leads to CSV"""
-    leads = await db.leads.find({}, {"_id": 0}).to_list(10000)
-    
-    output = io.StringIO()
-    if leads:
-        writer = csv.DictWriter(output, fieldnames=leads[0].keys())
-        writer.writeheader()
-        writer.writerows(leads)
-    
-    output.seek(0)
-    return StreamingResponse(
-        iter([output.getvalue()]),
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=leads.csv"}
-    )
-
-@api_router.get("/export/quotes")
-async def export_quotes_csv(current_user: dict = Depends(get_current_user)):
-    """Export quotes to CSV"""
-    quotes = await db.quotes.find({}, {"_id": 0}).to_list(10000)
-    
-    output = io.StringIO()
-    if quotes:
-        writer = csv.DictWriter(output, fieldnames=quotes[0].keys())
-        writer.writeheader()
-        writer.writerows(quotes)
-    
-    output.seek(0)
-    return StreamingResponse(
-        iter([output.getvalue()]),
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=quotes.csv"}
-    )
-
-@api_router.get("/export/tickets")
-async def export_tickets_csv(current_user: dict = Depends(get_current_user)):
-    """Export tickets to CSV"""
-    tickets = await db.tickets.find({}, {"_id": 0}).to_list(10000)
-    
-    output = io.StringIO()
-    if tickets:
-        writer = csv.DictWriter(output, fieldnames=tickets[0].keys())
-        writer.writeheader()
-        writer.writerows(tickets)
-    
-    output.seek(0)
-    return StreamingResponse(
-        iter([output.getvalue()]),
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=tickets.csv"}
-    )
-
-# ==================== CALENDAR ENDPOINTS ====================
-
-@api_router.get("/calendar/orders")
-async def get_calendar_orders(
-    start_date: str = Query(..., description="Start date YYYY-MM-DD"),
-    end_date: str = Query(..., description="End date YYYY-MM-DD"),
-    current_user: dict = Depends(get_current_user)
-):
-    """Get orders for calendar view within date range"""
-    orders = await db.orders.find({
-        "pickup_date": {"$gte": start_date, "$lte": end_date}
-    }, {"_id": 0}).to_list(1000)
-    
-    # Format for calendar
-    events = []
-    for order in orders:
-        events.append({
-            "id": order["id"],
-            "title": f"{order['order_number']} - {order['customer_name']}",
-            "date": order["pickup_date"],
-            "time": order.get("pickup_time_window"),
-            "status": order["status"],
-            "service_type": order["service_type"],
-            "address": order.get("pickup_address"),
-            "customer_name": order["customer_name"],
-            "order_number": order["order_number"]
-        })
-    
-    return events
+# ==================== CALENDAR ENDPOINTS (Extracted → routes/calendar.py) ====================
 
 # ==================== NOTIFICATION SETTINGS ====================
 
@@ -3619,98 +3462,7 @@ async def get_customer_orders(current_customer: dict = Depends(get_current_custo
     ).sort("created_at", -1).to_list(100)
     return orders
 
-# ==================== USER MANAGEMENT (ADMIN ONLY) ====================
-
-class UserUpdateRole(BaseModel):
-    role: str
-
-class UserCreateAdmin(BaseModel):
-    email: EmailStr
-    password: str
-    name: str
-    role: str = ROLE_OPERATOR
-
-@api_router.get("/admin/users")
-async def list_users(current_user: dict = Depends(get_current_user)):
-    """List all users (admin only)"""
-    require_admin(current_user)
-    users = await db.users.find({}, {"_id": 0, "password_hash": 0}).sort("created_at", -1).to_list(100)
-    return users
-
-@api_router.post("/admin/users", response_model=UserResponse)
-async def create_user_admin(user_data: UserCreateAdmin, current_user: dict = Depends(get_current_user)):
-    """Create a new user with specified role (admin only)"""
-    require_admin(current_user)
-    
-    if user_data.role not in VALID_ROLES:
-        raise HTTPException(status_code=400, detail=f"Invalid role. Must be one of: {VALID_ROLES}")
-    
-    existing = await db.users.find_one({"email": user_data.email.lower()})
-    if existing:
-        raise HTTPException(status_code=400, detail="Email already registered")
-    
-    user_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc).isoformat()
-    user = {
-        "id": user_id,
-        "email": user_data.email.lower(),
-        "password_hash": hash_password(user_data.password),
-        "name": user_data.name,
-        "role": user_data.role,
-        "created_at": now
-    }
-    await db.users.insert_one(user)
-    await create_audit_log("USER_CREATED_BY_ADMIN", "user", user_id, current_user["id"], {"role": user_data.role})
-    
-    return UserResponse(id=user_id, email=user["email"], name=user["name"], role=user["role"], created_at=now)
-
-@api_router.put("/admin/users/{user_id}/role")
-async def update_user_role(user_id: str, data: UserUpdateRole, current_user: dict = Depends(get_current_user)):
-    """Update user role (admin only)"""
-    require_admin(current_user)
-    
-    if data.role not in VALID_ROLES:
-        raise HTTPException(status_code=400, detail=f"Invalid role. Must be one of: {VALID_ROLES}")
-    
-    # Prevent admin from demoting themselves
-    if user_id == current_user["id"] and data.role != ROLE_ADMIN:
-        raise HTTPException(status_code=400, detail="Cannot change your own role")
-    
-    result = await db.users.update_one(
-        {"id": user_id},
-        {"$set": {"role": data.role}}
-    )
-    
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    await create_audit_log("USER_ROLE_UPDATED", "user", user_id, current_user["id"], {"new_role": data.role})
-    return {"message": f"User role updated to {data.role}"}
-
-@api_router.delete("/admin/users/{user_id}")
-async def delete_user(user_id: str, current_user: dict = Depends(get_current_user)):
-    """Delete a user (admin only)"""
-    require_admin(current_user)
-    
-    # Prevent admin from deleting themselves
-    if user_id == current_user["id"]:
-        raise HTTPException(status_code=400, detail="Cannot delete your own account")
-    
-    result = await db.users.delete_one({"id": user_id})
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    await create_audit_log("USER_DELETED", "user", user_id, current_user["id"])
-    return {"message": "User deleted"}
-
-@api_router.get("/admin/roles")
-async def get_roles(current_user: dict = Depends(get_current_user)):
-    """Get available roles and their permissions"""
-    require_admin(current_user)
-    return {
-        "roles": VALID_ROLES,
-        "permissions": ROLE_PERMISSIONS
-    }
+# ==================== USER MANAGEMENT (Extracted → routes/users.py) ====================
 
 # ==================== OPERATOR-ONLY ENDPOINTS ====================
 
@@ -3800,6 +3552,9 @@ for _mod, _name in [
     ("routes.quotes", "Quotes"),
     ("routes.leads", "Leads"),
     ("routes.tickets", "Tickets"),
+    ("routes.users", "User Management"),
+    ("routes.exports", "Exports"),
+    ("routes.calendar", "Calendar"),
 ]:
     try:
         import importlib
@@ -3918,6 +3673,14 @@ try:
     logger.info("Inventory router enabled at /api/inventory/*")
 except Exception as e:
     logger.warning(f"Inventory router not loaded: {e}")
+
+# Include Inventory Alerts router
+try:
+    from routes.inventory_alerts import router as alerts_router
+    app.include_router(alerts_router)
+    logger.info("Inventory Alerts router enabled at /api/inventory/alerts")
+except Exception as e:
+    logger.warning(f"Inventory Alerts router not loaded: {e}")
 
 # Include Delivery Rules router (ZIP codes, pricing, payment validation)
 try:

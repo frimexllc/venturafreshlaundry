@@ -186,5 +186,7 @@ async def get_payment_methods():
             "delivery_requires_payment": True,
             "message": "All delivery orders require payment confirmation before dispatch.",
             "message_es": "Todos los pedidos de delivery requieren confirmacion de pago antes del despacho."
-        }
+        },
+        "timezone": "America/Los_Angeles",
+        "timezone_label": "Pacific Time (PT)"
     }
