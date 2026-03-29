@@ -14,47 +14,54 @@ Comprehensive AI-powered laundry management system with enterprise modules, AI a
 ## Modular Backend Architecture
 ```
 /app/backend/
-  server.py          → Lightweight FastAPI entry point
-  server_core.py     → 531 lines — Pure bootstrap/mount point (COMPLETE)
-  realtime.py        → Shared socket.io emission helper
-  routes/
-    auth_routes.py, dashboard.py, customers.py, orders.py, quotes.py, leads.py,
-    tickets.py, users.py, exports.py, calendar.py, services.py, ingest.py,
-    audit.py, settings.py, customer_auth.py, operator.py, suppliers.py,
-    catalog.py, inventory.py, inventory_alerts.py, finances.py, delivery_rules.py,
-    kpis.py, file_uploads.py (+ OCR + analytics), ai_assistant.py, ai_metrics.py,
-    ai_admin.py, ai_patterns.py, admin_import.py, traffic.py (TomTom real-time),
-    logistics.py, stripe_payments.py, tim.py, voice.py, ai.py, public_forms.py
+  server.py → Lightweight FastAPI entry point
+  server_core.py → 531 lines — Pure bootstrap/mount point (COMPLETE)
+  notifications.py → Multi-channel (SMS/WhatsApp/Email) notification engine
+  routes/ → 35+ modular routers
 ```
 
 ## What's Implemented
+
+### Core Systems
 - Full public website + FAQ + Legal pages + Bilingual EN/ES
 - Admin CRM with all enterprise modules
 - Orders CRUD with QR tickets, Stripe checkout, notification workflows
-- Logistics Map with real-time TomTom traffic data (15 incidents in Ventura area)
-- AI Metrics + Quick Approval + Jarvis operator assistant
-- Stripe Payment Elements (inline, tap-to-pay)
-- Enterprise: Suppliers, Catalog, Inventory (with alerts), Finances
-- KPIs Operational Dashboard
-- Camera/File Upload for expense receipts + OCR auto-fill via GPT-4o Vision
-- OCR Analytics Dashboard — tracks success rate, field extraction accuracy, top vendors, total amount captured
-- Delivery zone rules + payment validation
-- CSV export, Customer portal, Operator limited-view
-- server_core.py fully refactored to pure bootstrap (531 lines)
+- Customer portal auth (register/login), Operator limited-view
+
+### Notifications (Fixed - Session 4)
+- **Wash & Fold**: Notifications on confirmed, processing, and ready
+- **Schedule Pickup**: Notifications on every status except completed
+- **Quotes**: "Received your request" confirmation
+- **Contact**: "Received your request, we'll contact you" confirmation
+- **Support**: Same as contact
+- All notifications respect user's preferred contact method (SMS/WhatsApp/Email)
+
+### Operator Dashboard (Enhanced - Session 4)
+- Full POS grid with Pickup & Delivery + Wash & Fold sections
+- OrderDetailDialog with: customer info, addresses, notes, preferences
+- **Lbs Input**: Enter actual lbs, auto-recalculates total amount
+- **Payment Collection**: 4 methods (Stripe/Tap-to-Pay, Cash with change calc, Transfer, Other)
+- AI Operations Assistant for natural-language order management
+- Store POS for product sales
+- Urgent tickets panel
+
+### Logistics & Traffic (Session 4)
+- Real-time TomTom Traffic API (15+ incidents in Ventura area, cached 5min)
+- Replaced simulated traffic data
+
+### OCR & Finances (Session 4)
+- Receipt OCR via GPT-4o Vision (amount, vendor, date, description)
+- OCR Analytics Dashboard with success rates, field extraction accuracy, top vendors
+
+### Enterprise Modules
+- Suppliers, Catalog, Inventory (with alerts), Finances (expenses, mileage, vehicles)
+- KPIs Operational Dashboard, AI Metrics, Quick Approval
 
 ## Credentials
 - Admin: owner@frimexllc.com / Fr!m3x##$$
 
 ## API Keys in .env
-- TOMTOM_API_KEY — Real-time traffic for logistics map
-- EMERGENT_LLM_KEY — Vision OCR + AI assistant
-- STRIPE_API_KEY / STRIPE_PUBLISHABLE_KEY
-- TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN
-- SENDGRID_API_KEY
-- ORS_API_KEY — OpenRouteService
-
-## Known Issues
-- None currently broken
+- TOMTOM_API_KEY, EMERGENT_LLM_KEY, STRIPE keys, TWILIO keys, SENDGRID_API_KEY, ORS_API_KEY
 
 ## Backlog
 - PAUSED: Advanced Stripe Sync (bidirectional) — pending user call
