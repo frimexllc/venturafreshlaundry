@@ -31,19 +31,10 @@ from utils import (
     normalize_phone,
     normalize_spaces,
     normalize_address,
-    normalize_preference_dict
+    normalize_preference_dict,
+    normalize_name,
+    normalize_yes_no
 )
-
-def normalize_name(value):
-    if not value or not isinstance(value, str): return value
-    return " ".join(value.split()).strip().title()
-
-def normalize_yes_no(value):
-    if not value or not isinstance(value, str): return value
-    v = value.strip().lower()
-    if v in ("yes", "si", "sí", "1", "true"): return "yes"
-    if v in ("no", "0", "false"): return "no"
-    return value.strip()
 
 # ── Shared modules ───────────────────────────────────────────────────
 from database import db, client, SKIP_SERVER_NOTIFICATIONS, BUSINESS_NAME, JWT_SECRET, JWT_ALGORITHM, JWT_EXPIRATION_HOURS
@@ -273,287 +264,11 @@ if AUTOMATION_ENABLED and set_realtime_emitter:
     set_realtime_emitter(emit_realtime)
 
 
-# ==================== AUTH ENDPOINTS ====================
+# ==================== AUTH ENDPOINTS (Extracted → routes/auth_routes.py) ====================
+# ==================== DASHBOARD (Extracted → routes/dashboard.py) ====================
 
-@api_router.post("/auth/register", response_model=TokenResponse)
-async def register(user_data: UserCreate):
-    existing = await db.users.find_one({"email": user_data.email.lower()})
-    if existing:
-        raise HTTPException(status_code=400, detail="Email already registered")
-    
-    # Check if this is the first user - make them admin
-    user_count = await db.users.count_documents({})
-    role = ROLE_ADMIN if user_count == 0 else ROLE_OPERATOR
-    
-    user_id = str(uuid.uuid4())
-    user = {
-        "id": user_id,
-        "email": user_data.email.lower(),
-        "password_hash": hash_password(user_data.password),
-        "name": user_data.name,
-        "role": role,
-        "created_at": datetime.now(timezone.utc).isoformat()
-    }
-    await db.users.insert_one(user)
-    await create_audit_log("USER_CREATED", "user", user_id, user_id)
-    
-    token = create_token(user_id, user["email"])
-    return TokenResponse(
-        access_token=token,
-        token_type="bearer",
-        user=UserResponse(id=user_id, email=user["email"], name=user["name"], role=user["role"], created_at=user["created_at"])
-    )
-
-@api_router.post("/auth/login", response_model=TokenResponse)
-async def login(credentials: UserLogin):
-    user = await db.users.find_one({"email": credentials.email.lower()}, {"_id": 0})
-    if not user or not verify_password(credentials.password, user["password_hash"]):
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-    
-    token = create_token(user["id"], user["email"])
-    return TokenResponse(
-        access_token=token,
-        token_type="bearer",
-        user=UserResponse(id=user["id"], email=user["email"], name=user["name"], role=user["role"], created_at=user["created_at"])
-    )
-
-@api_router.get("/auth/me", response_model=UserResponse)
-async def get_me(current_user: dict = Depends(get_current_user)):
-    return UserResponse(
-        id=current_user["id"],
-        email=current_user["email"],
-        name=current_user["name"],
-        role=current_user["role"],
-        created_at=current_user["created_at"]
-    )
-
-# ==================== DASHBOARD ====================
-
-@api_router.get("/dashboard/stats", response_model=DashboardStats)
-async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
-    today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
-    month_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
-    
-    total_customers = await db.customers.count_documents({})
-    total_orders = await db.orders.count_documents({})
-    pending_orders = await db.orders.count_documents({"status": {"$in": ["new", "processing", "ready"]}})
-    open_tickets = await db.tickets.count_documents({"status": {"$in": ["open", "in_progress"]}})
-    active_quotes = await db.quotes.count_documents({"status": {"$in": ["new", "sent", "negotiating"]}})
-    new_leads = await db.leads.count_documents({"status": "new"})
-    orders_today = await db.orders.count_documents({"created_at": {"$gte": today}})
-    
-    # Calculate revenue
-    pipeline = [
-        {"$match": {"created_at": {"$gte": month_start}, "payment_status": "paid"}},
-        {"$group": {"_id": None, "total": {"$sum": "$total_amount"}}}
-    ]
-    revenue_result = await db.orders.aggregate(pipeline).to_list(1)
-    revenue = revenue_result[0]["total"] if revenue_result else 0
-    
-    return DashboardStats(
-        total_customers=total_customers,
-        total_orders=total_orders,
-        pending_orders=pending_orders,
-        open_tickets=open_tickets,
-        active_quotes=active_quotes,
-        new_leads=new_leads,
-        orders_today=orders_today,
-        revenue_this_month=revenue or 0
-    )
-
-@api_router.get("/dashboard/recent-activity")
-async def get_recent_activity(current_user: dict = Depends(get_current_user)):
-    logs = await db.audit_logs.find({}, {"_id": 0}).sort("created_at", -1).limit(20).to_list(20)
-    return logs
-
-# ==================== CUSTOMERS ====================
-
-@api_router.post("/customers", response_model=CustomerResponse)
-async def create_customer(data: CustomerCreate, current_user: dict = Depends(get_current_user)):
-    customer_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc).isoformat()
-    normalized_name = normalize_name(data.name)
-    normalized_email = normalize_email(data.email) if data.email else ""
-    normalized_phone = normalize_phone(data.phone)
-    normalized_address = normalize_address(data.address)
-    customer = {
-        "id": customer_id,
-        "name": normalized_name or data.name,
-        "email": normalized_email or (data.email.lower() if data.email else None),
-        "phone": normalized_phone or data.phone,
-        "address": normalized_address or data.address,
-        "preferred_contact": normalize_spaces(data.preferred_contact) or data.preferred_contact,
-        "notes": normalize_spaces(data.notes),
-        "status": "active",
-        "total_orders": 0,
-        "membership_plan": normalize_spaces(data.membership_plan),
-        "membership_status": normalize_spaces(data.membership_status),
-        "membership_start_date": data.membership_start_date,
-        "preferences_id": data.preferences_id,
-        "created_at": now,
-        "updated_at": now
-    }
-    await db.customers.insert_one(customer)
-    await create_audit_log("CUSTOMER_CREATED", "customer", customer_id, current_user["id"])
-    customer.pop("_id", None)
-    return CustomerResponse(**customer)
-
-@api_router.get("/customers", response_model=List[CustomerResponse])
-async def get_customers(
-    search: Optional[str] = None,
-    status: Optional[str] = None,
-    page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=100),
-    current_user: dict = Depends(get_current_user)
-):
-    query = {}
-    if search:
-        query["$or"] = [
-            {"name": {"$regex": search, "$options": "i"}},
-            {"email": {"$regex": search, "$options": "i"}},
-            {"phone": {"$regex": search, "$options": "i"}}
-        ]
-    if status:
-        query["status"] = status
-    
-    skip = (page - 1) * page_size
-    customers = await db.customers.find(query, {"_id": 0}).sort("created_at", -1).skip(skip).limit(page_size).to_list(page_size)
-    return [CustomerResponse(**c) for c in customers]
-
-@api_router.get("/customers/{customer_id}", response_model=CustomerResponse)
-async def get_customer(customer_id: str, current_user: dict = Depends(get_current_user)):
-    customer = await db.customers.find_one({"id": customer_id}, {"_id": 0})
-    if not customer:
-        raise HTTPException(status_code=404, detail="Customer not found")
-    return CustomerResponse(**customer)
-
-@api_router.put("/customers/{customer_id}", response_model=CustomerResponse)
-async def update_customer(customer_id: str, data: CustomerCreate, current_user: dict = Depends(get_current_user)):
-    update_data = data.model_dump(exclude_unset=True)
-    if "name" in update_data:
-        update_data["name"] = normalize_name(update_data["name"]) or update_data["name"]
-    if "email" in update_data and update_data["email"]:
-        normalized_email = normalize_email(update_data["email"])
-        update_data["email"] = normalized_email or update_data["email"].lower()
-    if "phone" in update_data:
-        normalized_phone = normalize_phone(update_data["phone"])
-        update_data["phone"] = normalized_phone or update_data["phone"]
-    if "address" in update_data:
-        update_data["address"] = normalize_address(update_data["address"]) or update_data["address"]
-    if "preferred_contact" in update_data:
-        update_data["preferred_contact"] = normalize_spaces(update_data["preferred_contact"]) or update_data["preferred_contact"]
-    if "notes" in update_data:
-        update_data["notes"] = normalize_spaces(update_data["notes"])
-    if "membership_plan" in update_data:
-        update_data["membership_plan"] = normalize_spaces(update_data["membership_plan"])
-    if "membership_status" in update_data:
-        update_data["membership_status"] = normalize_spaces(update_data["membership_status"])
-
-    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
-    result = await db.customers.update_one({"id": customer_id}, {"$set": update_data})
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Customer not found")
-    
-    await create_audit_log("CUSTOMER_UPDATED", "customer", customer_id, current_user["id"])
-    customer = await db.customers.find_one({"id": customer_id}, {"_id": 0})
-    return CustomerResponse(**customer)
-
-@api_router.delete("/customers/{customer_id}")
-async def delete_customer(customer_id: str, current_user: dict = Depends(get_current_user)):
-    result = await db.customers.delete_one({"id": customer_id})
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Customer not found")
-    await create_audit_log("CUSTOMER_DELETED", "customer", customer_id, current_user["id"])
-    return {"message": "Customer deleted"}
-
-# ==================== PREFERENCES ====================
-
-def normalize_preference_payload(data: PreferenceCreate) -> Dict[str, Any]:
-    def normalize_list(value):
-        if not value:
-            return []
-        if isinstance(value, list):
-            return [normalize_spaces(v) for v in value if normalize_spaces(v)]
-        if isinstance(value, str):
-            cleaned = normalize_spaces(value)
-            return [v for v in (item.strip() for item in cleaned.split(",")) if v]
-        return []
-
-    return {
-        "detergent_type": normalize_spaces(data.detergent_type) or "standard",
-        "water_temperature": normalize_spaces(data.water_temperature),
-        "fabric_softener": normalize_spaces(data.fabric_softener),
-        "folding_style": normalize_spaces(data.folding_style) or "standard",
-        "hanging_instructions": normalize_spaces(data.hanging_instructions),
-        "allergies": normalize_spaces(data.allergies),
-        "special_instructions": normalize_spaces(data.special_instructions),
-        "pickup_time_preference": normalize_spaces(data.pickup_time_preference),
-        "gate_code": normalize_spaces(data.gate_code),
-        "hang_dry_items": normalize_list(data.hang_dry_items),
-        "fragrance_preference": normalize_spaces(data.fragrance_preference) or "light"
-    }
-
-@api_router.post("/preferences", response_model=PreferenceResponse)
-async def create_preference(data: PreferenceCreate, current_user: dict = Depends(get_current_user)):
-    existing = await db.preferences.find_one({"customer_id": data.customer_id}, sort=[("version", -1)], projection={"_id": 0, "version": 1})
-    version = ((existing or {}).get("version", 0) + 1)
-
-    pref_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc).isoformat()
-    normalized = normalize_preference_payload(data)
-    pref = {
-        "id": pref_id,
-        "customer_id": data.customer_id,
-        **normalized,
-        "version": version,
-        "created_at": now,
-        "updated_at": now
-    }
-    await db.preferences.insert_one(pref)
-    await db.customers.update_one({"id": data.customer_id}, {"$set": {"preferences_id": pref_id, "updated_at": now}})
-    await create_audit_log("PREFERENCE_CREATED", "preference", pref_id, current_user["id"])
-    return PreferenceResponse(**pref)
-
-@api_router.get("/preferences/customer/{customer_id}", response_model=PreferenceResponse)
-async def get_customer_preference(customer_id: str, current_user: dict = Depends(get_current_user)):
-    pref = await db.preferences.find({"customer_id": customer_id}, {"_id": 0}).sort("version", -1).limit(1).to_list(1)
-    if not pref:
-        raise HTTPException(status_code=404, detail="Preferences not found")
-    return PreferenceResponse(**pref[0])
-
-@api_router.get("/customer/preferences", response_model=PreferenceResponse)
-async def get_current_customer_preferences(current_customer: dict = Depends(get_current_customer)):
-    pref = await db.preferences.find({"customer_id": current_customer["id"]}, {"_id": 0}).sort("version", -1).limit(1).to_list(1)
-    if not pref:
-        raise HTTPException(status_code=404, detail="Preferences not found")
-    return PreferenceResponse(**pref[0])
-
-@api_router.post("/customer/preferences", response_model=PreferenceResponse)
-async def upsert_customer_preferences(data: CustomerPreferenceUpdate, current_customer: dict = Depends(get_current_customer)):
-    existing = await db.preferences.find({"customer_id": current_customer["id"]}).sort("version", -1).limit(1).to_list(1)
-    version = (existing[0]["version"] + 1) if existing else 1
-
-    pref_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc).isoformat()
-    normalized_data = normalize_preference_dict(data.model_dump())
-    normalized = normalize_preference_payload(PreferenceCreate(customer_id=current_customer["id"], **(normalized_data or {})))
-    pref = {
-        "id": pref_id,
-        "customer_id": current_customer["id"],
-        **normalized,
-        "version": version,
-        "created_at": now,
-        "updated_at": now
-    }
-    await db.preferences.insert_one(pref)
-    await db.customers.update_one({"id": current_customer["id"]}, {"$set": {"preferences_id": pref_id, "updated_at": now}})
-    return PreferenceResponse(**pref)
-
-@api_router.delete("/customer/preferences")
-async def delete_customer_preferences(current_customer: dict = Depends(get_current_customer)):
-    result = await db.preferences.delete_many({"customer_id": current_customer["id"]})
-    await db.customers.update_one({"id": current_customer["id"]}, {"$set": {"preferences_id": None, "updated_at": datetime.now(timezone.utc).isoformat()}})
-    return {"message": f"Deleted {result.deleted_count} preferences"}
+# ==================== CUSTOMERS (Extracted → routes/customers.py) ====================
+# ==================== PREFERENCES (Extracted → routes/customers.py) ====================
 
 # ==================== ORDERS ====================
 
@@ -1104,277 +819,9 @@ async def notify_last_completed_order(current_user: dict = Depends(get_current_u
     await create_audit_log("ORDER_COMPLETED_NOTIFICATION_SENT", "order", order["id"], current_user["id"])
     return {"ok": True, "order_id": order["id"], "order_number": order.get("order_number")}
 
-# ==================== QUOTES ====================
-
-async def generate_quote_number():
-    today = datetime.now(timezone.utc).strftime("%Y%m%d")
-    count = await db.quotes.count_documents({"quote_number": {"$regex": f"^QT-{today}"}})
-    return f"QT-{today}-{str(count + 1).zfill(4)}"
-
-@api_router.post("/quotes", response_model=QuoteResponse)
-async def create_quote(data: QuoteCreate, current_user: dict = Depends(get_current_user)):
-    quote_id = str(uuid.uuid4())
-    quote_number = await generate_quote_number()
-    now = datetime.now(timezone.utc).isoformat()
-    
-    quote = {
-        "id": quote_id,
-        "quote_number": quote_number,
-        "company_name": data.company_name,
-        "contact_name": data.contact_name,
-        "email": data.email.lower() if data.email else None,
-        "phone": data.phone,
-        "industry": data.industry,
-        "estimated_lbs_per_week": data.estimated_lbs_per_week,
-        "service_needs": data.service_needs,
-        "notes": data.notes,
-        "status": "new",
-        "assigned_to": None,
-        "follow_up_date": None,
-        "created_at": now,
-        "updated_at": now
-    }
-    await db.quotes.insert_one(quote)
-    await create_audit_log("QUOTE_CREATED", "quote", quote_id, current_user["id"])
-    return QuoteResponse(**quote)
-
-@api_router.get("/quotes", response_model=List[QuoteResponse])
-async def get_quotes(
-    status: Optional[str] = None,
-    current_user: dict = Depends(get_current_user)
-):
-    query = {}
-    if status:
-        query["status"] = status
-    
-    quotes = await db.quotes.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
-    return [QuoteResponse(**q) for q in quotes]
-
-@api_router.get("/quotes/{quote_id}", response_model=QuoteResponse)
-async def get_quote(quote_id: str, current_user: dict = Depends(get_current_user)):
-    quote = await db.quotes.find_one({"id": quote_id}, {"_id": 0})
-    if not quote:
-        raise HTTPException(status_code=404, detail="Quote not found")
-    return QuoteResponse(**quote)
-
-@api_router.put("/quotes/{quote_id}", response_model=QuoteResponse)
-async def update_quote(quote_id: str, data: dict, current_user: dict = Depends(get_current_user)):
-    data["updated_at"] = datetime.now(timezone.utc).isoformat()
-    result = await db.quotes.update_one({"id": quote_id}, {"$set": data})
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Quote not found")
-    
-    await create_audit_log("QUOTE_UPDATED", "quote", quote_id, current_user["id"])
-    quote = await db.quotes.find_one({"id": quote_id}, {"_id": 0})
-    return QuoteResponse(**quote)
-
-
-@api_router.post("/quotes/{quote_id}/convert-to-lead", response_model=LeadResponse)
-async def convert_quote_to_lead(quote_id: str, current_user: dict = Depends(get_current_user)):
-    quote = await db.quotes.find_one({"id": quote_id}, {"_id": 0})
-    if not quote:
-        raise HTTPException(status_code=404, detail="Quote not found")
-    if quote.get("converted_lead_id"):
-        raise HTTPException(status_code=400, detail="Quote already converted")
-
-    lead_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc).isoformat()
-    lead_name = quote.get("contact_name") or quote.get("company_name") or "B2B Lead"
-    lead_notes = "\n".join([
-        note for note in [quote.get("service_needs"), quote.get("notes")] if note
-    ])
-
-    lead = {
-        "id": lead_id,
-        "name": lead_name,
-        "email": normalize_email(quote.get("email")) if quote.get("email") else None,
-        "phone": normalize_phone(quote.get("phone")) if quote.get("phone") else None,
-        "source": "b2b_quote",
-        "interest_type": "B2B Quote",
-        "notes": lead_notes or None,
-        "status": "new",
-        "converted_to_customer_id": None,
-        "created_at": now,
-        "updated_at": now
-    }
-    await db.leads.insert_one(lead)
-    await db.quotes.update_one(
-        {"id": quote_id},
-        {"$set": {"status": "won", "converted_lead_id": lead_id, "updated_at": now}}
-    )
-    await create_audit_log("QUOTE_CONVERTED_TO_LEAD", "quote", quote_id, current_user["id"], {"lead_id": lead_id})
-    return LeadResponse(**lead)
-
-# ==================== LEADS ====================
-
-@api_router.post("/leads", response_model=LeadResponse)
-async def create_lead(data: LeadCreate, current_user: dict = Depends(get_current_user)):
-    lead_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc).isoformat()
-    
-    lead = {
-        "id": lead_id,
-        "name": data.name,
-        "email": data.email.lower() if data.email else None,
-        "phone": data.phone,
-        "source": data.source,
-        "interest_type": data.interest_type,
-        "notes": data.notes,
-        "status": "new",
-        "converted_to_customer_id": None,
-        "created_at": now,
-        "updated_at": now
-    }
-    await db.leads.insert_one(lead)
-    await create_audit_log("LEAD_CREATED", "lead", lead_id, current_user["id"])
-    return LeadResponse(**lead)
-
-@api_router.get("/leads", response_model=List[LeadResponse])
-async def get_leads(
-    status: Optional[str] = None,
-    source: Optional[str] = None,
-    page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=100),
-    current_user: dict = Depends(get_current_user)
-):
-    query = {}
-    if status:
-        query["status"] = status
-    if source:
-        query["source"] = source
-    
-    skip = (page - 1) * page_size
-    leads = await db.leads.find(query, {"_id": 0}).sort("created_at", -1).skip(skip).limit(page_size).to_list(page_size)
-    return [LeadResponse(**l) for l in leads]
-
-@api_router.get("/leads/{lead_id}", response_model=LeadResponse)
-async def get_lead(lead_id: str, current_user: dict = Depends(get_current_user)):
-    lead = await db.leads.find_one({"id": lead_id}, {"_id": 0})
-    if not lead:
-        raise HTTPException(status_code=404, detail="Lead not found")
-    return LeadResponse(**lead)
-
-@api_router.put("/leads/{lead_id}", response_model=LeadResponse)
-async def update_lead(lead_id: str, data: dict, current_user: dict = Depends(get_current_user)):
-    data["updated_at"] = datetime.now(timezone.utc).isoformat()
-    result = await db.leads.update_one({"id": lead_id}, {"$set": data})
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Lead not found")
-    
-    await create_audit_log("LEAD_UPDATED", "lead", lead_id, current_user["id"])
-    lead = await db.leads.find_one({"id": lead_id}, {"_id": 0})
-    return LeadResponse(**lead)
-
-@api_router.post("/leads/{lead_id}/convert", response_model=CustomerResponse)
-async def convert_lead_to_customer(lead_id: str, current_user: dict = Depends(get_current_user)):
-    lead = await db.leads.find_one({"id": lead_id}, {"_id": 0})
-    if not lead:
-        raise HTTPException(status_code=404, detail="Lead not found")
-    if lead["status"] == "converted":
-        raise HTTPException(status_code=400, detail="Lead already converted")
-    
-    customer_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc).isoformat()
-    customer = {
-        "id": customer_id,
-        "name": lead["name"],
-        "email": lead["email"],
-        "phone": lead["phone"],
-        "address": None,
-        "preferred_contact": "email",
-        "notes": lead.get("notes"),
-        "status": "active",
-        "total_orders": 0,
-        "created_at": now,
-        "updated_at": now
-    }
-    await db.customers.insert_one(customer)
-    await db.leads.update_one(
-        {"id": lead_id},
-        {"$set": {"status": "converted", "converted_to_customer_id": customer_id, "updated_at": now}}
-    )
-    await create_audit_log("LEAD_CONVERTED", "lead", lead_id, current_user["id"], {"customer_id": customer_id})
-    return CustomerResponse(**customer)
-
-# ==================== SUPPORT TICKETS ====================
-
-async def generate_ticket_number():
-    count = await db.tickets.count_documents({})
-    return f"TKT-{str(count + 1).zfill(5)}"
-
-def determine_priority(subject: str, description: str) -> str:
-    text = (subject + " " + description).lower()
-    high_keywords = ["refund", "damaged", "missing", "complaint", "urgent", "broken", "lost"]
-    if any(kw in text for kw in high_keywords):
-        return "high"
-    medium_keywords = ["issue", "problem", "error", "wrong"]
-    if any(kw in text for kw in medium_keywords):
-        return "medium"
-    return "low"
-
-@api_router.post("/tickets", response_model=TicketResponse)
-async def create_ticket(data: TicketCreate, current_user: dict = Depends(get_current_user)):
-    customer_name = None
-    if data.customer_id:
-        customer = await db.customers.find_one({"id": data.customer_id}, {"_id": 0})
-        customer_name = customer["name"] if customer else None
-    
-    ticket_id = str(uuid.uuid4())
-    ticket_number = await generate_ticket_number()
-    priority = determine_priority(data.subject, data.description)
-    now = datetime.now(timezone.utc).isoformat()
-    
-    ticket = {
-        "id": ticket_id,
-        "ticket_number": ticket_number,
-        "customer_id": data.customer_id,
-        "customer_name": customer_name,
-        "subject": data.subject,
-        "description": data.description,
-        "category": data.category,
-        "priority": priority,
-        "status": "open",
-        "assigned_to": None,
-        "resolution": None,
-        "created_at": now,
-        "updated_at": now
-    }
-    await db.tickets.insert_one(ticket)
-    await create_audit_log("TICKET_CREATED", "ticket", ticket_id, current_user["id"])
-    return TicketResponse(**ticket)
-
-@api_router.get("/tickets", response_model=List[TicketResponse])
-async def get_tickets(
-    status: Optional[str] = None,
-    priority: Optional[str] = None,
-    current_user: dict = Depends(get_current_user)
-):
-    query = {}
-    if status:
-        query["status"] = status
-    if priority:
-        query["priority"] = priority
-    
-    tickets = await db.tickets.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
-    return [TicketResponse(**t) for t in tickets]
-
-@api_router.get("/tickets/{ticket_id}", response_model=TicketResponse)
-async def get_ticket(ticket_id: str, current_user: dict = Depends(get_current_user)):
-    ticket = await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
-    if not ticket:
-        raise HTTPException(status_code=404, detail="Ticket not found")
-    return TicketResponse(**ticket)
-
-@api_router.put("/tickets/{ticket_id}", response_model=TicketResponse)
-async def update_ticket(ticket_id: str, data: dict, current_user: dict = Depends(get_current_user)):
-    data["updated_at"] = datetime.now(timezone.utc).isoformat()
-    result = await db.tickets.update_one({"id": ticket_id}, {"$set": data})
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Ticket not found")
-    
-    await create_audit_log("TICKET_UPDATED", "ticket", ticket_id, current_user["id"])
-    ticket = await db.tickets.find_one({"id": ticket_id}, {"_id": 0})
-    return TicketResponse(**ticket)
+# ==================== QUOTES (Extracted → routes/quotes.py) ====================
+# ==================== LEADS (Extracted → routes/leads.py) ====================
+# ==================== SUPPORT TICKETS (Extracted → routes/tickets.py) ====================
 
 # ==================== SERVICES ====================
 
@@ -4343,6 +3790,24 @@ async def operator_update_order_status(
     return {"message": f"Order status updated to {status_normalized}"}
 
 # === External routers (refactored) ===
+
+# Include extracted modular routers
+for _mod, _name in [
+    ("routes.auth_routes", "Auth"),
+    ("routes.dashboard", "Dashboard"),
+    ("routes.customers", "Customers"),
+    ("routes.quotes", "Quotes"),
+    ("routes.leads", "Leads"),
+    ("routes.tickets", "Tickets"),
+]:
+    try:
+        import importlib
+        _m = importlib.import_module(_mod)
+        app.include_router(_m.router)
+        logger.info(f"{_name} router enabled")
+    except Exception as e:
+        logger.warning(f"{_name} router not loaded: {e}")
+
 if get_public_forms_router:
     public_forms_router = get_public_forms_router(
         db=db,
@@ -4452,6 +3917,22 @@ try:
     logger.info("Inventory router enabled at /api/inventory/*")
 except Exception as e:
     logger.warning(f"Inventory router not loaded: {e}")
+
+# Include Delivery Rules router (ZIP codes, pricing, payment validation)
+try:
+    from routes.delivery_rules import delivery_rules_router
+    app.include_router(delivery_rules_router, prefix="/api/delivery-rules")
+    logger.info("Delivery Rules router enabled at /api/delivery-rules/*")
+except Exception as e:
+    logger.warning(f"Delivery Rules router not loaded: {e}")
+
+# Include KPIs router (operational dashboard)
+try:
+    from routes.kpis import router as kpis_router
+    app.include_router(kpis_router)
+    logger.info("KPIs router enabled at /api/kpis/*")
+except Exception as e:
+    logger.warning(f"KPIs router not loaded: {e}")
 
 # Stripe webhook endpoint
 @app.post("/api/webhook/stripe")

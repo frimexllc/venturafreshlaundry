@@ -124,12 +124,8 @@ const navigationGroups = [
     title: "ANALYTICS & KPIs",
     emoji: "📊",
     items: [
+      { path: "/admin/kpis", icon: BarChart3, key: "operational_kpis", adminOnly: true },
       { path: "/admin/ai-metrics", icon: BarChart3, key: "ai_metrics", adminOnly: true },
-      // Placeholders for other analytics
-      // { path: "/admin/analytics/operational", icon: TrendingUp, key: "operational_kpis", adminOnly: true },
-      // { path: "/admin/analytics/financial", icon: LineChart, key: "financial_kpis", adminOnly: true },
-      // { path: "/admin/analytics/customers", icon: Users2, key: "customer_analytics", adminOnly: true },
-      // { path: "/admin/analytics/reports", icon: FileBarChart, key: "reports", adminOnly: true }
     ]
   },
   {
@@ -172,6 +168,7 @@ const navLabels = allItemsFlat.reduce((acc, item) => {
         item.key === "services" ? "Services" :
         item.key === "finances" ? "Finances" :
         item.key === "ai_metrics" ? "AI Metrics" :
+        item.key === "operational_kpis" ? "KPIs Dashboard" :
         item.key === "quick_approval" ? "Quick Approval" :
         item.key === "support" ? "Support" :
         item.key === "store" ? "Store" :
@@ -197,6 +194,7 @@ const navLabels = allItemsFlat.reduce((acc, item) => {
         item.key === "services" ? "Servicios" :
         item.key === "finances" ? "Finanzas" :
         item.key === "ai_metrics" ? "Métricas IA" :
+        item.key === "operational_kpis" ? "KPIs Operativos" :
         item.key === "quick_approval" ? "Aprobación Rápida" :
         item.key === "support" ? "Soporte" :
         item.key === "store" ? "Tienda" :
@@ -225,7 +223,7 @@ export default function Layout() {
     const defaultOpen = {};
     navigationGroups.forEach((group, idx) => {
       // Por defecto abrir MAIN, OPERATIONS, LOGISTICS (los más comunes)
-      if (group.title === "MAIN" || group.title === "OPERATIONS" || group.title === "LOGISTICS" || group.title === "INVENTORY & SUPPLIERS" || group.title === "FINANCES") {
+      if (group.title === "MAIN" || group.title === "OPERATIONS" || group.title === "LOGISTICS" || group.title === "INVENTORY & SUPPLIERS" || group.title === "FINANCES" || group.title === "ANALYTICS & KPIs") {
         defaultOpen[idx] = true;
       } else {
         defaultOpen[idx] = false;

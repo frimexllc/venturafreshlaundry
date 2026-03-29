@@ -53,6 +53,7 @@ import CatalogPage from "./pages/CatalogPage";
 import InventoryPage from "./pages/InventoryPage";
 import FinancesFullPage from "./pages/FinancesFullPage";
 import FAQPage from "./pages/FAQPage";
+import KpiDashboardPage from "./pages/KpiDashboardPage";
 
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -172,6 +173,7 @@ function AppRoutes() {
         <Route path="suppliers" element={<SuppliersPage />} />
         <Route path="catalog" element={<CatalogPage />} />
         <Route path="inventory" element={<InventoryPage />} />
+        <Route path="kpis" element={<KpiDashboardPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

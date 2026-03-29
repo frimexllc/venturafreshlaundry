@@ -43,6 +43,17 @@ def normalize_preference_dict(data):
     if not data or not isinstance(data, dict): return data
     return {k: normalize_spaces(v) if isinstance(v, str) else v for k, v in data.items()}
 
+def normalize_name(value):
+    if not value or not isinstance(value, str): return value
+    return " ".join(value.split()).strip().title()
+
+def normalize_yes_no(value):
+    if not value or not isinstance(value, str): return value
+    v = value.strip().lower()
+    if v in ("yes", "si", "sí", "1", "true"): return "yes"
+    if v in ("no", "0", "false"): return "no"
+    return value.strip()
+
 
 # ── Order helpers ────────────────────────────────────────────────────
 
@@ -245,32 +256,123 @@ def build_qr_png_base64(payload: str) -> str:
 
 
 def build_ticket_svg(order: dict, customer: Optional[dict], qr_payload: str) -> bytes:
-    lines = build_ticket_lines(order, customer)
+    """Generate professional ticket SVG with QR, price breakdown, weight metrics."""
     qr_base64 = build_qr_png_base64(qr_payload)
-    qr_size = 180
-    padding = 20
-    line_height = 16
-    font_size = 12
-    text_x = padding + qr_size + 20
-    height = max(qr_size + padding * 2, padding * 2 + line_height * len(lines))
-    width = 760
+    customer = customer or {}
+    display_id = build_display_order_number(order)
+    status = (order.get("status") or "new").upper()
+    name = order.get("customer_name") or customer.get("name") or "-"
+    phone = customer.get("phone") or order.get("customer_phone") or "-"
+    pickup_date = order.get("pickup_date") or "-"
+    window = format_time_window(order.get("pickup_time_window") or order.get("pickup_time"))
+    address = order.get("pickup_address") or order.get("delivery_address") or customer.get("address") or "-"
+    service = order.get("service_type") or "Standard"
+    payment_status = (order.get("payment_status") or "pending").upper()
+    payment_method = (order.get("payment_method") or "-").upper()
 
-    text_lines = []
-    for index, line in enumerate(lines):
-        dy = line_height if index > 0 else 0
-        text_lines.append(
-            f"<tspan x='{text_x}' dy='{dy}'>{html.escape(line)}</tspan>"
-        )
+    def safe_float(v, fallback="--"):
+        if v is None or v == "": return fallback
+        try: return f"{float(v):.1f}"
+        except Exception: return str(v)
 
-    svg = f"""
-<svg xmlns='http://www.w3.org/2000/svg' width='{width}' height='{height}'>
-  <rect width='100%' height='100%' fill='white'/>
-  <image href='data:image/png;base64,{qr_base64}' x='{padding}' y='{padding}' width='{qr_size}' height='{qr_size}' />
-  <text x='{text_x}' y='{padding + font_size}' font-family='Courier New, monospace' font-size='{font_size}' fill='#111'>
-    {''.join(text_lines)}
+    def safe_currency(v, fallback="--"):
+        if v is None or v == "": return fallback
+        try: return f"${float(v):.2f}"
+        except Exception: return str(v)
+
+    est_lbs = safe_float(order.get("estimated_lbs"))
+    act_lbs = safe_float(order.get("actual_lbs") or order.get("actual_weight"))
+    total = safe_currency(order.get("total_amount") or order.get("total"))
+    rate = safe_currency(order.get("price_per_lb") or order.get("rate"))
+    delivery_fee = safe_currency(order.get("delivery_fee"))
+    subtotal = safe_currency(order.get("subtotal"))
+    notes = order.get("notes") or order.get("special_instructions") or ""
+    if len(notes) > 60: notes = notes[:57] + "..."
+
+    status_colors = {
+        "NEW": "#2563eb", "CONFIRMED": "#7c3aed", "PICKED_UP": "#4f46e5",
+        "PROCESSING": "#9333ea", "READY": "#0d9488", "OUT_FOR_DELIVERY": "#ea580c",
+        "DELIVERED": "#16a34a", "COMPLETED": "#059669", "CANCELLED": "#dc2626",
+    }
+    sc = status_colors.get(status, "#6b7280")
+
+    W, H = 400, 580
+    svg = f"""<svg xmlns='http://www.w3.org/2000/svg' width='{W}' height='{H}' viewBox='0 0 {W} {H}'>
+  <defs>
+    <style>
+      .hdr {{font-family:'Helvetica Neue',Arial,sans-serif;font-weight:700;fill:#111}}
+      .lbl {{font-family:'Helvetica Neue',Arial,sans-serif;font-size:9px;fill:#6b7280;text-transform:uppercase;letter-spacing:0.5px}}
+      .val {{font-family:'Helvetica Neue',Arial,sans-serif;font-size:11px;fill:#1e293b;font-weight:600}}
+      .sm  {{font-family:'Helvetica Neue',Arial,sans-serif;font-size:10px;fill:#475569}}
+    </style>
+  </defs>
+  <rect width='{W}' height='{H}' rx='8' fill='white' stroke='#e2e8f0' stroke-width='1'/>
+  <!-- Header -->
+  <rect width='{W}' height='52' rx='8' fill='#0f172a'/>
+  <rect y='44' width='{W}' height='8' fill='#0f172a'/>
+  <text x='16' y='22' class='hdr' font-size='14' fill='white'>VENTURA FRESH LAUNDRY</text>
+  <text x='16' y='40' font-size='9' fill='#94a3b8' font-family='Arial'>Order Ticket / Recibo de Orden</text>
+  <rect x='{W-90}' y='10' width='74' height='22' rx='4' fill='{sc}'/>
+  <text x='{W-53}' y='25' text-anchor='middle' font-size='9' fill='white' font-family='Arial' font-weight='700'>{html.escape(status)}</text>
+
+  <!-- QR + Order ID -->
+  <image href='data:image/png;base64,{qr_base64}' x='16' y='64' width='110' height='110'/>
+  <text x='140' y='80' class='lbl'>ORDER / ORDEN</text>
+  <text x='140' y='96' class='hdr' font-size='16'>{html.escape(display_id)}</text>
+  <text x='140' y='114' class='lbl'>SERVICE / SERVICIO</text>
+  <text x='140' y='129' class='val'>{html.escape(str(service).replace("_"," ").title())}</text>
+  <text x='140' y='147' class='lbl'>DATE / FECHA</text>
+  <text x='140' y='162' class='val'>{html.escape(str(pickup_date))} {html.escape(str(window))}</text>
+
+  <!-- Divider -->
+  <line x1='16' y1='184' x2='{W-16}' y2='184' stroke='#e2e8f0' stroke-dasharray='4,3'/>
+
+  <!-- Customer Info -->
+  <text x='16' y='202' class='lbl'>CUSTOMER / CLIENTE</text>
+  <text x='16' y='216' class='val'>{html.escape(name)}</text>
+  <text x='16' y='232' class='sm'>{html.escape(phone)}</text>
+  <text x='16' y='248' class='sm'>{html.escape(address[:50])}</text>
+
+  <!-- Divider -->
+  <line x1='16' y1='262' x2='{W-16}' y2='262' stroke='#e2e8f0' stroke-dasharray='4,3'/>
+
+  <!-- Weight Metrics -->
+  <text x='16' y='280' class='lbl'>WEIGHT METRICS / METRICAS DE PESO</text>
+  <rect x='16' y='288' width='115' height='44' rx='6' fill='#f1f5f9'/>
+  <text x='73' y='304' text-anchor='middle' class='lbl'>EST. LBS</text>
+  <text x='73' y='322' text-anchor='middle' class='hdr' font-size='16'>{html.escape(est_lbs)}</text>
+  <rect x='143' y='288' width='115' height='44' rx='6' fill='#f1f5f9'/>
+  <text x='200' y='304' text-anchor='middle' class='lbl'>ACTUAL LBS</text>
+  <text x='200' y='322' text-anchor='middle' class='hdr' font-size='16'>{html.escape(act_lbs)}</text>
+  <rect x='270' y='288' width='115' height='44' rx='6' fill='#f1f5f9'/>
+  <text x='327' y='304' text-anchor='middle' class='lbl'>RATE/LB</text>
+  <text x='327' y='322' text-anchor='middle' class='hdr' font-size='16'>{html.escape(rate)}</text>
+
+  <!-- Divider -->
+  <line x1='16' y1='346' x2='{W-16}' y2='346' stroke='#e2e8f0' stroke-dasharray='4,3'/>
+
+  <!-- Price Breakdown -->
+  <text x='16' y='364' class='lbl'>PRICE BREAKDOWN / DESGLOSE</text>
+  <text x='16' y='384' class='sm'>Subtotal</text>
+  <text x='{W-16}' y='384' text-anchor='end' class='val'>{html.escape(subtotal)}</text>
+  <text x='16' y='402' class='sm'>Delivery Fee / Envio</text>
+  <text x='{W-16}' y='402' text-anchor='end' class='val'>{html.escape(delivery_fee)}</text>
+  <line x1='16' y1='414' x2='{W-16}' y2='414' stroke='#cbd5e1'/>
+  <text x='16' y='434' class='hdr' font-size='13'>TOTAL</text>
+  <text x='{W-16}' y='434' text-anchor='end' class='hdr' font-size='16'>{html.escape(total)}</text>
+
+  <!-- Payment Status -->
+  <rect x='16' y='448' width='{W-32}' height='30' rx='6' fill='{"#dcfce7" if payment_status == "PAID" else "#fef3c7"}'/>
+  <text x='{W//2}' y='468' text-anchor='middle' font-size='11' font-weight='700' fill='{"#166534" if payment_status == "PAID" else "#92400e"}' font-family='Arial'>
+    PAYMENT: {html.escape(payment_status)} | METHOD: {html.escape(payment_method)}
   </text>
-</svg>
-"""
+
+  {"" if not notes else f"<text x='16' y='500' class='lbl'>NOTES</text><text x='16' y='514' class='sm'>{html.escape(notes)}</text>"}
+
+  <!-- Footer -->
+  <line x1='16' y1='{H-36}' x2='{W-16}' y2='{H-36}' stroke='#e2e8f0'/>
+  <text x='{W//2}' y='{H-18}' text-anchor='middle' font-size='8' fill='#94a3b8' font-family='Arial'>Ventura Fresh Laundry | (805) 836-8872 | venturafreshlaundry.com</text>
+</svg>"""
     return svg.encode("utf-8")
 
 
