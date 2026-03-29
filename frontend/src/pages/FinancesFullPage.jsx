@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Plus, Search, DollarSign, TrendingUp, TrendingDown, Fuel, Car, Trash2, Edit, Receipt, Calendar, Filter, ArrowUpDown } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Plus, Search, DollarSign, TrendingUp, TrendingDown, Fuel, Car, Trash2, Edit, Receipt, Calendar, Filter, ArrowUpDown, Camera, Paperclip, X, Image } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Badge } from "../components/ui/badge";
@@ -33,6 +33,58 @@ export default function FinancesPage() {
   const [modal, setModal] = useState(null); // 'expense' | 'mileage' | 'vehicle'
   const [form, setForm] = useState({});
   const [editId, setEditId] = useState(null);
+  const [attachments, setAttachments] = useState([]); // [{file, preview, uploading}]
+  const [existingFiles, setExistingFiles] = useState([]);
+  const cameraRef = useRef(null);
+  const fileRef = useRef(null);
+
+  const handleFileSelect = (e) => {
+    const files = Array.from(e.target.files || []);
+    files.forEach(file => {
+      const preview = file.type.startsWith("image/") ? URL.createObjectURL(file) : null;
+      setAttachments(prev => [...prev, { file, preview, uploading: false, uploaded: false }]);
+    });
+    e.target.value = "";
+  };
+
+  const removeAttachment = (idx) => {
+    setAttachments(prev => {
+      const a = [...prev];
+      if (a[idx].preview) URL.revokeObjectURL(a[idx].preview);
+      a.splice(idx, 1);
+      return a;
+    });
+  };
+
+  const uploadFiles = async (expenseId) => {
+    const token = localStorage.getItem("token");
+    const uploaded = [];
+    for (let i = 0; i < attachments.length; i++) {
+      if (attachments[i].uploaded) continue;
+      setAttachments(prev => { const a = [...prev]; a[i] = { ...a[i], uploading: true }; return a; });
+      const fd = new FormData();
+      fd.append("file", attachments[i].file);
+      try {
+        const res = await fetch(`${API}/api/files/upload?context=expense:${expenseId}`, {
+          method: "POST", headers: { Authorization: `Bearer ${token}` }, body: fd,
+        });
+        if (res.ok) {
+          const data = await res.json();
+          uploaded.push(data.id);
+          setAttachments(prev => { const a = [...prev]; a[i] = { ...a[i], uploading: false, uploaded: true }; return a; });
+        }
+      } catch { /* ignore */ }
+    }
+    return uploaded;
+  };
+
+  const loadExistingFiles = async (expenseId) => {
+    const token = localStorage.getItem("token");
+    try {
+      const res = await fetch(`${API}/api/files/by-context/expense/${expenseId}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) setExistingFiles(await res.json());
+    } catch { setExistingFiles([]); }
+  };
 
   const loadDashboard = () => fetch(`${API}/api/finances/dashboard?period=${period}`, { headers: h() }).then(r => r.ok ? r.json() : null).then(setDashboard).catch(() => {});
   const loadExpenses = () => { const p = new URLSearchParams(); if (expenseType) p.set("expense_type", expenseType); if (search) p.set("search", search); fetch(`${API}/api/finances/expenses?${p}`, { headers: h() }).then(r => r.json()).then(setExpenses).catch(() => {}); };
@@ -48,7 +100,17 @@ export default function FinancesPage() {
     if (!form.description || !form.amount) { toast.error("Descripcion y monto requeridos"); return; }
     const body = { ...form, amount: parseFloat(form.amount) };
     const res = await fetch(editId ? `${API}/api/finances/expenses/${editId}` : `${API}/api/finances/expenses`, { method: editId ? "PUT" : "POST", headers: h(), body: JSON.stringify(body) });
-    if (res.ok) { toast.success("Gasto guardado"); setModal(null); loadExpenses(); loadDashboard(); } else toast.error("Error");
+    if (res.ok) {
+      const saved = await res.json();
+      const eid = editId || saved.id;
+      if (attachments.length > 0 && eid) {
+        toast.info("Subiendo archivos...");
+        await uploadFiles(eid);
+      }
+      toast.success("Gasto guardado");
+      setModal(null); setAttachments([]); setExistingFiles([]);
+      loadExpenses(); loadDashboard();
+    } else toast.error("Error");
   };
 
   const saveMileage = async () => {
@@ -120,7 +182,7 @@ export default function FinancesPage() {
           <div className="flex flex-wrap gap-2">
             <div className="relative flex-1 min-w-[200px]"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" /><Input placeholder="Buscar gasto..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" /></div>
             <select value={expenseType} onChange={e => setExpenseType(e.target.value)} className="border rounded-lg px-3 py-2 text-sm"><option value="">Todos</option><option value="fixed">Fijos</option><option value="variable">Variables</option><option value="subscription">Suscripciones</option></select>
-            <Button onClick={() => { setEditId(null); setForm({ ...emptyExpense }); setModal("expense"); }} data-testid="add-expense-btn"><Plus className="w-4 h-4 mr-1" /> Nuevo Gasto</Button>
+            <Button onClick={() => { setEditId(null); setForm({ ...emptyExpense }); setAttachments([]); setExistingFiles([]); setModal("expense"); }} data-testid="add-expense-btn"><Plus className="w-4 h-4 mr-1" /> Nuevo Gasto</Button>
           </div>
           <div className="bg-white border rounded-xl overflow-hidden">
             <table className="w-full text-sm">
@@ -133,7 +195,7 @@ export default function FinancesPage() {
                     <td className="px-4 py-3"><span className="text-xs bg-gray-100 text-gray-600 rounded-full px-2 py-0.5">{e.category}</span></td>
                     <td className="px-4 py-3"><Badge className={TYPE_COLORS[e.expense_type]}>{TYPE_LABELS[e.expense_type]}</Badge></td>
                     <td className="px-4 py-3 text-right font-semibold text-gray-900">${e.amount?.toFixed(2)}</td>
-                    <td className="px-4 py-3 text-right"><button onClick={() => { setEditId(e.id); setForm(e); setModal("expense"); }} className="p-1 hover:bg-gray-100 rounded"><Edit className="w-3.5 h-3.5 text-gray-400" /></button><button onClick={() => delExpense(e.id)} className="p-1 hover:bg-red-50 rounded"><Trash2 className="w-3.5 h-3.5 text-red-400" /></button></td>
+                    <td className="px-4 py-3 text-right"><button onClick={() => { setEditId(e.id); setForm(e); setAttachments([]); loadExistingFiles(e.id); setModal("expense"); }} className="p-1 hover:bg-gray-100 rounded"><Edit className="w-3.5 h-3.5 text-gray-400" /></button><button onClick={() => delExpense(e.id)} className="p-1 hover:bg-red-50 rounded"><Trash2 className="w-3.5 h-3.5 text-red-400" /></button></td>
                   </tr>
                 ))}
                 {expenses.length === 0 && <tr><td colSpan={6} className="text-center py-10 text-gray-400">Sin gastos registrados</td></tr>}
@@ -191,6 +253,57 @@ export default function FinancesPage() {
               <div className="grid grid-cols-2 gap-3"><div><Label>Categoria</Label><select value={form.category || ""} onChange={e => setForm({ ...form, category: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm">{categories.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}</select></div><div><Label>Tipo</Label><select value={form.expense_type || "variable"} onChange={e => setForm({ ...form, expense_type: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm"><option value="fixed">Fijo</option><option value="variable">Variable</option><option value="subscription">Suscripcion</option></select></div></div>
               <div className="grid grid-cols-2 gap-3"><div><Label>Proveedor</Label><Input value={form.vendor || ""} onChange={e => setForm({ ...form, vendor: e.target.value })} /></div><div><Label>Metodo Pago</Label><select value={form.payment_method || "card"} onChange={e => setForm({ ...form, payment_method: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm">{Object.entries(PAYMENT_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></div></div>
               <div><Label>Notas</Label><Textarea value={form.notes || ""} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} /></div>
+              {/* Camera & File Upload Section */}
+              <div className="space-y-2">
+                <Label>Comprobante / Recibo</Label>
+                <div className="flex gap-2">
+                  <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileSelect} data-testid="camera-input" />
+                  <input ref={fileRef} type="file" accept="image/*,.pdf,.csv,.txt" multiple className="hidden" onChange={handleFileSelect} data-testid="file-input" />
+                  <Button type="button" variant="outline" size="sm" onClick={() => cameraRef.current?.click()} data-testid="camera-btn" className="flex-1">
+                    <Camera className="w-4 h-4 mr-1.5" /> Tomar Foto
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => fileRef.current?.click()} data-testid="attach-btn" className="flex-1">
+                    <Paperclip className="w-4 h-4 mr-1.5" /> Adjuntar
+                  </Button>
+                </div>
+                {/* Preview new attachments */}
+                {attachments.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {attachments.map((a, i) => (
+                      <div key={i} className="relative group" data-testid={`attachment-${i}`}>
+                        {a.preview ? (
+                          <img src={a.preview} alt="" className="w-16 h-16 object-cover rounded-lg border" />
+                        ) : (
+                          <div className="w-16 h-16 bg-gray-100 rounded-lg border flex items-center justify-center">
+                            <Receipt className="w-5 h-5 text-gray-400" />
+                          </div>
+                        )}
+                        {a.uploading && <div className="absolute inset-0 bg-white/70 rounded-lg flex items-center justify-center"><div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" /></div>}
+                        {a.uploaded && <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center text-white text-[8px] font-bold">OK</div>}
+                        {!a.uploading && !a.uploaded && (
+                          <button onClick={() => removeAttachment(i)} className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                            <X className="w-2.5 h-2.5 text-white" />
+                          </button>
+                        )}
+                        <p className="text-[9px] text-gray-500 truncate w-16 mt-0.5">{a.file.name}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {/* Show existing files when editing */}
+                {existingFiles.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-xs text-gray-500 mb-1">Archivos guardados:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {existingFiles.map(f => (
+                        <a key={f.id} href={`${API}${f.url}?auth=${localStorage.getItem("token")}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 rounded-lg px-2.5 py-1.5 text-xs text-blue-700 hover:bg-blue-100 transition-colors" data-testid={`existing-file-${f.id}`}>
+                          <Image className="w-3.5 h-3.5" />{f.original_filename || "archivo"}
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
               <Button onClick={saveExpense} className="w-full" data-testid="save-expense-btn">{editId ? "Actualizar" : "Guardar Gasto"}</Button>
             </div>
           )}

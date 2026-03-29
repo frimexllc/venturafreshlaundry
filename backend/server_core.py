@@ -37,6 +37,7 @@ from utils import (
 )
 
 # ── Shared modules ───────────────────────────────────────────────────
+from routes.customers import normalize_preference_payload
 from database import db, client, SKIP_SERVER_NOTIFICATIONS, BUSINESS_NAME, JWT_SECRET, JWT_ALGORITHM, JWT_EXPIRATION_HOURS
 from models import (
     UserCreate, UserLogin, UserResponse, TokenResponse,
@@ -3933,6 +3934,14 @@ try:
     logger.info("KPIs router enabled at /api/kpis/*")
 except Exception as e:
     logger.warning(f"KPIs router not loaded: {e}")
+
+# Include File uploads router (object storage)
+try:
+    from routes.file_uploads import router as files_router
+    app.include_router(files_router)
+    logger.info("File uploads router enabled at /api/files/*")
+except Exception as e:
+    logger.warning(f"File uploads router not loaded: {e}")
 
 # Stripe webhook endpoint
 @app.post("/api/webhook/stripe")
