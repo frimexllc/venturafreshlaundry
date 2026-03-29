@@ -22,8 +22,8 @@ export default function CatalogPage() {
   const [form, setForm] = useState({ name: "", category: "detergent", brand: "", price: "", in_stock: true, default: false });
   const [editId, setEditId] = useState(null);
 
-  const load = () => fetch(`${API}/api/catalog${filter ? `?category=${filter}` : ""}`, { headers: h() }).then(r => r.json()).then(setItems).catch(() => {});
-  useEffect(load, [filter]);
+  const load = () => { fetch(`${API}/api/catalog${filter ? `?category=${filter}` : ""}`, { headers: h() }).then(r => r.json()).then(setItems).catch(() => {}); };
+  useEffect(() => { load(); }, [filter]);
 
   const filtered = search ? items.filter(i => i.name.toLowerCase().includes(search.toLowerCase()) || (i.brand || "").toLowerCase().includes(search.toLowerCase())) : items;
   const grouped = {};

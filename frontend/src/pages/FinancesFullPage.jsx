@@ -41,7 +41,7 @@ export default function FinancesPage() {
   const loadVehicles = () => fetch(`${API}/api/finances/vehicles`, { headers: h() }).then(r => r.json()).then(setVehicles).catch(() => {});
 
   useEffect(() => { loadDashboard(); loadCategories(); }, [period]);
-  useEffect(loadExpenses, [expenseType, search]);
+  useEffect(() => { loadExpenses(); }, [expenseType, search]);
   useEffect(() => { if (tab === "mileage") { loadMileage(); loadVehicles(); } if (tab === "vehicles") loadVehicles(); }, [tab]);
 
   const saveExpense = async () => {

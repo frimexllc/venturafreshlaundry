@@ -48,6 +48,11 @@ import PwaSplashScreen from "./components/PwaSplashScreen";
 import PublicVoiceAssistant from "./components/PublicVoiceAssistant";
 import OperatorAgentPage from "./pages/OperatorAgentPage";
 import LogisticsMapPage from "./pages/LogisticsMapPage";
+import SuppliersPage from "./pages/SuppliersPage";
+import CatalogPage from "./pages/CatalogPage";
+import InventoryPage from "./pages/InventoryPage";
+import FinancesFullPage from "./pages/FinancesFullPage";
+import FAQPage from "./pages/FAQPage";
 
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -119,6 +124,7 @@ function AppRoutes() {
       <Route path="/terms-and-conditions" element={<TermsAndConditions />} />
       <Route path="/privacy-policy" element={<PrivacyPolicy />} />
       <Route path="/sms-policy-consent" element={<SmsPolicyConsent />} />
+      <Route path="/faq" element={<FAQPage />} />
 
       {/* Customer portal */}
       <Route path="/account/login" element={<CustomerLogin />} />
@@ -158,10 +164,15 @@ function AppRoutes() {
         <Route path="audit-log" element={<AuditLog />} />
         <Route path="settings" element={<Settings />} />
         <Route path="users" element={<UserManagement />} />
-        <Route path="finances" element={<Finances />} />
+        <Route path="finances" element={<FinancesFullPage />} />
         <Route path="ai-metrics" element={<AiMetrics />} />
         <Route path="quick-approval" element={<QuickApproval />} />
-        <Route path="logistics/map" element={<LogisticsMapPage />} />      </Route>
+        <Route path="logistics/map" element={<LogisticsMapPage />} />
+        <Route path="logistics-map" element={<LogisticsMapPage />} />
+        <Route path="suppliers" element={<SuppliersPage />} />
+        <Route path="catalog" element={<CatalogPage />} />
+        <Route path="inventory" element={<InventoryPage />} />
+      </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

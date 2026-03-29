@@ -31,7 +31,7 @@ export default function SuppliersPage() {
     if (catFilter) params.set("category", catFilter);
     fetch(`${API}/api/suppliers?${params}`, { headers: headers() }).then(r => r.json()).then(setSuppliers).catch(() => {});
   };
-  useEffect(load, [search, catFilter]);
+  useEffect(() => { load(); }, [search, catFilter]);
 
   const save = async () => {
     if (!form.name.trim()) { toast.error("Nombre requerido"); return; }

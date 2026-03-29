@@ -107,12 +107,9 @@ const navigationGroups = [
     title: "INVENTORY & SUPPLIERS",
     emoji: "🏭",
     items: [
-      // All placeholder
-      // { path: "/admin/inventory/suppliers", icon: Building2, key: "suppliers", adminOnly: true },
-      // { path: "/admin/inventory/products", icon: Boxes, key: "products", adminOnly: true },
-      // { path: "/admin/inventory/tracking", icon: Package, key: "inventory_tracking", adminOnly: true },
-      // { path: "/admin/inventory/purchase-orders", icon: ShoppingCart, key: "purchase_orders", adminOnly: true },
-      // { path: "/admin/inventory/stock-movements", icon: Warehouse, key: "stock_movements", adminOnly: true }
+      { path: "/admin/suppliers", icon: Building2, key: "suppliers", adminOnly: true },
+      { path: "/admin/catalog", icon: Boxes, key: "catalog", adminOnly: true },
+      { path: "/admin/inventory", icon: Package, key: "inventory", adminOnly: true },
     ]
   },
   {
@@ -183,6 +180,9 @@ const navLabels = allItemsFlat.reduce((acc, item) => {
         item.key === "audit_log" ? "Audit Log" :
         item.key === "settings" ? "Settings" :
         item.key === "logistics_map" ? "Logistics Map" :
+        item.key === "suppliers" ? "Suppliers" :
+        item.key === "catalog" ? "Catalog" :
+        item.key === "inventory" ? "Inventory" :
         item.key,
     es: item.key === "dashboard" ? "Panel" :
         item.key === "ai_assistant" ? "Asistente IA" :
@@ -205,6 +205,9 @@ const navLabels = allItemsFlat.reduce((acc, item) => {
         item.key === "audit_log" ? "Bitácora" :
         item.key === "settings" ? "Configuración" :
         item.key === "logistics_map" ? "Mapa Logístico" :
+        item.key === "suppliers" ? "Proveedores" :
+        item.key === "catalog" ? "Catálogo" :
+        item.key === "inventory" ? "Inventario" :
         item.key
   };
   return acc;
@@ -222,7 +225,7 @@ export default function Layout() {
     const defaultOpen = {};
     navigationGroups.forEach((group, idx) => {
       // Por defecto abrir MAIN, OPERATIONS, LOGISTICS (los más comunes)
-      if (group.title === "MAIN" || group.title === "OPERATIONS" || group.title === "LOGISTICS") {
+      if (group.title === "MAIN" || group.title === "OPERATIONS" || group.title === "LOGISTICS" || group.title === "INVENTORY & SUPPLIERS") {
         defaultOpen[idx] = true;
       } else {
         defaultOpen[idx] = false;
