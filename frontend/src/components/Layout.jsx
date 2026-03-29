@@ -56,7 +56,7 @@ import { useLocale } from "../context/LocaleContext";
 import LanguageToggle from "./LanguageToggle";
 import { Button } from "./ui/button";
 import AdminFloatingChat from "./AdminFloatingChat";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, ArrowLeftRight } from "lucide-react";
 
 // ---------- Navigation structure with groups (full tree) ----------
 const navigationGroups = [
@@ -128,6 +128,8 @@ const navigationGroups = [
       { path: "/admin/kpis", icon: BarChart3, key: "operational_kpis", adminOnly: true },
       { path: "/admin/ai-metrics", icon: BarChart3, key: "ai_metrics", adminOnly: true },
       { path: "/admin/ocr-analytics", icon: ScanLine, key: "ocr_analytics", adminOnly: true },
+      { path: "/admin/stripe-sync", icon: ArrowLeftRight, key: "stripe_sync", adminOnly: true },
+      { path: "/admin/notification-metrics", icon: Bell, key: "notification_metrics", adminOnly: true },
     ]
   },
   {
@@ -172,6 +174,8 @@ const navLabels = allItemsFlat.reduce((acc, item) => {
         item.key === "ai_metrics" ? "AI Metrics" :
         item.key === "operational_kpis" ? "KPIs Dashboard" :
         item.key === "ocr_analytics" ? "OCR Analytics" :
+        item.key === "stripe_sync" ? "Stripe Sync" :
+        item.key === "notification_metrics" ? "Notifications" :
         item.key === "quick_approval" ? "Quick Approval" :
         item.key === "support" ? "Support" :
         item.key === "store" ? "Store" :
@@ -199,6 +203,8 @@ const navLabels = allItemsFlat.reduce((acc, item) => {
         item.key === "ai_metrics" ? "Métricas IA" :
         item.key === "operational_kpis" ? "KPIs Operativos" :
         item.key === "ocr_analytics" ? "Analytics OCR" :
+        item.key === "stripe_sync" ? "Sync Stripe" :
+        item.key === "notification_metrics" ? "Notificaciones" :
         item.key === "quick_approval" ? "Aprobación Rápida" :
         item.key === "support" ? "Soporte" :
         item.key === "store" ? "Tienda" :

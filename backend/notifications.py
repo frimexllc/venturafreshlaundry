@@ -16,7 +16,7 @@ import json
 import asyncio
 import time
 import xml.sax.saxutils
-from datetime import datetime, time as dtime
+from datetime import datetime, time as dtime, timezone
 from typing import Optional, Dict, Any, Set, Tuple
 from dataclasses import dataclass
 
@@ -67,7 +67,25 @@ _audit_log: list = []
 
 def _is_already_sent(key: str) -> bool:  return key in _sent_cache
 def _mark_sent(key: str) -> None:        _sent_cache.add(key)
-def _log_attempt(entry: dict) -> None:   _audit_log.append(entry); logger.debug(f"Audit: {entry}")
+def _log_attempt(entry: dict) -> None:
+    _audit_log.append(entry)
+    logger.debug(f"Audit: {entry}")
+    # Persist to MongoDB (fire-and-forget)
+    try:
+        import asyncio
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            loop.create_task(_persist_log(entry))
+    except Exception:
+        pass
+
+async def _persist_log(entry: dict):
+    try:
+        from database import db as _db
+        entry["_persisted"] = True
+        await _db.notification_logs.insert_one(entry)
+    except Exception as e:
+        logger.debug(f"Notification log persist failed: {e}")
 
 MILESTONES = {
     "wash_fold":        {"order_created", "order_received", "processing", "ready_for_pickup", "completed"},
@@ -901,27 +919,41 @@ async def _send_with_retries(send_func, *args, **kwargs) -> Tuple[bool, Any]:
 
 async def send_sms(to_phone: str, message: str) -> bool:
     if not twilio_client or not TWILIO_PHONE_NUMBER:
-        logger.warning("Twilio not configured for SMS"); return False
+        logger.warning("Twilio not configured for SMS")
+        _log_attempt({"channel": "sms", "event": "direct_sms", "status": "failed", "to": to_phone, "reason": "twilio_not_configured", "timestamp": datetime.now(timezone.utc).isoformat()})
+        return False
     formatted = format_phone(to_phone)
     if not formatted: logger.error("Invalid phone"); return False
     async def _send():
         return await asyncio.to_thread(twilio_client.messages.create,
                                         body=message, from_=TWILIO_PHONE_NUMBER, to=formatted)
     ok, res = await _send_with_retries(_send)
-    if ok: logger.info(f"SMS sent: {res.sid}"); return True
-    logger.error(f"SMS failed: {res}"); return False
+    if ok:
+        logger.info(f"SMS sent: {res.sid}")
+        _log_attempt({"channel": "sms", "event": "direct_sms", "status": "sent", "to": formatted, "timestamp": datetime.now(timezone.utc).isoformat()})
+        return True
+    logger.error(f"SMS failed: {res}")
+    _log_attempt({"channel": "sms", "event": "direct_sms", "status": "failed", "to": formatted, "reason": str(res)[:100], "timestamp": datetime.now(timezone.utc).isoformat()})
+    return False
 
 async def send_whatsapp(to_phone: str, message: str) -> bool:
     if not twilio_client or not TWILIO_WHATSAPP_NUMBER:
-        logger.warning("Twilio not configured for WhatsApp"); return False
+        logger.warning("Twilio not configured for WhatsApp")
+        _log_attempt({"channel": "whatsapp", "event": "direct_whatsapp", "status": "failed", "to": to_phone, "reason": "twilio_not_configured", "timestamp": datetime.now(timezone.utc).isoformat()})
+        return False
     formatted = format_whatsapp(to_phone)
     if not formatted: logger.error("Invalid phone"); return False
     async def _send():
         return await asyncio.to_thread(twilio_client.messages.create,
                                         body=message, from_=TWILIO_WHATSAPP_NUMBER, to=formatted)
     ok, res = await _send_with_retries(_send)
-    if ok: logger.info(f"WhatsApp sent: {res.sid}"); return True
-    logger.error(f"WhatsApp failed: {res}"); return False
+    if ok:
+        logger.info(f"WhatsApp sent: {res.sid}")
+        _log_attempt({"channel": "whatsapp", "event": "direct_whatsapp", "status": "sent", "to": formatted, "timestamp": datetime.now(timezone.utc).isoformat()})
+        return True
+    logger.error(f"WhatsApp failed: {res}")
+    _log_attempt({"channel": "whatsapp", "event": "direct_whatsapp", "status": "failed", "to": formatted, "reason": str(res)[:100], "timestamp": datetime.now(timezone.utc).isoformat()})
+    return False
 
 async def send_voice_call(to_phone: str, message: str, language: str) -> bool:
     if not twilio_client or not TWILIO_PHONE_NUMBER:
@@ -940,7 +972,9 @@ async def send_voice_call(to_phone: str, message: str, language: str) -> bool:
 
 async def send_email(to_email: str, subject: str, body: str, html_body: Optional[str] = None) -> bool:
     if not sendgrid_client or not SENDGRID_FROM_EMAIL:
-        logger.warning("SendGrid not configured"); return False
+        logger.warning("SendGrid not configured")
+        _log_attempt({"channel": "email", "event": "direct_email", "status": "failed", "to": to_email, "reason": "sendgrid_not_configured", "timestamp": datetime.now(timezone.utc).isoformat()})
+        return False
     message = Mail(
         from_email=(SENDGRID_FROM_EMAIL, SENDGRID_FROM_NAME),
         to_emails=to_email,
@@ -951,8 +985,13 @@ async def send_email(to_email: str, subject: str, body: str, html_body: Optional
     async def _send():
         return await asyncio.to_thread(sendgrid_client.send, message)
     ok, res = await _send_with_retries(_send)
-    if ok: logger.info(f"Email sent: {res.status_code}"); return res.status_code in [200, 202]
-    logger.error(f"Email failed: {res}"); return False
+    if ok:
+        logger.info(f"Email sent: {res.status_code}")
+        _log_attempt({"channel": "email", "event": "direct_email", "status": "sent", "to": to_email, "timestamp": datetime.now(timezone.utc).isoformat()})
+        return res.status_code in [200, 202]
+    logger.error(f"Email failed: {res}")
+    _log_attempt({"channel": "email", "event": "direct_email", "status": "failed", "to": to_email, "reason": str(res)[:100], "timestamp": datetime.now(timezone.utc).isoformat()})
+    return False
 
 
 # ─────────────────────────────────────────────────────────────────────────────

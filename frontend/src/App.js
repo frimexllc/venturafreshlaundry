@@ -55,6 +55,8 @@ import FinancesFullPage from "./pages/FinancesFullPage";
 import FAQPage from "./pages/FAQPage";
 import KpiDashboardPage from "./pages/KpiDashboardPage";
 import OcrAnalyticsPage from "./pages/OcrAnalyticsPage";
+import StripeSyncPage from "./pages/StripeSyncPage";
+import NotificationMetricsPage from "./pages/NotificationMetricsPage";
 
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -176,6 +178,8 @@ function AppRoutes() {
         <Route path="inventory" element={<InventoryPage />} />
         <Route path="kpis" element={<KpiDashboardPage />} />
         <Route path="ocr-analytics" element={<OcrAnalyticsPage />} />
+        <Route path="stripe-sync" element={<StripeSyncPage />} />
+        <Route path="notification-metrics" element={<NotificationMetricsPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -153,15 +153,7 @@ except ImportError:
     logger = logging.getLogger(__name__)
     logger.warning("Automation engine not available")
 
-# Stripe advanced sync scaffold (disabled by default)
-try:
-    from stripe_sync_scaffold import stripe_sync_router, set_database as set_stripe_sync_db
-    STRIPE_SYNC_SCAFFOLD_ENABLED = True
-except ImportError:
-    STRIPE_SYNC_SCAFFOLD_ENABLED = False
-    stripe_sync_router = None
-    logger = logging.getLogger(__name__)
-    logger.warning("Stripe sync scaffold not available")
+# Stripe sync is now a modular router (routes/stripe_sync.py), no scaffold needed
 
 # MongoDB connection imported from database.py
 
@@ -180,10 +172,6 @@ if BLOG_ENABLED:
 # Set database for automation engine
 if AUTOMATION_ENABLED:
     set_automation_db(db)
-
-# Set database for Stripe sync scaffold
-if STRIPE_SYNC_SCAFFOLD_ENABLED:
-    set_stripe_sync_db(db)
 
 # ── Import shared objects from the lightweight entry-point ──
 from server import fastapi_app, sio
@@ -281,6 +269,8 @@ for _mod, _name in [
     ("routes.ai_patterns", "AI Patterns"),
     ("routes.admin_import", "Admin Import"),
     ("routes.traffic", "Traffic"),
+    ("routes.stripe_sync", "Stripe Sync"),
+    ("routes.notification_metrics", "Notification Metrics"),
 ]:
     try:
         _m = importlib.import_module(_mod)
@@ -337,11 +327,6 @@ if BLOG_ENABLED and blog_router:
 if AUTOMATION_ENABLED and automation_router:
     app.include_router(automation_router, prefix="/api")
     logger.info("Automation engine enabled at /api/automation/*")
-
-# Include Stripe advanced sync scaffold (feature-flag controlled inside module)
-if STRIPE_SYNC_SCAFFOLD_ENABLED and stripe_sync_router:
-    app.include_router(stripe_sync_router, prefix="/api")
-    logger.info("Stripe sync scaffold enabled at /api/stripe-sync/*")
 
 # Include TIM (Transportation Intelligence Module) router
 try:
