@@ -185,16 +185,16 @@ async def ocr_extract(file_id: str, current_user: dict = Depends(get_current_use
             session_id=f"ocr-{file_id}",
             system_message=(
                 "You are a receipt/invoice OCR assistant. "
-                "Analyze the image and extract the total amount and a short description of what was purchased. "
-                "Return ONLY valid JSON: {\"amount\": <number>, \"description\": \"<text>\"} "
-                "If you cannot determine amount, use 0. If you cannot determine description, use empty string."
+                "Analyze the image and extract: total amount, short description, date, and vendor name. "
+                "Return ONLY valid JSON: {\"amount\": <number>, \"description\": \"<text>\", \"date\": \"<YYYY-MM-DD or empty>\", \"vendor\": \"<name or empty>\"} "
+                "If you cannot determine a field, use 0 for amount, empty string for others."
             ),
         )
         chat.with_model("openai", "gpt-4o")
 
         img = ImageContent(image_base64=b64)
         user_msg = UserMessage(
-            text="Extract the total amount and a short description from this receipt.",
+            text="Extract the total amount, short description, date, and vendor/store name from this receipt.",
             file_contents=[img],
         )
         response_text = await chat.send_message(user_msg)
@@ -207,6 +207,8 @@ async def ocr_extract(file_id: str, current_user: dict = Depends(get_current_use
         return {
             "amount": float(result.get("amount", 0)),
             "description": str(result.get("description", "")),
+            "date": str(result.get("date", "")),
+            "vendor": str(result.get("vendor", "")),
         }
     except Exception as e:
         logger.error(f"OCR LLM failed: {e}")

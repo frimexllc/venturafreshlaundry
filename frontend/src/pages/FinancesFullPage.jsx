@@ -75,6 +75,8 @@ export default function FinancesPage() {
               ...prev,
               ...(ocrData.amount ? { amount: String(ocrData.amount) } : {}),
               ...(ocrData.description ? { description: ocrData.description } : {}),
+              ...(ocrData.date ? { date: ocrData.date } : {}),
+              ...(ocrData.vendor ? { vendor: ocrData.vendor } : {}),
             }));
             toast.success(t("Receipt scanned! Fields auto-filled.", "Recibo escaneado. Campos llenados automaticamente."));
           }

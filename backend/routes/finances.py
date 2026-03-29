@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
 
 from database import db
-from auth import get_current_user
+from auth import get_current_user, require_admin
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/finances", tags=["finances"])
@@ -350,4 +350,98 @@ async def get_financial_dashboard(
             "total_reimbursement": round(total_reimbursement, 2),
             "entries": len(mileage),
         },
+    }
+
+
+# ── Revenue Summary (Moved from server_core.py) ──────────────────────
+
+@router.get("/summary")
+async def get_finances_summary(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    current_user: dict = Depends(get_current_user),
+):
+    require_admin(current_user)
+
+    def parse_amount(value) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def normalize_date(date_value: Optional[str], is_end: bool = False) -> Optional[str]:
+        if not date_value:
+            return None
+        try:
+            dt = datetime.fromisoformat(date_value)
+        except ValueError:
+            return None
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        if is_end:
+            dt = dt.replace(hour=23, minute=59, second=59, microsecond=999999)
+        else:
+            dt = dt.replace(hour=0, minute=0, second=0, microsecond=0)
+        return dt.isoformat()
+
+    start_iso = normalize_date(start_date)
+    end_iso = normalize_date(end_date, is_end=True)
+
+    order_query = {}
+    membership_query = {}
+    if start_iso or end_iso:
+        range_query = {}
+        if start_iso:
+            range_query["$gte"] = start_iso
+        if end_iso:
+            range_query["$lte"] = end_iso
+        order_query["created_at"] = range_query
+        membership_query["created_at"] = range_query
+
+    orders = await db.orders.find(order_query, {"_id": 0}).to_list(5000)
+    paid_orders = [o for o in orders if (o.get("payment_status") or "").lower() == "paid"]
+    pending_orders = [o for o in orders if (o.get("payment_status") or "").lower() != "paid"]
+
+    order_revenue = sum(parse_amount(o.get("total_amount")) for o in paid_orders)
+    avg_order_value = order_revenue / len(paid_orders) if paid_orders else 0
+
+    signups = await db.membership_signups.find(membership_query, {"_id": 0}).to_list(5000)
+    paid_signups = [s for s in signups if (s.get("payment_status") or "").lower() == "paid"]
+    membership_revenue = sum(parse_amount(s.get("amount")) for s in paid_signups)
+
+    store_orders = await db.store_orders.find(order_query, {"_id": 0}).to_list(5000)
+    paid_store_orders = [o for o in store_orders if (o.get("payment_status") or "").lower() == "paid"]
+    pending_store_orders = [o for o in store_orders if (o.get("payment_status") or "").lower() != "paid"]
+    store_revenue = sum(parse_amount(o.get("total")) for o in paid_store_orders)
+
+    payment_methods = {}
+    def add_payment(method, amount):
+        key = (method or "unknown").lower()
+        payment_methods.setdefault(key, {"count": 0, "amount": 0.0})
+        payment_methods[key]["count"] += 1
+        payment_methods[key]["amount"] += amount
+
+    for order in paid_orders:
+        add_payment(order.get("payment_method"), parse_amount(order.get("total_amount")))
+    for order in paid_store_orders:
+        add_payment(order.get("payment_method"), parse_amount(order.get("total")))
+
+    total_revenue = order_revenue + membership_revenue + store_revenue
+
+    return {
+        "start_date": start_date,
+        "end_date": end_date,
+        "total_revenue": total_revenue,
+        "order_revenue": order_revenue,
+        "membership_revenue": membership_revenue,
+        "store_revenue": store_revenue,
+        "total_orders": len(orders),
+        "paid_orders": len(paid_orders),
+        "pending_orders": len(pending_orders),
+        "store_orders": len(store_orders),
+        "store_paid_orders": len(paid_store_orders),
+        "store_pending_orders": len(pending_store_orders),
+        "avg_order_value": avg_order_value,
+        "total_memberships": len(paid_signups),
+        "payment_methods": payment_methods,
     }
