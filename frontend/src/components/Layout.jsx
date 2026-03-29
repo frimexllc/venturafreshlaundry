@@ -225,7 +225,7 @@ export default function Layout() {
     const defaultOpen = {};
     navigationGroups.forEach((group, idx) => {
       // Por defecto abrir MAIN, OPERATIONS, LOGISTICS (los más comunes)
-      if (group.title === "MAIN" || group.title === "OPERATIONS" || group.title === "LOGISTICS" || group.title === "INVENTORY & SUPPLIERS") {
+      if (group.title === "MAIN" || group.title === "OPERATIONS" || group.title === "LOGISTICS" || group.title === "INVENTORY & SUPPLIERS" || group.title === "FINANCES") {
         defaultOpen[idx] = true;
       } else {
         defaultOpen[idx] = false;
