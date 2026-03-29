@@ -210,7 +210,7 @@ async def get_order_qr(order_id: str, current_user: dict = Depends(get_current_u
 
 
 @router.get("/orders/{order_id}/qr.svg")
-async def get_order_qr_svg(order_id: str, current_user: dict = Depends(get_current_user)):
+async def get_order_qr_svg(order_id: str):
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not order:
         order = await db.orders.find_one({"order_number": order_id}, {"_id": 0})
@@ -341,7 +341,7 @@ async def update_order(order_id: str, data: dict, current_user: dict = Depends(g
 @router.patch("/orders/{order_id}/status")
 async def update_order_status(order_id: str, status: str, notify: bool = True, current_user: dict = Depends(get_current_user)):
     valid_statuses = ["new", "confirmed", "pickup_scheduled", "picked_up", "processing", "ready", "out_for_delivery", "delivered", "completed", "cancelled"]
-    normalized_status = normalize_status(status)
+    normalized_status = status.strip().lower()
     if normalized_status not in valid_statuses:
         raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {valid_statuses}")
 
@@ -349,7 +349,7 @@ async def update_order_status(order_id: str, status: str, notify: bool = True, c
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    current_status = normalize_status(order.get("status"))
+    current_status = (order.get("status") or "").strip().lower()
     service_type = normalize_spaces(order.get("service_type") or "pickup_delivery").lower().replace(" ", "_")
     if normalized_status == "completed":
         if service_type in ["wash_fold", "wash_fold_dropoff", "self_service"]:
@@ -466,6 +466,25 @@ async def capture_order_payment(
 
     await db.orders.update_one({"id": order.get("id")}, {"$set": update_data})
     await create_audit_log("ORDER_PAYMENT_CAPTURED", "order", order.get("id"), current_user["id"], update_data)
+
+    # Create finance ledger entry
+    finance_entry = {
+        "id": str(uuid.uuid4()),
+        "type": "income",
+        "category": "service_payment",
+        "description": f"Pago orden {order.get('order_number', order_id)} - {order.get('service_type', 'service')}",
+        "amount": float(amount_received or total_amount or 0),
+        "payment_method": method,
+        "order_id": order.get("id"),
+        "order_number": order.get("order_number"),
+        "customer_id": order.get("customer_id"),
+        "customer_name": order.get("customer_name"),
+        "date": now[:10],
+        "created_at": now,
+        "updated_at": now,
+    }
+    await db.finances.insert_one(finance_entry)
+
     await emit_realtime("notification", {"type": "order_payment", "order_id": order.get("id"), "status": "paid", "method": method})
     return {"ok": True, "order_id": order.get("id"), **update_data}
 
@@ -571,6 +590,7 @@ async def get_order_stripe_status(
     if status_resp.payment_status == "paid" and transaction.get("payment_status") != "paid":
         order_id = transaction.get("order_id") or status_resp.metadata.get("order_id")
         if order_id:
+            now_str = datetime.now(timezone.utc).isoformat()
             await db.orders.update_one(
                 {"id": order_id},
                 {
@@ -579,11 +599,29 @@ async def get_order_stripe_status(
                         "payment_method": "card",
                         "amount_paid": transaction.get("amount"),
                         "change_due": 0,
-                        "paid_at": datetime.now(timezone.utc).isoformat(),
-                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                        "paid_at": now_str,
+                        "updated_at": now_str,
                     }
                 },
             )
+            # Create finance ledger entry for Stripe payment
+            order_doc = await db.orders.find_one({"id": order_id}, {"_id": 0})
+            finance_entry = {
+                "id": str(uuid.uuid4()),
+                "type": "income",
+                "category": "service_payment",
+                "description": f"Pago Stripe orden {(order_doc or {}).get('order_number', order_id)}",
+                "amount": float(transaction.get("amount") or 0),
+                "payment_method": "card",
+                "order_id": order_id,
+                "order_number": (order_doc or {}).get("order_number"),
+                "customer_id": (order_doc or {}).get("customer_id"),
+                "customer_name": (order_doc or {}).get("customer_name"),
+                "date": now_str[:10],
+                "created_at": now_str,
+                "updated_at": now_str,
+            }
+            await db.finances.insert_one(finance_entry)
 
     return {
         "status": status_resp.status,

@@ -101,7 +101,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
     }
     setProcessing(true);
     try {
-      const res = await fetch(`${API_URL}/api/orders/${orderId}/capture-payment`, {
+      const res = await fetch(`${API_URL}/api/orders/${orderId}/payment`, {
         method: "POST",
         headers: authHeaders(),
         body: JSON.stringify({ payment_method: payMethod, amount_received: amt }),
@@ -127,11 +127,18 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
   };
 
   const handleSendNotification = async () => {
+    const lbsInfo = localOrder.actual_lbs ? `${localOrder.actual_lbs} lbs` : (localOrder.estimated_lbs ? `~${localOrder.estimated_lbs} lbs est.` : "");
+    const totalInfo = (localOrder.total_amount || localOrder.total) ? `$${Number(localOrder.total_amount || localOrder.total).toFixed(2)}` : "";
+    const payStatus = (localOrder.payment_status || "pending").toLowerCase() === "paid" ? "pagado" : "pendiente de pago";
+    const details = [lbsInfo, totalInfo, payStatus].filter(Boolean).join(" | ");
     try {
       const res = await fetch(`${API_URL}/api/ai/operations`, {
         method: "POST",
         headers: authHeaders(),
-        body: JSON.stringify({ message: `Envía notificación al cliente de la orden ${localOrder.order_number || orderId} sobre el estado actual`, execute: true }),
+        body: JSON.stringify({
+          message: `Envía notificación al cliente de la orden ${localOrder.order_number || orderId} con estos datos: ${details}. Estado actual: ${localOrder.status}`,
+          execute: true,
+        }),
       });
       if (res.ok) toast.success(t("Notification sent", "Notificacion enviada"));
       else toast.error(t("Could not send notification", "No se pudo enviar notificacion"));

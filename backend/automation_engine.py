@@ -80,22 +80,24 @@ class OrderStatus(str, Enum):
 
 PICKUP_NEXT_STATUS_BY_STATUS = {
     "NEW": "CONFIRMED",
-    "CONFIRMED": "PROCESSING",
-    "PICKUP_SCHEDULED": "PROCESSING",
+    "CONFIRMED": "PICKED_UP",
+    "PICKUP_SCHEDULED": "PICKED_UP",
     "PICKED_UP": "PROCESSING",
     "PROCESSING": "READY",
     "READY": "OUT_FOR_DELIVERY",
-    "OUT_FOR_DELIVERY": "DELIVERED"
+    "OUT_FOR_DELIVERY": "DELIVERED",
+    "DELIVERED": "COMPLETED",
 }
 
 PICKUP_ACTION_LABELS = {
-    "NEW": "Confirmar pickup",
-    "CONFIRMED": "Iniciar proceso",
-    "PICKUP_SCHEDULED": "Iniciar proceso",
-    "PICKED_UP": "Iniciar proceso",
+    "NEW": "Confirmar",
+    "CONFIRMED": "Recolectar",
+    "PICKUP_SCHEDULED": "Recolectar",
+    "PICKED_UP": "En proceso",
     "PROCESSING": "Marcar listo",
     "READY": "Salir a entregar",
-    "OUT_FOR_DELIVERY": "Marcar entregado"
+    "OUT_FOR_DELIVERY": "Marcar entregado",
+    "DELIVERED": "Completar",
 }
 
 WASH_FOLD_SERVICE_TYPES = {
@@ -108,25 +110,17 @@ WASH_FOLD_SERVICE_TYPES = {
 }
 
 WASH_FOLD_NEXT_STATUS_BY_STATUS = {
-    "NEW": "PROCESSING",
+    "NEW": "CONFIRMED",
     "CONFIRMED": "PROCESSING",
-    "PICKUP_SCHEDULED": "PROCESSING",
-    "PICKED_UP": "PROCESSING",
     "PROCESSING": "READY",
     "READY": "COMPLETED",
-    "OUT_FOR_DELIVERY": "COMPLETED",
-    "DELIVERED": "COMPLETED"
 }
 
 WASH_FOLD_ACTION_LABELS = {
-    "NEW": "Procesar",
+    "NEW": "Confirmar",
     "CONFIRMED": "Procesar",
-    "PICKUP_SCHEDULED": "Procesar",
-    "PICKED_UP": "Procesar",
-    "PROCESSING": "Listo",
+    "PROCESSING": "Listo p/ recoger",
     "READY": "Completar",
-    "OUT_FOR_DELIVERY": "Completar",
-    "DELIVERED": "Completar"
 }
 
 
@@ -1009,8 +1003,8 @@ async def get_operator_dashboard():
     today = now.strftime("%Y-%m-%d")
 
     terminal_statuses = ["COMPLETED", "CANCELLED", "completed", "cancelled"]
-    pickup_delivery_statuses = {"PROCESSING", "READY", "OUT_FOR_DELIVERY", "DELIVERED"}
-    wash_fold_ready_statuses = {"READY", "DELIVERED", "OUT_FOR_DELIVERY"}
+    pickup_delivery_statuses = {"PICKED_UP", "PROCESSING", "READY", "OUT_FOR_DELIVERY", "DELIVERED"}
+    wash_fold_ready_statuses = {"PROCESSING", "READY"}
     processing_statuses = {"PROCESSING"}
 
     active_orders = await db.orders.find(
@@ -1138,7 +1132,6 @@ async def update_order_status(order_id: str, new_status: str, notes: Optional[st
 
     if is_wash_fold_service(order.get("service_type")):
         disallowed_wash_fold_statuses = {
-            "CONFIRMED",
             "PICKUP_SCHEDULED",
             "PICKED_UP",
             "OUT_FOR_DELIVERY",
@@ -1147,7 +1140,7 @@ async def update_order_status(order_id: str, new_status: str, notes: Optional[st
         if status_value in disallowed_wash_fold_statuses:
             raise HTTPException(
                 status_code=400,
-                detail="Invalid status for Wash & Fold Drop-Off. Use NEW -> PROCESSING -> READY -> COMPLETED"
+                detail="Invalid status for Wash & Fold. Use NEW -> CONFIRMED -> PROCESSING -> READY -> COMPLETED"
             )
     
     old_status = order.get("status")

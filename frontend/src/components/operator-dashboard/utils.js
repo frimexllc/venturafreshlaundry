@@ -1,5 +1,5 @@
 export const ORDER_STATUSES = [
-  { value: "PENDING", label: "Pending", color: "bg-yellow-100 text-yellow-800" },
+  { value: "NEW", label: "New", color: "bg-yellow-100 text-yellow-800" },
   { value: "CONFIRMED", label: "Confirmed", color: "bg-blue-100 text-blue-800" },
   { value: "PICKED_UP", label: "Picked Up", color: "bg-indigo-100 text-indigo-800" },
   { value: "PROCESSING", label: "Processing", color: "bg-purple-100 text-purple-800" },
@@ -50,12 +50,12 @@ export function getNextStatus(currentStatus, serviceType) {
   if (!currentStatus) return null;
   const s = currentStatus.toUpperCase();
   if (isWashFoldService(serviceType)) {
-    const flow = ["PENDING", "CONFIRMED", "PROCESSING", "READY", "COMPLETED"];
+    const flow = ["NEW", "CONFIRMED", "PROCESSING", "READY", "COMPLETED"];
     const idx = flow.indexOf(s);
     if (idx < 0 || idx >= flow.length - 1) return null;
     return flow[idx + 1];
   }
-  const flow = ["PENDING", "CONFIRMED", "PICKED_UP", "PROCESSING", "READY", "OUT_FOR_DELIVERY", "DELIVERED", "COMPLETED"];
+  const flow = ["NEW", "CONFIRMED", "PICKED_UP", "PROCESSING", "READY", "OUT_FOR_DELIVERY", "DELIVERED", "COMPLETED"];
   const idx = flow.indexOf(s);
   if (idx < 0 || idx >= flow.length - 1) return null;
   return flow[idx + 1];

@@ -232,7 +232,8 @@ export default function OperatorDashboard() {
     const s = (status || "").toString().toUpperCase();
     if (isWashFoldService(serviceType)) {
       const washFoldMap = {
-        NEW: t("Order Received", "Orden recibida"),
+        NEW: t("New", "Nueva"),
+        CONFIRMED: t("Confirmed", "Confirmada"),
         PROCESSING: t("Processing", "Procesando"),
         READY: t("Ready for Pickup", "Lista para recoger"),
         COMPLETED: t("Completed", "Completada"),
@@ -241,12 +242,12 @@ export default function OperatorDashboard() {
       return washFoldMap[s] || safeString(status);
     }
     const pickupMap = {
-      NEW: t("Order Created", "Orden creada"),
-      CONFIRMED: t("Pickup Confirmed", "Pickup confirmado"),
-      PICKUP_SCHEDULED: t("Pickup Confirmed", "Pickup confirmado"),
-      PICKED_UP: t("In Process", "En proceso"),
+      NEW: t("New", "Nueva"),
+      CONFIRMED: t("Confirmed", "Confirmada"),
+      PICKUP_SCHEDULED: t("Pickup Scheduled", "Pickup programado"),
+      PICKED_UP: t("Picked Up", "Recolectada"),
       PROCESSING: t("In Process", "En proceso"),
-      READY: t("Ready", "Lista"),
+      READY: t("Ready for Delivery", "Lista p/ entrega"),
       OUT_FOR_DELIVERY: t("Out for Delivery", "En camino"),
       DELIVERED: t("Delivered", "Entregada"),
       COMPLETED: t("Completed", "Completada"),
@@ -256,7 +257,8 @@ export default function OperatorDashboard() {
   };
 
   const getStatusInfo = (status, serviceType) => {
-    const found = ORDER_STATUSES.find(s => s.value === status) || ORDER_STATUSES[0];
+    const s = (status || "").toUpperCase();
+    const found = ORDER_STATUSES.find(st => st.value === s) || ORDER_STATUSES[0];
     return { ...found, label: getStatusLabel(found.value, serviceType) };
   };
 
@@ -844,7 +846,7 @@ export default function OperatorDashboard() {
             <CardHeader icon={<Truck className="h-4 w-4 text-sky-500" />} title={t("Pickup & Delivery — Created / Confirmed", "Pickup & Delivery — Creadas / Confirmadas")} count={filteredPickupOrders.length} testId="pos-pickup-today-count" />
             <div className="divide-y divide-slate-100">
               {filteredPickupOrders.length === 0
-                ? <EmptyState icon={<Truck className="h-8 w-8" />} text={t("No created or confirmed orders", "No hay órdenes creadas o confirmadas")} testId="pos-pickup-today-empty" />
+                ? <EmptyState icon={<Truck className="h-8 w-8" />} text={t("No created or confirmed orders", "No hay ordenes creadas o confirmadas")} testId="pos-pickup-today-empty" />
                 : filteredPickupOrders.map(order => {
                     const ns = getNextStatus(order.status, order.service_type);
                     return <OrderRow key={order.order_id || Math.random()} order={order} statusInfo={getStatusInfo(order.status, order.service_type)} nextStatus={ns} nextStatusInfo={ns ? getStatusInfo(ns, order.service_type) : null} updating={updating} onRowClick={setSelectedOrder} onAdvance={updateOrderStatus} onPrint={handlePrintTicket} showPrint advanceBtnClass="bg-sky-600 hover:bg-sky-700" t={t} />;
@@ -876,12 +878,12 @@ export default function OperatorDashboard() {
             </div>
           </div>
 
-          {/* In Process / Ready / Out for Delivery */}
+          {/* In Process / Ready / Out for Delivery / Delivered */}
           <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm" data-testid="pos-pickup-delivery-card">
             <CardHeader icon={<CheckCircle className="h-4 w-4 text-emerald-500" />} title={t("Pickup & Delivery — In Process / Ready / Out for Delivery", "Pickup & Delivery — En proceso / Lista / En camino")} count={filteredPickupDeliveries.length} bgClass="bg-emerald-50" testId="pos-pickup-delivery-count" />
             <div className="divide-y divide-slate-100">
               {filteredPickupDeliveries.length === 0
-                ? <EmptyState icon={<Package className="h-8 w-8" />} text={t("No active process or delivery orders", "No hay órdenes activas en proceso o entrega")} testId="operator-delivery-empty" />
+                ? <EmptyState icon={<Package className="h-8 w-8" />} text={t("No active process or delivery orders", "No hay ordenes activas en proceso o entrega")} testId="operator-delivery-empty" />
                 : filteredPickupDeliveries.map(order => {
                     const ns = getNextStatus(order.status, order.service_type);
                     return <OrderRow key={order.order_id || Math.random()} order={order} statusInfo={getStatusInfo(order.status, order.service_type)} nextStatus={ns} nextStatusInfo={ns ? getStatusInfo(ns, order.service_type) : null} updating={updating} onRowClick={setSelectedOrder} onAdvance={updateOrderStatus} onPrint={handlePrintTicket} showPrint advanceBtnClass="bg-emerald-600 hover:bg-emerald-700" t={t} />;
@@ -893,12 +895,12 @@ export default function OperatorDashboard() {
         {/* RIGHT – Wash & Fold */}
         <div className="space-y-4">
 
-          {/* Order Received / Processing */}
+          {/* W&F Created / Confirmed */}
           <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm" data-testid="pos-washfold-dropoff-card">
-            <CardHeader icon={<Package className="h-4 w-4 text-purple-500" />} title={t("Wash & Fold — Order Received / Processing", "Wash & Fold — Orden recibida / Procesando")} count={filteredWashFoldDropoffs.length} testId="pos-washfold-dropoff-count" />
+            <CardHeader icon={<Package className="h-4 w-4 text-purple-500" />} title={t("Wash & Fold — Created / Confirmed", "Wash & Fold — Creadas / Confirmadas")} count={filteredWashFoldDropoffs.length} testId="pos-washfold-dropoff-count" />
             <div className="divide-y divide-slate-100">
               {filteredWashFoldDropoffs.length === 0
-                ? <EmptyState icon={<Package className="h-8 w-8" />} text={t("No drop-offs waiting", "Sin entregas pendientes")} testId="pos-washfold-dropoff-empty" />
+                ? <EmptyState icon={<Package className="h-8 w-8" />} text={t("No created or confirmed orders", "Sin ordenes creadas o confirmadas")} testId="pos-washfold-dropoff-empty" />
                 : filteredWashFoldDropoffs.map(order => {
                     const statusInfo = getStatusInfo(order.status, order.service_type);
                     const nextStatus = getNextStatus(order.status, order.service_type);
@@ -959,12 +961,12 @@ export default function OperatorDashboard() {
             </div>
           </div>
 
-          {/* W&F Ready for pickup */}
+          {/* W&F Processing / Ready for pickup */}
           <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm" data-testid="pos-washfold-ready-card">
-            <CardHeader icon={<CheckCircle className="h-4 w-4 text-emerald-500" />} title={t("Wash & Fold — Ready for customer pickup", "Wash & Fold — Lista para recoger en tienda")} count={filteredWashFoldReady.length} bgClass="bg-emerald-50" testId="pos-washfold-ready-count" />
+            <CardHeader icon={<CheckCircle className="h-4 w-4 text-emerald-500" />} title={t("Wash & Fold — Processing / Ready for pickup", "Wash & Fold — Procesando / Lista para recoger")} count={filteredWashFoldReady.length} bgClass="bg-emerald-50" testId="pos-washfold-ready-count" />
             <div className="divide-y divide-slate-100">
               {filteredWashFoldReady.length === 0
-                ? <EmptyState icon={<CheckCircle className="h-8 w-8" />} text={t("No wash & fold orders ready", "No hay órdenes listas")} testId="pos-washfold-ready-empty" />
+                ? <EmptyState icon={<CheckCircle className="h-8 w-8" />} text={t("No orders in process or ready", "Sin ordenes en proceso o listas")} testId="pos-washfold-ready-empty" />
                 : filteredWashFoldReady.map(order => {
                     const ns = getNextStatus(order.status, order.service_type);
                     return (
