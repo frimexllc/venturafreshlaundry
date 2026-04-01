@@ -37,24 +37,63 @@ Comprehensive AI-powered laundry management system featuring:
 ## Credentials
 - Admin: owner@frimexllc.com / admin123
 
-## Key API Endpoints
-- GET /api/health
-- GET /api/automation/operator-dashboard
-- PUT /api/automation/orders/{id}/status
-- POST /api/orders/{id}/payment (creates finance ledger entry)
-- GET /api/orders/{id}/qr.svg (no auth required)
-- GET /api/ai/metrics
-- GET /api/ai/pending-actions
-
-## State Flows (Updated 2026-03-29)
+## State Flows (Updated 2026-04-01)
 ### Pickup & Delivery
 NEW -> CONFIRMED -> PICKED_UP -> PROCESSING -> READY -> OUT_FOR_DELIVERY -> DELIVERED -> COMPLETED
 
 ### Wash & Fold
 NEW -> CONFIRMED -> PROCESSING -> READY -> COMPLETED
 
+## Key API Endpoints
+- GET /api/health
+- GET /api/automation/operator-dashboard
+- PUT /api/automation/orders/{id}/status
+- POST /api/orders/{id}/payment (creates finance ledger entry)
+- GET /api/orders/{id}/qr.svg (no auth required)
+- POST /api/store/checkout/manual (optional customer fields)
+- POST /api/store/orders/{id}/send-payment-link (sms/email channel)
+- GET /api/store/products
+- GET /api/ai/metrics
+- GET /api/ai/pending-actions
+
+## Changes Made (2026-04-01)
+
+### P0 - Operator Dashboard State Machine & Columns
+- Updated P&D flow: NEW→CONFIRMED→PICKED_UP→PROCESSING→READY→OUT_FOR_DELIVERY→DELIVERED→COMPLETED
+- Updated W&F flow: NEW→CONFIRMED→PROCESSING→READY→COMPLETED (CONFIRMED now allowed)
+- Updated dashboard bucket sorting for correct column placement
+- Updated column titles: "Created / Confirmed", "Request Payment", "In Process / Ready / Out for Delivery"
+
+### P0 - Print Ticket Fix
+- Removed auth requirement from GET /api/orders/{id}/qr.svg endpoint
+- Fixed frontend fetch calls with proper headers
+
+### P0 - Payment Registration to Finances DB
+- Fixed frontend URL from /capture-payment to /payment  
+- Added finance ledger entry creation in POST /api/orders/{id}/payment
+- Added finance ledger entry creation in POST /api/store/orders/{id}/payment
+- Added finance ledger entry creation in POST /api/store/checkout/manual
+
+### P0 - Store POS Simplification
+- Removed customer form fields (Name, Phone, Email, Fulfillment, Notes, Address)
+- Added 4 quick payment buttons: Tap/Card, Cash, Link SMS, Link Email
+- Made customer fields optional in CheckoutRequest model
+- Created POST /api/store/orders/{id}/send-payment-link endpoint
+
+### P1 - Notify Customer Enhancement
+- Updated notification payload to include actual_lbs, calculated total, and payment status
+
+### Product Inventory in LogisticsMap
+- Added collapsible product inventory panel in sidebar
+- Product search functionality
+- Quick "Vender" button linking to QuickSaleModal
+
 ## Key DB Collections
 - orders, customers, services, finances, expenses
+- store_orders, carts, products, payment_transactions
 - ai_operator_sessions, ai_pending_actions
-- delivery_zones, payment_transactions
-- eventos_automation, _audit_log, notification_queue
+- delivery_zones, eventos_automation, _audit_log
+
+## Backlog
+- Automated Stripe Sync every 6 hours (paused per user request)
+- OperatorDashboard.jsx refactoring (1300+ lines)
