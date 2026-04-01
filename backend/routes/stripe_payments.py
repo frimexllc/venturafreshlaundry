@@ -65,7 +65,7 @@ async def create_payment_intent(req: PaymentIntentRequest):
     if req.customerName:
         metadata["customer_name"] = req.customerName
 
-    desc = req.description or f"Ventura Fresh Laundry"
+    desc = req.description or "Ventura Fresh Laundry"
     if req.orderNumber:
         desc = f"Orden {req.orderNumber} - {req.customerName or 'Cliente'}"
 
@@ -157,22 +157,43 @@ async def confirm_payment_success(
     order_id = payload.get("orderId", "")
     now = datetime.now(timezone.utc).isoformat()
 
+    order_doc = None
     if order_id:
-        # Update by order ID
         result = await db.store_orders.update_one(
             {"id": order_id},
             {"$set": {"payment_status": "paid", "status": "completed", "paid_at": now, "updated_at": now}},
         )
-        if result.modified_count == 0:
+        if result.modified_count > 0:
+            order_doc = await db.store_orders.find_one({"id": order_id}, {"_id": 0})
+        else:
             await db.orders.update_one(
                 {"id": order_id},
                 {"$set": {"payment_status": "paid", "paid_at": now, "updated_at": now}},
             )
+            order_doc = await db.orders.find_one({"id": order_id}, {"_id": 0})
     elif payment_intent_id:
-        # Update by Stripe payment intent ID
         await db.store_orders.update_one(
             {"stripe_payment_intent_id": payment_intent_id},
             {"$set": {"payment_status": "paid", "status": "completed", "paid_at": now, "updated_at": now}},
         )
+        order_doc = await db.store_orders.find_one({"stripe_payment_intent_id": payment_intent_id}, {"_id": 0})
+
+    # Create finance ledger entry
+    if order_doc:
+        finance_entry = {
+            "id": str(uuid.uuid4()),
+            "type": "income",
+            "category": "pos_sale" if order_doc.get("source") == "pos" else "store_sale",
+            "description": f"Pago Stripe {order_doc.get('order_number', order_id)}",
+            "amount": float(order_doc.get("total", 0)),
+            "payment_method": "card",
+            "order_id": order_doc.get("id"),
+            "order_number": order_doc.get("order_number"),
+            "customer_name": order_doc.get("customer_name"),
+            "date": now[:10],
+            "created_at": now,
+            "updated_at": now,
+        }
+        await db.finances.insert_one(finance_entry)
 
     return {"ok": True}

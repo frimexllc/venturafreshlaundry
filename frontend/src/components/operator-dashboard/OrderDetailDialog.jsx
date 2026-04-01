@@ -23,6 +23,9 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
   const [processing, setProcessing] = useState(false);
   const [notes, setNotes] = useState("");
   const [localOrder, setLocalOrder] = useState(null);
+  // Notification state - must be declared before any early returns to follow Rules of Hooks
+  const [notifyChannel, setNotifyChannel] = useState("sms");
+  const [notifySending, setNotifySending] = useState(false);
 
   useEffect(() => {
     if (order) {
@@ -127,23 +130,23 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
   };
 
   const handleSendNotification = async () => {
-    const lbsInfo = localOrder.actual_lbs ? `${localOrder.actual_lbs} lbs` : (localOrder.estimated_lbs ? `~${localOrder.estimated_lbs} lbs est.` : "");
-    const totalInfo = (localOrder.total_amount || localOrder.total) ? `$${Number(localOrder.total_amount || localOrder.total).toFixed(2)}` : "";
-    const payStatus = (localOrder.payment_status || "pending").toLowerCase() === "paid" ? "pagado" : "pendiente de pago";
-    const details = [lbsInfo, totalInfo, payStatus].filter(Boolean).join(" | ");
+    setNotifySending(true);
     try {
-      const res = await fetch(`${API_URL}/api/ai/operations`, {
+      const res = await fetch(`${API_URL}/api/orders/${orderId}/notify-customer`, {
         method: "POST",
         headers: authHeaders(),
-        body: JSON.stringify({
-          message: `Envía notificación al cliente de la orden ${localOrder.order_number || orderId} con estos datos: ${details}. Estado actual: ${localOrder.status}`,
-          execute: true,
-        }),
+        body: JSON.stringify({ channel: notifyChannel }),
       });
-      if (res.ok) toast.success(t("Notification sent", "Notificacion enviada"));
-      else toast.error(t("Could not send notification", "No se pudo enviar notificacion"));
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        toast.success(t(`Notification sent via ${notifyChannel.toUpperCase()}`, `Notificacion enviada por ${notifyChannel.toUpperCase()}`));
+      } else {
+        toast.error(data.detail || t("Could not send notification", "No se pudo enviar notificacion"));
+      }
     } catch {
       toast.error(t("Connection error", "Error de conexion"));
+    } finally {
+      setNotifySending(false);
     }
   };
 
@@ -392,9 +395,16 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
             <Button variant="outline" size="sm" className="text-xs gap-1" onClick={handlePrintTicket} data-testid="order-detail-print">
               <Printer className="w-3.5 h-3.5" /> {t("Print Ticket", "Imprimir Ticket")}
             </Button>
-            <Button variant="outline" size="sm" className="text-xs gap-1" onClick={handleSendNotification} data-testid="order-detail-notify">
-              <Send className="w-3.5 h-3.5" /> {t("Notify Customer", "Notificar Cliente")}
-            </Button>
+            <div className="flex items-center gap-1" data-testid="order-detail-notify-group">
+              <select value={notifyChannel} onChange={e => setNotifyChannel(e.target.value)} className="h-8 text-[10px] border border-slate-200 rounded-md px-1.5 bg-white" data-testid="order-detail-notify-channel">
+                <option value="sms">SMS</option>
+                <option value="email">Email</option>
+                <option value="whatsapp">WhatsApp</option>
+              </select>
+              <Button variant="outline" size="sm" className="text-xs gap-1" onClick={handleSendNotification} disabled={notifySending} data-testid="order-detail-notify">
+                <Send className="w-3.5 h-3.5" /> {notifySending ? "..." : t("Notify", "Notificar")}
+              </Button>
+            </div>
             <Button variant="outline" size="sm" className="text-xs gap-1 ml-auto" onClick={onClose} data-testid="order-detail-close">
               <X className="w-3.5 h-3.5" /> {t("Close", "Cerrar")}
             </Button>

@@ -650,3 +650,99 @@ async def notify_last_completed_order(current_user: dict = Depends(get_current_u
         await notify_order_status_changed(customer, order, "completed")
     await create_audit_log("ORDER_COMPLETED_NOTIFICATION_SENT", "order", order["id"], current_user["id"])
     return {"ok": True, "order_id": order["id"], "order_number": order.get("order_number")}
+
+
+class NotifyCustomerRequest(BaseModel):
+    channel: str = "sms"  # sms | email | whatsapp
+    message: Optional[str] = None
+
+
+@router.post("/orders/{order_id}/notify-customer")
+async def notify_customer_direct(
+    order_id: str,
+    payload: NotifyCustomerRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Send a direct notification to the customer with order details (lbs, total, status)."""
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    customer_id = order.get("customer_id")
+    customer = await db.customers.find_one({"id": customer_id}, {"_id": 0}) if customer_id else None
+
+    phone = (customer or {}).get("phone") or order.get("customer_phone") or ""
+    email = (customer or {}).get("email") or order.get("customer_email") or ""
+    name = (customer or {}).get("name") or order.get("customer_name") or "Cliente"
+
+    order_num = order.get("order_number", order_id)
+    status = (order.get("status") or "new").upper()
+    actual_lbs = order.get("actual_lbs")
+    estimated_lbs = order.get("estimated_lbs")
+    total = order.get("total_amount") or order.get("total") or 0
+    pay_status = (order.get("payment_status") or "pending").lower()
+
+    lbs_text = f"{actual_lbs} lbs" if actual_lbs else (f"~{estimated_lbs} lbs est." if estimated_lbs else "")
+    total_text = f"${float(total):.2f}" if total else ""
+    pay_text = "Pagado" if pay_status == "paid" else "Pendiente de pago"
+
+    if payload.message:
+        msg = payload.message
+    else:
+        lines = [f"Ventura Fresh Laundry - Orden {order_num}"]
+        lines.append(f"Hola {name},")
+        if lbs_text:
+            lines.append(f"Peso: {lbs_text}")
+        if total_text:
+            lines.append(f"Total: {total_text}")
+        lines.append(f"Estado: {status}")
+        lines.append(f"Pago: {pay_text}")
+        lines.append("Gracias por su preferencia!")
+        msg = "\n".join(lines)
+
+    if not NOTIFICATIONS_ENABLED:
+        return {"ok": False, "detail": "Notifications not configured", "message_preview": msg}
+
+    from notifications import send_sms, send_email, send_whatsapp
+
+    channel = payload.channel.lower()
+    sent = False
+    error_detail = ""
+
+    try:
+        if channel == "email" and email:
+            subject = f"Actualizacion orden {order_num}"
+            html = msg.replace("\n", "<br>")
+            sent = await send_email(email, subject, msg, html)
+        elif channel == "whatsapp" and phone:
+            sent = await send_whatsapp(phone, msg)
+        elif channel == "sms" and phone:
+            sent = await send_sms(phone, msg)
+        else:
+            available = []
+            if phone:
+                available.append("sms")
+            if email:
+                available.append("email")
+            if not available:
+                error_detail = "No phone or email on file for this customer"
+            else:
+                error_detail = f"Channel '{channel}' not available. Try: {', '.join(available)}"
+    except Exception as e:
+        error_detail = str(e)
+
+    if sent:
+        await create_audit_log(
+            "CUSTOMER_NOTIFIED_DIRECT",
+            "order",
+            order_id,
+            current_user["id"],
+            {"channel": channel, "message": msg[:200]},
+        )
+
+    return {
+        "ok": sent,
+        "channel": channel,
+        "message_preview": msg[:300],
+        "detail": error_detail if not sent else f"Sent via {channel}",
+    }
