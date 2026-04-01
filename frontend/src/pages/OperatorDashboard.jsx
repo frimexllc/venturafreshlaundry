@@ -1085,7 +1085,7 @@ export default function OperatorDashboard() {
             {t("Click on a marker to view order details", "Haz clic en un marcador para ver los detalles de la orden")}
           </p>
         </div>
-        <div className="h-[450px] w-full">
+        <div className="h-[450px] w-full" style={{ position: 'relative', zIndex: 0 }}>
           <MapContainer center={[STORE_COORDINATES.lat, STORE_COORDINATES.lng]} zoom={12} style={{ height: "100%", width: "100%" }}>
             <TileLayer
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"

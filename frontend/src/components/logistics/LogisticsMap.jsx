@@ -77,6 +77,7 @@ export function LogisticsMap() {
   const timRef = useRef(null);
   const prevHeavyRef = useRef(new Set());
   const [quickSaleOpen, setQuickSaleOpen] = useState(false);
+  const [quickSaleProduct, setQuickSaleProduct] = useState(null);
   const [showProducts, setShowProducts] = useState(false);
   const [productSearch, setProductSearch] = useState('');
   const [productsList, setProductsList] = useState([]);
@@ -431,7 +432,7 @@ export function LogisticsMap() {
                       <span className={p.stock <= 5 ? 'text-red-500 font-bold' : ''}>{p.stock <= 5 ? `Stock: ${p.stock}` : `Stock: ${p.stock}`}</span>
                     </div>
                   </div>
-                  <button onClick={() => { setQuickSaleOpen(true); }} className="text-[9px] font-bold px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-colors" data-testid={`product-sell-${p.id}`}>
+                  <button onClick={() => { setQuickSaleProduct(p); setQuickSaleOpen(true); }} className="text-[9px] font-bold px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-colors" data-testid={`product-sell-${p.id}`}>
                     Vender
                   </button>
                 </div>
@@ -558,7 +559,7 @@ export function LogisticsMap() {
         onUpdateOrderStatus={updateOrderStatus}
       />
       <EndOfDayModal open={showEndOfDay} onClose={() => setShowEndOfDay(false)} routeResult={routeResult} completedCount={completedStops.size} trafficDelay={trafficDelay} startTime={routeStartTime} />
-      <QuickSaleModal open={quickSaleOpen} onClose={() => setQuickSaleOpen(false)} />
+      <QuickSaleModal open={quickSaleOpen} onClose={() => { setQuickSaleOpen(false); setQuickSaleProduct(null); }} initialProduct={quickSaleProduct} />
       {selectedOrder && (
         <OrderDetailsModal order={selectedOrder} open={modalOpen} onClose={() => setModalOpen(false)} onStatusChange={(newStatus) => updateOrderStatus(selectedOrder.id, newStatus)} onPaymentSuccess={(orderId) => markOrderPaid(orderId)} />
       )}

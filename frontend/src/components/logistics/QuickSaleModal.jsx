@@ -136,7 +136,7 @@ function SuccessScreen({ sale, onClose }) {
   );
 }
 
-export function QuickSaleModal({ open, onClose }) {
+export function QuickSaleModal({ open, onClose, initialProduct }) {
   const [step, setStep] = useState('form'); // form | payment | success
   const [customerName, setCustomerName] = useState('');
   const [amount, setAmount] = useState('');
@@ -161,8 +161,11 @@ export function QuickSaleModal({ open, onClose }) {
       setClientSecret(null);
       setSaleData(null);
       setLoadError('');
+    } else if (initialProduct) {
+      setAmount(String(initialProduct.price || ''));
+      setDescription(initialProduct.name || '');
     }
-  }, [open]);
+  }, [open, initialProduct]);
 
   async function handleCreateSale() {
     const numAmount = parseFloat(amount);

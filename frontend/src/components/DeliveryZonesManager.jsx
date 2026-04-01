@@ -383,7 +383,7 @@ export default function DeliveryZonesManager() {
               </div>
               {form.type === "circle" && (
                 <div className="space-y-2">
-                  <Label>{t("Radius (km)", "Radio (km)")}</Label>
+                  <Label>{t("Radius (mi)", "Radio (mi)")}</Label>
                   <Input
                     type="number"
                     value={form.radius_km}
@@ -394,7 +394,7 @@ export default function DeliveryZonesManager() {
               )}
               <div className="grid grid-cols-3 gap-2">
                 <div className="space-y-2">
-                  <Label>{t("Rate/km", "Tarifa/km")}</Label>
+                  <Label>{t("Rate/mi", "Tarifa/mi")}</Label>
                   <Input
                     type="number"
                     value={form.rate_per_km}
@@ -447,7 +447,7 @@ export default function DeliveryZonesManager() {
                     <p className="text-xs text-slate-500">
                       {zone.type === "circle"
                         ? t("Circle", "Círculo")
-                        : t("Polygon", "Polígono")} - {zone.rate_per_km}/km
+                        : t("Polygon", "Polígono")} - ${zone.rate_per_km}/mi
                     </p>
                   </div>
                   <Button

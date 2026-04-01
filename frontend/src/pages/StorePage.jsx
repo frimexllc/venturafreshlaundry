@@ -643,7 +643,7 @@ export default function StorePage() {
                       {shippingLoading
                         ? <span className="flex items-center gap-1 not-italic"><div className="w-3 h-3 border border-primary border-t-transparent rounded-full animate-spin" />{t("Calculating...", "Calculando...")}</span>
                         : shippingQuote.distance_km
-                          ? `$${shippingFee.toFixed(2)} · ${shippingQuote.distance_km} km`
+                          ? `$${shippingFee.toFixed(2)} · ${(shippingQuote.distance_km * 0.621371).toFixed(1)} mi`
                           : "—"}
                     </span>
                   </div>

@@ -577,3 +577,29 @@
         transition-duration: 0.01ms !important;
     }
 }
+
+
+/* ===========================
+   LEAFLET Z-INDEX FIX
+   Contain Leaflet within its stacking context
+   so Dialog modals (z-50) render above maps
+=========================== */
+.leaflet-container {
+    z-index: 0 !important;
+    position: relative;
+}
+
+.leaflet-pane,
+.leaflet-top,
+.leaflet-bottom,
+.leaflet-control {
+    z-index: auto !important;
+}
+
+.leaflet-popup-pane {
+    z-index: 7 !important;
+}
+
+.leaflet-tooltip-pane {
+    z-index: 6 !important;
+}
