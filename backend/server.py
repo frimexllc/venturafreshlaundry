@@ -3,31 +3,13 @@ Lightweight entry-point so uvicorn can bind port 8001 in < 2 seconds.
 Heavy imports (socketio, server_core) run in a background thread AFTER
 the port is already open and responding to health checks.
 """
-import os
 import asyncio
-from pathlib import Path
-from dotenv import load_dotenv
 
-ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / ".env", override=False)
+from shared import fastapi_app
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-
-# ── Create FastAPI app immediately (no heavy deps) ───────────────────
-fastapi_app = FastAPI(title="Ventura Fresh Laundry CRM")
-
-cors_origins = os.environ.get("CORS_ORIGINS", "*")
-fastapi_app.add_middleware(
-    CORSMiddleware,
-    allow_origins=cors_origins.split(","),
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Placeholder — replaced by background thread once socketio loads
-sio = None
+# Re-export for backward compat (other modules may import from server)
+# But the canonical source is now shared.py
+import shared
 
 # ── Health-check available before any heavy import ───────────────────
 @fastapi_app.get("/api/health")
@@ -56,8 +38,6 @@ app = _SwappableASGI(fastapi_app)
 # ── Deferred heavy initialisation (runs AFTER port opens) ───────────
 def _load_heavy():
     """Run in a thread-pool worker so the event loop stays free."""
-    import server  # self-reference to update module globals
-
     # 1. Import socketio (heavy) and create the AsyncServer
     import socketio as _sio_mod
 
@@ -68,10 +48,10 @@ def _load_heavy():
         ping_interval=25,
     )
 
-    # 2. Expose sio at module level BEFORE importing server_core
-    server.sio = sio_obj
+    # 2. Expose sio at module level in shared BEFORE importing server_core
+    shared.sio = sio_obj
 
-    # 3. Import server_core (5 000+ lines, all routes, DB, etc.)
+    # 3. Import server_core (all routes, DB, etc.)
     import server_core  # noqa: F401
 
     # 4. Wrap fastapi_app with socketio ASGI and swap the live app

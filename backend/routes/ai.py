@@ -197,8 +197,7 @@ def get_ai_router(
             raise HTTPException(status_code=503, detail="AI Assistant not available")
 
         recent_orders = await db.orders.find({}, {"_id": 0}).sort("created_at", -1).limit(15).to_list(15)
-        orders_summary = "
-".join([
+        orders_summary = "\n".join([
             f"- {o.get('order_number') or o.get('id')} | id:{o.get('id')} | {o.get('customer_name') or '-'} | status:{o.get('status')} | total:{o.get('total_amount')} | payment:{o.get('payment_status')}"
             for o in recent_orders
         ]) or "No recent orders"
@@ -216,13 +215,7 @@ def get_ai_router(
             "Use IDs from the context. If no action is needed, return actions: []."
         )
 
-        prompt = f"{system_prompt}
-
-CONTEXT:
-{orders_summary}
-
-USER: {data.message}
-JSON:"
+        prompt = f"{system_prompt}\n\nCONTEXT:\n{orders_summary}\n\nUSER: {data.message}\nJSON:"
         raw = call_ollama(prompt)
         payload = extract_json_payload(raw)
         reply = payload.get("reply", "")
@@ -404,34 +397,24 @@ JSON:"
         require_admin(current_user)
 
         recent_orders = await db.orders.find({}, {"_id": 0}).sort("created_at", -1).limit(15).to_list(15)
-        orders_summary = "
-".join([
+        orders_summary = "\n".join([
             f"- {o.get('order_number') or o.get('id')} | id:{o.get('id')} | {o.get('customer_name') or '-'} | status:{o.get('status')} | est:{o.get('estimated_lbs')} | act:{o.get('actual_lbs')} | pickup:{o.get('pickup_date')}"
             for o in recent_orders
         ]) or "No recent orders"
 
         recent_quotes = await db.quotes.find({}, {"_id": 0}).sort("created_at", -1).limit(10).to_list(10)
-        quotes_summary = "
-".join([
+        quotes_summary = "\n".join([
             f"- {q.get('quote_number') or q.get('id')} | id:{q.get('id')} | {q.get('company_name') or q.get('contact_name') or '-'} | status:{q.get('status')} | est_lbs:{q.get('estimated_lbs')}"
             for q in recent_quotes
         ]) or "No recent quotes"
 
         recent_leads = await db.leads.find({}, {"_id": 0}).sort("created_at", -1).limit(10).to_list(10)
-        leads_summary = "
-".join([
-            f"- {l.get('id')} | {l.get('name') or '-'} | status:{l.get('status')}"
-            for l in recent_leads
+        leads_summary = "\n".join([
+            f"- {ld.get('id')} | {ld.get('name') or '-'} | status:{ld.get('status')}"
+            for ld in recent_leads
         ]) or "No recent leads"
 
-        context = f"RECENT ORDERS:
-{orders_summary}
-
-RECENT QUOTES:
-{quotes_summary}
-
-RECENT LEADS:
-{leads_summary}"
+        context = f"RECENT ORDERS:\n{orders_summary}\n\nRECENT QUOTES:\n{quotes_summary}\n\nRECENT LEADS:\n{leads_summary}"
 
         system_prompt = (
             "You are a local admin assistant for Ventura Fresh Laundry CRM. "
@@ -450,13 +433,7 @@ RECENT LEADS:
             "Use IDs from the CONTEXT. If no action is needed, return actions: []."
         )
 
-        prompt = f"{system_prompt}
-
-CONTEXT:
-{context}
-
-User: {data.message}
-JSON:"
+        prompt = f"{system_prompt}\n\nCONTEXT:\n{context}\n\nUser: {data.message}\nJSON:"
         model_response = call_ollama(prompt)
         payload = extract_json_payload(model_response)
         reply = payload.get("reply", "")
@@ -633,8 +610,7 @@ JSON:"
             return {"ok": True, "propuestas_creadas": 0, "detalle": "Sin patrones"}
         prompt = (
             "Eres un asistente de optimización. Devuelve JSON con clave propuestas (array). "
-            "Cada propuesta: tipo, descripcion, impacto_estimado, accion_sugerida, nivel_riesgo, datos_respaldo.
-"
+            "Cada propuesta: tipo, descripcion, impacto_estimado, accion_sugerida, nivel_riesgo, datos_respaldo. "
             f"patrones={json.dumps(patrones, ensure_ascii=False)}"
         )
         raw = call_ollama(prompt)

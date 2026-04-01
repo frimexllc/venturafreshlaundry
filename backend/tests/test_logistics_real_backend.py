@@ -14,6 +14,9 @@ import requests
 import os
 import time
 
+ADMIN_EMAIL = os.environ.get("TEST_ADMIN_EMAIL", "owner@frimexllc.com")
+ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD", "admin123")
+
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
 class TestLogisticsOrdersEndpoint:
@@ -25,7 +28,7 @@ class TestLogisticsOrdersEndpoint:
         response = requests.post(
             f"{BASE_URL}/api/auth/login",
             json={
-                "email": "owner@frimexllc.com",
+                "email": ADMIN_EMAIL,
                 "password": "Fr!m3x##$$"
             }
         )
@@ -155,7 +158,7 @@ class TestLogisticsStatusUpdate:
         response = requests.post(
             f"{BASE_URL}/api/auth/login",
             json={
-                "email": "owner@frimexllc.com",
+                "email": ADMIN_EMAIL,
                 "password": "Fr!m3x##$$"
             }
         )
@@ -285,7 +288,7 @@ class TestGeocodeCache:
         response = requests.post(
             f"{BASE_URL}/api/auth/login",
             json={
-                "email": "owner@frimexllc.com",
+                "email": ADMIN_EMAIL,
                 "password": "Fr!m3x##$$"
             }
         )
@@ -331,7 +334,7 @@ class TestOrderTypeMapping:
         response = requests.post(
             f"{BASE_URL}/api/auth/login",
             json={
-                "email": "owner@frimexllc.com",
+                "email": ADMIN_EMAIL,
                 "password": "Fr!m3x##$$"
             }
         )
@@ -388,7 +391,7 @@ class TestWashFoldNearbyOpportunity:
         response = requests.post(
             f"{BASE_URL}/api/auth/login",
             json={
-                "email": "owner@frimexllc.com",
+                "email": ADMIN_EMAIL,
                 "password": "Fr!m3x##$$"
             }
         )

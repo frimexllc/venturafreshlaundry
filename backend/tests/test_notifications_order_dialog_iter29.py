@@ -18,6 +18,9 @@ import os
 import uuid
 from datetime import datetime
 
+ADMIN_EMAIL = os.environ.get("TEST_ADMIN_EMAIL", "owner@frimexllc.com")
+ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD", "admin123")
+
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://ventura-deploy-test.preview.emergentagent.com').rstrip('/')
 
 @pytest.fixture(scope="module")
@@ -25,7 +28,7 @@ def auth_token():
     """Get authentication token for admin user"""
     response = requests.post(
         f"{BASE_URL}/api/auth/login",
-        json={"email": "owner@frimexllc.com", "password": "Fr!m3x##$$"}
+        json={"email": ADMIN_EMAIL, "password": "Fr!m3x##$$"}
     )
     if response.status_code == 200:
         return response.json().get("access_token")
@@ -55,7 +58,7 @@ class TestHealthAndAuth:
         """Test admin login returns access_token"""
         response = requests.post(
             f"{BASE_URL}/api/auth/login",
-            json={"email": "owner@frimexllc.com", "password": "Fr!m3x##$$"}
+            json={"email": ADMIN_EMAIL, "password": "Fr!m3x##$$"}
         )
         assert response.status_code == 200
         data = response.json()

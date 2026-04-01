@@ -288,14 +288,14 @@ class TestAdminLogin:
         reg_response = requests.post(f"{BASE_URL}/api/auth/register", json={
             "name": "Test Admin",
             "email": email,
-            "password": "admin123"
+            "password": ADMIN_PASSWORD
         })
         
         if reg_response.status_code == 200:
             # Login with registered admin
             response = requests.post(f"{BASE_URL}/api/auth/login", json={
                 "email": email,
-                "password": "admin123"
+                "password": ADMIN_PASSWORD
             })
             assert response.status_code == 200
             data = response.json()
@@ -306,7 +306,7 @@ class TestAdminLogin:
             # Try with existing admin
             response = requests.post(f"{BASE_URL}/api/auth/login", json={
                 "email": "admin@venturafresh.com",
-                "password": "admin123"
+                "password": ADMIN_PASSWORD
             })
             # May fail if admin doesn't exist, which is fine
             print(f"✓ Admin login test completed - status: {response.status_code}")

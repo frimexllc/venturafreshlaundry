@@ -11,6 +11,9 @@ import requests
 import os
 import json
 
+ADMIN_EMAIL = os.environ.get("TEST_ADMIN_EMAIL", "owner@frimexllc.com")
+ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD", "admin123")
+
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://ventura-deploy-test.preview.emergentagent.com')
 
 class TestStripeSync:
@@ -171,8 +174,8 @@ class TestOperatorDashboard:
     def auth_token(self):
         """Login as admin to get token"""
         response = requests.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "owner@frimexllc.com",
-            "password": "admin123"
+            "email": ADMIN_EMAIL,
+            "password": ADMIN_PASSWORD
         })
         if response.status_code != 200:
             pytest.skip("Auth failed - skipping authenticated tests")

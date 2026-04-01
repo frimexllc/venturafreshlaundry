@@ -173,8 +173,8 @@ if BLOG_ENABLED:
 if AUTOMATION_ENABLED:
     set_automation_db(db)
 
-# ── Import shared objects from the lightweight entry-point ──
-from server import fastapi_app, sio
+# ── Import shared objects from the shared module (no circular import) ──
+from shared import fastapi_app, sio
 
 app = fastapi_app
 api_router = APIRouter(prefix="/api")

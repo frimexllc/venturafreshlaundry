@@ -16,8 +16,8 @@ from datetime import datetime
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://ventura-deploy-test.preview.emergentagent.com").rstrip("/")
 
 # Test credentials
-ADMIN_EMAIL = "owner@frimexllc.com"
-ADMIN_PASSWORD = "admin123"
+ADMIN_EMAIL = os.environ.get("TEST_ADMIN_EMAIL", "owner@frimexllc.com")
+ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD", "admin123")
 
 
 class TestP0OperatorDashboardFixes:

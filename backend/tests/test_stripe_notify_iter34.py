@@ -15,6 +15,9 @@ import requests
 import os
 import time
 
+ADMIN_EMAIL = os.environ.get("TEST_ADMIN_EMAIL", "owner@frimexllc.com")
+ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD", "admin123")
+
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
 
 class TestStripePaymentFlow:
@@ -27,8 +30,8 @@ class TestStripePaymentFlow:
         self.session.headers.update({"Content-Type": "application/json"})
         # Login
         login_res = self.session.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "owner@frimexllc.com",
-            "password": "admin123"
+            "email": ADMIN_EMAIL,
+            "password": ADMIN_PASSWORD
         })
         if login_res.status_code == 200:
             token = login_res.json().get("access_token")
@@ -91,8 +94,8 @@ class TestStoreCheckout:
         self.session = requests.Session()
         self.session.headers.update({"Content-Type": "application/json"})
         login_res = self.session.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "owner@frimexllc.com",
-            "password": "admin123"
+            "email": ADMIN_EMAIL,
+            "password": ADMIN_PASSWORD
         })
         if login_res.status_code == 200:
             token = login_res.json().get("access_token")
@@ -186,8 +189,8 @@ class TestStripeConfirmPayment:
         self.session = requests.Session()
         self.session.headers.update({"Content-Type": "application/json"})
         login_res = self.session.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "owner@frimexllc.com",
-            "password": "admin123"
+            "email": ADMIN_EMAIL,
+            "password": ADMIN_PASSWORD
         })
         if login_res.status_code == 200:
             token = login_res.json().get("access_token")
@@ -227,8 +230,8 @@ class TestNotifyCustomerDirect:
         self.session = requests.Session()
         self.session.headers.update({"Content-Type": "application/json"})
         login_res = self.session.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "owner@frimexllc.com",
-            "password": "admin123"
+            "email": ADMIN_EMAIL,
+            "password": ADMIN_PASSWORD
         })
         if login_res.status_code == 200:
             token = login_res.json().get("access_token")
@@ -323,8 +326,8 @@ class TestRegressionPaymentFinance:
         self.session = requests.Session()
         self.session.headers.update({"Content-Type": "application/json"})
         login_res = self.session.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "owner@frimexllc.com",
-            "password": "admin123"
+            "email": ADMIN_EMAIL,
+            "password": ADMIN_PASSWORD
         })
         if login_res.status_code == 200:
             token = login_res.json().get("access_token")
@@ -380,8 +383,8 @@ class TestRegressionAutomationStatus:
         self.session = requests.Session()
         self.session.headers.update({"Content-Type": "application/json"})
         login_res = self.session.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "owner@frimexllc.com",
-            "password": "admin123"
+            "email": ADMIN_EMAIL,
+            "password": ADMIN_PASSWORD
         })
         if login_res.status_code == 200:
             token = login_res.json().get("access_token")

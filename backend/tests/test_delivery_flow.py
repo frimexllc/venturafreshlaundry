@@ -11,6 +11,9 @@ import os
 import uuid
 from datetime import datetime
 
+ADMIN_EMAIL = os.environ.get("TEST_ADMIN_EMAIL", "owner@frimexllc.com")
+ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD", "admin123")
+
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://ventura-deploy-test.preview.emergentagent.com').rstrip('/')
 
 
@@ -20,8 +23,8 @@ class TestAuth:
     def test_admin_login(self):
         """Admin login: owner@frimexllc.com / admin123"""
         response = requests.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "owner@frimexllc.com",
-            "password": "admin123"
+            "email": ADMIN_EMAIL,
+            "password": ADMIN_PASSWORD
         })
         assert response.status_code == 200, f"Login failed: {response.text}"
         data = response.json()
@@ -92,8 +95,8 @@ class TestOrderStatusUpdate:
     def auth_headers(self):
         """Get auth token for API calls"""
         response = requests.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "owner@frimexllc.com",
-            "password": "admin123"
+            "email": ADMIN_EMAIL,
+            "password": ADMIN_PASSWORD
         })
         assert response.status_code == 200
         token = response.json()["access_token"]
@@ -225,8 +228,8 @@ class TestNotificationTrigger:
     @pytest.fixture
     def auth_headers(self):
         response = requests.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "owner@frimexllc.com",
-            "password": "admin123"
+            "email": ADMIN_EMAIL,
+            "password": ADMIN_PASSWORD
         })
         assert response.status_code == 200
         return {"Authorization": f"Bearer {response.json()['access_token']}"}

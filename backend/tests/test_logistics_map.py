@@ -6,6 +6,9 @@ import pytest
 import requests
 import os
 
+ADMIN_EMAIL = os.environ.get("TEST_ADMIN_EMAIL", "owner@frimexllc.com")
+ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD", "admin123")
+
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
 class TestHealthEndpoint:
@@ -108,7 +111,7 @@ class TestAuthAndStoreOrders:
         response = requests.post(
             f"{BASE_URL}/api/auth/login",
             json={
-                "email": "owner@frimexllc.com",
+                "email": ADMIN_EMAIL,
                 "password": "Fr!m3x##$$"
             }
         )
@@ -123,7 +126,7 @@ class TestAuthAndStoreOrders:
         response = requests.post(
             f"{BASE_URL}/api/auth/login",
             json={
-                "email": "owner@frimexllc.com",
+                "email": ADMIN_EMAIL,
                 "password": "Fr!m3x##$$"
             }
         )
@@ -139,7 +142,7 @@ class TestAuthAndStoreOrders:
         response = requests.post(
             f"{BASE_URL}/api/auth/login",
             json={
-                "email": "owner@frimexllc.com",
+                "email": ADMIN_EMAIL,
                 "password": "wrongpassword"
             }
         )
@@ -175,7 +178,7 @@ class TestDashboardEndpoints:
         response = requests.post(
             f"{BASE_URL}/api/auth/login",
             json={
-                "email": "owner@frimexllc.com",
+                "email": ADMIN_EMAIL,
                 "password": "Fr!m3x##$$"
             }
         )

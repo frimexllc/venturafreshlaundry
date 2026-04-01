@@ -10,6 +10,9 @@ import requests
 import os
 import uuid
 
+ADMIN_EMAIL = os.environ.get("TEST_ADMIN_EMAIL", "owner@frimexllc.com")
+ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD", "admin123")
+
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
 
@@ -35,8 +38,8 @@ class TestWashFoldContactPreference:
         
         # Login as admin to verify order preferred_contact
         login_response = requests.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "owner@frimexllc.com",
-            "password": "admin123"
+            "email": ADMIN_EMAIL,
+            "password": ADMIN_PASSWORD
         })
         assert login_response.status_code == 200, f"Login failed: {login_response.text}"
         token = login_response.json()["access_token"]
@@ -82,8 +85,8 @@ class TestWashFoldContactPreference:
         
         # Login and verify
         login_response = requests.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "owner@frimexllc.com",
-            "password": "admin123"
+            "email": ADMIN_EMAIL,
+            "password": ADMIN_PASSWORD
         })
         token = login_response.json()["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
@@ -119,8 +122,8 @@ class TestWashFoldContactPreference:
         
         # Login and verify
         login_response = requests.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "owner@frimexllc.com",
-            "password": "admin123"
+            "email": ADMIN_EMAIL,
+            "password": ADMIN_PASSWORD
         })
         token = login_response.json()["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
@@ -156,8 +159,8 @@ class TestWashFoldContactPreference:
         
         # Login and verify
         login_response = requests.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "owner@frimexllc.com",
-            "password": "admin123"
+            "email": ADMIN_EMAIL,
+            "password": ADMIN_PASSWORD
         })
         token = login_response.json()["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
@@ -361,8 +364,8 @@ class TestPickupDeliveryNotificationRules:
     def get_auth_headers(self):
         """Get auth headers for API calls"""
         login_response = requests.post(f"{BASE_URL}/api/auth/login", json={
-            "email": "owner@frimexllc.com",
-            "password": "admin123"
+            "email": ADMIN_EMAIL,
+            "password": ADMIN_PASSWORD
         })
         assert login_response.status_code == 200
         token = login_response.json()["access_token"]

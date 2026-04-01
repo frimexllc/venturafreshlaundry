@@ -23,7 +23,7 @@ def admin_token(api_client):
     """Get admin authentication token"""
     response = api_client.post(f"{BASE_URL}/api/auth/login", json={
         "email": "admin@venturafresh.com",
-        "password": "admin123"
+        "password": ADMIN_PASSWORD
     })
     if response.status_code == 200:
         return response.json().get("access_token")
