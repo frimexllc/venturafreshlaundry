@@ -17,6 +17,16 @@ Comprehensive AI-powered laundry management system featuring:
 - Realtime: Socket.io
 - Rules: Bilingual t("EN","ES"), Pacific/Los_Angeles timezone, Distances in MILES
 
+## Architecture (Updated 2026-04-01)
+```
+shared.py (fastapi_app, sio) ← single source of truth
+    ↑               ↑
+server.py       server_core.py
+(entry point)   (all routes/DB)
+    ↑
+realtime.py (emit helper)
+```
+
 ## Credentials
 - Admin: owner@frimexllc.com / admin123
 
@@ -31,36 +41,22 @@ NEW -> CONFIRMED -> PROCESSING -> READY -> COMPLETED
 - GET /api/health
 - GET /api/automation/operator-dashboard
 - PUT /api/automation/orders/{id}/status
-- POST /api/orders/{id}/payment (creates finance ledger entry)
+- POST /api/orders/{id}/payment (creates finance entry)
 - POST /api/orders/{id}/notify-customer (direct SMS/Email/WhatsApp)
 - GET /api/orders/{id}/qr.svg (no auth required)
 - POST /api/store/checkout (Stripe, optional customer fields)
-- POST /api/store/checkout/manual (cash/transfer, optional customer fields)
+- POST /api/store/checkout/manual (cash/transfer, creates finance entry)
 - POST /api/store/orders/{id}/send-payment-link (sms/email link)
-- GET /api/stripe/publishable-key
 - POST /api/stripe/quick-sale
 - POST /api/stripe/confirm-payment (creates finance entry)
-- GET /api/store/products
 
-## Changes (2026-04-01)
-
-### Session 1 - P0 Fixes
-- State machine updated (P&D 8 steps, W&F 5 steps with CONFIRMED)
-- Print Ticket: QR.svg no auth required
-- Registrar Pago: Creates finance entries (orders + store)
-- Store POS simplified: 4 quick payment buttons, no customer form
-- Notify Customer: Direct SMS/Email/WhatsApp with lbs + total
-
-### Session 2 - Stripe & Notifications
-- Stripe POS flow validated end-to-end (publishable key, quick-sale, checkout, confirm)
-- confirm-payment now creates finance ledger entry
-- notify-customer endpoint: direct SMS/Email/WhatsApp with order details
-- OrderDetailDialog: channel selector (SMS/Email/WhatsApp) + send button
-- React hooks bug fixed (useState before early return)
-- Product selection → QuickSaleModal pre-filled
-- Z-index fix for maps overlapping modals
-- Distances in miles (DeliveryZones, StorePage)
+## Code Quality Fixes Applied (2026-04-01)
+1. **Syntax Error**: Fixed unterminated string literals in routes/ai.py (lines 200, 218, 400-436, 613)
+2. **Circular Import**: Extracted shared.py module; server.py and server_core.py both import from shared.py
+3. **Hardcoded Secrets**: All test files now use os.environ.get() for credentials
+4. **Linting**: All Python files pass ruff checks
 
 ## Backlog
 - Automated Stripe Sync every 6 hours (paused per user request)
+- Complexity refactoring: update_order_status() (35 complexity), generate_daily_briefing() (24 complexity)
 - OperatorDashboard.jsx refactoring (1300+ lines)
