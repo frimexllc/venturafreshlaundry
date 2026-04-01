@@ -324,14 +324,18 @@ def build_customer_snapshot(payload: dict) -> Dict:
 
 async def apply_stock_deduction(items: List[Dict]):
     for item in items:
-        product = await db.products.find_one({"id": item["product_id"]}, {"_id": 0})
+        product_id = item.get("product_id")
+        if not product_id:
+            # Skip items without product_id (legacy orders or custom items)
+            continue
+        product = await db.products.find_one({"id": product_id}, {"_id": 0})
         if not product:
             continue
         new_stock = max((product.get("stock", 0) - item.get("quantity", 0)), 0)
         update_doc = {"stock": new_stock, "updated_at": datetime.now(timezone.utc).isoformat()}
         if new_stock <= 0:
             update_doc["is_active"] = False
-        await db.products.update_one({"id": item["product_id"]}, {"$set": update_doc})
+        await db.products.update_one({"id": product_id}, {"$set": update_doc})
 
 
 # ==================== MODELS ====================
@@ -373,15 +377,15 @@ class CartResponse(BaseModel):
 class CheckoutRequest(BaseModel):
     cart_id: str
     origin_url: str
-    customer_name: str
-    customer_email: str
-    customer_phone: str
+    customer_name: Optional[str] = "Venta en tienda"
+    customer_email: Optional[str] = None
+    customer_phone: Optional[str] = None
     shipping_address: Optional[str] = None
     shipping_apt: Optional[str] = None
     delivery_instructions: Optional[str] = None
     notes: Optional[str] = None
     preferred_contact: Optional[str] = None
-    fulfillment_type: Optional[str] = "delivery"
+    fulfillment_type: Optional[str] = "pickup"
 
 class ManualCheckoutRequest(CheckoutRequest):
     payment_method: str
@@ -945,7 +949,7 @@ async def create_checkout_session(checkout: CheckoutRequest, request: Request):
 
     now = datetime.now(timezone.utc).isoformat()
     order_number = f"SO-{datetime.now().strftime('%Y%m%d')}-{str(uuid.uuid4())[:8].upper()}"
-    normalized_email = normalize_email(checkout.customer_email) or checkout.customer_email
+    normalized_email = normalize_email(checkout.customer_email) if checkout.customer_email else None
     normalized_phone = normalize_phone(checkout.customer_phone) if checkout.customer_phone else None
 
     store_address, _, _, _, _ = get_store_config()
@@ -960,7 +964,7 @@ async def create_checkout_session(checkout: CheckoutRequest, request: Request):
         "id": str(uuid.uuid4()),
         "order_number": order_number,
         "customer_id": cart.get("customer_id"),
-        "customer_name": normalize_spaces(checkout.customer_name),
+        "customer_name": normalize_spaces(checkout.customer_name) if checkout.customer_name else "Venta en tienda",
         "customer_email": normalized_email,
         "customer_phone": normalized_phone,
         "preferred_contact": checkout.preferred_contact,
@@ -1073,7 +1077,7 @@ async def create_manual_checkout(checkout: ManualCheckoutRequest):
 
     now = datetime.now(timezone.utc).isoformat()
     order_number = f"SO-{datetime.now().strftime('%Y%m%d')}-{str(uuid.uuid4())[:8].upper()}"
-    normalized_email = normalize_email(checkout.customer_email) or checkout.customer_email
+    normalized_email = normalize_email(checkout.customer_email) if checkout.customer_email else None
     normalized_phone = normalize_phone(checkout.customer_phone) if checkout.customer_phone else None
 
     store_address, _, _, _, _ = get_store_config()
@@ -1088,7 +1092,7 @@ async def create_manual_checkout(checkout: ManualCheckoutRequest):
         "id": str(uuid.uuid4()),
         "order_number": order_number,
         "customer_id": cart.get("customer_id"),
-        "customer_name": normalize_spaces(checkout.customer_name),
+        "customer_name": normalize_spaces(checkout.customer_name) if checkout.customer_name else "Venta en tienda",
         "customer_email": normalized_email,
         "customer_phone": normalized_phone,
         "preferred_contact": checkout.preferred_contact,
@@ -1129,6 +1133,23 @@ async def create_manual_checkout(checkout: ManualCheckoutRequest):
         "updated_at": now
     }
     await db.payment_transactions.insert_one(payment_doc)
+
+    # Create finance ledger entry
+    finance_entry = {
+        "id": str(uuid.uuid4()),
+        "type": "income",
+        "category": "store_sale",
+        "description": f"Venta tienda {order_number}",
+        "amount": float(total),
+        "payment_method": payment_method,
+        "order_id": order_doc["id"],
+        "order_number": order_number,
+        "customer_name": order_doc.get("customer_name"),
+        "date": now[:10],
+        "created_at": now,
+        "updated_at": now,
+    }
+    await db.finances.insert_one(finance_entry)
 
     await apply_stock_deduction(order_doc.get("items", []))
     customer_snapshot = build_customer_snapshot({
@@ -1331,6 +1352,23 @@ async def register_store_order_payment(order_id: str, payload: StorePaymentReque
     }
     await db.payment_transactions.insert_one(payment_doc)
 
+    # Create finance ledger entry for store payment
+    finance_entry = {
+        "id": str(uuid.uuid4()),
+        "type": "income",
+        "category": "store_sale",
+        "description": f"Pago tienda {order.get('order_number', order_id)}",
+        "amount": float(order.get("total", 0)),
+        "payment_method": payment_method,
+        "order_id": order_id,
+        "order_number": order.get("order_number"),
+        "customer_name": order.get("customer_name"),
+        "date": now[:10],
+        "created_at": now,
+        "updated_at": now,
+    }
+    await db.finances.insert_one(finance_entry)
+
     await apply_stock_deduction(order.get("items", []))
     customer_snapshot = {
         "name": order.get("customer_name"),
@@ -1407,6 +1445,93 @@ async def create_store_order_checkout(order_id: str, payload: StoreStripeCheckou
     await db.payment_transactions.insert_one(payment_doc)
 
     return {"session_id": session.session_id, "checkout_url": session.url}
+
+
+class SendPaymentLinkRequest(BaseModel):
+    channel: str  # "sms" or "email"
+    phone: Optional[str] = None
+    email: Optional[str] = None
+
+
+@store_router.post("/orders/{order_id}/send-payment-link")
+async def send_payment_link(order_id: str, payload: SendPaymentLinkRequest, request: Request):
+    """Generate Stripe checkout URL and send via SMS or Email"""
+    if not STRIPE_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Stripe integration not available")
+    order = await db.store_orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if (order.get("payment_status") or "").lower() == "paid":
+        raise HTTPException(status_code=400, detail="Order already paid")
+
+    channel = payload.channel.lower()
+    if channel == "sms" and not payload.phone:
+        raise HTTPException(status_code=400, detail="Phone number required for SMS")
+    if channel == "email" and not payload.email:
+        raise HTTPException(status_code=400, detail="Email required")
+
+    stripe_api_key = os.environ.get("STRIPE_API_KEY")
+    if not stripe_api_key:
+        raise HTTPException(status_code=500, detail="Payment configuration error")
+
+    host_url = resolve_public_base_url(request)
+    webhook_url = f"{host_url}/api/webhook/stripe"
+    base_url = host_url.rstrip("/")
+    success_url = f"{base_url}/admin/operator?store_session_id={{CHECKOUT_SESSION_ID}}&order_id={order_id}"
+    cancel_url = f"{base_url}/admin/operator?order_id={order_id}&status=cancelled"
+
+    stripe_checkout = StripeCheckout(api_key=stripe_api_key, webhook_url=webhook_url)
+    checkout_request = CheckoutSessionRequest(
+        amount=float(order.get("total", 0)),
+        currency="usd",
+        success_url=success_url,
+        cancel_url=cancel_url,
+        metadata={"order_id": order_id, "order_number": order.get("order_number") or ""}
+    )
+    session: CheckoutSessionResponse = await stripe_checkout.create_checkout_session(checkout_request)
+
+    now = datetime.now(timezone.utc).isoformat()
+    await db.store_orders.update_one(
+        {"id": order_id},
+        {"$set": {"stripe_session_id": session.session_id, "payment_status": "pending", "payment_method": "card", "updated_at": now}}
+    )
+
+    payment_doc = {
+        "id": str(uuid.uuid4()),
+        "session_id": session.session_id,
+        "order_id": order_id,
+        "order_number": order.get("order_number"),
+        "amount": order.get("total", 0),
+        "currency": "usd",
+        "payment_status": "initiated",
+        "metadata": {"payment_method": "card", "link_channel": channel},
+        "created_at": now,
+        "updated_at": now,
+    }
+    await db.payment_transactions.insert_one(payment_doc)
+
+    checkout_url = session.url
+    order_num = order.get("order_number", "")
+    total = order.get("total", 0)
+
+    try:
+        if channel == "sms":
+            from notifications import send_sms
+            msg = f"Ventura Fresh Laundry - Orden {order_num}\nTotal: ${total:.2f}\nPaga aqui: {checkout_url}"
+            await send_sms(payload.phone, msg)
+            await db.store_orders.update_one({"id": order_id}, {"$set": {"customer_phone": payload.phone}})
+        elif channel == "email":
+            from notifications import send_email
+            subject = f"Link de pago - Orden {order_num}"
+            body = f"<h2>Ventura Fresh Laundry</h2><p>Orden: <strong>{order_num}</strong></p><p>Total: <strong>${total:.2f}</strong></p><p><a href='{checkout_url}' style='display:inline-block;padding:12px 24px;background:#0ea5e9;color:white;border-radius:8px;text-decoration:none;font-weight:bold;'>Pagar ahora</a></p>"
+            await send_email(payload.email, subject, body)
+            await db.store_orders.update_one({"id": order_id}, {"$set": {"customer_email": payload.email}})
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Failed to send payment link via {channel}: {e}")
+        return {"message": f"Order created but could not send {channel}. Checkout URL: {checkout_url}", "checkout_url": checkout_url, "order_id": order_id}
+
+    return {"message": f"Payment link sent via {channel}", "checkout_url": checkout_url, "order_id": order_id}
 
 
 @store_router.post("/orders/{order_id}/refund")

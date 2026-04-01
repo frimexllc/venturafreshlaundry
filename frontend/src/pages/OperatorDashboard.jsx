@@ -5,7 +5,7 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../components/ui/dialog";
-import { Truck, Package, AlertTriangle, CheckCircle, RefreshCw, Phone, ChevronRight, Zap, Bot, DollarSign, Printer, MapPin, Search } from "lucide-react";
+import { Truck, Package, AlertTriangle, CheckCircle, RefreshCw, Phone, ChevronRight, Zap, Bot, DollarSign, Printer, MapPin, Search, CreditCard, Mail, X } from "lucide-react";
 import { toast } from "sonner";
 import { createNotificationsSocket } from "../utils/notificationsSocket";
 import DeliveryZonesManager from "../components/DeliveryZonesManager";
@@ -187,6 +187,8 @@ export default function OperatorDashboard() {
   const [storePaymentOrder, setStorePaymentOrder] = useState(null);
   const [storePaymentForm, setStorePaymentForm] = useState({ method: "card" });
   const [storeProcessingPayment, setStoreProcessingPayment] = useState(false);
+  const [storeLinkMode, setStoreLinkMode] = useState(null);
+  const [storeLinkContact, setStoreLinkContact] = useState("");
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiReply, setAiReply] = useState("");
   const [aiResults, setAiResults] = useState([]);
@@ -545,6 +547,8 @@ export default function OperatorDashboard() {
       payment_method: "card", fulfillment_type: "pickup"
     });
     setStoreShippingQuote({ distance_km: null, fee: 0, zone_name: null });
+    setStoreLinkMode(null);
+    setStoreLinkContact("");
   };
 
   const getCartItemQuantity = (pid) => storeCart?.items?.find(e => e.product_id === pid)?.quantity || 0;
@@ -580,23 +584,7 @@ export default function OperatorDashboard() {
 
   const handleStoreCheckout = async () => {
     if (!storeCart?.items?.length) {
-      toast.error(t("Cart is empty", "El carrito está vacío"));
-      return;
-    }
-    if (!storeCheckoutForm.name || !storeCheckoutForm.email || !storeCheckoutForm.phone) {
-      toast.error(t("Complete customer details", "Completa los datos del cliente"));
-      return;
-    }
-    if (storeCheckoutForm.fulfillment_type === "delivery" && !storeCheckoutForm.address) {
-      toast.error(t("Add delivery address", "Agrega dirección de entrega"));
-      return;
-    }
-    if (storeCheckoutForm.fulfillment_type === "delivery" && storeShippingError) {
-      toast.error(storeShippingError);
-      return;
-    }
-    if (storeCheckoutForm.fulfillment_type === "delivery" && !storeShippingQuote.distance_km) {
-      toast.error(t("Calculate shipping before charging", "Calcula el envío antes de cobrar"));
+      toast.error(t("Cart is empty", "El carrito esta vacio"));
       return;
     }
     setStoreCheckoutLoading(true);
@@ -604,15 +592,7 @@ export default function OperatorDashboard() {
       const payload = {
         cart_id: storeCart.id,
         origin_url: window.location.origin,
-        customer_name: storeCheckoutForm.name,
-        customer_email: storeCheckoutForm.email,
-        customer_phone: storeCheckoutForm.phone,
-        shipping_address: storeCheckoutForm.fulfillment_type === "delivery" ? storeCheckoutForm.address : "",
-        shipping_apt: storeCheckoutForm.apt,
-        delivery_instructions: storeCheckoutForm.instructions,
-        notes: storeCheckoutForm.notes,
-        preferred_contact: storeCheckoutForm.preferred_contact,
-        fulfillment_type: storeCheckoutForm.fulfillment_type
+        fulfillment_type: "pickup"
       };
       const endpoint = storeCheckoutForm.payment_method === "card"
         ? `${API_URL}/api/store/checkout`
@@ -635,7 +615,111 @@ export default function OperatorDashboard() {
         toast.error(formatApiError(e.detail, t("Payment failed", "Pago fallido")));
       }
     } catch {
-      toast.error(t("Connection error", "Error de conexión"));
+      toast.error(t("Connection error", "Error de conexion"));
+    } finally {
+      setStoreCheckoutLoading(false);
+    }
+  };
+
+  const handleQuickCheckout = async (method) => {
+    if (!storeCart?.items?.length) {
+      toast.error(t("Cart is empty", "El carrito esta vacio"));
+      return;
+    }
+    setStoreCheckoutLoading(true);
+    try {
+      const payload = {
+        cart_id: storeCart.id,
+        origin_url: window.location.origin,
+        fulfillment_type: "pickup"
+      };
+      if (method === "card") {
+        const res = await fetch(`${API_URL}/api/store/checkout`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          const d = await res.json();
+          window.location.href = d.checkout_url;
+        } else {
+          const e = await res.json();
+          toast.error(formatApiError(e.detail, t("Payment failed", "Pago fallido")));
+        }
+      } else {
+        const res = await fetch(`${API_URL}/api/store/checkout/manual`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...payload, payment_method: method })
+        });
+        if (res.ok) {
+          toast.success(t("Order confirmed - paid with cash", "Orden confirmada - pagado en efectivo"));
+          resetStorePos();
+          await loadStoreOrders();
+        } else {
+          const e = await res.json();
+          toast.error(formatApiError(e.detail, t("Payment failed", "Pago fallido")));
+        }
+      }
+    } catch {
+      toast.error(t("Connection error", "Error de conexion"));
+    } finally {
+      setStoreCheckoutLoading(false);
+    }
+  };
+
+  const handleSendPaymentLink = async (channel) => {
+    if (!storeCart?.items?.length) {
+      toast.error(t("Cart is empty", "El carrito esta vacio"));
+      return;
+    }
+    if (!storeLinkContact.trim()) {
+      toast.error(channel === "sms" ? t("Enter phone number", "Ingresa numero de telefono") : t("Enter email", "Ingresa correo electronico"));
+      return;
+    }
+    setStoreCheckoutLoading(true);
+    try {
+      // First create a manual order with pending payment
+      const payload = {
+        cart_id: storeCart.id,
+        origin_url: window.location.origin,
+        fulfillment_type: "pickup",
+        payment_method: "cash"
+      };
+      if (channel === "sms") payload.customer_phone = storeLinkContact.trim();
+      if (channel === "email") payload.customer_email = storeLinkContact.trim();
+      const orderRes = await fetch(`${API_URL}/api/store/checkout/manual`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (!orderRes.ok) {
+        const e = await orderRes.json();
+        toast.error(formatApiError(e.detail, t("Error creating order", "Error creando orden")));
+        return;
+      }
+      const orderData = await orderRes.json();
+      const orderId = orderData.order_id || orderData.id;
+      // Update order to pending payment status and send payment link
+      const linkRes = await fetch(`${API_URL}/api/store/orders/${orderId}/send-payment-link`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          channel,
+          phone: channel === "sms" ? storeLinkContact.trim() : null,
+          email: channel === "email" ? storeLinkContact.trim() : null
+        })
+      });
+      if (linkRes.ok) {
+        toast.success(t(`Payment link sent via ${channel.toUpperCase()}`, `Link de pago enviado por ${channel.toUpperCase()}`));
+        resetStorePos();
+        await loadStoreOrders();
+      } else {
+        const e = await linkRes.json();
+        toast.error(formatApiError(e.detail || e.message, t("Could not send link", "No se pudo enviar el link")));
+      }
+    } catch {
+      toast.error(t("Connection error", "Error de conexion"));
     } finally {
       setStoreCheckoutLoading(false);
     }
@@ -1157,7 +1241,7 @@ export default function OperatorDashboard() {
       {/* Store POS Modal */}
       <Dialog open={storePosOpen} onOpenChange={open => !open ? resetStorePos() : setStorePosOpen(true)}>
         <DialogContent className="w-[95vw] max-w-5xl bg-white max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle className="text-base sm:text-lg">{t("New Store Sale", "Nueva venta en tienda")}</DialogTitle><DialogDescription className="text-xs sm:text-sm">{t("Select products and collect payment quickly.", "Selecciona productos y cobra rápidamente.")}</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle className="text-base sm:text-lg">{t("New Store Sale", "Nueva venta en tienda")}</DialogTitle><DialogDescription className="text-xs sm:text-sm">{t("Select products and collect payment quickly.", "Selecciona productos y cobra rapido.")}</DialogDescription></DialogHeader>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6" data-testid="store-pos-modal">
             <div className="space-y-3">
               <Input placeholder={t("Search products", "Buscar productos")} value={storeSearch} onChange={e => setStoreSearch(e.target.value)} className="text-sm" data-testid="store-pos-search" />
@@ -1170,20 +1254,38 @@ export default function OperatorDashboard() {
               </div></div>
             </div>
             <div className="space-y-3">
-              <div className="border border-slate-200 rounded-xl p-3 sm:p-4" data-testid="store-pos-cart"><h4 className="font-semibold text-slate-800 mb-2 text-sm">{t("Cart", "Carrito")}</h4>{storeCart?.items?.length ? <div className="space-y-1.5">{storeCart.items.map(item => <div key={item.product_id || Math.random()} className="flex items-center justify-between text-xs sm:text-sm"><span className="truncate mr-2 text-slate-700">{safeString(item.name || item.product_name)}</span><span className="shrink-0 text-slate-500">{item.quantity} × ${Number(item.price || 0).toFixed(2)}</span></div>)}</div> : <p className="text-xs text-slate-400">{t("No items yet", "Sin productos")}</p>}</div>
-              <div className="border border-slate-200 rounded-xl p-3 sm:p-4 space-y-2.5" data-testid="store-pos-customer">
-                <div className="grid grid-cols-2 gap-2"><div><Label className="text-xs">{t("Name", "Nombre")} *</Label><Input value={storeCheckoutForm.name} onChange={e => setStoreCheckoutForm({ ...storeCheckoutForm, name: e.target.value })} className="mt-1 text-sm h-8" data-testid="store-pos-name" /></div><div><Label className="text-xs">{t("Phone", "Teléfono")} *</Label><Input value={storeCheckoutForm.phone} onChange={e => setStoreCheckoutForm({ ...storeCheckoutForm, phone: e.target.value })} className="mt-1 text-sm h-8" data-testid="store-pos-phone" /></div></div>
-                <div><Label className="text-xs">{t("Email", "Email")} *</Label><Input type="email" value={storeCheckoutForm.email} onChange={e => setStoreCheckoutForm({ ...storeCheckoutForm, email: e.target.value })} className="mt-1 text-sm h-8" data-testid="store-pos-email" /></div>
-                <div className="grid grid-cols-2 gap-2"><div><Label className="text-xs">{t("Fulfillment", "Entrega")}</Label><select className="w-full mt-1 border border-slate-200 rounded-lg px-2 py-1.5 text-xs sm:text-sm" value={storeCheckoutForm.fulfillment_type} onChange={e => setStoreCheckoutForm({ ...storeCheckoutForm, fulfillment_type: e.target.value })} data-testid="store-pos-fulfillment"><option value="pickup">{t("Pickup", "Recoger en tienda")}</option><option value="delivery">{t("Delivery", "Entrega a domicilio")}</option></select></div><div><Label className="text-xs">{t("Payment method", "Método de pago")}</Label><select className="w-full mt-1 border border-slate-200 rounded-lg px-2 py-1.5 text-xs sm:text-sm" value={storeCheckoutForm.payment_method} onChange={e => setStoreCheckoutForm({ ...storeCheckoutForm, payment_method: e.target.value })} data-testid="store-pos-payment-method"><option value="card">{t("Card (Stripe)", "Tarjeta (Stripe)")}</option><option value="cash">{t("Cash", "Efectivo")}</option><option value="transfer">{t("Transfer", "Transferencia")}</option><option value="other">{t("Other", "Otro")}</option></select></div></div>
-                {storeCheckoutForm.fulfillment_type === "delivery" && <div><Label className="text-xs">{t("Delivery address", "Dirección de entrega")} *</Label><Input value={storeCheckoutForm.address} onChange={e => setStoreCheckoutForm({ ...storeCheckoutForm, address: e.target.value })} className="mt-1 text-sm h-8" data-testid="store-pos-address" /><p className="text-xs text-slate-400 mt-1">{t("Format: street + number, city, state, ZIP", "Formato: calle y número, ciudad, estado, ZIP")}</p></div>}
-                <div><Label className="text-xs">{t("Notes", "Notas")}</Label><Input value={storeCheckoutForm.notes} onChange={e => setStoreCheckoutForm({ ...storeCheckoutForm, notes: e.target.value })} className="mt-1 text-sm h-8" data-testid="store-pos-notes" /></div>
-              </div>
+              <div className="border border-slate-200 rounded-xl p-3 sm:p-4" data-testid="store-pos-cart"><h4 className="font-semibold text-slate-800 mb-2 text-sm">{t("Cart", "Carrito")}</h4>{storeCart?.items?.length ? <div className="space-y-1.5">{storeCart.items.map(item => <div key={item.product_id || Math.random()} className="flex items-center justify-between text-xs sm:text-sm"><span className="truncate mr-2 text-slate-700">{safeString(item.name || item.product_name)}</span><span className="shrink-0 text-slate-500">{item.quantity} x ${Number(item.price || 0).toFixed(2)}</span></div>)}</div> : <p className="text-xs text-slate-400">{t("No items yet", "Sin productos")}</p>}</div>
               <div className="border border-slate-200 rounded-xl p-3 sm:p-4 space-y-2" data-testid="store-pos-summary">
-                <div className="flex justify-between text-sm"><span className="text-slate-500">{t("Subtotal", "Subtotal")}</span><span className="font-medium">${storeCartSubtotal.toFixed(2)}</span></div>
-                <div className="flex justify-between text-sm"><span className="text-slate-500">{t("Shipping", "Envío")}</span><span className="font-medium">{storeCheckoutForm.fulfillment_type === "delivery" ? (storeShippingQuote.distance_km ? `$${storeShippingFee.toFixed(2)} (${storeShippingQuote.distance_km} km)` : t("Enter full address", "Ingresa dirección completa")) : t("Pickup", "Recoger")}</span></div>
-                {storeShippingError && storeCheckoutForm.fulfillment_type === "delivery" && <p className="text-xs text-red-500">{storeShippingError}</p>}
-                <div className="flex justify-between font-bold text-sm sm:text-base pt-1 border-t border-slate-100"><span>{t("Total", "Total")}</span><span>${storeOrderTotal.toFixed(2)}</span></div>
-                <Button className="w-full bg-sky-600 hover:bg-sky-700 text-sm" onClick={handleStoreCheckout} disabled={storeCheckoutLoading} data-testid="store-pos-submit">{storeCheckoutLoading ? t("Processing…", "Procesando…") : storeCheckoutForm.payment_method === "card" ? t("Pay with Stripe", "Pagar con Stripe") : t("Confirm order", "Confirmar orden")}</Button>
+                <div className="flex justify-between font-bold text-base sm:text-lg pt-1 border-b border-slate-100 pb-2"><span>{t("Total", "Total")}</span><span data-testid="store-pos-total">${storeCartSubtotal.toFixed(2)}</span></div>
+                <p className="text-xs text-slate-400 text-center">{t("Select a payment method", "Selecciona metodo de pago")}</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button className="w-full bg-sky-600 hover:bg-sky-700 text-xs sm:text-sm h-11" onClick={() => handleQuickCheckout("card")} disabled={storeCheckoutLoading || !storeCart?.items?.length} data-testid="store-pos-pay-card">
+                    <CreditCard className="h-4 w-4 mr-1.5" />{t("Tap / Card", "Tap / Tarjeta")}
+                  </Button>
+                  <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-xs sm:text-sm h-11" onClick={() => handleQuickCheckout("cash")} disabled={storeCheckoutLoading || !storeCart?.items?.length} data-testid="store-pos-pay-cash">
+                    <DollarSign className="h-4 w-4 mr-1.5" />{t("Cash", "Efectivo")}
+                  </Button>
+                  <Button variant="outline" className="w-full text-xs sm:text-sm h-11 border-purple-200 text-purple-700 hover:bg-purple-50" onClick={() => setStoreLinkMode("sms")} disabled={storeCheckoutLoading || !storeCart?.items?.length} data-testid="store-pos-link-sms">
+                    <Phone className="h-4 w-4 mr-1.5" />{t("Link via SMS", "Link por SMS")}
+                  </Button>
+                  <Button variant="outline" className="w-full text-xs sm:text-sm h-11 border-indigo-200 text-indigo-700 hover:bg-indigo-50" onClick={() => setStoreLinkMode("email")} disabled={storeCheckoutLoading || !storeCart?.items?.length} data-testid="store-pos-link-email">
+                    <Mail className="h-4 w-4 mr-1.5" />{t("Link via Email", "Link por Email")}
+                  </Button>
+                </div>
+                {storeLinkMode && (
+                  <div className="mt-2 p-3 bg-slate-50 rounded-lg space-y-2 border border-slate-200" data-testid="store-pos-link-form">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-semibold">{storeLinkMode === "sms" ? t("Phone number", "Numero de telefono") : t("Email address", "Correo electronico")}</Label>
+                      <button className="text-slate-400 hover:text-slate-600" onClick={() => setStoreLinkMode(null)}><X className="h-3.5 w-3.5" /></button>
+                    </div>
+                    <div className="flex gap-2">
+                      <Input value={storeLinkContact} onChange={e => setStoreLinkContact(e.target.value)} placeholder={storeLinkMode === "sms" ? "(805) 555-0000" : "email@cliente.com"} className="text-sm h-9 flex-1" data-testid="store-pos-link-input" />
+                      <Button className="bg-purple-600 hover:bg-purple-700 text-xs h-9 px-4" onClick={() => handleSendPaymentLink(storeLinkMode)} disabled={storeCheckoutLoading || !storeLinkContact.trim()} data-testid="store-pos-link-send">
+                        {storeCheckoutLoading ? "…" : t("Send", "Enviar")}
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
