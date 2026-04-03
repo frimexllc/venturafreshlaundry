@@ -57,6 +57,7 @@ import KpiDashboardPage from "./pages/KpiDashboardPage";
 import OcrAnalyticsPage from "./pages/OcrAnalyticsPage";
 import StripeSyncPage from "./pages/StripeSyncPage";
 import NotificationMetricsPage from "./pages/NotificationMetricsPage";
+import PaymentSuccessPage from "./pages/PaymentSuccessPage";
 
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -129,6 +130,7 @@ function AppRoutes() {
       <Route path="/privacy-policy" element={<PrivacyPolicy />} />
       <Route path="/sms-policy-consent" element={<SmsPolicyConsent />} />
       <Route path="/faq" element={<FAQPage />} />
+      <Route path="/payment-success" element={<PaymentSuccessPage />} />
 
       {/* Customer portal */}
       <Route path="/account/login" element={<CustomerLogin />} />

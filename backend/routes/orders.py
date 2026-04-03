@@ -661,9 +661,10 @@ class NotifyCustomerRequest(BaseModel):
 async def notify_customer_direct(
     order_id: str,
     payload: NotifyCustomerRequest,
+    request: Request,
     current_user: dict = Depends(get_current_user),
 ):
-    """Send a direct notification to the customer with order details (lbs, total, status)."""
+    """Send a direct notification with order details and payment link for unpaid orders."""
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
@@ -672,7 +673,7 @@ async def notify_customer_direct(
     customer = await db.customers.find_one({"id": customer_id}, {"_id": 0}) if customer_id else None
 
     phone = (customer or {}).get("phone") or order.get("customer_phone") or ""
-    email = (customer or {}).get("email") or order.get("customer_email") or ""
+    email_addr = (customer or {}).get("email") or order.get("customer_email") or ""
     name = (customer or {}).get("name") or order.get("customer_name") or "Cliente"
 
     order_num = order.get("order_number", order_id)
@@ -686,8 +687,57 @@ async def notify_customer_direct(
     total_text = f"${float(total):.2f}" if total else ""
     pay_text = "Pagado" if pay_status == "paid" else "Pendiente de pago"
 
+    # ── Generate Stripe payment link for unpaid orders ────────────
+    payment_url = ""
+    if pay_status != "paid" and float(total or 0) >= 0.50 and STRIPE_CHECKOUT_AVAILABLE:
+        try:
+            stripe_api_key = os.environ.get("STRIPE_API_KEY")
+            if stripe_api_key:
+                origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
+                host_url = str(request.base_url).rstrip("/")
+                webhook_url = f"{host_url}/api/webhook/stripe"
+                success_url = f"{origin}/payment-success?session_id={{CHECKOUT_SESSION_ID}}&order_id={order.get('id')}"
+                cancel_url = f"{origin}/"
+
+                amount = float(total)
+                stripe_checkout = StripeCheckout(api_key=stripe_api_key, webhook_url=webhook_url)
+                session_request = CheckoutSessionRequest(
+                    amount=amount,
+                    currency="usd",
+                    success_url=success_url,
+                    cancel_url=cancel_url,
+                    metadata={
+                        "order_id": order.get("id"),
+                        "order_number": order_num,
+                        "type": "service_order",
+                    },
+                )
+                session: CheckoutSessionResponse = await stripe_checkout.create_checkout_session(session_request)
+                payment_url = session.url
+
+                now = datetime.now(timezone.utc).isoformat()
+                payment_doc = {
+                    "id": str(uuid.uuid4()),
+                    "session_id": session.session_id,
+                    "order_id": order.get("id"),
+                    "entity_type": "service_order",
+                    "amount": amount,
+                    "currency": "usd",
+                    "status": "initiated",
+                    "payment_status": "pending",
+                    "metadata": session_request.metadata,
+                    "created_at": now,
+                    "updated_at": now,
+                }
+                await db.payment_transactions.insert_one(payment_doc)
+        except Exception as e:
+            logger.warning(f"Could not generate payment link for order {order_id}: {e}")
+
+    # ── Build SMS / WhatsApp text message ─────────────────────────
     if payload.message:
         msg = payload.message
+        if payment_url and payment_url not in msg:
+            msg += f"\n\nPaga aqui: {payment_url}"
     else:
         lines = [f"Ventura Fresh Laundry - Orden {order_num}"]
         lines.append(f"Hola {name},")
@@ -697,11 +747,73 @@ async def notify_customer_direct(
             lines.append(f"Total: {total_text}")
         lines.append(f"Estado: {status}")
         lines.append(f"Pago: {pay_text}")
-        lines.append("Gracias por su preferencia!")
+        if payment_url:
+            lines.append(f"\nPaga en linea: {payment_url}")
+        lines.append("\nGracias por su preferencia!")
         msg = "\n".join(lines)
 
+    # ── Build HTML email ──────────────────────────────────────────
+    payment_btn_html = ""
+    if payment_url:
+        payment_btn_html = f"""
+        <tr><td style="padding:24px 30px 0;">
+          <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
+            <a href="{payment_url}" style="display:inline-block;padding:14px 40px;background-color:#0891b2;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px;border-radius:10px;letter-spacing:0.3px;">
+              Pagar ${float(total):.2f} Ahora
+            </a>
+          </td></tr></table>
+          <p style="margin:12px 0 0;font-size:11px;color:#94a3b8;text-align:center;">Enlace seguro con Stripe. Acepta tarjeta, Apple Pay y Google Pay.</p>
+        </td></tr>"""
+
+    paid_badge = '<span style="display:inline-block;padding:3px 10px;background:#dcfce7;color:#16a34a;border-radius:20px;font-size:12px;font-weight:600;">Pagado</span>'
+    pending_badge = '<span style="display:inline-block;padding:3px 10px;background:#fef3c7;color:#d97706;border-radius:20px;font-size:12px;font-weight:600;">Pendiente</span>'
+    status_badge = paid_badge if pay_status == "paid" else pending_badge
+
+    email_html = f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background-color:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f1f5f9;padding:30px 0;">
+<tr><td align="center">
+<table width="100%" style="max-width:520px;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.06);" cellpadding="0" cellspacing="0">
+  <!-- Header -->
+  <tr><td style="background:linear-gradient(135deg,#0e7490,#0891b2);padding:28px 30px;">
+    <h1 style="margin:0;color:#fff;font-size:20px;font-weight:700;">Ventura Fresh Laundry</h1>
+    <p style="margin:4px 0 0;color:rgba(255,255,255,0.8);font-size:13px;">Actualizacion de tu orden</p>
+  </td></tr>
+  <!-- Greeting -->
+  <tr><td style="padding:28px 30px 0;">
+    <p style="margin:0;font-size:15px;color:#334155;">Hola <strong>{name}</strong>,</p>
+    <p style="margin:8px 0 0;font-size:14px;color:#64748b;">Aqui tienes los detalles de tu orden:</p>
+  </td></tr>
+  <!-- Order card -->
+  <tr><td style="padding:20px 30px 0;">
+    <table width="100%" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;" cellpadding="0" cellspacing="0">
+      <tr><td style="padding:16px 20px;border-bottom:1px solid #e2e8f0;">
+        <p style="margin:0;font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">Orden</p>
+        <p style="margin:4px 0 0;font-size:18px;color:#0f172a;font-weight:700;">{order_num}</p>
+      </td></tr>
+      {"<tr><td style='padding:12px 20px;border-bottom:1px solid #e2e8f0;'><table width='100%'><tr><td style='font-size:13px;color:#64748b;'>Peso</td><td align='right' style='font-size:14px;color:#0f172a;font-weight:600;'>" + lbs_text + "</td></tr></table></td></tr>" if lbs_text else ""}
+      {"<tr><td style='padding:12px 20px;border-bottom:1px solid #e2e8f0;'><table width='100%'><tr><td style='font-size:13px;color:#64748b;'>Total</td><td align='right' style='font-size:18px;color:#0f172a;font-weight:800;'>" + total_text + "</td></tr></table></td></tr>" if total_text else ""}
+      <tr><td style="padding:12px 20px;border-bottom:1px solid #e2e8f0;"><table width="100%"><tr><td style="font-size:13px;color:#64748b;">Estado</td><td align="right" style="font-size:14px;color:#0f172a;font-weight:600;">{status}</td></tr></table></td></tr>
+      <tr><td style="padding:12px 20px;"><table width="100%"><tr><td style="font-size:13px;color:#64748b;">Pago</td><td align="right">{status_badge}</td></tr></table></td></tr>
+    </table>
+  </td></tr>
+  <!-- Payment button -->
+  {payment_btn_html}
+  <!-- Footer -->
+  <tr><td style="padding:28px 30px;">
+    <p style="margin:0;font-size:13px;color:#64748b;">Gracias por tu preferencia!</p>
+    <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0;">
+    <p style="margin:0;font-size:11px;color:#94a3b8;">Ventura Fresh Laundry<br>5722 Telephone Rd Suite 5, Ventura, CA 93003<br>(805) 515-4030</p>
+  </td></tr>
+</table>
+</td></tr></table>
+</body></html>"""
+
+    email_plain = msg  # fallback plain text
+
     if not NOTIFICATIONS_ENABLED:
-        return {"ok": False, "detail": "Notifications not configured", "message_preview": msg}
+        return {"ok": False, "detail": "Notifications not configured", "message_preview": msg, "payment_url": payment_url}
 
     from notifications import send_sms, send_email, send_whatsapp
 
@@ -710,10 +822,9 @@ async def notify_customer_direct(
     error_detail = ""
 
     try:
-        if channel == "email" and email:
-            subject = f"Actualizacion orden {order_num}"
-            html = msg.replace("\n", "<br>")
-            sent = await send_email(email, subject, msg, html)
+        if channel == "email" and email_addr:
+            subject = f"Orden {order_num} — Ventura Fresh Laundry"
+            sent = await send_email(email_addr, subject, email_plain, email_html)
         elif channel == "whatsapp" and phone:
             sent = await send_whatsapp(phone, msg)
         elif channel == "sms" and phone:
@@ -722,7 +833,7 @@ async def notify_customer_direct(
             available = []
             if phone:
                 available.append("sms")
-            if email:
+            if email_addr:
                 available.append("email")
             if not available:
                 error_detail = "No phone or email on file for this customer"
@@ -737,12 +848,13 @@ async def notify_customer_direct(
             "order",
             order_id,
             current_user["id"],
-            {"channel": channel, "message": msg[:200]},
+            {"channel": channel, "message": msg[:200], "payment_url": payment_url[:200] if payment_url else ""},
         )
 
     return {
         "ok": sent,
         "channel": channel,
         "message_preview": msg[:300],
+        "payment_url": payment_url,
         "detail": error_detail if not sent else f"Sent via {channel}",
     }
