@@ -22,12 +22,24 @@ async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
     new_leads = await db.leads.count_documents({"status": "new"})
     orders_today = await db.orders.count_documents({"created_at": {"$gte": today}})
 
-    pipeline = [
-        {"$match": {"created_at": {"$gte": month_start}, "payment_status": "paid"}},
-        {"$group": {"_id": None, "total": {"$sum": "$total_amount"}}}
+    # Revenue from finances collection (most accurate)
+    fin_pipeline = [
+        {"$match": {"type": "income", "created_at": {"$gte": month_start}}},
+        {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
     ]
-    revenue_result = await db.orders.aggregate(pipeline).to_list(1)
-    revenue = revenue_result[0]["total"] if revenue_result else 0
+    fin_rev = await db.finances.aggregate(fin_pipeline).to_list(1)
+    if fin_rev:
+        revenue = fin_rev[0]["total"]
+    else:
+        pipeline = [
+            {"$match": {"payment_status": "paid", "$or": [
+                {"paid_at": {"$gte": month_start}},
+                {"created_at": {"$gte": month_start}}
+            ]}},
+            {"$group": {"_id": None, "total": {"$sum": "$total_amount"}}}
+        ]
+        revenue_result = await db.orders.aggregate(pipeline).to_list(1)
+        revenue = revenue_result[0]["total"] if revenue_result else 0
 
     return DashboardStats(
         total_customers=total_customers,

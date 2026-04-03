@@ -322,13 +322,26 @@ async def get_financial_dashboard(
     fixed = sum(e.get("amount", 0) for e in expenses if e.get("expense_type") == "fixed")
     variable = sum(e.get("amount", 0) for e in expenses if e.get("expense_type") == "variable")
 
-    # Revenue (from paid orders)
-    revenue_query = {"payment_status": "paid"}
-    if period != "year":
-        revenue_query["created_at"] = {"$gte": date_from}
-    orders = await db.orders.find(revenue_query, {"_id": 0, "total_amount": 1}).to_list(2000)
-    store_orders = await db.store_orders.find({"payment_status": "paid"}, {"_id": 0, "total": 1}).to_list(500)
-    total_revenue = sum(o.get("total_amount", 0) or 0 for o in orders) + sum(o.get("total", 0) or 0 for o in store_orders)
+    # Revenue (from finances collection + paid orders)
+    finance_income = await db.finances.find(
+        {"type": "income", "created_at": {"$gte": date_from}}, {"_id": 0, "amount": 1}
+    ).to_list(2000)
+    
+    if finance_income:
+        total_revenue = sum(f.get("amount", 0) or 0 for f in finance_income)
+    else:
+        # Fallback: from paid orders
+        revenue_query = {"payment_status": "paid"}
+        if period != "year":
+            revenue_query["$or"] = [
+                {"paid_at": {"$gte": date_from}},
+                {"created_at": {"$gte": date_from}}
+            ]
+        orders = await db.orders.find(revenue_query, {"_id": 0, "total_amount": 1}).to_list(2000)
+        store_orders = await db.store_orders.find(
+            {"payment_status": "paid"}, {"_id": 0, "total": 1}
+        ).to_list(500)
+        total_revenue = sum(o.get("total_amount", 0) or 0 for o in orders) + sum(o.get("total", 0) or 0 for o in store_orders)
 
     # Mileage
     mileage = await db.mileage_logs.find({"date": {"$gte": date_from}}, {"_id": 0}).to_list(500)

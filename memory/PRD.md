@@ -1,22 +1,12 @@
 # Ventura Fresh Laundry - PRD
 
 ## Original Problem Statement
-Comprehensive AI-powered laundry management system featuring:
-1. Laundry Management Module (CRUD services, order/ticket management, operator panel, admin panel)
-2. Stripe Integration (single payments and recurring memberships)
-3. Twilio & SendGrid Integration (SMS/WhatsApp/Email notifications)
-4. AI-Powered Management (Groq LLM assistants for public and operators)
-5. Store & POS (in-store POS, product sales, dynamic shipping, cart management)
-6. PWA & UX (splash screens, bilingual EN/ES, legal policies)
-7. Enterprise Architecture (CRM, ERP, Finances, Inventory, Delivery Zones, Route Optimization)
+Comprehensive AI-powered laundry management system with CRM, ERP, Finances, POS, Stripe, Twilio/SendGrid notifications, AI assistants.
 
 ## Architecture
 ```
 shared.py (fastapi_app, sio) <- single source of truth
-    |               |
-server.py       server_core.py
-(entry point)   (all routes/DB)
-    |
+server.py (entry point) -> server_core.py (routes/DB)
 realtime.py (emit helper)
 ```
 
@@ -24,19 +14,22 @@ realtime.py (emit helper)
 - Admin: owner@frimexllc.com / admin123
 
 ## State Flows
-### Pickup & Delivery
-NEW -> CONFIRMED -> PICKED_UP -> PROCESSING -> READY -> OUT_FOR_DELIVERY -> DELIVERED -> COMPLETED
+- P&D: NEW -> CONFIRMED -> PICKED_UP -> PROCESSING -> READY -> OUT_FOR_DELIVERY -> DELIVERED -> COMPLETED
+- W&F: NEW -> CONFIRMED -> PROCESSING -> READY -> COMPLETED
 
-### Wash & Fold
-NEW -> CONFIRMED -> PROCESSING -> READY -> COMPLETED
+## Revenue/Finance Architecture (Updated 2026-04-03)
+All payment endpoints write income entries to `finances` collection:
+- POST /api/orders/{id}/payment (service order cash/transfer)
+- POST /api/stripe/confirm-payment (Stripe card payments)
+- POST /api/store/checkout/manual (store POS cash)
+- POST /api/store/orders/{id}/payment (store order payment)
 
-## Bug Fixes (2026-04-03)
-1. **Stripe redirect fix**: Frontend used `data.checkout_url` but backend returns `data.url`. Fixed to `data.url || data.checkout_url`
-2. **Stripe return handler**: Added useEffect to handle `session_id` + `order_id` URL params on Stripe return, calls `confirm-payment` and creates finance entry
-3. **Finance entry categories**: `service_payment` for laundry orders, `store_sale` for store orders
-4. **Notify Customer**: Direct SMS/Email/WhatsApp with actual lbs, total, status, payment status
+KPIs endpoints read from `finances` collection as primary source:
+- GET /api/kpis/operational
+- GET /api/finances/kpis
+- GET /api/dashboard/stats
 
 ## Backlog
-- Automated Stripe Sync every 6 hours (paused per user request)
-- Complexity refactoring: update_order_status(), generate_daily_briefing()
+- Automated Stripe Sync every 6 hours (paused)
+- Complexity refactoring (update_order_status, generate_daily_briefing)
 - OperatorDashboard.jsx refactoring (1300+ lines)

@@ -22,14 +22,42 @@ async def get_operational_kpis(current_user: dict = Depends(get_current_user)):
     active_orders = await db.orders.count_documents({"status": {"$in": ["new", "confirmed", "processing", "ready", "out_for_delivery"]}})
     completed_orders = await db.orders.count_documents({"status": "completed"})
 
-    # Revenue
-    rev_pipeline = [
-        {"$match": {"created_at": {"$gte": month_start}, "payment_status": "paid"}},
-        {"$group": {"_id": None, "total": {"$sum": "$total_amount"}, "count": {"$sum": 1}}}
+    # Revenue - from finances collection (income entries)
+    finance_rev_pipeline = [
+        {"$match": {"type": "income", "created_at": {"$gte": month_start}}},
+        {"$group": {"_id": None, "total": {"$sum": "$amount"}, "count": {"$sum": 1}}}
     ]
-    rev = await db.orders.aggregate(rev_pipeline).to_list(1)
-    monthly_revenue = rev[0]["total"] if rev else 0
-    paid_orders_count = rev[0]["count"] if rev else 0
+    fin_rev = await db.finances.aggregate(finance_rev_pipeline).to_list(1)
+
+    # Also count paid orders this month (by paid_at or created_at)
+    paid_store_count = await db.store_orders.count_documents({"payment_status": "paid", "$or": [
+        {"paid_at": {"$gte": month_start}},
+        {"created_at": {"$gte": month_start}}
+    ]})
+
+    # Use finances collection total, fallback to orders sum
+    if fin_rev:
+        monthly_revenue = fin_rev[0]["total"]
+        paid_orders_count = fin_rev[0]["count"]
+    else:
+        # Fallback: sum from orders + store_orders paid this month or with paid_at this month
+        rev_pipeline = [
+            {"$match": {"payment_status": "paid", "$or": [
+                {"paid_at": {"$gte": month_start}},
+                {"created_at": {"$gte": month_start}}
+            ]}},
+            {"$group": {"_id": None, "total": {"$sum": "$total_amount"}, "count": {"$sum": 1}}}
+        ]
+        rev = await db.orders.aggregate(rev_pipeline).to_list(1)
+        store_rev = await db.store_orders.aggregate([
+            {"$match": {"payment_status": "paid", "$or": [
+                {"paid_at": {"$gte": month_start}},
+                {"created_at": {"$gte": month_start}}
+            ]}},
+            {"$group": {"_id": None, "total": {"$sum": "$total"}}}
+        ]).to_list(1)
+        monthly_revenue = (rev[0]["total"] if rev else 0) + (store_rev[0]["total"] if store_rev else 0)
+        paid_orders_count = (rev[0]["count"] if rev else 0) + paid_store_count
 
     # Expenses
     exp_pipeline = [
