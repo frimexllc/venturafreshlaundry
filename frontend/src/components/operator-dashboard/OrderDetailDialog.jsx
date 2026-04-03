@@ -83,7 +83,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
         });
         if (res.ok) {
           const data = await res.json();
-          window.location.href = data.checkout_url;
+          window.location.href = data.url || data.checkout_url;
           return;
         }
         const err = await res.json().catch(() => ({}));

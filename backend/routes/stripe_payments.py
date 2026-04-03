@@ -168,7 +168,7 @@ async def confirm_payment_success(
         else:
             await db.orders.update_one(
                 {"id": order_id},
-                {"$set": {"payment_status": "paid", "paid_at": now, "updated_at": now}},
+                {"$set": {"payment_status": "paid", "payment_method": "card", "paid_at": now, "updated_at": now}},
             )
             order_doc = await db.orders.find_one({"id": order_id}, {"_id": 0})
     elif payment_intent_id:
@@ -180,12 +180,14 @@ async def confirm_payment_success(
 
     # Create finance ledger entry
     if order_doc:
+        is_service_order = order_doc.get("service_type") is not None
+        amount = float(order_doc.get("total_amount") or order_doc.get("total") or 0)
         finance_entry = {
             "id": str(uuid.uuid4()),
             "type": "income",
-            "category": "pos_sale" if order_doc.get("source") == "pos" else "store_sale",
+            "category": "service_payment" if is_service_order else "store_sale",
             "description": f"Pago Stripe {order_doc.get('order_number', order_id)}",
-            "amount": float(order_doc.get("total", 0)),
+            "amount": amount,
             "payment_method": "card",
             "order_id": order_doc.get("id"),
             "order_number": order_doc.get("order_number"),

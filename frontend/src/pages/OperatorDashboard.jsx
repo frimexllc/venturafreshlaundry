@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import axios from "axios";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -13,12 +13,10 @@ import OrderDetailDialog from "../components/operator-dashboard/OrderDetailDialo
 import { ORDER_STATUSES, STORE_STATUS_FLOW, getNextStoreStatus, safeString, formatApiError, formatCurrency, formatOrderNumber, isWashFoldService, getNextStatus, calculateServiceCharge, dedupeOrders } from "../components/operator-dashboard/utils";
 import { useLocale } from "../context/LocaleContext";
 
-// Importaciones de Leaflet y React Leaflet
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-// Iconos por defecto de Leaflet
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png",
@@ -28,10 +26,8 @@ L.Icon.Default.mergeOptions({
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
 
-// Coordenadas de la tienda (Ventura, CA 93001)
 const STORE_COORDINATES = { lat: 34.283, lng: -119.293 };
 
-// Mapeo de códigos postales a coordenadas
 const cpCoordinates = {
   "93001": { lat: 34.283, lng: -119.293 },
   "93003": { lat: 34.254, lng: -119.215 },
@@ -42,20 +38,17 @@ const cpCoordinates = {
   "93010": { lat: 34.225, lng: -119.082 },
 };
 
-// Función para extraer código postal
 const extractCP = (address) => {
   if (!address) return null;
   const match = address.match(/\b(\d{5})\b/);
   return match ? match[1] : null;
 };
 
-// Obtener coordenadas desde dirección
 const getCoordinatesFromAddress = (address) => {
   const cp = extractCP(address);
   return cp && cpCoordinates[cp] ? cpCoordinates[cp] : null;
 };
 
-// Distancia en millas (Haversine)
 function getDistanceInMiles(lat1, lng1, lat2, lng2) {
   const R = 3959;
   const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -67,14 +60,12 @@ function getDistanceInMiles(lat1, lng1, lat2, lng2) {
   return R * c;
 }
 
-// Tarifa de envío: primeras 3 millas gratis, luego $2.99/milla extra
 function calculateDeliveryFee(distanceMiles) {
   if (distanceMiles <= 3) return 0;
   const extra = distanceMiles - 3;
   return extra * 2.99;
 }
 
-// Color del marcador según estado
 function getMarkerColor(status) {
   const s = (status || "").toUpperCase();
   switch (s) {
@@ -122,7 +113,6 @@ const StatCard = ({ icon, bg, count, label, testId, highlight }) => (
   </div>
 );
 
-/* generic order row used in pickup + washfold lists */
 const OrderRow = ({ order, statusInfo, nextStatus, nextStatusInfo, updating, onRowClick, onAdvance, onPrint, advanceBtnClass = "bg-sky-600 hover:bg-sky-700", showPrint = false, t }) => (
   <div className="p-3 sm:p-4 hover:bg-slate-50/70 transition-colors cursor-pointer" role="button" onClick={() => onRowClick(order)} data-testid={`order-row-${order.order_id || "unknown"}`}>
     <div className="flex items-start justify-between gap-2">
@@ -158,7 +148,6 @@ const OrderRow = ({ order, statusInfo, nextStatus, nextStatusInfo, updating, onR
   </div>
 );
 
-/* main component */
 export default function OperatorDashboard() {
   const { t } = useLocale();
   const [dashboard, setDashboard] = useState(null);
@@ -166,6 +155,8 @@ export default function OperatorDashboard() {
   const [updating, setUpdating] = useState({});
   const [lastRefresh, setLastRefresh] = useState(new Date());
   const [autoRefresh, setAutoRefresh] = useState(true);
+  // FIX #7: usar ref para que el socket pueda leer el valor actual sin re-registrar listeners
+  const autoRefreshRef = useRef(true);
   const [realtimeStatus, setRealtimeStatus] = useState("offline");
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [storeOrders, setStoreOrders] = useState([]);
@@ -195,7 +186,11 @@ export default function OperatorDashboard() {
   const [aiLoading, setAiLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
 
-  // Funciones de filtrado
+  // FIX #7: sincronizar ref con el state
+  useEffect(() => {
+    autoRefreshRef.current = autoRefresh;
+  }, [autoRefresh]);
+
   const filterOrders = (orders) => {
     if (!searchTerm.trim()) return orders;
     const term = searchTerm.toLowerCase();
@@ -208,7 +203,6 @@ export default function OperatorDashboard() {
     });
   };
 
-  // Obtener todas las órdenes para el mapa
   const getAllOrders = () => {
     const allOrders = [
       ...(dashboard?.todays_pickups || []),
@@ -219,7 +213,6 @@ export default function OperatorDashboard() {
     return dedupeOrders(allOrders).filter(order => order.status?.toUpperCase() !== "COMPLETED");
   };
 
-  // Órdenes con coordenadas para el mapa
   const ordersWithCoordinates = getAllOrders()
     .map(order => {
       const address = order.pickup_address || order.delivery_address;
@@ -229,7 +222,6 @@ export default function OperatorDashboard() {
     })
     .filter(Boolean);
 
-  // helpers
   const getStatusLabel = (status, serviceType) => {
     const s = (status || "").toString().toUpperCase();
     if (isWashFoldService(serviceType)) {
@@ -286,10 +278,9 @@ export default function OperatorDashboard() {
     return t("Pending", "Pendiente");
   };
 
-  // data loading
   const loadDashboard = useCallback(async () => {
     try {
-      if (document.visibilityState !== "visible" && autoRefresh) return;
+      if (document.visibilityState !== "visible" && autoRefreshRef.current) return;
       const res = await fetch(`${API_URL}/api/automation/operator-dashboard`);
       if (res.ok) {
         setDashboard(await res.json());
@@ -300,7 +291,7 @@ export default function OperatorDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [autoRefresh, t]);
+  }, [t]);
 
   const loadStoreOrders = useCallback(async () => {
     setStoreOrdersLoading(true);
@@ -318,13 +309,14 @@ export default function OperatorDashboard() {
     loadDashboard();
     loadStoreOrders();
     const interval = setInterval(() => {
-      if (autoRefresh) {
+      // FIX #7: el intervalo también respeta autoRefresh correctamente via ref
+      if (autoRefreshRef.current) {
         loadDashboard();
         loadStoreOrders();
       }
     }, 30000);
     return () => clearInterval(interval);
-  }, [loadDashboard, loadStoreOrders, autoRefresh]);
+  }, [loadDashboard, loadStoreOrders]);
 
   useEffect(() => {
     const socket = createNotificationsSocket();
@@ -332,7 +324,9 @@ export default function OperatorDashboard() {
       setRealtimeStatus("disabled");
       return;
     }
+    // FIX #7: el handler del socket verifica autoRefreshRef para respetar el estado de pausa
     const fn = () => {
+      if (!autoRefreshRef.current) return;
       loadDashboard();
       loadStoreOrders();
     };
@@ -348,7 +342,6 @@ export default function OperatorDashboard() {
     };
   }, [loadDashboard, loadStoreOrders]);
 
-  /* order status update */
   const updateOrderStatus = async (orderId, newStatus) => {
     setUpdating(prev => ({ ...prev, [orderId]: true }));
     try {
@@ -369,7 +362,6 @@ export default function OperatorDashboard() {
     }
   };
 
-  /* store order actions (unchanged) */
   const updateStoreOrderStatus = async (orderId, newStatus) => {
     setStoreUpdating(prev => ({ ...prev, [orderId]: true }));
     try {
@@ -406,7 +398,6 @@ export default function OperatorDashboard() {
     }
   };
 
-  /* printing */
   const handlePrintTicket = async (order) => {
     if (!order) return;
     const id = order.id || order.order_id;
@@ -429,6 +420,7 @@ export default function OperatorDashboard() {
     }
   };
 
+  // FIX #1: handlePrintStoreOrder corregido — genera filas <tr> válidas en lugar de strings de HTML inválido
   const handlePrintStoreOrder = (order) => {
     if (!order) return;
     const pw = window.open("");
@@ -437,26 +429,37 @@ export default function OperatorDashboard() {
       return;
     }
     const rows = (order.items || [])
-      .map(i => `a href="#" role="button" class="prose-sm prose-slate max-w-none"> <div> <p> <span>Item</span> <span>Quantity</span> <span>Price</span> </p> <div> <span>${safeString(i.name || i.product_name || "Item")}</span> <span>${safeString(i.quantity)}</span> <span>$${(Number(i.price) || 0).toFixed(2)}</span> </div> </div> `)
+      .map(i => `<tr>
+        <td style="padding:6px 8px;border-bottom:1px solid #eee;">${safeString(i.name || i.product_name || "Item")}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center;">${safeString(i.quantity)}</td>
+        <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">$${(Number(i.price) || 0).toFixed(2)}</td>
+      </tr>`)
       .join("");
     pw.document.write(`
       <html><body style="font-family:Arial,sans-serif;padding:24px;">
         <h2>Store Order ${safeString(order.order_number)}</h2>
-        <p>${safeString(order.customer_name)} ${safeString(order.customer_email)}</p>
+        <p>${safeString(order.customer_name)} &mdash; ${safeString(order.customer_email)}</p>
         <table style="width:100%;border-collapse:collapse;margin-top:16px;">
-          <thead> <tr> <th align="left">Item</th> <th align="left">Qty</th> <th align="left">Price</th> </tr> </thead>
+          <thead>
+            <tr style="background:#f5f5f5;">
+              <th style="padding:8px;text-align:left;border-bottom:2px solid #ddd;">Item</th>
+              <th style="padding:8px;text-align:center;border-bottom:2px solid #ddd;">Qty</th>
+              <th style="padding:8px;text-align:right;border-bottom:2px solid #ddd;">Price</th>
+            </tr>
+          </thead>
           <tbody>${rows}</tbody>
         </table>
-        <p style="margin-top:16px;">Subtotal: $${(Number(order.subtotal) || 0).toFixed(2)}</p>
-        <p>Shipping: $${(Number(order.shipping_fee) || 0).toFixed(2)}</p>
-        <p><strong>Total: $${(Number(order.total) || 0).toFixed(2)}</strong></p>
+        <div style="margin-top:16px;text-align:right;">
+          <p>Subtotal: $${(Number(order.subtotal) || 0).toFixed(2)}</p>
+          <p>Shipping: $${(Number(order.shipping_fee) || 0).toFixed(2)}</p>
+          <p style="font-size:18px;font-weight:bold;">Total: $${(Number(order.total) || 0).toFixed(2)}</p>
+        </div>
         <script>window.print();window.onafterprint=function(){window.close();};<\/script>
       </body></html>
     `);
     pw.document.close();
   };
 
-  /* AI */
   const handleAiRequest = async () => {
     if (!aiPrompt.trim()) return;
     setAiLoading(true);
@@ -474,34 +477,34 @@ export default function OperatorDashboard() {
     }
   };
 
-  /* store POS helpers */
+  // FIX #6: pollStoreCheckoutStatus con manejo de error robusto en el bloque catch
   const pollStoreCheckoutStatus = useCallback(async (sessionId, attempt = 0) => {
     try {
       const res = await fetch(`${API_URL}/api/store/checkout/status/${sessionId}`);
-      if (!res.ok) throw new Error();
+      if (!res.ok) throw new Error("fetch_failed");
       const data = await res.json();
       const ps = (data?.payment_status || "").toLowerCase();
       const cs = (data?.status || "").toLowerCase();
       if (ps === "paid") {
         toast.success(t("Store payment confirmed", "Pago de tienda confirmado"));
-        await loadStoreOrders();
+        try { await loadStoreOrders(); } catch { /* ignorar error secundario */ }
         return;
       }
       if (cs === "expired") {
         toast.error(t("Store payment expired", "Pago de tienda expirado"));
-        await loadStoreOrders();
+        try { await loadStoreOrders(); } catch { /* ignorar error secundario */ }
         return;
       }
       if (attempt >= 8) {
         toast.info(t("Store payment pending", "Pago de tienda pendiente"));
-        await loadStoreOrders();
+        try { await loadStoreOrders(); } catch { /* ignorar error secundario */ }
         return;
       }
       setTimeout(() => pollStoreCheckoutStatus(sessionId, attempt + 1), 2000);
     } catch {
       if (attempt >= 8) {
         toast.error(t("Unable to verify payment", "No se pudo verificar pago"));
-        await loadStoreOrders();
+        try { await loadStoreOrders(); } catch { /* ignorar error secundario */ }
         return;
       }
       setTimeout(() => pollStoreCheckoutStatus(sessionId, attempt + 1), 2000);
@@ -514,6 +517,39 @@ export default function OperatorDashboard() {
     pollStoreCheckoutStatus(id);
     window.history.replaceState({}, "", window.location.pathname);
   }, [pollStoreCheckoutStatus]);
+
+  // Handle Stripe return for SERVICE order payments
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const sessionId = params.get("session_id");
+    const orderId = params.get("order_id");
+    const cancelled = params.get("status");
+    if (!sessionId || !orderId) return;
+    window.history.replaceState({}, "", window.location.pathname);
+    if (cancelled === "cancelled") {
+      toast.info(t("Payment cancelled", "Pago cancelado"));
+      return;
+    }
+    // Confirm payment with backend
+    (async () => {
+      try {
+        const tkn = localStorage.getItem("token") || sessionStorage.getItem("token");
+        const res = await fetch(`${API_URL}/api/stripe/confirm-payment`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...(tkn ? { Authorization: `Bearer ${tkn}` } : {}) },
+          body: JSON.stringify({ paymentIntentId: sessionId, orderId }),
+        });
+        if (res.ok) {
+          toast.success(t("Payment confirmed successfully!", "Pago confirmado exitosamente!"));
+          loadDashboard();
+        } else {
+          toast.error(t("Payment verification failed", "Fallo verificacion de pago"));
+        }
+      } catch {
+        toast.error(t("Connection error", "Error de conexion"));
+      }
+    })();
+  }, [t]);
 
   const openStorePos = async () => {
     setStorePosOpen(true);
@@ -679,7 +715,6 @@ export default function OperatorDashboard() {
     }
     setStoreCheckoutLoading(true);
     try {
-      // First create a manual order with pending payment
       const payload = {
         cart_id: storeCart.id,
         origin_url: window.location.origin,
@@ -699,8 +734,12 @@ export default function OperatorDashboard() {
         return;
       }
       const orderData = await orderRes.json();
+      // FIX #5: usar el ID correcto — priorizar order_id, luego id
       const orderId = orderData.order_id || orderData.id;
-      // Update order to pending payment status and send payment link
+      if (!orderId) {
+        toast.error(t("Could not obtain order ID", "No se pudo obtener el ID de la orden"));
+        return;
+      }
       const linkRes = await fetch(`${API_URL}/api/store/orders/${orderId}/send-payment-link`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -725,12 +764,19 @@ export default function OperatorDashboard() {
     }
   };
 
+  // FIX #5: handleStorePayment usa el ID consistente (order.id en órdenes de tienda)
   const handleStorePayment = async () => {
     if (!storePaymentOrder) return;
+    // Las órdenes de tienda usan `id` como identificador principal
+    const orderId = storePaymentOrder.id || storePaymentOrder.order_id;
+    if (!orderId) {
+      toast.error(t("Invalid order ID", "ID de orden inválido"));
+      return;
+    }
     setStoreProcessingPayment(true);
     try {
       if (storePaymentForm.method === "card") {
-        const res = await fetch(`${API_URL}/api/store/orders/${storePaymentOrder.id}/stripe-checkout`, {
+        const res = await fetch(`${API_URL}/api/store/orders/${orderId}/stripe-checkout`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ origin_url: window.location.origin })
@@ -743,7 +789,7 @@ export default function OperatorDashboard() {
         const e = await res.json();
         toast.error(formatApiError(e.detail, t("Stripe checkout failed", "Falló Stripe")));
       } else {
-        const res = await fetch(`${API_URL}/api/store/orders/${storePaymentOrder.id}/payment`, {
+        const res = await fetch(`${API_URL}/api/store/orders/${orderId}/payment`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ payment_method: storePaymentForm.method })
@@ -812,30 +858,35 @@ export default function OperatorDashboard() {
       ? "bg-slate-100 text-slate-500"
       : "bg-orange-100 text-orange-700";
 
-  // Aplicar filtro a las órdenes
-  const filteredPickupOrders = filterOrders(dedupeOrders(dashboard?.todays_pickups || []).filter(
+  // FIX #2: calcular los arrays base primero y aplicar filterOrders solo una vez por lista
+  const allPickupOrders = dedupeOrders(dashboard?.todays_pickups || []).filter(
     (order) => !order.service_type || order.service_type === "pickup_delivery"
-  ));
-  const filteredPickupDeliveries = filterOrders(dedupeOrders(dashboard?.ready_for_delivery || []).filter(
+  );
+  const allPickupDeliveries = dedupeOrders(dashboard?.ready_for_delivery || []).filter(
     (order) => !order.service_type || order.service_type === "pickup_delivery"
-  ));
-  const filteredWashFoldDropoffs = filterOrders(dedupeOrders(dashboard?.wash_fold_dropoffs || []));
-  const filteredWashFoldReady = filterOrders(dedupeOrders(dashboard?.wash_fold_ready || []));
+  );
+  const allWashFoldDropoffs = dedupeOrders(dashboard?.wash_fold_dropoffs || []);
+  const allWashFoldReady = dedupeOrders(dashboard?.wash_fold_ready || []);
 
-  const filteredPickupPaymentQueue = filterOrders(dedupeOrders([...filteredPickupOrders, ...filteredPickupDeliveries]).filter(
+  // FIX #2: la cola de pagos incluye TODAS las órdenes unpaid (sin restricción de estado)
+  // y aplica filterOrders solo una vez sobre el conjunto ya deduplicado
+  const allPickupPaymentQueue = dedupeOrders([...allPickupOrders, ...allPickupDeliveries]).filter(
     (order) => (order.payment_status || "pending") !== "paid"
-  ));
-  const filteredWashFoldPaymentQueue = filterOrders(dedupeOrders([...filteredWashFoldDropoffs, ...filteredWashFoldReady]).filter(
+  );
+  const allWashFoldPaymentQueue = dedupeOrders([...allWashFoldDropoffs, ...allWashFoldReady]).filter(
     (order) => (order.payment_status || "pending") !== "paid"
-  ));
+  );
 
-  const pickupOrdersCount = dedupeOrders(dashboard?.todays_pickups || []).filter(
-    (order) => !order.service_type || order.service_type === "pickup_delivery"
-  ).length;
+  const filteredPickupOrders = filterOrders(allPickupOrders);
+  const filteredPickupDeliveries = filterOrders(allPickupDeliveries);
+  const filteredWashFoldDropoffs = filterOrders(allWashFoldDropoffs);
+  const filteredWashFoldReady = filterOrders(allWashFoldReady);
+  const filteredPickupPaymentQueue = filterOrders(allPickupPaymentQueue);
+  const filteredWashFoldPaymentQueue = filterOrders(allWashFoldPaymentQueue);
+
+  const pickupOrdersCount = allPickupOrders.length;
   const ordersInProcessingCount = dashboard?.stats?.orders_in_processing || 0;
-  const deliveriesCount = dedupeOrders(dashboard?.ready_for_delivery || []).filter(
-    (order) => !order.service_type || order.service_type === "pickup_delivery"
-  ).length;
+  const deliveriesCount = allPickupDeliveries.length;
   const urgentCount = dashboard?.stats?.urgent_tickets || 0;
 
   const storeCartSubtotal = storeCart?.total || 0;
@@ -866,7 +917,6 @@ export default function OperatorDashboard() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {/* Buscador */}
           <div className="relative">
             <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
             <Input
@@ -924,8 +974,6 @@ export default function OperatorDashboard() {
 
         {/* LEFT – Pickup & Delivery */}
         <div className="space-y-4">
-
-          {/* Created/Confirmed */}
           <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm" data-testid="pos-pickup-today-card">
             <CardHeader icon={<Truck className="h-4 w-4 text-sky-500" />} title={t("Pickup & Delivery — Created / Confirmed", "Pickup & Delivery — Creadas / Confirmadas")} count={filteredPickupOrders.length} testId="pos-pickup-today-count" />
             <div className="divide-y divide-slate-100">
@@ -938,7 +986,6 @@ export default function OperatorDashboard() {
             </div>
           </div>
 
-          {/* Payment Queue */}
           <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm" data-testid="pos-pickup-payment-card">
             <CardHeader icon={<DollarSign className="h-4 w-4 text-emerald-500" />} title={t("Pickup & Delivery — Request Payment", "Pickup & Delivery — Solicitar pago")} count={filteredPickupPaymentQueue.length} testId="pos-pickup-payment-count" />
             <div className="divide-y divide-slate-100">
@@ -962,7 +1009,6 @@ export default function OperatorDashboard() {
             </div>
           </div>
 
-          {/* In Process / Ready / Out for Delivery / Delivered */}
           <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm" data-testid="pos-pickup-delivery-card">
             <CardHeader icon={<CheckCircle className="h-4 w-4 text-emerald-500" />} title={t("Pickup & Delivery — In Process / Ready / Out for Delivery", "Pickup & Delivery — En proceso / Lista / En camino")} count={filteredPickupDeliveries.length} bgClass="bg-emerald-50" testId="pos-pickup-delivery-count" />
             <div className="divide-y divide-slate-100">
@@ -978,8 +1024,6 @@ export default function OperatorDashboard() {
 
         {/* RIGHT – Wash & Fold */}
         <div className="space-y-4">
-
-          {/* W&F Created / Confirmed */}
           <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm" data-testid="pos-washfold-dropoff-card">
             <CardHeader icon={<Package className="h-4 w-4 text-purple-500" />} title={t("Wash & Fold — Created / Confirmed", "Wash & Fold — Creadas / Confirmadas")} count={filteredWashFoldDropoffs.length} testId="pos-washfold-dropoff-count" />
             <div className="divide-y divide-slate-100">
@@ -989,7 +1033,6 @@ export default function OperatorDashboard() {
                     const statusInfo = getStatusInfo(order.status, order.service_type);
                     const nextStatus = getNextStatus(order.status, order.service_type);
                     const nextStatusInfo = nextStatus ? getStatusInfo(nextStatus, order.service_type) : null;
-
                     return (
                       <div key={order.order_id || Math.random()} className="p-3 sm:p-4 hover:bg-slate-50/70 cursor-pointer transition-colors" role="button" onClick={() => setSelectedOrder(order)} data-testid={`pos-washfold-dropoff-${order.order_id || "unknown"}`}>
                         <div className="flex items-start justify-between gap-2">
@@ -1018,7 +1061,6 @@ export default function OperatorDashboard() {
             </div>
           </div>
 
-          {/* W&F Payment Queue */}
           <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm" data-testid="pos-washfold-payment-card">
             <CardHeader icon={<DollarSign className="h-4 w-4 text-emerald-500" />} title={t("Wash & Fold — Request Payment", "Wash & Fold — Solicitar pago")} count={filteredWashFoldPaymentQueue.length} testId="pos-washfold-payment-count" />
             <div className="divide-y divide-slate-100">
@@ -1045,7 +1087,6 @@ export default function OperatorDashboard() {
             </div>
           </div>
 
-          {/* W&F Processing / Ready for pickup */}
           <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm" data-testid="pos-washfold-ready-card">
             <CardHeader icon={<CheckCircle className="h-4 w-4 text-emerald-500" />} title={t("Wash & Fold — Processing / Ready for pickup", "Wash & Fold — Procesando / Lista para recoger")} count={filteredWashFoldReady.length} bgClass="bg-emerald-50" testId="pos-washfold-ready-count" />
             <div className="divide-y divide-slate-100">
@@ -1074,8 +1115,8 @@ export default function OperatorDashboard() {
         </div>
       </div>
 
-      {/* Mapa interactivo */}
-      <div className="mt-6 sm:mt-10 bg-white rounded-xl border border-slate-200 overflow-hidden">
+      {/* FIX #3: Mapa con z-index corregido para que los popups no queden cortados */}
+      <div className="mt-6 sm:mt-10 bg-white rounded-xl border border-slate-200 overflow-hidden" style={{ position: 'relative', zIndex: 1 }}>
         <div className="px-4 sm:px-6 py-4 border-b border-slate-100 bg-slate-50">
           <h3 className="font-semibold text-slate-900 text-sm sm:text-base flex items-center gap-2">
             <MapPin className="h-4 w-4 text-sky-600" />
@@ -1085,8 +1126,9 @@ export default function OperatorDashboard() {
             {t("Click on a marker to view order details", "Haz clic en un marcador para ver los detalles de la orden")}
           </p>
         </div>
+        {/* FIX #3: el contenedor del mapa tiene su propio z-index para aislar el stacking context de Leaflet */}
         <div className="h-[450px] w-full" style={{ position: 'relative', zIndex: 0 }}>
-          <MapContainer center={[STORE_COORDINATES.lat, STORE_COORDINATES.lng]} zoom={12} style={{ height: "100%", width: "100%" }}>
+          <MapContainer center={[STORE_COORDINATES.lat, STORE_COORDINATES.lng]} zoom={12} style={{ height: "100%", width: "100%", zIndex: 0 }}>
             <TileLayer
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -1101,17 +1143,14 @@ export default function OperatorDashboard() {
               );
               const deliveryFee = calculateDeliveryFee(distance);
               const exceedsLimit = distance > 9;
-
               const statusInfo = getStatusInfo(order.status, order.service_type);
               const markerColor = getMarkerColor(order.status);
-
               const icon = L.divIcon({
                 html: `<div style="background-color: ${markerColor}; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">📍</div>`,
                 className: "custom-marker",
                 iconSize: [24, 24],
                 popupAnchor: [0, -12]
               });
-
               return (
                 <Marker
                   key={order.id || order.order_id}
@@ -1183,7 +1222,6 @@ export default function OperatorDashboard() {
           </div>
           {storeOrdersLoading ? <div className="p-8 text-center text-slate-400 text-sm">{t("Loading store orders…", "Cargando órdenes…")}</div> : storeOrders.length === 0 ? <div className="p-8 text-center text-slate-400 text-sm">{t("No store orders yet", "Sin órdenes de tienda")}</div> : (
             <>
-              {/* Desktop table */}
               <div className="hidden md:block overflow-x-auto">
                 <table className="min-w-full text-sm">
                   <thead className="bg-slate-50 text-slate-400 text-xs uppercase tracking-wide">
@@ -1211,7 +1249,6 @@ export default function OperatorDashboard() {
                   </tbody>
                 </table>
               </div>
-              {/* Mobile cards */}
               <div className="md:hidden divide-y divide-slate-100">
                 {storeOrders.map(order => {
                   const ns = getNextStoreStatus(order.status);

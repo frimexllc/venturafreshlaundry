@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -48,8 +48,12 @@ export default function Finances() {
   });
   const [paymentFilter, setPaymentFilter] = useState("all");
 
+  // FIX #2: separar los useEffect por dependencias reales para evitar llamadas redundantes
   useEffect(() => {
     fetchSummary();
+  }, [dateRange]);
+
+  useEffect(() => {
     fetchTransactions();
   }, [dateRange, paymentFilter]);
 
@@ -77,15 +81,20 @@ export default function Finances() {
       const filtered = data
         .filter((transaction) => {
           if (!transaction.created_at) return false;
-          const txDate = new Date(transaction.created_at).toISOString().split("T")[0];
+          // FIX #4: parsear la fecha como local para evitar desfase de un día en zonas UTC-X
+          // Los strings "YYYY-MM-DD" deben compararse como texto, no convertirse a Date
+          const txDate = transaction.created_at.split("T")[0];
           return txDate >= dateRange.start && txDate <= dateRange.end;
         })
         .filter((transaction) => {
+          const status = (transaction.payment_status || "").toLowerCase();
           if (paymentFilter === "paid") {
-            return (transaction.payment_status || "").toLowerCase() === "paid";
+            return status === "paid";
           }
           if (paymentFilter === "pending") {
-            return (transaction.payment_status || "").toLowerCase() !== "paid";
+            // FIX #1: "pending" solo incluye estados genuinamente pendientes,
+            // no estados terminales como refunded, failed o cancelled
+            return status === "pending" || status === "" || status === "unpaid";
           }
           return true;
         })
@@ -112,9 +121,18 @@ export default function Finances() {
     }).format(amount || 0);
   };
 
+  // FIX #4: formatear fechas "YYYY-MM-DD" sin convertirlas a Date UTC para
+  // evitar que aparezca un día antes en zonas horarias negativas (UTC-X)
   const formatDate = (dateStr) => {
     if (!dateStr) return "-";
-    return new Date(dateStr).toLocaleDateString(locale === 'es' ? 'es-ES' : 'en-US', {
+    // Si el string es solo fecha (sin hora), parsear manualmente para evitar
+    // que new Date("2024-01-15") lo interprete como 2024-01-15T00:00:00Z
+    // y lo muestre como Jan 14 en UTC-5 por ejemplo
+    const datePart = dateStr.split("T")[0];
+    const [year, month, day] = datePart.split("-").map(Number);
+    // Construir Date en zona local usando el constructor de año/mes/día
+    const localDate = new Date(year, month - 1, day);
+    return localDate.toLocaleDateString(locale === "es" ? "es-ES" : "en-US", {
       month: "short",
       day: "numeric",
       year: "numeric"
@@ -156,6 +174,8 @@ export default function Finances() {
     a.href = url;
     a.download = `finances-${dateRange.start}-to-${dateRange.end}.csv`;
     a.click();
+    // FIX #3: revocar el object URL para liberar memoria
+    window.URL.revokeObjectURL(url);
     toast.success(t("Report exported", "Reporte exportado"));
   };
 
@@ -365,6 +385,7 @@ export default function Finances() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* FIX #8: los tres items del breakdown están dentro del mismo div space-y-4 */}
             <div className="bg-white rounded-xl border border-slate-200 p-6" data-testid="finances-revenue-breakdown">
               <h3 className="font-semibold text-slate-900 mb-4">{t("Revenue Breakdown", "Distribución de ingresos")}</h3>
               <div className="space-y-4">
@@ -396,20 +417,21 @@ export default function Finances() {
                     {formatCurrency(summary.membership_revenue)}
                   </p>
                 </div>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-full bg-amber-100 flex items-center justify-center">
-                    <ShoppingBag className="h-5 w-5 text-amber-600" />
+                {/* FIX #8: este tercer item estaba fuera del div space-y-4, dejando el espaciado roto */}
+                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-full bg-amber-100 flex items-center justify-center">
+                      <ShoppingBag className="h-5 w-5 text-amber-600" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-slate-900">{t("Store", "Tienda")}</p>
+                      <p className="text-sm text-slate-500">{t("{count} store orders", "{count} órdenes tienda").replace("{count}", summary.store_paid_orders)}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="font-medium text-slate-900">{t("Store", "Tienda")}</p>
-                    <p className="text-sm text-slate-500">{t("{count} store orders", "{count} órdenes tienda").replace("{count}", summary.store_paid_orders)}</p>
-                  </div>
+                  <p className="font-bold text-slate-900" data-testid="finances-store-breakdown">
+                    {formatCurrency(summary.store_revenue)}
+                  </p>
                 </div>
-                <p className="font-bold text-slate-900" data-testid="finances-store-breakdown">
-                  {formatCurrency(summary.store_revenue)}
-                </p>
               </div>
             </div>
 
