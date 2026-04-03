@@ -199,3 +199,142 @@ async def confirm_payment_success(
         await db.finances.insert_one(finance_entry)
 
     return {"ok": True}
+
+
+# ── Cash Quick Sale ──────────────────────────────────────────────────
+@router.post("/quick-sale/cash")
+async def create_quick_sale_cash(
+    req: QuickSaleRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Record a cash POS sale — no Stripe processing needed."""
+    order_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+    order_number = f"POS-{datetime.now(timezone.utc).strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
+
+    order_doc = {
+        "id": order_id,
+        "order_number": order_number,
+        "customer_name": req.customerName,
+        "customer_phone": req.customerPhone or "",
+        "customer_email": req.customerEmail or "",
+        "items": [{"product_name": req.description or "Venta en tienda", "price": req.amount, "quantity": 1}],
+        "total": req.amount,
+        "subtotal": round(req.amount * 0.9225, 2),
+        "shipping_fee": 0,
+        "fulfillment_type": "in-store",
+        "payment_status": "paid",
+        "payment_method": "cash",
+        "status": "completed",
+        "source": "pos",
+        "created_by": current_user.get("id", ""),
+        "created_at": now,
+        "updated_at": now,
+        "paid_at": now,
+    }
+    await db.store_orders.insert_one(order_doc)
+
+    finance_entry = {
+        "id": str(uuid.uuid4()),
+        "type": "income",
+        "category": "store_sale",
+        "description": f"Venta Efectivo {order_number} - {req.customerName}",
+        "amount": req.amount,
+        "payment_method": "cash",
+        "order_id": order_id,
+        "order_number": order_number,
+        "customer_name": req.customerName,
+        "date": now[:10],
+        "created_at": now,
+        "updated_at": now,
+    }
+    await db.finances.insert_one(finance_entry)
+
+    return {
+        "orderId": order_id,
+        "orderNumber": order_number,
+        "status": "completed",
+        "amount": req.amount,
+    }
+
+
+# ── Stripe Terminal — Connection Token ───────────────────────────────
+@router.post("/terminal/connection-token")
+async def create_terminal_connection_token(
+    current_user: dict = Depends(get_current_user),
+):
+    """Create a short-lived connection token for the Stripe Terminal JS SDK."""
+    if not STRIPE_API_KEY:
+        raise HTTPException(status_code=503, detail="Stripe not configured")
+    try:
+        token = stripe.terminal.ConnectionToken.create()
+        return {"secret": token.secret}
+    except stripe.error.StripeError as e:
+        logger.error(f"Terminal connection token error: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+# ── Terminal Quick Sale (card_present) ───────────────────────────────
+@router.post("/quick-sale/terminal")
+async def create_quick_sale_terminal(
+    req: QuickSaleRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Create a PaymentIntent for Stripe Terminal (card_present / tap)."""
+    if not STRIPE_API_KEY:
+        raise HTTPException(status_code=503, detail="Stripe not configured")
+
+    amount_cents = int(round(req.amount * 100))
+    if amount_cents < 50:
+        raise HTTPException(status_code=400, detail="Amount must be at least $0.50")
+
+    order_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+    order_number = f"POS-{datetime.now(timezone.utc).strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
+
+    try:
+        intent = stripe.PaymentIntent.create(
+            amount=amount_cents,
+            currency="usd",
+            payment_method_types=["card_present"],
+            capture_method="automatic",
+            metadata={
+                "order_id": order_id,
+                "order_number": order_number,
+                "customer_name": req.customerName,
+                "source": "pos_terminal",
+            },
+            description=f"POS Terminal {order_number} - {req.customerName} - {req.description or 'Venta'}",
+        )
+    except stripe.error.StripeError as e:
+        logger.error(f"Terminal quick-sale error: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+    order_doc = {
+        "id": order_id,
+        "order_number": order_number,
+        "customer_name": req.customerName,
+        "customer_phone": req.customerPhone or "",
+        "customer_email": req.customerEmail or "",
+        "items": [{"product_name": req.description or "Venta en tienda", "price": req.amount, "quantity": 1}],
+        "total": req.amount,
+        "subtotal": round(req.amount * 0.9225, 2),
+        "shipping_fee": 0,
+        "fulfillment_type": "in-store",
+        "payment_status": "pending",
+        "payment_method": "card_present",
+        "stripe_payment_intent_id": intent.id,
+        "status": "pending",
+        "source": "pos_terminal",
+        "created_by": current_user.get("id", ""),
+        "created_at": now,
+        "updated_at": now,
+    }
+    await db.store_orders.insert_one(order_doc)
+
+    return {
+        "clientSecret": intent.client_secret,
+        "paymentIntentId": intent.id,
+        "orderId": order_id,
+        "orderNumber": order_number,
+    }
