@@ -48,3 +48,11 @@ The QuickSaleModal in LogisticsMap supports 3 payment methods:
 - (P1) Complexity refactoring: automation_engine.py, ai_assistant.py
 - (P2) Automated Stripe Sync every 6 hours (paused by user)
 - (P2) OperatorDashboard.jsx refactoring (1300+ lines)
+
+## Notification System with Payment Links (Updated 2026-04-03)
+`POST /api/orders/{order_id}/notify-customer` now:
+- Generates Stripe Checkout URL for unpaid orders (total >= $0.50)
+- SMS/WhatsApp: Includes "Paga en linea: {stripe_url}" in plain text
+- Email: Professional HTML template with gradient header, order card, and "Pagar $X.XX Ahora" button
+- Paid orders: No payment link, shows "Pagado" badge
+- Payment success redirect: `/payment-success` public page
