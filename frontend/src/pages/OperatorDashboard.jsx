@@ -197,6 +197,7 @@ export default function OperatorDashboard() {
   const [searchTerm, setSearchTerm] = useState("");
   const [mapFilters, setMapFilters] = useState({});
   const [filteredMapOrders, setFilteredMapOrders] = useState(null);
+  const [orderFilters, setOrderFilters] = useState({});
 
   // Push notifications for operators
   useOperatorNotifications(true);
@@ -207,15 +208,25 @@ export default function OperatorDashboard() {
   }, [autoRefresh]);
 
   const filterOrders = (orders) => {
-    if (!searchTerm.trim()) return orders;
-    const term = searchTerm.toLowerCase();
-    return orders.filter(order => {
-      const orderNumber = (order.order_number || "").toLowerCase();
-      const customerName = (order.customer_name || "").toLowerCase();
-      const address = (order.pickup_address || order.delivery_address || "").toLowerCase();
-      const cp = extractCP(address) || "";
-      return orderNumber.includes(term) || customerName.includes(term) || address.includes(term) || cp.includes(term);
-    });
+    let result = orders;
+    if (orderFilters.date) {
+      result = result.filter(order => order.pickup_date === orderFilters.date);
+    }
+    if (orderFilters.time_window) {
+      const tw = orderFilters.time_window === "morning" ? "8-12" : "14-18";
+      result = result.filter(order => order.pickup_time_window === tw);
+    }
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase();
+      result = result.filter(order => {
+        const orderNumber = (order.order_number || "").toLowerCase();
+        const customerName = (order.customer_name || "").toLowerCase();
+        const address = (order.pickup_address || order.delivery_address || "").toLowerCase();
+        const cp = extractCP(address) || "";
+        return orderNumber.includes(term) || customerName.includes(term) || address.includes(term) || cp.includes(term);
+      });
+    }
+    return result;
   };
 
   const getAllOrders = () => {
@@ -1059,6 +1070,7 @@ export default function OperatorDashboard() {
 
         {/* Tab 1: Service Orders */}
         <TabsContent value="orders">
+      <MapFilters onFilterChange={setOrderFilters} activeFilters={orderFilters} />
       {/* POS Grid */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-6" data-testid="operator-pos-grid">
 

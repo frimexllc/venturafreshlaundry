@@ -80,6 +80,7 @@ NEW -> CONFIRMED -> PROCESSING -> READY -> COMPLETED
 ### Phase 3 (Delivery Rules, Filters, Mobile, PWA) — 2026-04-04
 - [x] Delivery Zone Rules: GET /api/geocode/distance (OpenRouteService)
 - [x] Logistics Map Filters: date picker + Morning(8-12)/Afternoon(14-18)
+- [x] Service Orders Filters: date picker + Morning(8-12)/Afternoon(14-18) in Orders tab
 - [x] WhatsApp contact option on Contact page
 - [x] WhatsApp→SMS→Email notification fallback chain
 - [x] PWA Service Worker for push notifications
