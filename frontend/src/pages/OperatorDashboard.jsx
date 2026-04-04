@@ -343,6 +343,14 @@ export default function OperatorDashboard() {
   }, [loadDashboard, loadStoreOrders]);
 
   const updateOrderStatus = async (orderId, newStatus) => {
+    // Confirmation dialog for CONFIRMED transition
+    if (newStatus.toLowerCase() === "confirmed") {
+      const ok = window.confirm(t(
+        "Confirm this order? The customer and driver will be notified.",
+        "Confirmar esta orden? Se notificara al cliente y al driver asignado."
+      ));
+      if (!ok) return;
+    }
     setUpdating(prev => ({ ...prev, [orderId]: true }));
     try {
       const res = await fetch(`${API_URL}/api/automation/orders/${orderId}/status?new_status=${newStatus.toLowerCase()}`, {
@@ -356,7 +364,7 @@ export default function OperatorDashboard() {
         toast.error(t("Error updating order", "Error al actualizar orden") + `: ${errorText}`);
       }
     } catch (error) {
-      toast.error(t("Connection error", "Error de conexión"));
+      toast.error(t("Connection error", "Error de conexion"));
     } finally {
       setUpdating(prev => ({ ...prev, [orderId]: false }));
     }

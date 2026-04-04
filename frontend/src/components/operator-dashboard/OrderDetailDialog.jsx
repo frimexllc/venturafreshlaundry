@@ -152,13 +152,12 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
 
   const handlePrintTicket = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/orders/${orderId}/qr.svg`);
+      const res = await fetch(`${API_URL}/api/orders/${orderId}/ticket`, { headers: authHeaders() });
       if (!res.ok) throw new Error();
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const pw = window.open("");
+      const html = await res.text();
+      const pw = window.open("", "_blank", "width=350,height=600");
       if (!pw) { toast.error(t("Allow pop-ups", "Permite pop-ups")); return; }
-      pw.document.write(`<html><body style="margin:0;display:flex;align-items:center;justify-content:center;"><img src="${url}" style="max-width:100%;" onload="window.print();window.onafterprint=function(){window.close();};" /></body></html>`);
+      pw.document.write(html);
       pw.document.close();
     } catch {
       toast.error(t("Could not print ticket", "No se pudo imprimir ticket"));
@@ -332,7 +331,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
                     {[
                       { val: "card", label: "Stripe", icon: <CreditCard className="w-3.5 h-3.5" /> },
                       { val: "cash", label: t("Cash", "Efectivo"), icon: <Banknote className="w-3.5 h-3.5" /> },
-                      { val: "transfer", label: t("Transfer", "Transfer"), icon: <Send className="w-3.5 h-3.5" /> },
+                      { val: "zelle", label: "Zelle", icon: <Send className="w-3.5 h-3.5" /> },
                       { val: "other", label: t("Other", "Otro"), icon: <DollarSign className="w-3.5 h-3.5" /> },
                     ].map((m) => (
                       <button
@@ -365,6 +364,14 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
                       className="mt-1 h-9"
                       data-testid="order-detail-cash-amount"
                     />
+                  </div>
+                )}
+
+                {payMethod === "zelle" && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-xs text-amber-800" data-testid="order-detail-zelle-info">
+                    <p className="font-semibold mb-1">Instrucciones Zelle:</p>
+                    <p>Enviar a: <strong>payments@venturafreshlaundry.com</strong></p>
+                    <p>Nota: Orden <strong>{formatOrderNumber(localOrder)}</strong></p>
                   </div>
                 )}
 

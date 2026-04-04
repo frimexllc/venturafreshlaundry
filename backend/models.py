@@ -6,7 +6,8 @@ from typing import List, Optional, Dict, Any
 # Role-based access control constants
 ROLE_ADMIN = "admin"
 ROLE_OPERATOR = "operator"
-VALID_ROLES = [ROLE_ADMIN, ROLE_OPERATOR]
+ROLE_DRIVER = "driver"
+VALID_ROLES = [ROLE_ADMIN, ROLE_OPERATOR, ROLE_DRIVER]
 
 ROLE_PERMISSIONS = {
     ROLE_ADMIN: ["all"],
@@ -15,6 +16,10 @@ ROLE_PERMISSIONS = {
         "customers:read",
         "services:read",
         "operator_dashboard"
+    ],
+    ROLE_DRIVER: [
+        "orders:read",
+        "orders:update_status_driver",
     ]
 }
 

@@ -9,7 +9,7 @@ from typing import Optional, List, Dict, Any
 from pydantic import BaseModel
 
 from fastapi import APIRouter, HTTPException, Depends, Query, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, HTMLResponse
 
 from database import db, SKIP_SERVER_NOTIFICATIONS
 from models import (
@@ -426,7 +426,7 @@ async def capture_order_payment(
     current_user: dict = Depends(require_role([ROLE_OPERATOR])),
 ):
     method = normalize_payment_method(data.payment_method)
-    allowed = ["cash", "card", "transfer", "other"]
+    allowed = ["cash", "card", "transfer", "zelle", "other"]
     if method not in allowed:
         raise HTTPException(status_code=400, detail=f"Invalid payment method. Must be one of: {allowed}")
 
@@ -657,6 +657,60 @@ class NotifyCustomerRequest(BaseModel):
     message: Optional[str] = None
 
 
+async def _shorten_url(url: str) -> str:
+    """Shorten a URL using TinyURL. Returns original on failure."""
+    if not url:
+        return url
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=5) as client:
+            r = await client.get(f"https://tinyurl.com/api-create.php?url={url}")
+            if r.status_code == 200 and r.text.startswith("http"):
+                return r.text.strip()
+    except Exception:
+        pass
+    return url
+
+
+async def _generate_payment_url(order: dict, request: Request) -> str:
+    """Create a Stripe Checkout session and return the URL. Empty string on failure."""
+    total = float(order.get("total_amount") or order.get("total") or 0)
+    pay_status = (order.get("payment_status") or "pending").lower()
+    if pay_status == "paid" or total < 0.50 or not STRIPE_CHECKOUT_AVAILABLE:
+        return ""
+    try:
+        stripe_api_key = os.environ.get("STRIPE_API_KEY")
+        if not stripe_api_key:
+            return ""
+        origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
+        host_url = str(request.base_url).rstrip("/")
+        order_id = order.get("id")
+        order_num = order.get("order_number", order_id)
+
+        stripe_checkout = StripeCheckout(api_key=stripe_api_key, webhook_url=f"{host_url}/api/webhook/stripe")
+        session_request = CheckoutSessionRequest(
+            amount=total,
+            currency="usd",
+            success_url=f"{origin}/payment-success?session_id={{CHECKOUT_SESSION_ID}}&order_id={order_id}",
+            cancel_url=f"{origin}/",
+            metadata={"order_id": order_id, "order_number": order_num, "type": "service_order"},
+        )
+        session: CheckoutSessionResponse = await stripe_checkout.create_checkout_session(session_request)
+
+        now = datetime.now(timezone.utc).isoformat()
+        await db.payment_transactions.insert_one({
+            "id": str(uuid.uuid4()), "session_id": session.session_id,
+            "order_id": order_id, "entity_type": "service_order",
+            "amount": total, "currency": "usd", "status": "initiated",
+            "payment_status": "pending", "metadata": session_request.metadata,
+            "created_at": now, "updated_at": now,
+        })
+        return session.url
+    except Exception as e:
+        logger.warning(f"Could not generate payment link: {e}")
+        return ""
+
+
 @router.post("/orders/{order_id}/notify-customer")
 async def notify_customer_direct(
     order_id: str,
@@ -664,7 +718,7 @@ async def notify_customer_direct(
     request: Request,
     current_user: dict = Depends(get_current_user),
 ):
-    """Send a direct notification with order details and payment link for unpaid orders."""
+    """Send a professional multi-payment notification with Stripe link, Zelle, and Cash info."""
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
@@ -677,140 +731,71 @@ async def notify_customer_direct(
     name = (customer or {}).get("name") or order.get("customer_name") or "Cliente"
 
     order_num = order.get("order_number", order_id)
-    status = (order.get("status") or "new").upper()
+    total = float(order.get("total_amount") or order.get("total") or 0)
+    pay_status = (order.get("payment_status") or "pending").lower()
     actual_lbs = order.get("actual_lbs")
     estimated_lbs = order.get("estimated_lbs")
-    total = order.get("total_amount") or order.get("total") or 0
-    pay_status = (order.get("payment_status") or "pending").lower()
-
+    rate = float(order.get("price_per_lb") or order.get("rate") or 2.75)
+    delivery_fee = float(order.get("delivery_fee") or 0)
+    lbs = float(actual_lbs or estimated_lbs or 0)
+    subtotal = round(lbs * rate, 2) if lbs > 0 else total
     lbs_text = f"{actual_lbs} lbs" if actual_lbs else (f"~{estimated_lbs} lbs est." if estimated_lbs else "")
-    total_text = f"${float(total):.2f}" if total else ""
-    pay_text = "Pagado" if pay_status == "paid" else "Pendiente de pago"
+    total_text = f"${total:.2f}" if total else ""
 
-    # ── Generate Stripe payment link for unpaid orders ────────────
-    payment_url = ""
-    if pay_status != "paid" and float(total or 0) >= 0.50 and STRIPE_CHECKOUT_AVAILABLE:
-        try:
-            stripe_api_key = os.environ.get("STRIPE_API_KEY")
-            if stripe_api_key:
-                origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
-                host_url = str(request.base_url).rstrip("/")
-                webhook_url = f"{host_url}/api/webhook/stripe"
-                success_url = f"{origin}/payment-success?session_id={{CHECKOUT_SESSION_ID}}&order_id={order.get('id')}"
-                cancel_url = f"{origin}/"
+    # ── Generate payment link ──────────────────────────────────
+    payment_url = await _generate_payment_url(order, request)
+    short_url = await _shorten_url(payment_url) if payment_url else ""
 
-                amount = float(total)
-                stripe_checkout = StripeCheckout(api_key=stripe_api_key, webhook_url=webhook_url)
-                session_request = CheckoutSessionRequest(
-                    amount=amount,
-                    currency="usd",
-                    success_url=success_url,
-                    cancel_url=cancel_url,
-                    metadata={
-                        "order_id": order.get("id"),
-                        "order_number": order_num,
-                        "type": "service_order",
-                    },
-                )
-                session: CheckoutSessionResponse = await stripe_checkout.create_checkout_session(session_request)
-                payment_url = session.url
-
-                now = datetime.now(timezone.utc).isoformat()
-                payment_doc = {
-                    "id": str(uuid.uuid4()),
-                    "session_id": session.session_id,
-                    "order_id": order.get("id"),
-                    "entity_type": "service_order",
-                    "amount": amount,
-                    "currency": "usd",
-                    "status": "initiated",
-                    "payment_status": "pending",
-                    "metadata": session_request.metadata,
-                    "created_at": now,
-                    "updated_at": now,
-                }
-                await db.payment_transactions.insert_one(payment_doc)
-        except Exception as e:
-            logger.warning(f"Could not generate payment link for order {order_id}: {e}")
-
-    # ── Build SMS / WhatsApp text message ─────────────────────────
-    if payload.message:
+    # ── Build message based on payment status ──────────────────
+    if pay_status == "paid":
+        # PAID — Thank you message
+        method_name = (order.get("payment_method") or "").capitalize() or "Tarjeta"
+        msg = (
+            f"\U0001f9fc Ventura Fresh Laundry\n\n"
+            f"Hola {name} \U0001f44b\n"
+            f"Confirmamos el pago de tu orden #{order_num}.\n\n"
+            f"\u2705 Total: {total_text}\n"
+            f"\u2705 Metodo: {method_name}\n"
+            f"\u2705 Estado: Pagado\n\n"
+            f"Gracias por confiar en Ventura Fresh Laundry \U0001f9fc\u2728"
+        )
+    elif payload.message:
         msg = payload.message
-        if payment_url and payment_url not in msg:
-            msg += f"\n\nPaga aqui: {payment_url}"
+        if short_url and short_url not in msg:
+            msg += f"\n\nPaga aqui: {short_url}"
     else:
-        lines = [f"Ventura Fresh Laundry - Orden {order_num}"]
-        lines.append(f"Hola {name},")
-        if lbs_text:
-            lines.append(f"Peso: {lbs_text}")
-        if total_text:
-            lines.append(f"Total: {total_text}")
-        lines.append(f"Estado: {status}")
-        lines.append(f"Pago: {pay_text}")
-        if payment_url:
-            lines.append(f"\nPaga en linea: {payment_url}")
-        lines.append("\nGracias por su preferencia!")
-        msg = "\n".join(lines)
+        # UNPAID — Multi-payment professional message
+        breakdown = ""
+        if lbs > 0:
+            breakdown = (
+                f"\n\U0001f522 Desglose:\n"
+                f"\u2022 {lbs} lbs x ${rate:.2f}/lb = ${subtotal:.2f}\n"
+            )
+            if delivery_fee > 0:
+                breakdown += f"\u2022 Delivery: ${delivery_fee:.2f}\n"
+            breakdown += f"\u2022 Total: {total_text}\n"
 
-    # ── Build HTML email ──────────────────────────────────────────
-    payment_btn_html = ""
-    if payment_url:
-        payment_btn_html = f"""
-        <tr><td style="padding:24px 30px 0;">
-          <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
-            <a href="{payment_url}" style="display:inline-block;padding:14px 40px;background-color:#0891b2;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px;border-radius:10px;letter-spacing:0.3px;">
-              Pagar ${float(total):.2f} Ahora
-            </a>
-          </td></tr></table>
-          <p style="margin:12px 0 0;font-size:11px;color:#94a3b8;text-align:center;">Enlace seguro con Stripe. Acepta tarjeta, Apple Pay y Google Pay.</p>
-        </td></tr>"""
+        msg = (
+            f"\U0001f9fc Ventura Fresh Laundry\n\n"
+            f"Hola {name} \U0001f44b\n"
+            f"Tu orden #{order_num} esta lista para pago.\n"
+            f"{breakdown}\n"
+            f"\U0001f4b3 Tarjeta (rapido y seguro)\n"
+            f"\U0001f449 {short_url or 'Link no disponible'}\n\n"
+            f"\U0001f4f2 Zelle\n"
+            f"\U0001f449 Enviar a: payments@venturafreshlaundry.com\n"
+            f"\U0001f4dd Nota: Agrega tu numero de orden {order_num}\n\n"
+            f"\U0001f4b5 Efectivo\n"
+            f"\U0001f449 Pagar al recoger o entregar\n\n"
+            f"Una vez realizado el pago, tu orden continuara en proceso \U0001f680\n"
+            f"Gracias por confiar en Ventura Fresh Laundry \U0001f9fc\u2728"
+        )
 
-    paid_badge = '<span style="display:inline-block;padding:3px 10px;background:#dcfce7;color:#16a34a;border-radius:20px;font-size:12px;font-weight:600;">Pagado</span>'
-    pending_badge = '<span style="display:inline-block;padding:3px 10px;background:#fef3c7;color:#d97706;border-radius:20px;font-size:12px;font-weight:600;">Pendiente</span>'
-    status_badge = paid_badge if pay_status == "paid" else pending_badge
-
-    email_html = f"""<!DOCTYPE html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
-<body style="margin:0;padding:0;background-color:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f1f5f9;padding:30px 0;">
-<tr><td align="center">
-<table width="100%" style="max-width:520px;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.06);" cellpadding="0" cellspacing="0">
-  <!-- Header -->
-  <tr><td style="background:linear-gradient(135deg,#0e7490,#0891b2);padding:28px 30px;">
-    <h1 style="margin:0;color:#fff;font-size:20px;font-weight:700;">Ventura Fresh Laundry</h1>
-    <p style="margin:4px 0 0;color:rgba(255,255,255,0.8);font-size:13px;">Actualizacion de tu orden</p>
-  </td></tr>
-  <!-- Greeting -->
-  <tr><td style="padding:28px 30px 0;">
-    <p style="margin:0;font-size:15px;color:#334155;">Hola <strong>{name}</strong>,</p>
-    <p style="margin:8px 0 0;font-size:14px;color:#64748b;">Aqui tienes los detalles de tu orden:</p>
-  </td></tr>
-  <!-- Order card -->
-  <tr><td style="padding:20px 30px 0;">
-    <table width="100%" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;" cellpadding="0" cellspacing="0">
-      <tr><td style="padding:16px 20px;border-bottom:1px solid #e2e8f0;">
-        <p style="margin:0;font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">Orden</p>
-        <p style="margin:4px 0 0;font-size:18px;color:#0f172a;font-weight:700;">{order_num}</p>
-      </td></tr>
-      {"<tr><td style='padding:12px 20px;border-bottom:1px solid #e2e8f0;'><table width='100%'><tr><td style='font-size:13px;color:#64748b;'>Peso</td><td align='right' style='font-size:14px;color:#0f172a;font-weight:600;'>" + lbs_text + "</td></tr></table></td></tr>" if lbs_text else ""}
-      {"<tr><td style='padding:12px 20px;border-bottom:1px solid #e2e8f0;'><table width='100%'><tr><td style='font-size:13px;color:#64748b;'>Total</td><td align='right' style='font-size:18px;color:#0f172a;font-weight:800;'>" + total_text + "</td></tr></table></td></tr>" if total_text else ""}
-      <tr><td style="padding:12px 20px;border-bottom:1px solid #e2e8f0;"><table width="100%"><tr><td style="font-size:13px;color:#64748b;">Estado</td><td align="right" style="font-size:14px;color:#0f172a;font-weight:600;">{status}</td></tr></table></td></tr>
-      <tr><td style="padding:12px 20px;"><table width="100%"><tr><td style="font-size:13px;color:#64748b;">Pago</td><td align="right">{status_badge}</td></tr></table></td></tr>
-    </table>
-  </td></tr>
-  <!-- Payment button -->
-  {payment_btn_html}
-  <!-- Footer -->
-  <tr><td style="padding:28px 30px;">
-    <p style="margin:0;font-size:13px;color:#64748b;">Gracias por tu preferencia!</p>
-    <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0;">
-    <p style="margin:0;font-size:11px;color:#94a3b8;">Ventura Fresh Laundry<br>5722 Telephone Rd Suite 5, Ventura, CA 93003<br>(805) 515-4030</p>
-  </td></tr>
-</table>
-</td></tr></table>
-</body></html>"""
-
-    email_plain = msg  # fallback plain text
+    # ── Build HTML email ──────────────────────────────────────
+    if pay_status == "paid":
+        email_html = _build_paid_email_html(name, order_num, total_text, order.get("payment_method"))
+    else:
+        email_html = _build_unpaid_email_html(name, order_num, lbs, rate, subtotal, delivery_fee, total, total_text, payment_url, lbs_text)
 
     if not NOTIFICATIONS_ENABLED:
         return {"ok": False, "detail": "Notifications not configured", "message_preview": msg, "payment_url": payment_url}
@@ -823,8 +808,8 @@ async def notify_customer_direct(
 
     try:
         if channel == "email" and email_addr:
-            subject = f"Orden {order_num} — Ventura Fresh Laundry"
-            sent = await send_email(email_addr, subject, email_plain, email_html)
+            subject = f"{'Pago Confirmado' if pay_status == 'paid' else 'Pago Pendiente'} - Orden {order_num}"
+            sent = await send_email(email_addr, subject, msg, email_html)
         elif channel == "whatsapp" and phone:
             sent = await send_whatsapp(phone, msg)
         elif channel == "sms" and phone:
@@ -843,18 +828,208 @@ async def notify_customer_direct(
         error_detail = str(e)
 
     if sent:
-        await create_audit_log(
-            "CUSTOMER_NOTIFIED_DIRECT",
-            "order",
-            order_id,
-            current_user["id"],
-            {"channel": channel, "message": msg[:200], "payment_url": payment_url[:200] if payment_url else ""},
-        )
+        await create_audit_log("CUSTOMER_NOTIFIED_DIRECT", "order", order_id, current_user["id"],
+                               {"channel": channel, "message": msg[:200], "payment_url": payment_url[:200] if payment_url else ""})
 
     return {
-        "ok": sent,
-        "channel": channel,
-        "message_preview": msg[:300],
-        "payment_url": payment_url,
+        "ok": sent, "channel": channel,
+        "message_preview": msg[:500], "payment_url": payment_url,
         "detail": error_detail if not sent else f"Sent via {channel}",
     }
+
+
+def _build_paid_email_html(name, order_num, total_text, method):
+    method_name = (method or "").capitalize() or "Tarjeta"
+    return f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:30px 0;">
+<tr><td align="center">
+<table width="100%" style="max-width:520px;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.06);" cellpadding="0" cellspacing="0">
+  <tr><td style="background:linear-gradient(135deg,#059669,#10b981);padding:28px 30px;text-align:center;">
+    <h1 style="margin:0;color:#fff;font-size:20px;">Ventura Fresh Laundry</h1>
+    <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Pago Confirmado</p>
+  </td></tr>
+  <tr><td style="padding:30px;text-align:center;">
+    <div style="width:64px;height:64px;background:#dcfce7;border-radius:50%;margin:0 auto 16px;line-height:64px;font-size:32px;">&#10003;</div>
+    <p style="margin:0;font-size:15px;color:#334155;">Hola <strong>{name}</strong>,</p>
+    <p style="margin:10px 0 0;font-size:14px;color:#64748b;">Confirmamos el pago de tu orden.</p>
+    <table style="margin:20px auto;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;" cellpadding="12" cellspacing="0">
+      <tr><td style="font-size:13px;color:#64748b;border-bottom:1px solid #e2e8f0;">Orden</td><td style="font-weight:700;color:#0f172a;border-bottom:1px solid #e2e8f0;">{order_num}</td></tr>
+      <tr><td style="font-size:13px;color:#64748b;border-bottom:1px solid #e2e8f0;">Total</td><td style="font-weight:800;font-size:18px;color:#059669;border-bottom:1px solid #e2e8f0;">{total_text}</td></tr>
+      <tr><td style="font-size:13px;color:#64748b;">Metodo</td><td style="font-weight:600;color:#0f172a;">{method_name}</td></tr>
+    </table>
+    <p style="margin:20px 0 0;font-size:13px;color:#64748b;">Gracias por confiar en nosotros!</p>
+  </td></tr>
+  <tr><td style="padding:0 30px 28px;">
+    <hr style="border:none;border-top:1px solid #e2e8f0;margin:0 0 16px;">
+    <p style="margin:0;font-size:11px;color:#94a3b8;text-align:center;">Ventura Fresh Laundry &middot; 5722 Telephone Rd Suite 5, Ventura CA 93003 &middot; (805) 515-4030</p>
+  </td></tr>
+</table></td></tr></table></body></html>"""
+
+
+def _build_unpaid_email_html(name, order_num, lbs, rate, subtotal, delivery_fee, total, total_text, payment_url, lbs_text):
+    breakdown_rows = ""
+    if lbs > 0:
+        breakdown_rows = f"""
+      <tr><td style="font-size:13px;color:#64748b;padding:10px 16px;border-bottom:1px solid #e2e8f0;">Peso</td><td style="font-weight:600;color:#0f172a;padding:10px 16px;border-bottom:1px solid #e2e8f0;text-align:right;">{lbs} lbs x ${rate:.2f}/lb</td></tr>
+      <tr><td style="font-size:13px;color:#64748b;padding:10px 16px;border-bottom:1px solid #e2e8f0;">Subtotal</td><td style="font-weight:600;color:#0f172a;padding:10px 16px;border-bottom:1px solid #e2e8f0;text-align:right;">${subtotal:.2f}</td></tr>"""
+        if delivery_fee > 0:
+            breakdown_rows += f"""
+      <tr><td style="font-size:13px;color:#64748b;padding:10px 16px;border-bottom:1px solid #e2e8f0;">Delivery</td><td style="font-weight:600;color:#0f172a;padding:10px 16px;border-bottom:1px solid #e2e8f0;text-align:right;">${delivery_fee:.2f}</td></tr>"""
+
+    pay_btn = ""
+    if payment_url:
+        pay_btn = f"""
+  <tr><td style="padding:24px 30px 0;text-align:center;">
+    <a href="{payment_url}" style="display:inline-block;padding:16px 48px;background:#0891b2;color:#fff;text-decoration:none;font-weight:700;font-size:16px;border-radius:12px;">Pagar {total_text} Ahora</a>
+    <p style="margin:10px 0 0;font-size:11px;color:#94a3b8;">Enlace seguro con Stripe &middot; Tarjeta, Apple Pay, Google Pay</p>
+  </td></tr>"""
+
+    return f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:30px 0;">
+<tr><td align="center">
+<table width="100%" style="max-width:520px;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.06);" cellpadding="0" cellspacing="0">
+  <tr><td style="background:linear-gradient(135deg,#0e7490,#0891b2);padding:28px 30px;">
+    <h1 style="margin:0;color:#fff;font-size:20px;">Ventura Fresh Laundry</h1>
+    <p style="margin:4px 0 0;color:rgba(255,255,255,.8);font-size:13px;">Tu orden esta lista para pago</p>
+  </td></tr>
+  <tr><td style="padding:28px 30px 0;">
+    <p style="margin:0;font-size:15px;color:#334155;">Hola <strong>{name}</strong>,</p>
+    <p style="margin:8px 0 0;font-size:14px;color:#64748b;">Tu orden <strong>#{order_num}</strong> esta lista. Aqui tienes las opciones de pago:</p>
+  </td></tr>
+  <!-- Breakdown -->
+  <tr><td style="padding:20px 30px 0;">
+    <table width="100%" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;" cellpadding="0" cellspacing="0">
+      {breakdown_rows}
+      <tr><td style="font-size:14px;font-weight:700;color:#0f172a;padding:14px 16px;background:#f0f9ff;">TOTAL</td><td style="font-size:20px;font-weight:800;color:#0891b2;padding:14px 16px;background:#f0f9ff;text-align:right;">{total_text}</td></tr>
+    </table>
+  </td></tr>
+  {pay_btn}
+  <!-- Other methods -->
+  <tr><td style="padding:20px 30px 0;">
+    <table width="100%" style="border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;" cellpadding="0" cellspacing="0">
+      <tr><td style="padding:14px 16px;border-bottom:1px solid #e2e8f0;background:#fefce8;">
+        <p style="margin:0;font-size:13px;font-weight:700;color:#854d0e;">Zelle</p>
+        <p style="margin:4px 0 0;font-size:12px;color:#713f12;">Enviar a: <strong>payments@venturafreshlaundry.com</strong></p>
+        <p style="margin:2px 0 0;font-size:11px;color:#a16207;">Nota: Agrega tu numero de orden {order_num}</p>
+      </td></tr>
+      <tr><td style="padding:14px 16px;background:#f0fdf4;">
+        <p style="margin:0;font-size:13px;font-weight:700;color:#166534;">Efectivo</p>
+        <p style="margin:4px 0 0;font-size:12px;color:#15803d;">Pagar al recoger o entregar</p>
+      </td></tr>
+    </table>
+  </td></tr>
+  <tr><td style="padding:24px 30px;">
+    <p style="margin:0;font-size:13px;color:#64748b;">Una vez realizado el pago, tu orden continuara en proceso.</p>
+    <p style="margin:6px 0 0;font-size:13px;color:#64748b;">Gracias por confiar en Ventura Fresh Laundry!</p>
+    <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0;">
+    <p style="margin:0;font-size:11px;color:#94a3b8;text-align:center;">Ventura Fresh Laundry &middot; 5722 Telephone Rd Suite 5, Ventura CA 93003 &middot; (805) 515-4030</p>
+  </td></tr>
+</table></td></tr></table></body></html>"""
+
+
+# ══════════════════════════════════════════════════════════════════════
+# PRINT TICKET — Full HTML receipt
+# ══════════════════════════════════════════════════════════════════════
+@router.get("/orders/{order_id}/ticket")
+async def get_order_ticket(order_id: str, current_user: dict = Depends(get_current_user)):
+    """Generate a printable HTML ticket/receipt for the order."""
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    order_num = order.get("order_number", order_id[:8])
+    name = order.get("customer_name") or "Cliente"
+    phone = order.get("customer_phone") or ""
+    pickup_addr = order.get("pickup_address") or order.get("address") or ""
+    delivery_addr = order.get("delivery_address") or ""
+    created = order.get("created_at", "")[:10] if order.get("created_at") else ""
+    service = order.get("service_type") or "wash_fold"
+
+    lbs = float(order.get("actual_lbs") or order.get("estimated_lbs") or 0)
+    rate = float(order.get("price_per_lb") or order.get("rate") or 2.75)
+    subtotal = round(lbs * rate, 2) if lbs > 0 else float(order.get("total_amount") or 0)
+    delivery_fee = float(order.get("delivery_fee") or 0)
+    payment_method = (order.get("payment_method") or "").lower()
+    processing_fee = round((subtotal + delivery_fee) * 0.03, 2) if payment_method in ("card", "stripe", "tarjeta") else 0
+    total = order.get("total_amount") or (subtotal + delivery_fee + processing_fee)
+    total = float(total)
+
+    pay_status = (order.get("payment_status") or "pending").lower()
+    pay_label = "PAGADO" if pay_status == "paid" else "PENDIENTE"
+    method_label = {"cash": "Efectivo", "card": "Tarjeta", "stripe": "Tarjeta", "zelle": "Zelle", "transfer": "Transferencia"}.get(payment_method, payment_method.capitalize() or "-")
+
+    # Build rows
+    items_html = ""
+    if lbs > 0:
+        items_html += f'<tr><td>Peso</td><td class="r">{lbs} lbs</td></tr>'
+        items_html += f'<tr><td>Rate</td><td class="r">${rate:.2f}/lb</td></tr>'
+        items_html += f'<tr><td>Subtotal</td><td class="r">${subtotal:.2f}</td></tr>'
+    if delivery_fee > 0:
+        items_html += f'<tr><td>Delivery Fee</td><td class="r">${delivery_fee:.2f}</td></tr>'
+    if processing_fee > 0:
+        items_html += f'<tr><td>Processing Fee (3%)</td><td class="r">${processing_fee:.2f}</td></tr>'
+
+    addr_html = ""
+    if pickup_addr:
+        addr_html += f'<tr><td>Pickup</td><td class="r" style="font-size:10px;">{pickup_addr[:50]}</td></tr>'
+    if delivery_addr and delivery_addr != pickup_addr:
+        addr_html += f'<tr><td>Entrega</td><td class="r" style="font-size:10px;">{delivery_addr[:50]}</td></tr>'
+
+    html = f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Ticket {order_num}</title>
+<style>
+*{{margin:0;padding:0;box-sizing:border-box}}
+body{{font-family:'Courier New',monospace;width:80mm;margin:0 auto;padding:4mm;font-size:12px;color:#111}}
+.center{{text-align:center}}
+h1{{font-size:15px;font-weight:700}}
+.sub{{font-size:9px;color:#666;margin-top:2px}}
+.order-num{{font-size:16px;font-weight:900;text-align:center;margin:8px 0;letter-spacing:1px}}
+hr{{border:none;border-top:1px dashed #999;margin:6px 0}}
+table{{width:100%;border-collapse:collapse}}
+td{{padding:3px 0;font-size:11px;vertical-align:top}}
+.r{{text-align:right;font-weight:600}}
+.total-row td{{font-size:14px;font-weight:900;padding:6px 0;border-top:2px solid #111}}
+.badge{{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700}}
+.badge-paid{{background:#dcfce7;color:#166534}}
+.badge-pending{{background:#fef3c7;color:#92400e}}
+.footer{{font-size:9px;color:#888;text-align:center;margin-top:8px}}
+@media print{{body{{margin:0;padding:2mm}}}}
+</style></head>
+<body>
+<div class="center">
+  <h1>Ventura Fresh Laundry</h1>
+  <p class="sub">5722 Telephone Rd Suite 5, Ventura CA 93003</p>
+  <p class="sub">(805) 515-4030</p>
+</div>
+<hr>
+<p class="order-num">#{order_num}</p>
+<table>
+  <tr><td>Fecha</td><td class="r">{created}</td></tr>
+  <tr><td>Cliente</td><td class="r">{name}</td></tr>
+  {f'<tr><td>Tel</td><td class="r">{phone}</td></tr>' if phone else ''}
+  <tr><td>Servicio</td><td class="r">{"Wash & Fold" if "wash" in service.lower() else "Pickup & Delivery"}</td></tr>
+  {addr_html}
+</table>
+<hr>
+<table>
+  {items_html}
+  <tr class="total-row"><td>TOTAL</td><td class="r">${total:.2f}</td></tr>
+</table>
+<hr>
+<table>
+  <tr><td>Pago</td><td class="r"><span class="badge {'badge-paid' if pay_status=='paid' else 'badge-pending'}">{pay_label}</span></td></tr>
+  <tr><td>Metodo</td><td class="r">{method_label}</td></tr>
+</table>
+<hr>
+<div class="footer">
+  <p>Gracias por su preferencia!</p>
+  <p>venturafreshlaundry.com</p>
+</div>
+<script>window.onload=function(){{window.print();}}</script>
+</body></html>"""
+
+    return HTMLResponse(content=html)
