@@ -14,6 +14,7 @@ import OrderDetailDialog from "../components/operator-dashboard/OrderDetailDialo
 import { ORDER_STATUSES, STORE_STATUS_FLOW, getNextStoreStatus, safeString, formatApiError, formatCurrency, formatOrderNumber, isWashFoldService, getNextStatus, calculateServiceCharge, dedupeOrders } from "../components/operator-dashboard/utils";
 import { useLocale } from "../context/LocaleContext";
 import { formatDatePT, formatTimePT, formatShortDatePT } from "../utils/dateUtils";
+import html2pdf from "html2pdf.js";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -114,7 +115,7 @@ const StatCard = ({ icon, bg, count, label, testId, highlight }) => (
   </div>
 );
 
-const OrderRow = ({ order, statusInfo, nextStatus, nextStatusInfo, updating, onRowClick, onAdvance, onPrint, advanceBtnClass = "bg-sky-600 hover:bg-sky-700", showPrint = false, t }) => (
+const OrderRow = ({ order, statusInfo, nextStatus, nextStatusInfo, updating, onRowClick, onAdvance, onPrint, onPDF, advanceBtnClass = "bg-sky-600 hover:bg-sky-700", showPrint = false, t }) => (
   <div className="p-3 sm:p-4 hover:bg-slate-50/70 transition-colors cursor-pointer" role="button" onClick={() => onRowClick(order)} data-testid={`order-row-${order.order_id || "unknown"}`}>
     <div className="flex items-start justify-between gap-2">
       <div className="min-w-0 flex-1">
@@ -124,7 +125,7 @@ const OrderRow = ({ order, statusInfo, nextStatus, nextStatusInfo, updating, onR
         </div>
         <p className="text-sm text-slate-700 font-medium truncate">{safeString(order.customer_name, t("Customer", "Cliente"))}</p>
         <p className="text-xs text-slate-400 mt-0.5 truncate">
-          {safeString(order.pickup_time || order.pickup_date, t("No time", "Sin hora"))}
+          {order.pickup_time ? safeString(order.pickup_time) : order.pickup_date ? formatShortDatePT(order.pickup_date) : t("No time", "Sin hora")}
           {(order.pickup_address || order.delivery_address) && <> · {safeString(order.pickup_address || order.delivery_address)}</>}
           {extractCP(order.pickup_address || order.delivery_address) && (
             <span className="ml-1 px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-xs font-mono">
@@ -140,9 +141,14 @@ const OrderRow = ({ order, statusInfo, nextStatus, nextStatusInfo, updating, onR
           </Button>
         )}
         {showPrint && (
-          <Button variant="outline" size="sm" className="text-xs h-7 px-2 gap-1 hover:border-sky-300 hover:text-sky-600" onClick={() => onPrint(order)} data-testid={`print-btn-${order.order_id}`}>
-            <Printer className="h-3 w-3" /><span className="hidden sm:inline">{t("Ticket", "Ticket")}</span>
-          </Button>
+          <div className="flex gap-1">
+            <Button variant="outline" size="sm" className="text-xs h-7 px-2 gap-1 hover:border-sky-300 hover:text-sky-600" onClick={() => onPrint(order)} data-testid={`print-btn-${order.order_id}`}>
+              <Printer className="h-3 w-3" /><span className="hidden sm:inline">{t("Print", "Imprimir")}</span>
+            </Button>
+            <Button variant="outline" size="sm" className="text-xs h-7 px-2 gap-1 hover:border-emerald-300 hover:text-emerald-600" onClick={() => onPDF(order)} data-testid={`pdf-btn-${order.order_id}`}>
+              <FileDown className="h-3 w-3" /><span className="hidden sm:inline">PDF</span>
+            </Button>
+          </div>
         )}
       </div>
     </div>
@@ -427,6 +433,37 @@ export default function OperatorDashboard() {
       pw.document.close();
     } catch {
       toast.error(t("Could not generate ticket", "No se pudo generar el ticket"));
+    }
+  };
+
+  const handleDownloadPDF = async (order) => {
+    if (!order) return;
+    const id = order.id || order.order_id;
+    if (!id) {
+      toast.error(t("Invalid order", "Orden invalida"));
+      return;
+    }
+    try {
+      const tkn = localStorage.getItem("token") || sessionStorage.getItem("token");
+      const res = await fetch(`${API_URL}/api/orders/${id}/ticket`, {
+        headers: tkn ? { Authorization: `Bearer ${tkn}` } : {}
+      });
+      if (!res.ok) throw new Error("fetch_failed");
+      const htmlContent = await res.text();
+      const container = document.createElement("div");
+      container.innerHTML = htmlContent;
+      container.style.width = "380px";
+      document.body.appendChild(container);
+      await html2pdf().set({
+        margin: 4,
+        filename: `ticket-${formatOrderNumber(order)}.pdf`,
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: "mm", format: [100, 250], orientation: "portrait" }
+      }).from(container).save();
+      document.body.removeChild(container);
+      toast.success(t("PDF downloaded", "PDF descargado"));
+    } catch {
+      toast.error(t("Could not generate PDF", "No se pudo generar el PDF"));
     }
   };
 
@@ -1007,7 +1044,7 @@ export default function OperatorDashboard() {
                 ? <EmptyState icon={<Truck className="h-8 w-8" />} text={t("No created or confirmed orders", "No hay ordenes creadas o confirmadas")} testId="pos-pickup-today-empty" />
                 : filteredPickupOrders.map(order => {
                     const ns = getNextStatus(order.status, order.service_type);
-                    return <OrderRow key={order.order_id || Math.random()} order={order} statusInfo={getStatusInfo(order.status, order.service_type)} nextStatus={ns} nextStatusInfo={ns ? getStatusInfo(ns, order.service_type) : null} updating={updating} onRowClick={setSelectedOrder} onAdvance={updateOrderStatus} onPrint={handlePrintTicket} showPrint advanceBtnClass="bg-sky-600 hover:bg-sky-700" t={t} />;
+                    return <OrderRow key={order.order_id || Math.random()} order={order} statusInfo={getStatusInfo(order.status, order.service_type)} nextStatus={ns} nextStatusInfo={ns ? getStatusInfo(ns, order.service_type) : null} updating={updating} onRowClick={setSelectedOrder} onAdvance={updateOrderStatus} onPrint={handlePrintTicket} onPDF={handleDownloadPDF} showPrint advanceBtnClass="bg-sky-600 hover:bg-sky-700" t={t} />;
                   })}
             </div>
           </div>
@@ -1042,7 +1079,7 @@ export default function OperatorDashboard() {
                 ? <EmptyState icon={<Package className="h-8 w-8" />} text={t("No active process or delivery orders", "No hay ordenes activas en proceso o entrega")} testId="operator-delivery-empty" />
                 : filteredPickupDeliveries.map(order => {
                     const ns = getNextStatus(order.status, order.service_type);
-                    return <OrderRow key={order.order_id || Math.random()} order={order} statusInfo={getStatusInfo(order.status, order.service_type)} nextStatus={ns} nextStatusInfo={ns ? getStatusInfo(ns, order.service_type) : null} updating={updating} onRowClick={setSelectedOrder} onAdvance={updateOrderStatus} onPrint={handlePrintTicket} showPrint advanceBtnClass="bg-emerald-600 hover:bg-emerald-700" t={t} />;
+                    return <OrderRow key={order.order_id || Math.random()} order={order} statusInfo={getStatusInfo(order.status, order.service_type)} nextStatus={ns} nextStatusInfo={ns ? getStatusInfo(ns, order.service_type) : null} updating={updating} onRowClick={setSelectedOrder} onAdvance={updateOrderStatus} onPrint={handlePrintTicket} onPDF={handleDownloadPDF} showPrint advanceBtnClass="bg-emerald-600 hover:bg-emerald-700" t={t} />;
                   })}
             </div>
           </div>
@@ -1068,7 +1105,7 @@ export default function OperatorDashboard() {
                               <span className={`px-1.5 py-0.5 text-xs font-medium rounded-full shrink-0 ${statusInfo.color}`}>{statusInfo.label}</span>
                             </div>
                             <p className="text-sm text-slate-700 font-medium truncate">{safeString(order.customer_name, t("Customer", "Cliente"))}</p>
-                            <p className="text-xs text-slate-400 mt-0.5 truncate">{safeString(order.pickup_date, t("Drop-off today", "Entrega hoy"))}</p>
+                            <p className="text-xs text-slate-400 mt-0.5 truncate">{order.pickup_date ? formatShortDatePT(order.pickup_date) : t("Drop-off today", "Entrega hoy")}</p>
                           </div>
                           <div className="flex flex-col gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
                             {nextStatus && (
@@ -1076,9 +1113,14 @@ export default function OperatorDashboard() {
                                 {updating[order.order_id] ? <RefreshCw className="h-3 w-3 animate-spin" /> : <><span className="hidden sm:inline">{nextStatusInfo?.label}</span><ChevronRight className="h-3 w-3 ml-0.5" /></>}
                               </Button>
                             )}
-                            <Button variant="outline" size="sm" className="text-xs h-7 px-2 gap-1 hover:border-sky-300 hover:text-sky-600" onClick={() => handlePrintTicket(order)} data-testid={`pos-washfold-print-${order.order_id}`}>
-                              <Printer className="h-3 w-3" /><span className="hidden sm:inline">{t("Ticket", "Ticket")}</span>
-                            </Button>
+                            <div className="flex gap-1">
+                              <Button variant="outline" size="sm" className="text-xs h-7 px-2 gap-1 hover:border-sky-300 hover:text-sky-600" onClick={() => handlePrintTicket(order)} data-testid={`pos-washfold-print-${order.order_id}`}>
+                                <Printer className="h-3 w-3" /><span className="hidden sm:inline">{t("Print", "Imprimir")}</span>
+                              </Button>
+                              <Button variant="outline" size="sm" className="text-xs h-7 px-2 gap-1 hover:border-emerald-300 hover:text-emerald-600" onClick={() => handleDownloadPDF(order)} data-testid={`pos-washfold-pdf-${order.order_id}`}>
+                                <FileDown className="h-3 w-3" /><span className="hidden sm:inline">PDF</span>
+                              </Button>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -1104,7 +1146,10 @@ export default function OperatorDashboard() {
                           </div>
                           <div className="flex flex-col gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
                             <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-xs h-7" onClick={() => setSelectedOrder(order)} data-testid={`pos-washfold-collect-${order.order_id}`}>{t("Collect", "Cobrar")}</Button>
-                            <Button variant="outline" size="sm" className="text-xs h-7 px-2 gap-1 hover:border-sky-300 hover:text-sky-600" onClick={() => handlePrintTicket(order)} data-testid={`pos-washfold-print-payment-${order.order_id}`}><Printer className="h-3 w-3" /><span className="hidden sm:inline">{t("Ticket", "Ticket")}</span></Button>
+                            <div className="flex gap-1">
+                              <Button variant="outline" size="sm" className="text-xs h-7 px-2 gap-1 hover:border-sky-300 hover:text-sky-600" onClick={() => handlePrintTicket(order)} data-testid={`pos-washfold-print-payment-${order.order_id}`}><Printer className="h-3 w-3" /><span className="hidden sm:inline">{t("Print", "Imprimir")}</span></Button>
+                              <Button variant="outline" size="sm" className="text-xs h-7 px-2 gap-1 hover:border-emerald-300 hover:text-emerald-600" onClick={() => handleDownloadPDF(order)} data-testid={`pos-washfold-pdf-payment-${order.order_id}`}><FileDown className="h-3 w-3" /><span className="hidden sm:inline">PDF</span></Button>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -1130,7 +1175,10 @@ export default function OperatorDashboard() {
                           </div>
                           <div className="flex flex-col gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
                             {ns && <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-xs h-7" onClick={() => updateOrderStatus(order.order_id, ns)} disabled={updating[order.order_id]} data-testid={`pos-washfold-ready-update-${order.order_id}`}>{updating[order.order_id] ? <RefreshCw className="h-3 w-3 animate-spin" /> : <><span className="hidden sm:inline">{getStatusInfo(ns, order.service_type).label}</span><ChevronRight className="h-3 w-3 ml-0.5" /></>}</Button>}
-                            <Button variant="outline" size="sm" className="text-xs h-7 px-2 gap-1 hover:border-sky-300 hover:text-sky-600" onClick={() => handlePrintTicket(order)} data-testid={`pos-washfold-ready-print-${order.order_id}`}><Printer className="h-3 w-3" /><span className="hidden sm:inline">{t("Ticket", "Ticket")}</span></Button>
+                            <div className="flex gap-1">
+                              <Button variant="outline" size="sm" className="text-xs h-7 px-2 gap-1 hover:border-sky-300 hover:text-sky-600" onClick={() => handlePrintTicket(order)} data-testid={`pos-washfold-ready-print-${order.order_id}`}><Printer className="h-3 w-3" /><span className="hidden sm:inline">{t("Print", "Imprimir")}</span></Button>
+                              <Button variant="outline" size="sm" className="text-xs h-7 px-2 gap-1 hover:border-emerald-300 hover:text-emerald-600" onClick={() => handleDownloadPDF(order)} data-testid={`pos-washfold-ready-pdf-${order.order_id}`}><FileDown className="h-3 w-3" /><span className="hidden sm:inline">PDF</span></Button>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -1144,93 +1192,7 @@ export default function OperatorDashboard() {
 
         {/* Tab 2: Store Orders */}
         <TabsContent value="store">
-      {/* Store Orders y DeliveryZonesManager */}
-      <div className="space-y-4">
-        <div className="px-4 sm:px-6 py-4 border-b border-slate-100 bg-slate-50">
-          <h3 className="font-semibold text-slate-900 text-sm sm:text-base flex items-center gap-2">
-            <MapPin className="h-4 w-4 text-sky-600" />
-            {t("Order Locations", "Ubicaciones de órdenes")}
-          </h3>
-          <p className="text-xs text-slate-500 mt-0.5">
-            {t("Click on a marker to view order details", "Haz clic en un marcador para ver los detalles de la orden")}
-          </p>
-        </div>
-        {/* FIX #3: el contenedor del mapa tiene su propio z-index para aislar el stacking context de Leaflet */}
-        <div className="h-[450px] w-full" style={{ position: 'relative', zIndex: 0 }}>
-          <MapContainer center={[STORE_COORDINATES.lat, STORE_COORDINATES.lng]} zoom={12} style={{ height: "100%", width: "100%", zIndex: 0 }}>
-            <TileLayer
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            />
-            {ordersWithCoordinates.map((order) => {
-              const isDelivery = !order.service_type || order.service_type === "pickup_delivery";
-              const distance = getDistanceInMiles(
-                STORE_COORDINATES.lat,
-                STORE_COORDINATES.lng,
-                order.coords.lat,
-                order.coords.lng
-              );
-              const deliveryFee = calculateDeliveryFee(distance);
-              const exceedsLimit = distance > 9;
-              const statusInfo = getStatusInfo(order.status, order.service_type);
-              const markerColor = getMarkerColor(order.status);
-              const icon = L.divIcon({
-                html: `<div style="background-color: ${markerColor}; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">📍</div>`,
-                className: "custom-marker",
-                iconSize: [24, 24],
-                popupAnchor: [0, -12]
-              });
-              return (
-                <Marker
-                  key={order.id || order.order_id}
-                  position={[order.coords.lat, order.coords.lng]}
-                  icon={icon}
-                >
-                  <Popup minWidth={280} maxWidth={320}>
-                    <div className="space-y-2 text-sm">
-                      <div className="font-bold text-base">{formatOrderNumber(order)}</div>
-                      <div className="text-slate-700">{order.customer_name}</div>
-                      <div className="text-xs text-slate-500 break-words">
-                        {order.pickup_address || order.delivery_address}
-                      </div>
-                      {isDelivery && (
-                        <div className="text-xs">
-                          📍 Distancia: <strong>{distance.toFixed(1)} mi</strong><br />
-                          🚚 Envío: {deliveryFee > 0 ? formatCurrency(deliveryFee) : "Gratis"}
-                          {exceedsLimit && (
-                            <span className="ml-2 text-red-500 font-semibold">(⚠️ Excede 9 millas)</span>
-                          )}
-                        </div>
-                      )}
-                      <div className="flex items-center gap-1 flex-wrap">
-                        <span className={`px-1.5 py-0.5 rounded-full text-xs ${statusInfo.color}`}>
-                          {statusInfo.label}
-                        </span>
-                        {order.payment_status !== "paid" && (
-                          <span className="text-xs text-amber-600">💰 Pendiente</span>
-                        )}
-                      </div>
-                      <div className="pt-2">
-                        <Button
-                          size="sm"
-                          variant="default"
-                          className="w-full"
-                          onClick={() => setSelectedOrder(order)}
-                        >
-                          {t("View details", "Ver detalles")}
-                        </Button>
-                      </div>
-                    </div>
-                  </Popup>
-                </Marker>
-              );
-            })}
-          </MapContainer>
-        </div>
-      </div>
-
-      {/* Store Orders y DeliveryZonesManager */}
-      <div className="mt-6 sm:mt-10 space-y-4">
+          <div className="space-y-4">
         <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm" data-testid="store-orders-panel">
           <div className="px-4 sm:px-6 py-4 border-b border-slate-100 bg-slate-50">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -1323,6 +1285,52 @@ export default function OperatorDashboard() {
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             />
+            {ordersWithCoordinates.map((order) => {
+              const isDelivery = !order.service_type || order.service_type === "pickup_delivery";
+              const distance = getDistanceInMiles(STORE_COORDINATES.lat, STORE_COORDINATES.lng, order.coords.lat, order.coords.lng);
+              const deliveryFee = calculateDeliveryFee(distance);
+              const exceedsLimit = distance > 9;
+              const statusInfo = getStatusInfo(order.status, order.service_type);
+              const markerColor = getMarkerColor(order.status);
+              const icon = L.divIcon({
+                html: `<div style="background-color: ${markerColor}; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">📍</div>`,
+                className: "custom-marker",
+                iconSize: [24, 24],
+                popupAnchor: [0, -12]
+              });
+              return (
+                <Marker key={order.id || order.order_id} position={[order.coords.lat, order.coords.lng]} icon={icon}>
+                  <Popup minWidth={280} maxWidth={320}>
+                    <div className="space-y-2 text-sm">
+                      <div className="font-bold text-base">{formatOrderNumber(order)}</div>
+                      <div className="text-slate-700">{order.customer_name}</div>
+                      <div className="text-xs text-slate-500 break-words">{order.pickup_address || order.delivery_address}</div>
+                      {isDelivery && (
+                        <div className="text-xs">
+                          Distancia: <strong>{distance.toFixed(1)} mi</strong><br />
+                          Envio: {deliveryFee > 0 ? formatCurrency(deliveryFee) : "Gratis"}
+                          {exceedsLimit && <span className="ml-2 text-red-500 font-semibold">(Excede 9 millas)</span>}
+                        </div>
+                      )}
+                      <div className="flex items-center gap-1 flex-wrap">
+                        <span className={`px-1.5 py-0.5 rounded-full text-xs ${statusInfo.color}`}>{statusInfo.label}</span>
+                        {order.payment_status !== "paid" && <span className="text-xs text-amber-600">Pendiente</span>}
+                      </div>
+                      <div className="pt-2">
+                        <Button size="sm" variant="default" className="w-full" onClick={() => setSelectedOrder(order)}>{t("View details", "Ver detalles")}</Button>
+                      </div>
+                    </div>
+                  </Popup>
+                </Marker>
+              );
+            })}
+          </MapContainer>
+        </div>
+      </div>
+        </TabsContent>
+      </Tabs>
+
+      {/* Store POS Modal */}
       <Dialog open={storePosOpen} onOpenChange={open => !open ? resetStorePos() : setStorePosOpen(true)}>
         <DialogContent className="w-[95vw] max-w-5xl bg-white max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle className="text-base sm:text-lg">{t("New Store Sale", "Nueva venta en tienda")}</DialogTitle><DialogDescription className="text-xs sm:text-sm">{t("Select products and collect payment quickly.", "Selecciona productos y cobra rapido.")}</DialogDescription></DialogHeader>
@@ -1343,18 +1351,10 @@ export default function OperatorDashboard() {
                 <div className="flex justify-between font-bold text-base sm:text-lg pt-1 border-b border-slate-100 pb-2"><span>{t("Total", "Total")}</span><span data-testid="store-pos-total">${storeCartSubtotal.toFixed(2)}</span></div>
                 <p className="text-xs text-slate-400 text-center">{t("Select a payment method", "Selecciona metodo de pago")}</p>
                 <div className="grid grid-cols-2 gap-2">
-                  <Button className="w-full bg-sky-600 hover:bg-sky-700 text-xs sm:text-sm h-11" onClick={() => handleQuickCheckout("card")} disabled={storeCheckoutLoading || !storeCart?.items?.length} data-testid="store-pos-pay-card">
-                    <CreditCard className="h-4 w-4 mr-1.5" />{t("Tap / Card", "Tap / Tarjeta")}
-                  </Button>
-                  <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-xs sm:text-sm h-11" onClick={() => handleQuickCheckout("cash")} disabled={storeCheckoutLoading || !storeCart?.items?.length} data-testid="store-pos-pay-cash">
-                    <DollarSign className="h-4 w-4 mr-1.5" />{t("Cash", "Efectivo")}
-                  </Button>
-                  <Button variant="outline" className="w-full text-xs sm:text-sm h-11 border-purple-200 text-purple-700 hover:bg-purple-50" onClick={() => setStoreLinkMode("sms")} disabled={storeCheckoutLoading || !storeCart?.items?.length} data-testid="store-pos-link-sms">
-                    <Phone className="h-4 w-4 mr-1.5" />{t("Link via SMS", "Link por SMS")}
-                  </Button>
-                  <Button variant="outline" className="w-full text-xs sm:text-sm h-11 border-indigo-200 text-indigo-700 hover:bg-indigo-50" onClick={() => setStoreLinkMode("email")} disabled={storeCheckoutLoading || !storeCart?.items?.length} data-testid="store-pos-link-email">
-                    <Mail className="h-4 w-4 mr-1.5" />{t("Link via Email", "Link por Email")}
-                  </Button>
+                  <Button className="w-full bg-sky-600 hover:bg-sky-700 text-xs sm:text-sm h-11" onClick={() => handleQuickCheckout("card")} disabled={storeCheckoutLoading || !storeCart?.items?.length} data-testid="store-pos-pay-card"><CreditCard className="h-4 w-4 mr-1.5" />{t("Tap / Card", "Tap / Tarjeta")}</Button>
+                  <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-xs sm:text-sm h-11" onClick={() => handleQuickCheckout("cash")} disabled={storeCheckoutLoading || !storeCart?.items?.length} data-testid="store-pos-pay-cash"><DollarSign className="h-4 w-4 mr-1.5" />{t("Cash", "Efectivo")}</Button>
+                  <Button variant="outline" className="w-full text-xs sm:text-sm h-11 border-purple-200 text-purple-700 hover:bg-purple-50" onClick={() => setStoreLinkMode("sms")} disabled={storeCheckoutLoading || !storeCart?.items?.length} data-testid="store-pos-link-sms"><Phone className="h-4 w-4 mr-1.5" />{t("Link via SMS", "Link por SMS")}</Button>
+                  <Button variant="outline" className="w-full text-xs sm:text-sm h-11 border-indigo-200 text-indigo-700 hover:bg-indigo-50" onClick={() => setStoreLinkMode("email")} disabled={storeCheckoutLoading || !storeCart?.items?.length} data-testid="store-pos-link-email"><Mail className="h-4 w-4 mr-1.5" />{t("Link via Email", "Link por Email")}</Button>
                 </div>
                 {storeLinkMode && (
                   <div className="mt-2 p-3 bg-slate-50 rounded-lg space-y-2 border border-slate-200" data-testid="store-pos-link-form">
@@ -1364,9 +1364,7 @@ export default function OperatorDashboard() {
                     </div>
                     <div className="flex gap-2">
                       <Input value={storeLinkContact} onChange={e => setStoreLinkContact(e.target.value)} placeholder={storeLinkMode === "sms" ? "(805) 555-0000" : "email@cliente.com"} className="text-sm h-9 flex-1" data-testid="store-pos-link-input" />
-                      <Button className="bg-purple-600 hover:bg-purple-700 text-xs h-9 px-4" onClick={() => handleSendPaymentLink(storeLinkMode)} disabled={storeCheckoutLoading || !storeLinkContact.trim()} data-testid="store-pos-link-send">
-                        {storeCheckoutLoading ? "…" : t("Send", "Enviar")}
-                      </Button>
+                      <Button className="bg-purple-600 hover:bg-purple-700 text-xs h-9 px-4" onClick={() => handleSendPaymentLink(storeLinkMode)} disabled={storeCheckoutLoading || !storeLinkContact.trim()} data-testid="store-pos-link-send">{storeCheckoutLoading ? "…" : t("Send", "Enviar")}</Button>
                     </div>
                   </div>
                 )}
@@ -1382,8 +1380,8 @@ export default function OperatorDashboard() {
           <DialogHeader><DialogTitle className="text-base sm:text-lg">{t("Request payment", "Solicitar pago")}</DialogTitle><DialogDescription className="text-xs sm:text-sm">{safeString(storePaymentOrder?.order_number)}</DialogDescription></DialogHeader>
           {storePaymentOrder && <div className="space-y-4" data-testid="store-payment-modal">
             <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg"><span className="text-sm text-slate-500">{t("Total", "Total")}</span><span className="text-xl font-bold text-slate-900">{formatCurrency(storePaymentOrder.total)}</span></div>
-            <div><Label className="text-xs sm:text-sm">{t("Payment method", "Método de pago")}</Label><select className="w-full mt-1 border border-slate-200 rounded-lg px-3 py-2 text-sm" value={storePaymentForm.method} onChange={e => setStorePaymentForm({ method: e.target.value })} data-testid="store-payment-method"><option value="card">{t("Card (Stripe)", "Tarjeta (Stripe)")}</option><option value="cash">{t("Cash", "Efectivo")}</option><option value="transfer">{t("Transfer", "Transferencia")}</option><option value="other">{t("Other", "Otro")}</option></select></div>
-            {storePaymentForm.method === "card" && <p className="text-xs text-slate-400 bg-sky-50 border border-sky-100 rounded-lg p-2.5">{t("Stripe Checkout will open in a new page", "Stripe Checkout se abrirá en otra página")}</p>}
+            <div><Label className="text-xs sm:text-sm">{t("Payment method", "Metodo de pago")}</Label><select className="w-full mt-1 border border-slate-200 rounded-lg px-3 py-2 text-sm" value={storePaymentForm.method} onChange={e => setStorePaymentForm({ method: e.target.value })} data-testid="store-payment-method"><option value="card">{t("Card (Stripe)", "Tarjeta (Stripe)")}</option><option value="cash">{t("Cash", "Efectivo")}</option><option value="transfer">{t("Transfer", "Transferencia")}</option><option value="other">{t("Other", "Otro")}</option></select></div>
+            {storePaymentForm.method === "card" && <p className="text-xs text-slate-400 bg-sky-50 border border-sky-100 rounded-lg p-2.5">{t("Stripe Checkout will open in a new page", "Stripe Checkout se abrira en otra pagina")}</p>}
             <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-sm" onClick={handleStorePayment} disabled={storeProcessingPayment} data-testid="store-payment-submit">{storeProcessingPayment ? t("Processing…", "Procesando…") : storePaymentForm.method === "card" ? t("Pay with Stripe", "Pagar con Stripe") : t("Register payment", "Registrar pago")}</Button>
           </div>}
         </DialogContent>

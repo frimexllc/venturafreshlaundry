@@ -9,6 +9,7 @@ import { DollarSign, Scale, CreditCard, Banknote, Send, RefreshCw, Printer, X } 
 import { toast } from "sonner";
 import { safeString, formatCurrency, formatOrderNumber, isWashFoldService } from "./utils";
 import { useLocale } from "../../context/LocaleContext";
+import { formatShortDatePT } from "../../utils/dateUtils";
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
 const token = () => localStorage.getItem("token");
@@ -237,7 +238,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
               {localOrder.pickup_date && (
                 <div>
                   <span className="text-slate-400 text-xs">{t("Date", "Fecha")}</span>
-                  <p className="font-medium">{localOrder.pickup_date}</p>
+                  <p className="font-medium">{formatShortDatePT(localOrder.pickup_date)}</p>
                 </div>
               )}
               {localOrder.pickup_time && (
