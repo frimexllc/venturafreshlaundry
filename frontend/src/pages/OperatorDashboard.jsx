@@ -11,9 +11,11 @@ import { toast } from "sonner";
 import { createNotificationsSocket } from "../utils/notificationsSocket";
 import DeliveryZonesManager from "../components/DeliveryZonesManager";
 import OrderDetailDialog from "../components/operator-dashboard/OrderDetailDialog";
+import MapFilters from "../components/MapFilters";
 import { ORDER_STATUSES, STORE_STATUS_FLOW, getNextStoreStatus, safeString, formatApiError, formatCurrency, formatOrderNumber, isWashFoldService, getNextStatus, calculateServiceCharge, dedupeOrders } from "../components/operator-dashboard/utils";
 import { useLocale } from "../context/LocaleContext";
 import { formatDatePT, formatTimePT, formatShortDatePT } from "../utils/dateUtils";
+import { useOperatorNotifications } from "../hooks/useOperatorNotifications";
 import html2pdf from "html2pdf.js";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import L from "leaflet";
@@ -193,6 +195,11 @@ export default function OperatorDashboard() {
   const [aiResults, setAiResults] = useState([]);
   const [aiLoading, setAiLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [mapFilters, setMapFilters] = useState({});
+  const [filteredMapOrders, setFilteredMapOrders] = useState(null);
+
+  // Push notifications for operators
+  useOperatorNotifications(true);
 
   // FIX #7: sincronizar ref con el state
   useEffect(() => {
@@ -317,7 +324,6 @@ export default function OperatorDashboard() {
     loadDashboard();
     loadStoreOrders();
     const interval = setInterval(() => {
-      // FIX #7: el intervalo también respeta autoRefresh correctamente via ref
       if (autoRefreshRef.current) {
         loadDashboard();
         loadStoreOrders();
@@ -325,6 +331,27 @@ export default function OperatorDashboard() {
     }, 30000);
     return () => clearInterval(interval);
   }, [loadDashboard, loadStoreOrders]);
+
+  const loadFilteredMapOrders = useCallback(async (filters) => {
+    setMapFilters(filters);
+    if (!filters.date && !filters.time_window) {
+      setFilteredMapOrders(null);
+      return;
+    }
+    try {
+      const params = new URLSearchParams();
+      if (filters.date) params.set("date", filters.date);
+      if (filters.time_window) params.set("time_window", filters.time_window);
+      const res = await fetch(`${API_URL}/api/logistics/orders?${params.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        const orders = Array.isArray(data) ? data : (data.orders || data);
+        setFilteredMapOrders(orders);
+      }
+    } catch {
+      toast.error(t("Error loading filtered orders", "Error cargando ordenes filtradas"));
+    }
+  }, [t]);
 
   useEffect(() => {
     const socket = createNotificationsSocket();
@@ -1269,23 +1296,44 @@ export default function OperatorDashboard() {
 
         {/* Tab 3: Logistics Map */}
         <TabsContent value="map">
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden" style={{ position: 'relative', zIndex: 1 }}>
-        <div className="px-4 sm:px-6 py-4 border-b border-slate-100 bg-slate-50">
-          <h3 className="font-semibold text-slate-900 text-sm sm:text-base flex items-center gap-2">
-            <MapPin className="h-4 w-4 text-sky-600" />
-            {t("Order Locations", "Ubicaciones de ordenes")}
-          </h3>
-          <p className="text-xs text-slate-500 mt-0.5">
-            {t("Click on a marker to view order details", "Haz clic en un marcador para ver los detalles de la orden")}
-          </p>
-        </div>
-        <div className="h-[450px] w-full" style={{ position: 'relative', zIndex: 0 }}>
-          <MapContainer center={[STORE_COORDINATES.lat, STORE_COORDINATES.lng]} zoom={12} style={{ height: "100%", width: "100%", zIndex: 0 }}>
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden" style={{ position: 'relative', zIndex: 1 }}>
+            <div className="px-4 sm:px-6 py-4 border-b border-slate-100 bg-slate-50">
+              <h3 className="font-semibold text-slate-900 text-sm sm:text-base flex items-center gap-2">
+                <MapPin className="h-4 w-4 text-sky-600" />
+                {t("Order Locations", "Ubicaciones de ordenes")}
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {t("Click on a marker to view order details", "Haz clic en un marcador para ver los detalles de la orden")}
+              </p>
+            </div>
+            <MapFilters onFilterChange={loadFilteredMapOrders} activeFilters={mapFilters} />
+            {(mapFilters.date || mapFilters.time_window) && (
+              <div className="px-4 py-1.5 bg-sky-50 border-b border-sky-100 text-xs text-sky-700">
+                {t("Showing filtered results", "Mostrando resultados filtrados")}
+                {mapFilters.date && <span className="ml-1 font-semibold">{formatShortDatePT(mapFilters.date)}</span>}
+                {mapFilters.time_window && <span className="ml-1 font-semibold">· {mapFilters.time_window === "morning" ? "8-12" : "14-18"}</span>}
+                <span className="ml-2">({(filteredMapOrders || ordersWithCoordinates).length} {t("orders", "ordenes")})</span>
+              </div>
+            )}
+            <div className="h-[450px] w-full" style={{ position: 'relative', zIndex: 0 }}>
+              <MapContainer center={[STORE_COORDINATES.lat, STORE_COORDINATES.lng]} zoom={12} style={{ height: "100%", width: "100%", zIndex: 0 }}>
             <TileLayer
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             />
-            {ordersWithCoordinates.map((order) => {
+            {(() => {
+              const mapOrders = filteredMapOrders
+                ? filteredMapOrders.filter(o => o.location?.lat && o.location?.lng).map(o => ({
+                    ...o,
+                    order_id: o.id,
+                    customer_name: o.customer?.name || o.customer_name || "",
+                    pickup_address: o.location?.address || o.pickup_address || "",
+                    delivery_address: o.delivery_address || "",
+                    payment_status: o.payment?.status || o.payment_status || "unpaid",
+                    coords: { lat: o.location.lat, lng: o.location.lng },
+                  }))
+                : ordersWithCoordinates;
+              return mapOrders.map((order) => {
               const isDelivery = !order.service_type || order.service_type === "pickup_delivery";
               const distance = getDistanceInMiles(STORE_COORDINATES.lat, STORE_COORDINATES.lng, order.coords.lat, order.coords.lng);
               const deliveryFee = calculateDeliveryFee(distance);
@@ -1323,10 +1371,11 @@ export default function OperatorDashboard() {
                   </Popup>
                 </Marker>
               );
-            })}
+            });
+            })()}
           </MapContainer>
-        </div>
-      </div>
+            </div>
+          </div>
         </TabsContent>
       </Tabs>
 

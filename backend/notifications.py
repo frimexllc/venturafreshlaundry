@@ -1566,7 +1566,11 @@ async def send_preferred_notification(
     elif preference == "whatsapp":
         success = await send_whatsapp(phone, message) if phone else False
         if not success and phone:
+            logger.info(f"WhatsApp fallback → SMS for order {order.get('id')}")
             success = await send_sms(phone, message)
+        if not success and email:
+            logger.info(f"WhatsApp+SMS fallback → Email for order {order.get('id')}")
+            success = await send_email(email, subject, message, html_body)
     else:  # sms default
         if phone:
             success = await send_sms(phone, message)

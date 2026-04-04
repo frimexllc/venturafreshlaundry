@@ -92,16 +92,25 @@ def _type_map(service_type: str) -> str:
 @router.get("/orders")
 async def get_logistics_orders(
     include_delivered: bool = Query(False, description="Include delivered/completed orders"),
+    date: Optional[str] = Query(None, description="Filter by pickup_date YYYY-MM-DD"),
+    time_window: Optional[str] = Query(None, description="'morning' (8-12) or 'afternoon' (14-18)"),
     current_user: dict = Depends(get_current_user),
 ):
     """
     Returns a unified list of all orders (CRM + Store) with lat/lng coordinates
     for the logistics map. Addresses are geocoded and cached.
+    Supports optional date and time_window filters.
     """
     results = []
 
     # 1. CRM orders
     crm_query = {} if include_delivered else {"status": {"$nin": ["delivered", "completed", "cancelled"]}}
+    if date:
+        crm_query["pickup_date"] = date
+    if time_window == "morning":
+        crm_query["pickup_time_window"] = "8-12"
+    elif time_window == "afternoon":
+        crm_query["pickup_time_window"] = "14-18"
     crm_orders = await db.orders.find(crm_query, {"_id": 0}).sort("created_at", -1).limit(100).to_list(100)
 
     for o in crm_orders:
