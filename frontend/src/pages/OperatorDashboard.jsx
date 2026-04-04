@@ -1232,6 +1232,33 @@ export default function OperatorDashboard() {
         {/* Tab 2: Store Orders */}
         <TabsContent value="store">
           <div className="space-y-4">
+          {unpaidStoreOrders.length > 0 && (
+            <div className="bg-amber-50 rounded-xl border border-amber-200 overflow-hidden shadow-sm" data-testid="store-unpaid-panel">
+              <div className="px-4 sm:px-6 py-3 border-b border-amber-200 bg-amber-100/50 flex items-center gap-2">
+                <DollarSign className="h-4 w-4 text-amber-600" />
+                <h3 className="font-semibold text-amber-800 text-sm">{t("Pending Store Payments", "Pagos Pendientes de Tienda")} <span className="ml-1 bg-amber-200 text-amber-800 text-xs font-bold px-1.5 py-0.5 rounded-full">{unpaidStoreOrders.length}</span></h3>
+              </div>
+              <div className="divide-y divide-amber-200/50">
+                {unpaidStoreOrders.map(order => (
+                  <div key={order.id || Math.random()} className="px-4 sm:px-6 py-3 flex items-center justify-between gap-3 hover:bg-amber-100/30 transition-colors" data-testid={`store-unpaid-${order.id}`}>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span className="font-mono text-xs font-semibold text-slate-700">{safeString(order.order_number)}</span>
+                        <span className="px-1.5 py-0.5 rounded-full bg-amber-200/60 text-amber-700 text-xs">{getPaymentStatusLabel(order.payment_status)}</span>
+                      </div>
+                      <p className="text-sm font-medium text-slate-800 truncate">{safeString(order.customer_name, t("Customer", "Cliente"))}</p>
+                      {order.customer_email && <p className="text-xs text-slate-400 truncate">{safeString(order.customer_email)}</p>}
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className="text-lg font-bold text-slate-800" data-testid={`store-unpaid-total-${order.id}`}>{formatCurrency(order.total)}</span>
+                      <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-xs h-8 px-3" onClick={() => { setStorePaymentOrder(order); setStorePaymentForm({ method: "card" }); }} data-testid={`store-unpaid-collect-${order.id}`}>{t("Collect", "Cobrar")}</Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
         <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm" data-testid="store-orders-panel">
           <div className="px-4 sm:px-6 py-4 border-b border-slate-100 bg-slate-50">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -1241,7 +1268,7 @@ export default function OperatorDashboard() {
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <Button size="sm" className="bg-sky-600 hover:bg-sky-700 text-xs sm:text-sm" onClick={openStorePos} data-testid="store-pos-open">{t("New Store Sale", "Nueva venta")}</Button>
-                {unpaidStoreOrders.length > 0 && <Button size="sm" variant="outline" className="text-xs sm:text-sm" onClick={() => { setStorePaymentOrder(unpaidStoreOrders[0]); setStorePaymentForm({ method: "card" }); }} data-testid="store-pos-request-payment">{t("Request payment", "Solicitar pago")} <span className="ml-1 bg-amber-100 text-amber-700 text-xs font-bold px-1.5 py-0.5 rounded-full">{unpaidStoreOrders.length}</span></Button>}
+                {unpaidStoreOrders.length > 0 && <span className="text-xs font-semibold text-amber-600 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200" data-testid="store-pos-unpaid-badge">{unpaidStoreOrders.length} {t("pending payments", "pagos pendientes")}</span>}
                 <span className="text-xs font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full" data-testid="store-orders-count">{storeOrders.length}</span>
               </div>
             </div>
