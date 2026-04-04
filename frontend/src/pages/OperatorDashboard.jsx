@@ -198,6 +198,8 @@ export default function OperatorDashboard() {
   const [mapFilters, setMapFilters] = useState({});
   const [filteredMapOrders, setFilteredMapOrders] = useState(null);
   const [orderFilters, setOrderFilters] = useState({});
+  const [storeOrderSearch, setStoreOrderSearch] = useState("");
+  const [storePaymentFilter, setStorePaymentFilter] = useState("all");
 
   // Push notifications for operators
   useOperatorNotifications(true);
@@ -1232,52 +1234,63 @@ export default function OperatorDashboard() {
         {/* Tab 2: Store Orders */}
         <TabsContent value="store">
           <div className="space-y-4">
-          {unpaidStoreOrders.length > 0 && (
-            <div className="bg-amber-50 rounded-xl border border-amber-200 overflow-hidden shadow-sm" data-testid="store-unpaid-panel">
-              <div className="px-4 sm:px-6 py-3 border-b border-amber-200 bg-amber-100/50 flex items-center gap-2">
-                <DollarSign className="h-4 w-4 text-amber-600" />
-                <h3 className="font-semibold text-amber-800 text-sm">{t("Pending Store Payments", "Pagos Pendientes de Tienda")} <span className="ml-1 bg-amber-200 text-amber-800 text-xs font-bold px-1.5 py-0.5 rounded-full">{unpaidStoreOrders.length}</span></h3>
-              </div>
-              <div className="divide-y divide-amber-200/50">
-                {unpaidStoreOrders.map(order => (
-                  <div key={order.id || Math.random()} className="px-4 sm:px-6 py-3 flex items-center justify-between gap-3 hover:bg-amber-100/30 transition-colors" data-testid={`store-unpaid-${order.id}`}>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 mb-0.5">
-                        <span className="font-mono text-xs font-semibold text-slate-700">{safeString(order.order_number)}</span>
-                        <span className="px-1.5 py-0.5 rounded-full bg-amber-200/60 text-amber-700 text-xs">{getPaymentStatusLabel(order.payment_status)}</span>
-                      </div>
-                      <p className="text-sm font-medium text-slate-800 truncate">{safeString(order.customer_name, t("Customer", "Cliente"))}</p>
-                      {order.customer_email && <p className="text-xs text-slate-400 truncate">{safeString(order.customer_email)}</p>}
-                    </div>
-                    <div className="flex items-center gap-3 shrink-0">
-                      <span className="text-lg font-bold text-slate-800" data-testid={`store-unpaid-total-${order.id}`}>{formatCurrency(order.total)}</span>
-                      <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-xs h-8 px-3" onClick={() => { setStorePaymentOrder(order); setStorePaymentForm({ method: "card" }); }} data-testid={`store-unpaid-collect-${order.id}`}>{t("Collect", "Cobrar")}</Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
 
         <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm" data-testid="store-orders-panel">
           <div className="px-4 sm:px-6 py-4 border-b border-slate-100 bg-slate-50">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
-                <h3 className="font-semibold text-slate-900 text-sm sm:text-base">{t("Store Orders", "Órdenes tienda")}</h3>
+                <h3 className="font-semibold text-slate-900 text-sm sm:text-base">{t("Store Orders", "Ordenes tienda")}</h3>
                 <p className="text-xs text-slate-400 mt-0.5">{t("Process product purchases", "Procesa compras de productos")}</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <Button size="sm" className="bg-sky-600 hover:bg-sky-700 text-xs sm:text-sm" onClick={openStorePos} data-testid="store-pos-open">{t("New Store Sale", "Nueva venta")}</Button>
-                {unpaidStoreOrders.length > 0 && <span className="text-xs font-semibold text-amber-600 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200" data-testid="store-pos-unpaid-badge">{unpaidStoreOrders.length} {t("pending payments", "pagos pendientes")}</span>}
                 <span className="text-xs font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full" data-testid="store-orders-count">{storeOrders.length}</span>
               </div>
             </div>
           </div>
-          <div className="px-4 sm:px-6 py-2.5 bg-white border-b border-slate-100 flex flex-wrap items-center gap-1.5 text-xs text-slate-500" data-testid="store-orders-steps">
-            {[t("Open POS", "Abre POS"), t("Add products", "Agrega productos"), t("Collect payment", "Cobrar")].map((s, i) => <span key={i} className="flex items-center gap-1"><span className="w-4 h-4 rounded-full bg-sky-100 text-sky-600 font-bold flex items-center justify-center text-[10px]">{i + 1}</span>{s}{i < 2 && <span className="text-slate-300">›</span>}</span>)}
-            {unpaidStoreOrders.length > 0 && <span className="ml-2 text-amber-600 font-medium">{t("· Pending payments below", "· Pagos pendientes abajo")}</span>}
+          <div className="px-4 sm:px-6 py-2.5 bg-white border-b border-slate-100 flex flex-wrap items-center gap-2" data-testid="store-orders-filters">
+            <Search className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+            <Input
+              placeholder={t("Search by order, customer...", "Buscar por orden, cliente...")}
+              value={storeOrderSearch}
+              onChange={e => setStoreOrderSearch(e.target.value)}
+              className="h-8 w-[200px] text-xs"
+              data-testid="store-search-input"
+            />
+            <div className="flex items-center gap-1">
+              {[
+                { val: "all", label: t("All", "Todos") },
+                { val: "unpaid", label: t("Unpaid", "Sin pagar") },
+                { val: "paid", label: t("Paid", "Pagados") },
+              ].map(f => (
+                <Button
+                  key={f.val}
+                  size="sm"
+                  variant={storePaymentFilter === f.val ? "default" : "outline"}
+                  className={`h-7 text-xs ${storePaymentFilter === f.val ? (f.val === "unpaid" ? "bg-amber-500 hover:bg-amber-600" : f.val === "paid" ? "bg-emerald-500 hover:bg-emerald-600" : "") : ""}`}
+                  onClick={() => setStorePaymentFilter(f.val)}
+                  data-testid={`store-filter-${f.val}`}
+                >
+                  {f.label}
+                  {f.val === "unpaid" && unpaidStoreOrders.length > 0 && <span className="ml-1 text-[10px] font-bold">{unpaidStoreOrders.length}</span>}
+                </Button>
+              ))}
+            </div>
           </div>
-          {storeOrdersLoading ? <div className="p-8 text-center text-slate-400 text-sm">{t("Loading store orders…", "Cargando órdenes…")}</div> : storeOrders.length === 0 ? <div className="p-8 text-center text-slate-400 text-sm">{t("No store orders yet", "Sin órdenes de tienda")}</div> : (
+          {(() => {
+            const filteredStoreOrders = storeOrders.filter(order => {
+              if (storePaymentFilter === "unpaid" && order.payment_status === "paid") return false;
+              if (storePaymentFilter === "paid" && order.payment_status !== "paid") return false;
+              if (storeOrderSearch.trim()) {
+                const term = storeOrderSearch.toLowerCase();
+                const num = (order.order_number || "").toLowerCase();
+                const name = (order.customer_name || "").toLowerCase();
+                const email = (order.customer_email || "").toLowerCase();
+                if (!num.includes(term) && !name.includes(term) && !email.includes(term)) return false;
+              }
+              return true;
+            });
+            return storeOrdersLoading ? <div className="p-8 text-center text-slate-400 text-sm">{t("Loading store orders...", "Cargando ordenes...")}</div> : filteredStoreOrders.length === 0 ? <div className="p-8 text-center text-slate-400 text-sm">{(storeOrderSearch || storePaymentFilter !== "all") ? t("No orders match filters", "Sin ordenes con esos filtros") : t("No store orders yet", "Sin ordenes de tienda")}</div> : (
             <>
               <div className="hidden md:block overflow-x-auto">
                 <table className="min-w-full text-sm">
@@ -1285,7 +1298,7 @@ export default function OperatorDashboard() {
                     <tr>{[t("Order", "Orden"), t("Customer", "Cliente"), t("Status", "Estado"), t("Payment", "Pago"), t("Total", "Total"), t("Actions", "Acciones")].map((h, i) => <th key={i} className={`px-4 py-3 font-semibold ${i === 5 ? "text-right" : "text-left"}`}>{h}</th>)}</tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {storeOrders.map(order => {
+                    {filteredStoreOrders.map(order => {
                       const ns = getNextStoreStatus(order.status);
                       return (
                         <tr key={order.id || Math.random()} className="hover:bg-slate-50/50 transition-colors" data-testid={`store-order-row-${order.id || "unknown"}`}>
@@ -1307,7 +1320,7 @@ export default function OperatorDashboard() {
                 </table>
               </div>
               <div className="md:hidden divide-y divide-slate-100">
-                {storeOrders.map(order => {
+                {filteredStoreOrders.map(order => {
                   const ns = getNextStoreStatus(order.status);
                   return (
                     <div key={order.id || Math.random()} className="p-4 space-y-2.5" data-testid={`store-order-row-${order.id || "unknown"}`}>
@@ -1327,7 +1340,8 @@ export default function OperatorDashboard() {
                 })}
               </div>
             </>
-          )}
+          );
+          })()}
         </div>
         <DeliveryZonesManager />
       </div>
