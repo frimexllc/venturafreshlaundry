@@ -1,14 +1,14 @@
 # Ventura Fresh Laundry - PRD
 
 ## Original Problem Statement
-Comprehensive AI-powered laundry management system with CRM, ERP, Finances, POS, Stripe, Twilio/SendGrid notifications, AI assistants.
+Comprehensive AI-powered laundry management system with CRM, ERP, Finances, POS, Stripe, Twilio/SendGrid notifications, AI assistants, delivery logistics.
 
 ## Architecture
 ```
 shared.py (fastapi_app, sio) <- single source of truth
 server.py (entry point) -> server_core.py (routes/DB)
 realtime.py (emit helper)
-Routes: orders, kpis, finances, ai, store, stripe_payments, operator, etc.
+Routes: orders, kpis, finances, ai, store, stripe_payments, operator, geocode, logistics, etc.
 ```
 
 ## Credentials
@@ -16,87 +16,76 @@ Routes: orders, kpis, finances, ai, store, stripe_payments, operator, etc.
 
 ## State Machine
 ### Pickup & Delivery
-NEW -> CONFIRMED (operator) -> PICKED_UP (driver) -> PROCESSING (operator) -> READY (operator) -> OUT_FOR_DELIVERY (operator) -> DELIVERED (driver) -> COMPLETED (driver)
+NEW -> CONFIRMED -> PICKED_UP -> PROCESSING -> READY -> OUT_FOR_DELIVERY -> DELIVERED -> COMPLETED
 
 ### Wash & Fold
-NEW -> CONFIRMED (operator) -> PROCESSING (operator) -> READY (operator) -> COMPLETED (operator)
+NEW -> CONFIRMED -> PROCESSING -> READY -> COMPLETED
 
-### Implementation
-- `can_transition(order, new_status, role)` in `/app/backend/routes/operator.py`
-- `PD_TRANSITIONS` and `WF_TRANSITIONS` dictionaries
-- `OPERATOR_STATUSES` and `DRIVER_STATUSES` validation
-- Status history recorded in `status_history` array in each order document
+## Delivery Zone Rules
+- API: `GET /api/geocode/distance?lat=&lng=` (OpenRouteService driving distance)
+- 0-3 miles: Free delivery ($0)
+- 3-10 miles: $2.99 delivery fee
+- >10 miles: Delivery not available (rejected)
+- Store coordinates: 34.283, -119.293 (Ventura, CA)
 
-## Driver Endpoint
-- `PATCH /api/driver/orders/{id}/status` — Protected by driver role
-- `GET /api/driver/orders` — Returns orders assigned to driver
-
-## Revenue/Finance Architecture
-All payment endpoints write income entries to `finances` collection:
-- POST /api/orders/{id}/payment (cash/zelle/transfer/card)
-- POST /api/stripe/confirm-payment (Stripe card payments)
-- POST /api/stripe/quick-sale/cash (POS cash sales)
-- POST /api/store/checkout/manual (store POS cash)
-
-## POS Quick Sale Payment Methods
-1. Tap to Pay — Stripe Terminal SDK with physical NFC reader
-2. Tarjeta en Pantalla — Stripe Elements PaymentElement
-3. Efectivo — Cash payment with instant completion
-
-## Print Ticket & PDF
-- `GET /api/orders/{id}/ticket` — Returns full HTML thermal receipt
-- Shows: order number, date, customer, address, lbs x rate, subtotal, delivery fee, processing fee (3% for card), total, payment status/method
-- Auto-calls `window.print()` on load
-- PDF download via `html2pdf.js` from the same HTML ticket endpoint
-
-## Multi-Payment Notification System
-`POST /api/orders/{order_id}/notify-customer`:
-- **UNPAID orders**: Multi-payment format with Stripe link, Zelle instructions, Cash option
-- **PAID orders**: Thank-you format with checkmarks
-- Email: Professional HTML template
-- SMS/WhatsApp: Plain text
-
-## Operator Dashboard Tabs Layout
-- Tab 1: **Ordenes de Servicio** — POS grid with P&D and W&F order cards
+## Operator Dashboard Tabs
+- Tab 1: **Ordenes de Servicio** — POS grid with P&D and W&F order cards, Print+PDF buttons
 - Tab 2: **Store Orders** — Store orders table + DeliveryZonesManager
-- Tab 3: **Mapa Logistico** — Leaflet map with order markers and popups
+- Tab 3: **Mapa Logistico** — Leaflet map with order markers + MapFilters (date picker, Morning/Afternoon)
+
+## Logistics Map Filters
+- Date picker: Filters orders by `pickup_date`
+- Morning (8-12): Filters by `pickup_time_window=8-12`
+- Afternoon (14-18): Filters by `pickup_time_window=14-18`
+- Backend: `GET /api/logistics/orders?date=YYYY-MM-DD&time_window=morning|afternoon`
+
+## Notification Fallback Chain
+- WhatsApp → SMS → Email (cascade on failure, logged)
+
+## PWA Push Notifications
+- Service Worker: `/sw.js` (push event + notificationclick)
+- Hook: `useOperatorNotifications.js` (Socket.IO + Notification API)
+- Events: `order_created`, `order_status` → Browser notifications
+- Permission requested on Operator Dashboard load
 
 ## Pacific Time (dateUtils.js)
-- `formatDatePT()` — Full date+time in PT
-- `formatShortDatePT()` — MM/DD/YYYY format
-- `formatTimePT()` — Time only in PT
-- `formatRelative()` — Relative time (hace 2h, 3d ago)
-- Applied to: lastRefresh, SLA deadlines, pickup_date displays
+- `formatDatePT()`, `formatShortDatePT()`, `formatTimePT()`, `formatRelative()`
+
+## POS Quick Sale Payment Methods
+1. Tap to Pay — Stripe Terminal SDK
+2. Tarjeta en Pantalla — Stripe Elements PaymentElement
+3. Efectivo — Cash payment
+
+## Print Ticket & PDF
+- `GET /api/orders/{id}/ticket` — Full HTML thermal receipt
+- Print via window.print(), PDF via html2pdf.js
 
 ## Completed Features
 
-### Session 2026-04-04 (Phase 1)
-- [x] POS Quick Sale with 3 payment methods (Tap, Card, Cash)
-- [x] Notification payment links (Stripe URL in SMS/Email)
-- [x] CONFIRMED state + state machine validation
-- [x] Driver endpoint (PATCH /api/driver/orders/{id}/status)
-- [x] Status history tracking (status_history array)
-- [x] Print Ticket HTML endpoint with financial breakdown
-- [x] Zelle payment method support
-- [x] Multi-payment notification format (Stripe/Zelle/Cash)
-- [x] TinyURL link shortening for Stripe URLs
-- [x] Payment success page (/payment-success)
+### Phase 1 (State Machine, Tickets, Zelle)
+- [x] CONFIRMED state + can_transition() validation
+- [x] Driver endpoint PATCH /api/driver/orders/{id}/status
+- [x] HTML Ticket endpoint with financial breakdown
+- [x] Zelle payment method + multi-payment notifications
+- [x] Stripe Checkout links in SMS/Email
+- [x] POS Tap to Pay via @stripe/terminal-js
 
-### Session 2026-04-04 (Phase 2)
-- [x] Tabs layout in Operator Dashboard (3 tabs: Orders, Store, Map)
-- [x] Fixed broken JSX structure (Map had Dialogs inside MapContainer)
-- [x] Removed duplicate map from Store tab
-- [x] Pacific Time date formatting (formatShortDatePT for pickup_date)
+### Phase 2 (Tabs, Timezone, PDF)
+- [x] Tabs layout (Service Orders, Store Orders, Logistics Map)
+- [x] Pacific Time date formatting (formatShortDatePT)
 - [x] PDF download button alongside Print (html2pdf.js)
-- [x] Auth header fix for PDF download (403 bug)
 - [x] Backend validations: fecha obligatoria, time_window, weight positivo
 - [x] Processing fee 3% for card payments
 
-## Backlog — Phase 3 (Upcoming)
-- (P1) Delivery Zone Rules: Google Maps Distance Matrix API, fee calculation (0-3mi free, 3-10mi $2.99, >10mi no service)
-- (P1) Logistics Map filters: date picker + morning/afternoon (8-12 / 14-18)
-- (P2) Mobile support ticket: responsive contact form with channel preference
-- (P2) Complex function refactoring: automation_engine.py
+### Phase 3 (Delivery Rules, Filters, Mobile, PWA) — 2026-04-04
+- [x] Delivery Zone Rules: GET /api/geocode/distance (OpenRouteService)
+- [x] Logistics Map Filters: date picker + Morning(8-12)/Afternoon(14-18)
+- [x] WhatsApp contact option on Contact page
+- [x] WhatsApp→SMS→Email notification fallback chain
+- [x] PWA Service Worker for push notifications
+- [x] Real-time operator notifications via Socket.IO + Notification API
+- [x] PWA manifest.json with maskable icons
 
-## Backlog — Future
+## Backlog
+- (P2) Refactoring automation_engine.py (complex functions)
 - (P3) Automated Stripe Sync every 6 hours (paused by user)
