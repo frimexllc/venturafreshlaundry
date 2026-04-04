@@ -5,14 +5,15 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../components/ui/dialog";
-import { Truck, Package, AlertTriangle, CheckCircle, RefreshCw, Phone, ChevronRight, Zap, Bot, DollarSign, Printer, MapPin, Search, CreditCard, Mail, X } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs";
+import { Truck, Package, AlertTriangle, CheckCircle, RefreshCw, Phone, ChevronRight, Zap, Bot, DollarSign, Printer, MapPin, Search, CreditCard, Mail, X, ShoppingBag, Map as MapIcon, ClipboardList, FileDown } from "lucide-react";
 import { toast } from "sonner";
 import { createNotificationsSocket } from "../utils/notificationsSocket";
 import DeliveryZonesManager from "../components/DeliveryZonesManager";
 import OrderDetailDialog from "../components/operator-dashboard/OrderDetailDialog";
 import { ORDER_STATUSES, STORE_STATUS_FLOW, getNextStoreStatus, safeString, formatApiError, formatCurrency, formatOrderNumber, isWashFoldService, getNextStatus, calculateServiceCharge, dedupeOrders } from "../components/operator-dashboard/utils";
 import { useLocale } from "../context/LocaleContext";
-
+import { formatDatePT, formatTimePT, formatShortDatePT } from "../utils/dateUtils";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -155,6 +156,7 @@ export default function OperatorDashboard() {
   const [updating, setUpdating] = useState({});
   const [lastRefresh, setLastRefresh] = useState(new Date());
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [activeTab, setActiveTab] = useState("orders");
   // FIX #7: usar ref para que el socket pueda leer el valor actual sin re-registrar listeners
   const autoRefreshRef = useRef(true);
   const [realtimeStatus, setRealtimeStatus] = useState("offline");
@@ -937,7 +939,7 @@ export default function OperatorDashboard() {
             />
           </div>
           <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${rtClass}`} data-testid="operator-realtime-status">{rtLabel}</span>
-          <span className="text-xs text-slate-400 hidden sm:inline">{t("Updated:", "Actualizado:")} {lastRefresh.toLocaleTimeString()}</span>
+          <span className="text-xs text-slate-400 hidden sm:inline">{t("Updated:", "Actualizado:")} {formatTimePT(lastRefresh)}</span>
           <Button onClick={() => setAutoRefresh(a => !a)} variant="outline" size="sm" data-testid="toggle-auto-refresh">
             {autoRefresh ? t("Pause", "Pausar") : t("Resume", "Reanudar")}
           </Button>
@@ -977,6 +979,22 @@ export default function OperatorDashboard() {
         </div>
       </div>
 
+      {/* ═══ TABS ═══ */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full" data-testid="operator-tabs">
+        <TabsList className="w-full grid grid-cols-3 mb-4 h-11">
+          <TabsTrigger value="orders" className="text-xs sm:text-sm gap-1.5" data-testid="tab-orders">
+            <ClipboardList className="h-4 w-4" /><span className="hidden sm:inline">{t("Service Orders", "Ordenes de Servicio")}</span><span className="sm:hidden">{t("Orders", "Ordenes")}</span>
+          </TabsTrigger>
+          <TabsTrigger value="store" className="text-xs sm:text-sm gap-1.5" data-testid="tab-store">
+            <ShoppingBag className="h-4 w-4" /><span className="hidden sm:inline">{t("Store Orders", "Store Orders")}</span><span className="sm:hidden">Store</span>
+          </TabsTrigger>
+          <TabsTrigger value="map" className="text-xs sm:text-sm gap-1.5" data-testid="tab-map">
+            <MapIcon className="h-4 w-4" /><span className="hidden sm:inline">{t("Logistics Map", "Mapa Logistico")}</span><span className="sm:hidden">{t("Map", "Mapa")}</span>
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Tab 1: Service Orders */}
+        <TabsContent value="orders">
       {/* POS Grid */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-6" data-testid="operator-pos-grid">
 
@@ -1122,9 +1140,12 @@ export default function OperatorDashboard() {
           </div>
         </div>
       </div>
+        </TabsContent>
 
-      {/* FIX #3: Mapa con z-index corregido para que los popups no queden cortados */}
-      <div className="mt-6 sm:mt-10 bg-white rounded-xl border border-slate-200 overflow-hidden" style={{ position: 'relative', zIndex: 1 }}>
+        {/* Tab 2: Store Orders */}
+        <TabsContent value="store">
+      {/* Store Orders y DeliveryZonesManager */}
+      <div className="space-y-4">
         <div className="px-4 sm:px-6 py-4 border-b border-slate-100 bg-slate-50">
           <h3 className="font-semibold text-slate-900 text-sm sm:text-base flex items-center gap-2">
             <MapPin className="h-4 w-4 text-sky-600" />
@@ -1282,8 +1303,26 @@ export default function OperatorDashboard() {
         </div>
         <DeliveryZonesManager />
       </div>
+        </TabsContent>
 
-      {/* Store POS Modal */}
+        {/* Tab 3: Logistics Map */}
+        <TabsContent value="map">
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden" style={{ position: 'relative', zIndex: 1 }}>
+        <div className="px-4 sm:px-6 py-4 border-b border-slate-100 bg-slate-50">
+          <h3 className="font-semibold text-slate-900 text-sm sm:text-base flex items-center gap-2">
+            <MapPin className="h-4 w-4 text-sky-600" />
+            {t("Order Locations", "Ubicaciones de ordenes")}
+          </h3>
+          <p className="text-xs text-slate-500 mt-0.5">
+            {t("Click on a marker to view order details", "Haz clic en un marcador para ver los detalles de la orden")}
+          </p>
+        </div>
+        <div className="h-[450px] w-full" style={{ position: 'relative', zIndex: 0 }}>
+          <MapContainer center={[STORE_COORDINATES.lat, STORE_COORDINATES.lng]} zoom={12} style={{ height: "100%", width: "100%", zIndex: 0 }}>
+            <TileLayer
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            />
       <Dialog open={storePosOpen} onOpenChange={open => !open ? resetStorePos() : setStorePosOpen(true)}>
         <DialogContent className="w-[95vw] max-w-5xl bg-white max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle className="text-base sm:text-lg">{t("New Store Sale", "Nueva venta en tienda")}</DialogTitle><DialogDescription className="text-xs sm:text-sm">{t("Select products and collect payment quickly.", "Selecciona productos y cobra rapido.")}</DialogDescription></DialogHeader>
@@ -1365,7 +1404,7 @@ export default function OperatorDashboard() {
                     <div className="flex flex-wrap items-center gap-1.5 mb-1"><span className="font-mono font-semibold text-slate-800 text-xs sm:text-sm">{safeString(ticket.ticket_id)}</span><span className="px-1.5 py-0.5 text-xs font-bold rounded-full bg-red-100 text-red-700">{t("URGENT", "URGENTE")}</span></div>
                     <p className="font-semibold text-slate-800 text-sm">{safeString(ticket.subject)}</p>
                     <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{safeString(ticket.description)}</p>
-                    <p className="text-xs text-red-500 mt-1.5 font-medium">{t("SLA:", "SLA:")} {new Date(ticket.sla_deadline).toLocaleString()}</p>
+                    <p className="text-xs text-red-500 mt-1.5 font-medium">{t("SLA:", "SLA:")} {formatDatePT(ticket.sla_deadline)}</p>
                   </div>
                   {ticket.customer_phone && <a href={`tel:${safeString(ticket.customer_phone)}`} className="flex items-center gap-1.5 text-xs sm:text-sm text-sky-600 hover:text-sky-700 font-medium shrink-0 bg-sky-50 hover:bg-sky-100 px-2.5 py-1.5 rounded-lg transition-colors"><Phone className="h-3.5 w-3.5" /><span className="hidden sm:inline">{t("Call", "Llamar")}</span></a>}
                 </div>

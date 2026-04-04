@@ -5,6 +5,9 @@ import uuid
 import zipfile
 import logging
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+
+PT_TZ = ZoneInfo("America/Los_Angeles")
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel
 
@@ -85,6 +88,14 @@ async def create_order(data: OrderCreate, notify: bool = True, current_user: dic
     customer = await db.customers.find_one({"id": data.customer_id}, {"_id": 0})
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
+
+    # ── Validaciones obligatorias ─────────────────────────────────
+    if not data.pickup_date:
+        raise HTTPException(status_code=400, detail="pickup_date es obligatorio")
+    if data.pickup_time_window and data.pickup_time_window not in ("8-12", "14-18"):
+        raise HTTPException(status_code=400, detail="time_window debe ser '8-12' o '14-18'")
+    if data.estimated_lbs is not None and data.estimated_lbs <= 0:
+        raise HTTPException(status_code=400, detail="estimated_lbs debe ser positivo")
 
     order_id = str(uuid.uuid4())
     order_number = await generate_order_number()
@@ -454,11 +465,17 @@ async def capture_order_payment(
     if method == "cash" and total_amount is not None and amount_received is not None:
         change_due = round(amount_received - total_amount, 2)
 
+    # Processing fee: 3% for card/stripe payments
+    processing_fee = 0.0
+    if method in ("card", "stripe") and total_amount is not None:
+        processing_fee = round(float(total_amount) * 0.03, 2)
+
     now = datetime.now(timezone.utc).isoformat()
     update_data = {
         "payment_status": "paid",
         "payment_method": method,
         "amount_paid": amount_received,
+        "processing_fee": processing_fee,
         "change_due": change_due,
         "paid_at": now,
         "updated_at": now,
@@ -946,7 +963,12 @@ async def get_order_ticket(order_id: str, current_user: dict = Depends(get_curre
     phone = order.get("customer_phone") or ""
     pickup_addr = order.get("pickup_address") or order.get("address") or ""
     delivery_addr = order.get("delivery_address") or ""
-    created = order.get("created_at", "")[:10] if order.get("created_at") else ""
+    created_raw = order.get("created_at", "")
+    try:
+        dt = datetime.fromisoformat(created_raw.replace("Z", "+00:00"))
+        created = dt.astimezone(PT_TZ).strftime("%m/%d/%Y %I:%M %p PT")
+    except Exception:
+        created = created_raw[:10] if created_raw else ""
     service = order.get("service_type") or "wash_fold"
 
     lbs = float(order.get("actual_lbs") or order.get("estimated_lbs") or 0)
