@@ -14,7 +14,7 @@ Routes: orders, kpis, finances, ai, store, stripe_payments, operator, etc.
 ## Credentials
 - Admin: owner@frimexllc.com / admin123
 
-## State Machine (Updated 2026-04-04)
+## State Machine
 ### Pickup & Delivery
 NEW -> CONFIRMED (operator) -> PICKED_UP (driver) -> PROCESSING (operator) -> READY (operator) -> OUT_FOR_DELIVERY (operator) -> DELIVERED (driver) -> COMPLETED (driver)
 
@@ -43,23 +43,34 @@ All payment endpoints write income entries to `finances` collection:
 2. Tarjeta en Pantalla — Stripe Elements PaymentElement
 3. Efectivo — Cash payment with instant completion
 
-## Print Ticket (Updated 2026-04-04)
+## Print Ticket & PDF
 - `GET /api/orders/{id}/ticket` — Returns full HTML thermal receipt
 - Shows: order number, date, customer, address, lbs x rate, subtotal, delivery fee, processing fee (3% for card), total, payment status/method
 - Auto-calls `window.print()` on load
+- PDF download via `html2pdf.js` from the same HTML ticket endpoint
 
-## Multi-Payment Notification System (Updated 2026-04-04)
+## Multi-Payment Notification System
 `POST /api/orders/{order_id}/notify-customer`:
-- **UNPAID orders**: Multi-payment format with:
-  - Stripe payment link (shortened via TinyURL)
-  - Zelle instructions (payments@venturafreshlaundry.com)
-  - Cash option
-  - Financial breakdown (lbs x rate, delivery, total)
+- **UNPAID orders**: Multi-payment format with Stripe link, Zelle instructions, Cash option
 - **PAID orders**: Thank-you format with checkmarks
-- Email: Professional HTML template with gradient header, payment button
-- SMS/WhatsApp: Plain text with emojis
+- Email: Professional HTML template
+- SMS/WhatsApp: Plain text
 
-## Completed Features (This Session - 2026-04-04)
+## Operator Dashboard Tabs Layout
+- Tab 1: **Ordenes de Servicio** — POS grid with P&D and W&F order cards
+- Tab 2: **Store Orders** — Store orders table + DeliveryZonesManager
+- Tab 3: **Mapa Logistico** — Leaflet map with order markers and popups
+
+## Pacific Time (dateUtils.js)
+- `formatDatePT()` — Full date+time in PT
+- `formatShortDatePT()` — MM/DD/YYYY format
+- `formatTimePT()` — Time only in PT
+- `formatRelative()` — Relative time (hace 2h, 3d ago)
+- Applied to: lastRefresh, SLA deadlines, pickup_date displays
+
+## Completed Features
+
+### Session 2026-04-04 (Phase 1)
 - [x] POS Quick Sale with 3 payment methods (Tap, Card, Cash)
 - [x] Notification payment links (Stripe URL in SMS/Email)
 - [x] CONFIRMED state + state machine validation
@@ -71,15 +82,21 @@ All payment endpoints write income entries to `finances` collection:
 - [x] TinyURL link shortening for Stripe URLs
 - [x] Payment success page (/payment-success)
 
-## Backlog — Phase 2 (UX & Validaciones)
-- (P1) Timezone correction: UTC backend + Pacific Time frontend (moment-timezone/date-fns-tz)
-- (P1) Tabs in Operator Dashboard: "Ordenes de Servicio" / "Store Orders" / "Mapa Logístico"
-- (P1) Additional validations: fecha obligatoria, time_window, weight positivo, processing fee 3%
-- (P2) Print + PDF dual buttons (html2pdf.js or weasyprint)
+### Session 2026-04-04 (Phase 2)
+- [x] Tabs layout in Operator Dashboard (3 tabs: Orders, Store, Map)
+- [x] Fixed broken JSX structure (Map had Dialogs inside MapContainer)
+- [x] Removed duplicate map from Store tab
+- [x] Pacific Time date formatting (formatShortDatePT for pickup_date)
+- [x] PDF download button alongside Print (html2pdf.js)
+- [x] Auth header fix for PDF download (403 bug)
+- [x] Backend validations: fecha obligatoria, time_window, weight positivo
+- [x] Processing fee 3% for card payments
 
-## Backlog — Phase 3 (Features Avanzados)
-- (P2) Delivery Zone Rules: Google Maps Distance Matrix API, fee calculation (0-3mi free, 3-10mi $2.99, >10mi no service)
-- (P2) Logistics Map filters: date picker + morning/afternoon (8-12 / 14-18)
+## Backlog — Phase 3 (Upcoming)
+- (P1) Delivery Zone Rules: Google Maps Distance Matrix API, fee calculation (0-3mi free, 3-10mi $2.99, >10mi no service)
+- (P1) Logistics Map filters: date picker + morning/afternoon (8-12 / 14-18)
 - (P2) Mobile support ticket: responsive contact form with channel preference
-- (P2) Complex function refactoring: automation_engine.py, ai_assistant.py
+- (P2) Complex function refactoring: automation_engine.py
+
+## Backlog — Future
 - (P3) Automated Stripe Sync every 6 hours (paused by user)
