@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
 import { toast } from "sonner";
@@ -465,7 +465,7 @@ const ConveyorTrack = ({ cur, locale, onStageClick }) => {
             <RiderMachine step={cur} />
           </div>
           {STAGES.map((s, i) => (
-            <>
+            <React.Fragment key={`stage-group-${i}`}>
               {i > 0 && (
                 <div key={`conn-${i}`} style={{
                   width: 28, height: 4, marginTop: 26, flexShrink: 0, zIndex: 0, position: "relative",
@@ -511,7 +511,7 @@ const ConveyorTrack = ({ cur, locale, onStageClick }) => {
                   {locale === "es" ? s.subES : s.subEN}
                 </div>
               </div>
-            </>
+            </React.Fragment>
           ))}
         </div>
       </div>

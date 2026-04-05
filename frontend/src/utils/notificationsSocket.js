@@ -61,6 +61,10 @@ export function createNotificationsSocket() {
     // que no soportan WebSocket directamente.
     transports: ["polling", "websocket"],
 
+    // ── Path ────────────────────────────────────────────────────────────
+    // Must match the socketio_path on the server side
+    path: "/api/socket.io/",
+
     // ── Timeout ───────────────────────────────────────────────────────────
     timeout: 10000,   // 10s para el handshake inicial
 

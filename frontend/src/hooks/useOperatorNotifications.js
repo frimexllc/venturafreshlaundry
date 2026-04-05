@@ -52,7 +52,7 @@ export function useOperatorNotifications(enabled = true) {
     registerSW();
     requestPermission();
 
-    const socket = io(API_URL, { transports: ["websocket", "polling"], reconnection: true });
+    const socket = io(API_URL, { transports: ["polling", "websocket"], path: "/api/socket.io/", reconnection: true });
     socketRef.current = socket;
 
     socket.on("notification", (data) => {

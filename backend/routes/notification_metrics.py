@@ -35,8 +35,8 @@ async def get_notification_metrics(days: int = 30, current_user: dict = Depends(
 
     channels = {}
     for item in channel_raw:
-        ch = item["_id"]["channel"] or "unknown"
-        st = item["_id"]["status"] or "unknown"
+        ch = (item["_id"].get("channel") if isinstance(item["_id"], dict) else item["_id"]) or "unknown"
+        st = (item["_id"].get("status") if isinstance(item["_id"], dict) else "unknown") or "unknown"
         if ch not in channels:
             channels[ch] = {"sent": 0, "failed": 0, "other": 0, "total": 0}
         if st == "sent":
@@ -58,8 +58,8 @@ async def get_notification_metrics(days: int = 30, current_user: dict = Depends(
 
     events = {}
     for item in event_raw:
-        ev = item["_id"]["event"] or "unknown"
-        st = item["_id"]["status"] or "unknown"
+        ev = (item["_id"].get("event") if isinstance(item["_id"], dict) else item["_id"]) or "unknown"
+        st = (item["_id"].get("status") if isinstance(item["_id"], dict) else "unknown") or "unknown"
         if ev not in events:
             events[ev] = {"sent": 0, "failed": 0, "other": 0, "total": 0}
         if st == "sent":
