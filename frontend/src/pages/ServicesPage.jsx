@@ -295,7 +295,7 @@ export default function ServicesPage() {
     cta_text: t("Just call, text, or email us at","Solo llama, envíanos un mensaje o escríbenos a"),
     cta_button_label: t("👉 BECOME A MEMBER","👉 CONVIÉRTETE EN MIEMBRO"),
     cta_button_url: "/membership",
-    contact_phone: "(805) 836-8872",
+    contact_phone: "(820) 234-8181",
     is_active: true
   };
 

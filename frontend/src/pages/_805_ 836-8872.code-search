@@ -1,0 +1,68 @@
+# Query: (805) 836-8872
+# ContextLines: 1
+
+20 results - 7 files
+
+backend/utils.py:
+  413    <line x1='16' y1='{H-36}' x2='{W-16}' y2='{H-36}' stroke='#e2e8f0'/>
+  414:   <text x='{W//2}' y='{H-18}' text-anchor='middle' font-size='8' fill='#94a3b8' font-family='Arial'>Ventura Fresh Laundry | (820) 234-8181 | venturafreshlaundry.com</text>
+  415  </svg>"""
+
+backend/routes/services.py:
+  446          "cta_title": "Need help choosing?",
+  447:         "cta_text": "Just call, text, or email us at (820) 234-8181 and we'll recommend the perfect plan based on your weekly laundry.",
+  448          "cta_button_label": "BECOME A MEMBER",
+  449          "cta_button_url": "/membership",
+  450:         "contact_phone": "(820) 234-8181",
+  451          "is_active": True,
+
+frontend/src/components/PublicVoiceAssistant.jsx:
+  189        const redirect = t(
+  190:         "I can't schedule pickups directly, but you can book easily at our Schedule Pickup page or call us at (820) 234-8181.",
+  191:         "No puedo agendar recogidas directamente, pero puedes hacerlo fácilmente en nuestra página de Programar Recogida o llamarnos al (820) 234-8181."
+  192        );
+
+  221            locale,
+  222:           system_hint: "You are an information assistant only. You can answer questions about services, pricing, memberships, and hours. You CANNOT schedule, book, or create orders. If asked to schedule, politely redirect the user to the Schedule Pickup form at /schedule-pickup or call (820) 234-8181."
+  223          })
+
+  243        const fallback = t(
+  244:         "I am having trouble connecting right now. You can call us at (820) 234-8181 and we will help you right away.",
+  245:         "Estoy teniendo problemas de conexión ahora mismo. Puedes llamarnos al (820) 234-8181 y te ayudamos de inmediato."
+  246        );
+
+frontend/src/pages/AboutPage.jsx:
+  378                  <InfoRow icon={Clock}  label={t("Hours", "Horario")}     value={t("Monday – Sunday: 6:00 AM – 10:00 PM", "Lunes a Domingo: 6:00 AM – 10:00 PM")} delay={130} />
+  379:                 <InfoRow icon={Phone}  label={t("Phone / Text", "Teléfono / Mensaje")} value="(820) 234-8181" delay={180} />
+  380                </div>
+
+frontend/src/pages/ContactPage.jsx:
+  225      t("Contact Us", "Contáctanos"), t("Pickup & Delivery", "Recogida y Entrega"),
+  226:     t("(820) 234-8181", "(820) 234-8181"), t("Ventura County", "Condado de Ventura"),
+  227      t("Open 7 Days", "Abierto 7 Días"), t("We Reply Fast", "Respondemos Rápido"),
+
+  236        q: t("How do I get started?", "¿Cómo empiezo?"),
+  237:       a: t("Simply fill out the contact form, call/text us at (820) 234-8181, or schedule a pickup directly. We'll confirm your pickup time and any special instructions.", "Completa el formulario de contacto, llámanos al (820) 234-8181, o programa una recogida. Confirmaremos tu horario y cualquier instrucción especial.")
+  238      },
+
+  244        q: t("How can I contact you?", "¿Cómo puedo contactarlos?"),
+  245:       a: t("Call or text (820) 234-8181, email info@venturafreshlaundry.com, visit us at 5722 Telephone Rd #5, Ventura, CA 93003, or use the contact form above.", "Llama o envía un mensaje al (820) 234-8181, escríbenos a info@venturafreshlaundry.com, o visítanos en 5722 Telephone Rd #5, Ventura, CA 93003.")
+  246      },
+
+  339                  <InfoCard icon={Phone} label={t("Phone / Text", "Teléfono / Mensaje")} delay={60}>
+  340:                   <a href="tel:+18058368872" className="text-primary hover:underline font-medium not-italic">+1 (820) 234-8181</a>
+  341                  </InfoCard>
+
+frontend/src/pages/LandingPage.jsx:
+  269      { question: t("What makes you different?","¿Qué los hace diferentes?"), answer: t("Reliability, professional-grade cleaning, and flexible options. Every client gets priority support, tailored programs, and fast turnaround.","Confiabilidad, limpieza de nivel profesional y opciones flexibles. Cada cliente recibe soporte prioritario y respuesta rápida.") },
+  270:     { question: t("How can I contact you?","¿Cómo puedo contactarlos?"), answer: locale==="es"?(<div><ul className="list-none space-y-1 text-sm"><li><strong>Teléfono:</strong> (820) 234-8181</li><li><strong>Correo:</strong> info@venturafreshlaundry.com</li><li><strong>En persona:</strong> 5722 Telephone Rd #5, Ventura, CA</li></ul></div>):(<div><ul className="list-none space-y-1 text-sm"><li><strong>Phone/Text:</strong> (820) 234-8181</li><li><strong>Email:</strong> info@venturafreshlaundry.com</li><li><strong>In person:</strong> 5722 Telephone Rd #5, Ventura, CA</li></ul></div>) },
+  271      { question: t("What's your pricing?","¿Cuáles son sus precios?"), answer: locale==="es"?(<ul className="list-none space-y-1.5 text-sm"><li><strong>Recogida y Entrega:</strong> mínimo $40</li><li><strong>Lavado y Doblado:</strong> $2.25/lb, mínimo 10 lb</li><li>Precios personalizados para cuentas comerciales</li></ul>):(<ul className="list-none space-y-1.5 text-sm"><li><strong>Pickup & Delivery:</strong> $40 minimum</li><li><strong>Wash & Fold:</strong> $2.25/lb, 10 lb min</li><li>Custom pricing for business accounts</li></ul>) },
+
+  588                {icon:<Clock className="h-5 w-5 text-primary"/>,  label:t("Hours","Horario"), text:t("Mon–Sun  6:00 AM – 10:00 PM","Lun–Dom  6:00 AM – 10:00 PM")},
+  589:               {icon:<Phone className="h-5 w-5 text-primary"/>, label:t("Call or text","Llama o escribe"), text:"(820) 234-8181"},
+  590              ].map((c,i)=>(
+
+frontend/src/pages/ServicesPage.jsx:
+  297      cta_button_url: "/membership",
+  298:     contact_phone: "(820) 234-8181",
+  299      is_active: true

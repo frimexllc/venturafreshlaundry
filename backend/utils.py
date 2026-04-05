@@ -411,7 +411,7 @@ def build_ticket_svg(order: dict, customer: Optional[dict], qr_payload: str) -> 
 
   <!-- Footer -->
   <line x1='16' y1='{H-36}' x2='{W-16}' y2='{H-36}' stroke='#e2e8f0'/>
-  <text x='{W//2}' y='{H-18}' text-anchor='middle' font-size='8' fill='#94a3b8' font-family='Arial'>Ventura Fresh Laundry | (805) 836-8872 | venturafreshlaundry.com</text>
+  <text x='{W//2}' y='{H-18}' text-anchor='middle' font-size='8' fill='#94a3b8' font-family='Arial'>Ventura Fresh Laundry | (820) 234-8181 | venturafreshlaundry.com</text>
 </svg>"""
     return svg.encode("utf-8")
 

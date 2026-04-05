@@ -33,7 +33,7 @@ export default function PublicFooter() {
               </div>
               <div className="flex items-center gap-2">
                 <Phone className="h-4 w-4 flex-shrink-0" />
-                <span>(805) 836-8872</span>
+                <span>(820) 234-8181</span>
               </div>
             </div>
           </div>
@@ -92,16 +92,21 @@ export default function PublicFooter() {
           </div>
         </div>
 
-        {/* Logo Frimexai justo arriba del copyright */}
-        <div className="flex justify-center mb-4">
-          <img
-            src={logoFrimexai}
-            alt="FRIMEX LLC"
-            className="h-8 w-auto opacity-80 hover:opacity-100 transition-opacity"
-            onError={(e) => { e.currentTarget.style.display = "none"; }}
-          />
-        </div>
-
+      {/* Logo Frimexai justo arriba del copyright */}
+<div className="flex justify-center mb-4">
+  <a
+    href="https://frimexllc.com"
+    target="_blank"        // Abre en nueva pestaña (opcional)
+    rel="noopener noreferrer"  // Seguridad
+  >
+    <img
+      src={logoFrimexai}
+      alt="FRIMEX LLC"
+      className="h-8 w-auto opacity-80 hover:opacity-100 transition-opacity"
+      onError={(e) => { e.currentTarget.style.display = "none"; }}
+    />
+  </a>
+</div>
         <div className="border-t border-slate-800 pt-8">
           <p className="text-center text-slate-500 text-sm">
             © {new Date().getFullYear()} Ventura Fresh Laundry, operated by FRIMEX LLC. {t("All rights reserved.", "Todos los derechos reservados.")}

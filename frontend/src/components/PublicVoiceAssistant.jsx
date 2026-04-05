@@ -187,8 +187,8 @@ const PublicVoiceAssistantWidget = ({ pathname }) => {
     // Verificar si es solicitud de agendamiento
     if (isSchedulingRequest(text)) {
       const redirect = t(
-        "I can't schedule pickups directly, but you can book easily at our Schedule Pickup page or call us at (805) 836-8872.",
-        "No puedo agendar recogidas directamente, pero puedes hacerlo fácilmente en nuestra página de Programar Recogida o llamarnos al (805) 836-8872."
+        "I can't schedule pickups directly, but you can book easily at our Schedule Pickup page or call us at (820) 234-8181.",
+        "No puedo agendar recogidas directamente, pero puedes hacerlo fácilmente en nuestra página de Programar Recogida o llamarnos al (820) 234-8181."
       );
       setMessages((prev) => [
         ...prev,
@@ -219,7 +219,7 @@ const PublicVoiceAssistantWidget = ({ pathname }) => {
           message: text.trim(),
           session_id: sessionIdRef.current,
           locale,
-          system_hint: "You are an information assistant only. You can answer questions about services, pricing, memberships, and hours. You CANNOT schedule, book, or create orders. If asked to schedule, politely redirect the user to the Schedule Pickup form at /schedule-pickup or call (805) 836-8872."
+          system_hint: "You are an information assistant only. You can answer questions about services, pricing, memberships, and hours. You CANNOT schedule, book, or create orders. If asked to schedule, politely redirect the user to the Schedule Pickup form at /schedule-pickup or call (820) 234-8181."
         })
       });
 
@@ -241,8 +241,8 @@ const PublicVoiceAssistantWidget = ({ pathname }) => {
       if (payload.reply) speak(payload.reply);
     } catch (error) {
       const fallback = t(
-        "I am having trouble connecting right now. You can call us at (805) 836-8872 and we will help you right away.",
-        "Estoy teniendo problemas de conexión ahora mismo. Puedes llamarnos al (805) 836-8872 y te ayudamos de inmediato."
+        "I am having trouble connecting right now. You can call us at (820) 234-8181 and we will help you right away.",
+        "Estoy teniendo problemas de conexión ahora mismo. Puedes llamarnos al (820) 234-8181 y te ayudamos de inmediato."
       );
       setMessages((prev) => ([...prev, { id: `assistant-error-${Date.now()}`, role: "assistant", content: fallback }]));
       speak(fallback);

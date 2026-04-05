@@ -223,7 +223,7 @@ export default function ContactPage() {
 
   const marqueeItems = [
     t("Contact Us", "Contáctanos"), t("Pickup & Delivery", "Recogida y Entrega"),
-    t("(805) 836-8872", "(805) 836-8872"), t("Ventura County", "Condado de Ventura"),
+    t("(820) 234-8181", "(820) 234-8181"), t("Ventura County", "Condado de Ventura"),
     t("Open 7 Days", "Abierto 7 Días"), t("We Reply Fast", "Respondemos Rápido"),
   ];
 
@@ -234,7 +234,7 @@ export default function ContactPage() {
     },
     {
       q: t("How do I get started?", "¿Cómo empiezo?"),
-      a: t("Simply fill out the contact form, call/text us at (805) 836-8872, or schedule a pickup directly. We'll confirm your pickup time and any special instructions.", "Completa el formulario de contacto, llámanos al (805) 836-8872, o programa una recogida. Confirmaremos tu horario y cualquier instrucción especial.")
+      a: t("Simply fill out the contact form, call/text us at (820) 234-8181, or schedule a pickup directly. We'll confirm your pickup time and any special instructions.", "Completa el formulario de contacto, llámanos al (820) 234-8181, o programa una recogida. Confirmaremos tu horario y cualquier instrucción especial.")
     },
     {
       q: t("What makes you different?", "¿Qué los hace diferentes?"),
@@ -242,7 +242,7 @@ export default function ContactPage() {
     },
     {
       q: t("How can I contact you?", "¿Cómo puedo contactarlos?"),
-      a: t("Call or text (805) 836-8872, email info@venturafreshlaundry.com, visit us at 5722 Telephone Rd #5, Ventura, CA 93003, or use the contact form above.", "Llama o envía un mensaje al (805) 836-8872, escríbenos a info@venturafreshlaundry.com, o visítanos en 5722 Telephone Rd #5, Ventura, CA 93003.")
+      a: t("Call or text (820) 234-8181, email info@venturafreshlaundry.com, visit us at 5722 Telephone Rd #5, Ventura, CA 93003, or use the contact form above.", "Llama o envía un mensaje al (820) 234-8181, escríbenos a info@venturafreshlaundry.com, o visítanos en 5722 Telephone Rd #5, Ventura, CA 93003.")
     },
     {
       q: t("What's your pricing model?", "¿Cómo es su modelo de precios?"),
@@ -337,7 +337,7 @@ export default function ContactPage() {
                   </a>
                 </InfoCard>
                 <InfoCard icon={Phone} label={t("Phone / Text", "Teléfono / Mensaje")} delay={60}>
-                  <a href="tel:+18058368872" className="text-primary hover:underline font-medium not-italic">+1 (805) 836-8872</a>
+                  <a href="tel:+18058368872" className="text-primary hover:underline font-medium not-italic">+1 (820) 234-8181</a>
                 </InfoCard>
                 <InfoCard icon={MapPin} label={t("Address", "Dirección")} delay={120}>
                   <span className="not-italic">5722 Telephone Rd #5, Ventura, CA 93003</span>

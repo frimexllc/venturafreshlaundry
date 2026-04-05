@@ -376,7 +376,7 @@ export default function AboutPage() {
               <div className="space-y-5 mb-10">
                 <InfoRow icon={MapPin} label={t("Address", "Dirección")} value="5722 Telephone Rd #5, Ventura, CA 93003" delay={80} />
                 <InfoRow icon={Clock}  label={t("Hours", "Horario")}     value={t("Monday – Sunday: 6:00 AM – 10:00 PM", "Lunes a Domingo: 6:00 AM – 10:00 PM")} delay={130} />
-                <InfoRow icon={Phone}  label={t("Phone / Text", "Teléfono / Mensaje")} value="(805) 836-8872" delay={180} />
+                <InfoRow icon={Phone}  label={t("Phone / Text", "Teléfono / Mensaje")} value="(820) 234-8181" delay={180} />
               </div>
               <Reveal delay={220} dur={300}>
                 <Link to="/contact">
