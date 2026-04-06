@@ -707,19 +707,12 @@ async def build_premium_message_async(
     """
     Versión async que genera un enlace de pago interno (CRM) en lugar de usar acortadores externos.
     """
-    # Para payment_request, construimos un enlace propio del CRM
+    # Para payment_request, redirigimos a la cuenta del cliente donde puede ver y pagar
     final_payment_url = payment_url
     if event == "payment_request" and payment_url:
-        # Si ya es un enlace interno (contiene /pay/), lo usamos directamente.
-        # De lo contrario, asumimos que payment_url es el checkout de Stripe y lo reemplazamos.
-        # Aquí debemos generar un token único para la orden (puede ser el order_number o un campo específico)
-        # Ejemplo: https://venturafreshlaundry.com/pay/{order_number}
         base_url = BUSINESS_WEBSITE.rstrip('/')
-        # Usamos order_number como token (asegúrate de que sea único y no contenga caracteres especiales)
-        token = order_number
-        internal_url = f"{base_url}/pay/{token}"
-        # Registramos que usamos enlace interno
-        logger.info(f"Payment request: using internal URL {internal_url} instead of original {payment_url}")
+        internal_url = f"{base_url}/account"
+        logger.info(f"Payment request: redirecting to customer account {internal_url}")
         final_payment_url = internal_url
 
     result = build_premium_message(

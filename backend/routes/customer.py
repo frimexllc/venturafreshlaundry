@@ -1,8 +1,9 @@
 """Customer-facing endpoints — public order lookup and Stripe checkout"""
 import os
 import logging
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Depends
 from database import db
+from auth import get_current_customer
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/customer", tags=["customer"])
@@ -111,3 +112,77 @@ async def confirm_customer_payment(order_id: str):
         }}
     )
     return {"ok": True, "detail": "Payment confirmed"}
+
+
+@router.post("/order/{order_id}/mark-zelle")
+async def mark_zelle_payment(order_id: str, current_customer: dict = Depends(get_current_customer)):
+    """Customer marks that they sent a Zelle payment — sets status to pending_verification"""
+    from datetime import datetime, timezone
+    order = await db.orders.find_one({"id": order_id, "customer_id": current_customer["id"]}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order.get("payment_status") == "paid":
+        return {"ok": True, "detail": "Already paid"}
+
+    now = datetime.now(timezone.utc).isoformat()
+    await db.orders.update_one(
+        {"id": order_id},
+        {"$set": {
+            "payment_status": "pending_verification",
+            "payment_method": "zelle",
+            "updated_at": now,
+        }, "$push": {
+            "status_history": {
+                "status": "zelle_submitted",
+                "timestamp": now,
+                "by": "customer_portal",
+            }
+        }}
+    )
+    return {"ok": True, "detail": "Zelle payment submitted for verification"}
+
+
+@router.post("/order/{order_id}/checkout-auth")
+async def create_authenticated_checkout(order_id: str, request: Request, current_customer: dict = Depends(get_current_customer)):
+    """Authenticated checkout — customer pays from their account"""
+    order = await db.orders.find_one({"id": order_id, "customer_id": current_customer["id"]}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order.get("payment_status") == "paid":
+        raise HTTPException(status_code=400, detail="Order already paid")
+
+    total = float(order.get("total_amount") or 0)
+    if total <= 0:
+        raise HTTPException(status_code=400, detail="Invalid order total")
+
+    if not STRIPE_SECRET_KEY:
+        raise HTTPException(status_code=503, detail="Payment service not configured")
+
+    try:
+        import stripe
+        stripe.api_key = STRIPE_SECRET_KEY
+        base_url = str(request.base_url).rstrip("/")
+        frontend = FRONTEND_URL or base_url
+
+        session = stripe.checkout.Session.create(
+            payment_method_types=["card"],
+            line_items=[{
+                "price_data": {
+                    "currency": "usd",
+                    "product_data": {
+                        "name": f"Ventura Fresh Laundry - {order.get('order_number', '')}",
+                        "description": order.get("service_type", "Laundry Service"),
+                    },
+                    "unit_amount": int(total * 100),
+                },
+                "quantity": 1,
+            }],
+            mode="payment",
+            success_url=f"{frontend}/account?paid={order_id}",
+            cancel_url=f"{frontend}/account",
+            metadata={"order_id": order_id, "order_number": order.get("order_number", "")},
+        )
+        return {"url": session.url}
+    except Exception as exc:
+        logger.error("Stripe checkout error: %s", exc)
+        raise HTTPException(status_code=500, detail="Payment service error")

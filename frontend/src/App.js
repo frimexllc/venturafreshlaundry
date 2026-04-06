@@ -104,7 +104,8 @@ const AdminRoute = ({ children }) => {
 const CustomerProtectedRoute = ({ children }) => {
   const token = localStorage.getItem("customer_token");
   if (!token) {
-    return <Navigate to="/account/login" replace />;
+    const currentPath = window.location.pathname;
+    return <Navigate to={`/account/login?redirect=${encodeURIComponent(currentPath)}`} replace />;
   }
   return children;
 };
@@ -121,12 +122,12 @@ function AppRoutes() {
       <Route path="/store" element={<StorePage />} />
       <Route path="/blog" element={<BlogPage />} />
       <Route path="/blog/:slug" element={<BlogPage />} />
-      <Route path="/schedule-pickup" element={<SchedulePickup />} />
-      <Route path="/wash-fold" element={<WashFoldRequest />} />
-      <Route path="/membership" element={<MembershipPage />} />
-      <Route path="/request-quote" element={<RequestQuotePage />} />
-      <Route path="/commercial" element={<RequestQuotePage />} />
-      <Route path="/b2b" element={<RequestQuotePage />} />
+      <Route path="/schedule-pickup" element={<CustomerProtectedRoute><SchedulePickup /></CustomerProtectedRoute>} />
+      <Route path="/wash-fold" element={<CustomerProtectedRoute><WashFoldRequest /></CustomerProtectedRoute>} />
+      <Route path="/membership" element={<CustomerProtectedRoute><MembershipPage /></CustomerProtectedRoute>} />
+      <Route path="/request-quote" element={<CustomerProtectedRoute><RequestQuotePage /></CustomerProtectedRoute>} />
+      <Route path="/commercial" element={<CustomerProtectedRoute><RequestQuotePage /></CustomerProtectedRoute>} />
+      <Route path="/b2b" element={<CustomerProtectedRoute><RequestQuotePage /></CustomerProtectedRoute>} />
       <Route path="/terms-and-conditions" element={<TermsAndConditions />} />
       <Route path="/privacy-policy" element={<PrivacyPolicy />} />
       <Route path="/sms-policy-consent" element={<SmsPolicyConsent />} />

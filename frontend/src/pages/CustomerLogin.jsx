@@ -185,6 +185,15 @@ export default function CustomerLogin() {
   const [form, setForm] = useState({ name: "", email: "", password: "" });
   const setF = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
+  // Get redirect path from URL params
+  const redirectPath = new URLSearchParams(window.location.search).get("redirect") || "/account";
+
+  // If already logged in, redirect
+  useEffect(() => {
+    const token = localStorage.getItem("customer_token");
+    if (token) navigate(redirectPath, { replace: true });
+  }, [navigate, redirectPath]);
+
   const switchMode = (m) => {
     setMode(m);
     setForm(p => ({ name: "", email: p.email, password: "" }));
@@ -204,13 +213,13 @@ export default function CustomerLogin() {
         localStorage.setItem("customer_token", res.data.access_token);
         localStorage.setItem("customer_data", JSON.stringify(res.data.customer));
         toast.success(t("Welcome back!", "¡Bienvenido de nuevo!"));
-        navigate("/account");
+        navigate(redirectPath);
       } else {
         const res = await axios.post(`${API}/customer/auth/register`, { name: form.name, email: form.email, password: form.password });
         localStorage.setItem("customer_token", res.data.access_token);
         localStorage.setItem("customer_data", JSON.stringify(res.data.customer));
         toast.success(t("Account created!", "¡Cuenta creada!"));
-        navigate("/account");
+        navigate(redirectPath);
       }
     } catch (err) {
       toast.error(err.response?.data?.detail || t("Authentication failed", "Autenticación fallida"));
@@ -521,17 +530,17 @@ export default function CustomerLogin() {
                 </div>
               </Tilt>
 
-              {/* Guest CTA */}
+              {/* Quick links */}
               <div className="mt-5 text-center">
                 <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400 mb-3">
-                  {t("Or continue without an account", "O continúa sin cuenta")}
+                  {t("Explore our services", "Explora nuestros servicios")}
                 </p>
-                <Link to="/schedule-pickup">
+                <Link to="/services">
                   <button
                     type="button"
                     className="btn-secondary inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.12em]"
                   >
-                    🚚 {t("Schedule a Pickup", "Programar recogida")}
+                    {t("View Services", "Ver Servicios")}
                   </button>
                 </Link>
               </div>

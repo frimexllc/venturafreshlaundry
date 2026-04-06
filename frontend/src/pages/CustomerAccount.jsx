@@ -5,7 +5,8 @@ import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import {
   User, Mail, MapPin, Package, LogOut, Calendar, Clock,
-  ArrowRight, Sparkles, ChevronDown, Settings, Shield, Heart, Award, Sun, Moon
+  ArrowRight, Sparkles, ChevronDown, Settings, Shield, Heart, Award, Sun, Moon,
+  CreditCard, Building2, DollarSign
 } from "lucide-react";
 import PublicNav from "../components/PublicNav";
 import PublicFooter from "../components/PublicFooter";
@@ -141,9 +142,13 @@ export default function CustomerAccount() {
 
   const [customer, setCustomer] = useState(null);
   const [orders, setOrders] = useState([]);
+  const [pendingPayments, setPendingPayments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [scrollY, setScrollY] = useState(0);
   const [prefOpen, setPrefOpen] = useState(true);
+  const [hasMembership, setHasMembership] = useState(false);
+  const [membershipPlan, setMembershipPlan] = useState(null);
+  const [payingOrderId, setPayingOrderId] = useState(null);
 
   // State for preferences (all fields)
   const [preferences, setPreferences] = useState({
@@ -172,6 +177,16 @@ export default function CustomerAccount() {
   };
   const statusCls = (s) => statusConfig[s]?.cls || "bg-slate-100 text-slate-600 border-slate-200";
 
+  const paymentStatusLabel = (s) => {
+    const map = {
+      unpaid: { en: "Unpaid", es: "Sin pagar", cls: "bg-red-50 text-red-600 border-red-200" },
+      pending_verification: { en: "Pending", es: "Pendiente", cls: "bg-amber-50 text-amber-600 border-amber-200" },
+      paid: { en: "Paid", es: "Pagado", cls: "bg-emerald-50 text-emerald-600 border-emerald-200" },
+    };
+    const cfg = map[s] || map.unpaid;
+    return { label: locale === "es" ? cfg.es : cfg.en, cls: cfg.cls };
+  };
+
   // Parallax effect on scroll
   useEffect(() => {
     let ticking = false;
@@ -194,7 +209,22 @@ export default function CustomerAccount() {
     const customerData = localStorage.getItem("customer_data");
     if (!token) { navigate("/account/login"); return; }
     if (customerData) setCustomer(JSON.parse(customerData));
+
+    // Check if returning from Stripe payment
+    const params = new URLSearchParams(window.location.search);
+    const paidOrderId = params.get("paid");
+    if (paidOrderId) {
+      fetch(`${API}/customer/order/${paidOrderId}/confirm-payment`, { method: "POST" })
+        .then(() => {
+          toast.success(t("Payment confirmed!", "¡Pago confirmado!"));
+          window.history.replaceState({}, "", "/account");
+        })
+        .catch(() => {});
+    }
+
     fetchOrders(token);
+    fetchPendingPayments(token);
+    fetchMembershipStatus(token);
     fetchPreferences(token);
   }, [navigate]);
 
@@ -204,6 +234,21 @@ export default function CustomerAccount() {
       setOrders(res.data || []);
     } catch (err) { if (err.response?.status === 401) handleLogout(); }
     finally { setLoading(false); }
+  };
+
+  const fetchPendingPayments = async (token) => {
+    try {
+      const res = await axios.get(`${API}/customer/pending-payments`, { headers: { Authorization: `Bearer ${token}` } });
+      setPendingPayments((res.data || []).filter(o => o.total_amount > 0));
+    } catch (err) { /* silent */ }
+  };
+
+  const fetchMembershipStatus = async (token) => {
+    try {
+      const res = await axios.get(`${API}/customer/membership-status`, { headers: { Authorization: `Bearer ${token}` } });
+      setHasMembership(res.data?.has_membership || false);
+      setMembershipPlan(res.data?.membership_plan || null);
+    } catch (err) { /* silent */ }
   };
 
   const fetchPreferences = async (token) => {
@@ -228,7 +273,12 @@ export default function CustomerAccount() {
         gate_code: d.gate_code || "",
       });
       setPreferencesMeta({ updated_at: d.updated_at || null, version: d.version || null });
-    } catch (err) { if (err.response?.status !== 404) toast.error(t("Could not load preferences", "No se pudieron cargar las preferencias")); }
+    } catch (err) {
+      // 403 = no membership, 404 = no prefs yet — both are normal, don't show error
+      if (err.response?.status !== 404 && err.response?.status !== 403) {
+        toast.error(t("Could not load preferences", "No se pudieron cargar las preferencias"));
+      }
+    }
     finally { setPreferencesLoading(false); }
   };
 
@@ -244,7 +294,14 @@ export default function CustomerAccount() {
       const res = await axios.post(`${API}/customer/preferences`, preferences, { headers: { Authorization: `Bearer ${token}` } });
       toast.success(t("Preferences saved", "Preferencias guardadas"));
       setPreferencesMeta({ updated_at: res.data.updated_at || null, version: res.data.version || null });
-    } catch (err) { toast.error(err.response?.data?.detail || t("Could not save preferences", "No se pudieron guardar las preferencias")); }
+    } catch (err) {
+      const detail = err.response?.data?.detail;
+      if (err.response?.status === 403) {
+        toast.error(t("Active membership required", "Se requiere membresía activa"));
+      } else {
+        toast.error(detail || t("Could not save preferences", "No se pudieron guardar las preferencias"));
+      }
+    }
   };
 
   const handleDeletePreferences = async () => {
@@ -259,6 +316,30 @@ export default function CustomerAccount() {
       });
       setPreferencesMeta({ updated_at: null, version: null });
     } catch (err) { toast.error(err.response?.data?.detail || t("Could not delete preferences", "No se pudieron eliminar las preferencias")); }
+  };
+
+  const handlePayStripe = async (orderId) => {
+    const token = localStorage.getItem("customer_token"); if (!token) return;
+    setPayingOrderId(orderId);
+    try {
+      const res = await axios.post(`${API}/customer/order/${orderId}/checkout-auth`, {}, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.data?.url) window.location.href = res.data.url;
+      else toast.error(t("Could not create payment session", "No se pudo crear la sesión de pago"));
+    } catch (err) {
+      toast.error(err.response?.data?.detail || t("Payment error", "Error de pago"));
+    } finally { setPayingOrderId(null); }
+  };
+
+  const handlePayZelle = async (orderId) => {
+    const token = localStorage.getItem("customer_token"); if (!token) return;
+    try {
+      await axios.post(`${API}/customer/order/${orderId}/mark-zelle`, {}, { headers: { Authorization: `Bearer ${token}` } });
+      toast.success(t("Zelle payment submitted", "Pago Zelle enviado para verificación"));
+      fetchPendingPayments(token);
+      fetchOrders(token);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || t("Error", "Error"));
+    }
   };
 
   const setPref = (k, v) => setPreferences(p => ({ ...p, [k]: v }));
@@ -398,7 +479,89 @@ export default function CustomerAccount() {
           ))}
         </div>
 
-        {/* Preferences section with collapsible and enhanced select styling */}
+        {/* ══ PENDING PAYMENTS SECTION ════════════════════════════════════ */}
+        {pendingPayments.length > 0 && (
+          <Reveal delay={100} dir="up">
+            <Card hover className="overflow-hidden border-amber-200/60">
+              <div className="px-7 py-5 flex items-center gap-3 border-b border-amber-100 bg-amber-50/30">
+                <div className="w-10 h-10 bg-gradient-to-br from-amber-400 to-orange-500 rounded-xl flex items-center justify-center shadow-md">
+                  <CreditCard className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-slate-800 text-lg" data-testid="pending-payments-title">
+                    {t("Pending Payments", "Pagos Pendientes")}
+                  </h2>
+                  <p className="text-xs text-slate-400">{pendingPayments.length} {t("orders pending", "órdenes pendientes")}</p>
+                </div>
+              </div>
+              <div className="px-7 py-5 space-y-4">
+                {pendingPayments.map((order) => (
+                  <div key={order.id} className="rounded-2xl border border-slate-100 bg-white p-5 space-y-4 hover:border-primary/20 hover:shadow-md transition-all duration-300" data-testid={`pending-order-${order.order_number}`}>
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div>
+                        <span className="font-bold text-slate-800 text-sm">{order.order_number}</span>
+                        <span className={`ml-2 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${paymentStatusLabel(order.payment_status).cls}`}>
+                          {paymentStatusLabel(order.payment_status).label}
+                        </span>
+                      </div>
+                      <span className="font-black text-primary text-xl">${Number(order.total_amount || 0).toFixed(2)}</span>
+                    </div>
+
+                    {order.service_type && (
+                      <p className="text-xs text-slate-400 capitalize">{order.service_type.replace(/_/g, " ")}</p>
+                    )}
+
+                    {order.payment_status === "pending_verification" ? (
+                      <div className="bg-amber-50 rounded-xl border border-amber-200 p-3 text-xs text-amber-700 font-medium">
+                        {t("Zelle payment submitted — waiting for verification by our team.", "Pago Zelle enviado — esperando verificación de nuestro equipo.")}
+                      </div>
+                    ) : (
+                      <div className="grid sm:grid-cols-3 gap-3">
+                        <button
+                          onClick={() => handlePayStripe(order.id)}
+                          disabled={payingOrderId === order.id}
+                          data-testid={`pay-stripe-${order.order_number}`}
+                          className="flex items-center justify-center gap-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl px-4 py-3 text-sm font-semibold transition-all duration-200 disabled:opacity-50"
+                        >
+                          {payingOrderId === order.id ? (
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <CreditCard className="h-4 w-4" />
+                          )}
+                          {t("Pay with Card", "Pagar con Tarjeta")}
+                        </button>
+
+                        <button
+                          onClick={() => handlePayZelle(order.id)}
+                          data-testid={`pay-zelle-${order.order_number}`}
+                          className="flex items-center justify-center gap-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-xl px-4 py-3 text-sm font-semibold transition-all duration-200"
+                        >
+                          <Building2 className="h-4 w-4" />
+                          Zelle
+                        </button>
+
+                        <div className="flex items-center justify-center gap-2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl px-4 py-3 text-xs font-medium text-center">
+                          <DollarSign className="h-4 w-4 shrink-0" />
+                          {t("Cash on delivery", "Efectivo al entregar")}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Zelle instructions - show inline */}
+                    <div className="bg-slate-50 rounded-xl p-3 text-xs text-slate-500">
+                      <p className="font-semibold text-slate-600 mb-1">{t("Zelle instructions:", "Instrucciones Zelle:")}</p>
+                      <p>{t("Send", "Envía")} <strong>${Number(order.total_amount || 0).toFixed(2)}</strong> {t("to", "a")} <span className="font-mono font-bold text-slate-700">payments@venturafreshlaundry.com</span></p>
+                      <p className="mt-0.5">{t("Include order #", "Incluye # de orden")}: <strong>{order.order_number}</strong></p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </Reveal>
+        )}
+
+        {/* Preferences section — ONLY for customers with active membership */}
+        {hasMembership && (
         <Reveal delay={120} dir="up">
           <Card hover data-testid="customer-preferences-card" className="overflow-hidden">
             <button onClick={() => setPrefOpen(p => !p)}
@@ -411,6 +574,11 @@ export default function CustomerAccount() {
                   <h2 className="font-bold text-slate-800 text-lg group-hover:text-primary transition-colors duration-200">
                     {t("Laundry Preferences", "Preferencias de lavandería")}
                   </h2>
+                  {membershipPlan && (
+                    <p className="text-[11px] text-primary font-semibold flex items-center gap-1" data-testid="customer-membership-badge">
+                      <Award className="h-3 w-3" /> {membershipPlan}
+                    </p>
+                  )}
                   {preferencesMeta.updated_at && (
                     <p className="text-[11px] text-slate-400" data-testid="customer-preferences-updated">
                       {t("Updated", "Actualizado")}: {formatDate(preferencesMeta.updated_at)}
@@ -617,6 +785,34 @@ export default function CustomerAccount() {
             </div>
           </Card>
         </Reveal>
+        )}
+
+        {/* Membership upsell for non-members */}
+        {!hasMembership && (
+          <Reveal delay={120} dir="up">
+            <Card hover className="overflow-hidden">
+              <div className="px-7 py-6 flex items-center justify-between flex-wrap gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-gradient-to-br from-violet-400 to-purple-500 rounded-xl flex items-center justify-center shadow-md">
+                    <Award className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <h2 className="font-bold text-slate-800 text-base">{t("Upgrade to Membership", "Obtén una Membresía")}</h2>
+                    <p className="text-xs text-slate-400">{t("Unlock laundry preferences & exclusive benefits", "Desbloquea preferencias de lavado y beneficios exclusivos")}</p>
+                  </div>
+                </div>
+                <Link to="/membership">
+                  <Mag as="div" strength={0.2}
+                    className="inline-flex items-center gap-1.5 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-full px-5 py-2.5 text-xs font-bold uppercase tracking-wider shadow-md hover:shadow-lg transition-all duration-300 cursor-pointer active:scale-95"
+                    data-testid="membership-upsell-btn">
+                    {t("View Plans", "Ver Planes")}
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </Mag>
+                </Link>
+              </div>
+            </Card>
+          </Reveal>
+        )}
 
         {/* Orders section with staggered order cards */}
         <Reveal delay={160} dir="up">
@@ -662,6 +858,11 @@ export default function CustomerAccount() {
                             <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${statusCls(order.status)}`}>
                               {statusLabel(order.status)}
                             </span>
+                            {order.payment_status && (
+                              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${paymentStatusLabel(order.payment_status).cls}`}>
+                                {paymentStatusLabel(order.payment_status).label}
+                              </span>
+                            )}
                           </div>
                           <div className="flex items-center gap-4 text-xs text-slate-400 flex-wrap">
                             <span className="flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5" />{order.pickup_date || "TBD"}</span>

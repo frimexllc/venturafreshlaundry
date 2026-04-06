@@ -539,6 +539,24 @@ export default function SchedulePickup() {
   const [washPhase,  setWashPhase]  = useState(-1);
   const [washDone,   setWashDone]   = useState(false);
 
+  // Pre-fill customer data if logged in
+  useEffect(() => {
+    try {
+      const cd = localStorage.getItem("customer_data");
+      if (cd) {
+        const c = JSON.parse(cd);
+        const nameParts = (c.name || "").split(" ");
+        setForm(p => ({
+          ...p,
+          first_name: p.first_name || nameParts[0] || "",
+          last_name: p.last_name || nameParts.slice(1).join(" ") || "",
+          email: p.email || c.email || "",
+          phone: p.phone || (c.phone || "").replace(/^\+\d+\s?/, "") || "",
+        }));
+      }
+    } catch { /* silent */ }
+  }, []);
+
   const setF = useCallback((k, v) => setForm((p) => ({ ...p, [k]: v })), []);
   const scrollTop = () => topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   const goTo = (n) => { setCur(n); setFormKey((k) => k + 1); scrollTop(); };
