@@ -185,14 +185,15 @@ export default function CustomerLogin() {
   const [form, setForm] = useState({ name: "", email: "", password: "" });
   const setF = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
-  // Get redirect path from URL params
-  const redirectPath = new URLSearchParams(window.location.search).get("redirect") || "/account";
+  // Get redirect path from URL params (stable ref - only read once on mount)
+  const redirectRef = useRef(new URLSearchParams(window.location.search).get("redirect") || "/account");
+  const redirectPath = redirectRef.current;
 
   // If already logged in, redirect
   useEffect(() => {
     const token = localStorage.getItem("customer_token");
     if (token) navigate(redirectPath, { replace: true });
-  }, [navigate, redirectPath]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const switchMode = (m) => {
     setMode(m);

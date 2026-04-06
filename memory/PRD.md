@@ -8,11 +8,12 @@ Comprehensive AI-powered laundry management system with CRM, ERP, Finances, POS,
 shared.py (fastapi_app, sio) <- single source of truth
 server.py (entry point) -> server_core.py (routes/DB)
 realtime.py (emit helper)
-Routes: orders, kpis, finances, ai, store, stripe_payments, operator, geocode, logistics, etc.
+Routes: orders, kpis, finances, ai, store, stripe_payments, operator, geocode, logistics, customer, customer_auth, etc.
 ```
 
 ## Credentials
 - Admin: owner@frimexllc.com / admin123
+- Test Customer: test_customer@test.com / test123
 
 ## State Machine
 ### Pickup & Delivery
@@ -27,6 +28,29 @@ NEW -> CONFIRMED -> PROCESSING -> READY -> COMPLETED
 - 3-10 miles: $2.99 delivery fee
 - >10 miles: Delivery not available (rejected)
 - Store coordinates: 34.283, -119.293 (Ventura, CA)
+
+## Customer Portal & Auth
+- **Registration required**: All service forms (Schedule Pickup, Wash & Fold, Request Quote, Membership) require customer login
+- **Auth Guard**: `CustomerProtectedRoute` in App.js wraps service routes → redirects to `/account/login?redirect=...`
+- **Customer Login**: `/account/login` supports `?redirect=` query param for post-login redirection
+- **Customer Account**: `/account` shows profile, orders, pending payments, membership upsell
+- **Pending Payments**: Unpaid orders shown with 3 payment methods (Stripe Card, Zelle, Cash on Delivery)
+- **Preferences**: Only visible to customers with active membership (`membership_status === "active"`)
+- **Pre-fill forms**: Logged-in customer data auto-fills name/email/phone in SchedulePickup & WashFoldRequest
+- **Payment Links in Notifications**: SMS/Email payment links redirect to `/account` (customer portal)
+
+### Customer API Endpoints
+- `POST /api/customer/auth/register` — Register new customer
+- `POST /api/customer/auth/login` — Login, returns JWT token
+- `GET /api/customer/me` — Get current customer profile
+- `GET /api/customer/orders` — Get customer's orders
+- `GET /api/customer/pending-payments` — Get unpaid orders
+- `GET /api/customer/membership-status` — Check membership status
+- `GET /api/customer/preferences` — Get preferences (403 if no membership)
+- `POST /api/customer/preferences` — Save preferences (403 if no membership)
+- `POST /api/customer/order/{id}/checkout-auth` — Create Stripe checkout (authenticated)
+- `POST /api/customer/order/{id}/mark-zelle` — Mark Zelle payment submitted
+- `POST /api/customer/order/{id}/confirm-payment` — Confirm Stripe payment after checkout
 
 ## Operator Dashboard Tabs
 - Tab 1: **Ordenes de Servicio** — POS grid with P&D and W&F order cards, Print+PDF buttons
@@ -87,6 +111,20 @@ NEW -> CONFIRMED -> PROCESSING -> READY -> COMPLETED
 - [x] Real-time operator notifications via Socket.IO + Notification API
 - [x] PWA manifest.json with maskable icons
 
+### Phase 4 (Customer Portal & Auth) — 2026-04-06
+- [x] Customer registration/login required before placing orders
+- [x] CustomerProtectedRoute wraps /schedule-pickup, /wash-fold, /request-quote, /membership
+- [x] Login with ?redirect= param → post-login redirect to intended page
+- [x] Customer Account: Pending Payments section with Stripe/Zelle/Cash options
+- [x] Payment status badges (UNPAID/PENDING/PAID) on all orders
+- [x] Preferences section hidden for non-members → "Upgrade to Membership" upsell shown
+- [x] Membership status check API (403 on preferences for non-members)
+- [x] Authenticated Stripe Checkout from customer account
+- [x] Zelle mark-as-sent endpoint (sets pending_verification)
+- [x] Form pre-fill (name/email/phone) from customer localStorage data
+- [x] Notification payment links redirect to /account
+
 ## Backlog
-- (P2) Refactoring automation_engine.py (complex functions)
+- (P1) Code Quality: Fix syntax errors in test files, remove hardcoded secrets, replace MD5 with SHA-256
+- (P2) Refactoring automation_engine.py and ai_assistant.py (complex functions)
 - (P3) Automated Stripe Sync every 6 hours (paused by user)
