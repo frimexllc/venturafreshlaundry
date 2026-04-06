@@ -690,42 +690,16 @@ async def _shorten_url(url: str) -> str:
 
 
 async def _generate_payment_url(order: dict, request: Request) -> str:
-    """Create a Stripe Checkout session and return the URL. Empty string on failure."""
+    """Return the customer payment page URL instead of direct Stripe Checkout."""
     total = float(order.get("total_amount") or order.get("total") or 0)
     pay_status = (order.get("payment_status") or "pending").lower()
-    if pay_status == "paid" or total < 0.50 or not STRIPE_CHECKOUT_AVAILABLE:
+    if pay_status == "paid" or total < 0.50:
         return ""
-    try:
-        stripe_api_key = os.environ.get("STRIPE_API_KEY")
-        if not stripe_api_key:
-            return ""
-        origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
-        host_url = str(request.base_url).rstrip("/")
-        order_id = order.get("id")
-        order_num = order.get("order_number", order_id)
-
-        stripe_checkout = StripeCheckout(api_key=stripe_api_key, webhook_url=f"{host_url}/api/webhook/stripe")
-        session_request = CheckoutSessionRequest(
-            amount=total,
-            currency="usd",
-            success_url=f"{origin}/payment-success?session_id={{CHECKOUT_SESSION_ID}}&order_id={order_id}",
-            cancel_url=f"{origin}/",
-            metadata={"order_id": order_id, "order_number": order_num, "type": "service_order"},
-        )
-        session: CheckoutSessionResponse = await stripe_checkout.create_checkout_session(session_request)
-
-        now = datetime.now(timezone.utc).isoformat()
-        await db.payment_transactions.insert_one({
-            "id": str(uuid.uuid4()), "session_id": session.session_id,
-            "order_id": order_id, "entity_type": "service_order",
-            "amount": total, "currency": "usd", "status": "initiated",
-            "payment_status": "pending", "metadata": session_request.metadata,
-            "created_at": now, "updated_at": now,
-        })
-        return session.url
-    except Exception as e:
-        logger.warning(f"Could not generate payment link: {e}")
+    order_id = order.get("id")
+    if not order_id:
         return ""
+    origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
+    return f"{origin}/customer/pay/{order_id}"
 
 
 @router.post("/orders/{order_id}/notify-customer")

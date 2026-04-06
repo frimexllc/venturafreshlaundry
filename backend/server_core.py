@@ -345,6 +345,10 @@ try:
     from routes.geocode import router as geocode_router
     app.include_router(geocode_router, prefix="/api")
     logger.info("Geocode router enabled at /api/geocode/*")
+
+    from routes.customer import router as customer_router
+    app.include_router(customer_router, prefix="/api")
+    logger.info("Customer router enabled at /api/customer/*")
 except Exception as e:
     logger.warning(f"Logistics router not loaded: {e}")
 

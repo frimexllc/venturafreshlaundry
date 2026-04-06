@@ -108,9 +108,9 @@ async def get_logistics_orders(
     if date:
         crm_query["pickup_date"] = date
     if time_window == "morning":
-        crm_query["pickup_time_window"] = "8-12"
+        crm_query["pickup_time_window"] = {"$regex": "^(8am|8:00|9:00|8-12)", "$options": "i"}
     elif time_window == "afternoon":
-        crm_query["pickup_time_window"] = "14-18"
+        crm_query["pickup_time_window"] = {"$regex": "^(2pm|2:00|14|14-18)", "$options": "i"}
     crm_orders = await db.orders.find(crm_query, {"_id": 0}).sort("created_at", -1).limit(100).to_list(100)
 
     for o in crm_orders:

@@ -1,10 +1,12 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '../ui/button';
+import { Input } from '../ui/input';
 import { OrderDetailsModal } from './OrderDetailsModal';
 import { EndOfDayModal } from './EndOfDayModal';
 import { MapView } from './MapView';
 import { TimAssistant } from './TimAssistant';
 import { QuickSaleModal } from './QuickSaleModal';
+import MapFilters from '../MapFilters';
 import {
   Navigation, Package, Loader2, Clock, TrendingDown, AlertTriangle,
   ChevronDown, ChevronUp, ExternalLink, PlayCircle, RefreshCw,
@@ -51,6 +53,7 @@ const SEVERITY_BG = { light: 'bg-yellow-50 border-yellow-300', moderate: 'bg-ora
 
 export function LogisticsMap() {
   const [orders, setOrders] = useState(MOCK_ORDERS);
+  const [mapFilters, setMapFilters] = useState({});
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [routeResult, setRouteResult] = useState(null);
@@ -112,16 +115,18 @@ export function LogisticsMap() {
     prevHeavyRef.current = heavyNow;
   }, [trafficEvents]);
 
-  // Fetch orders from the unified logistics endpoint, fall back to mock
-  useEffect(() => {
+  const loadOrders = useCallback(() => {
     const token = localStorage.getItem('token');
     if (!token || !API_URL) { setLoadingBackend(false); return; }
-    fetch(`${API_URL}/api/logistics/orders`, { headers: { Authorization: `Bearer ${token}` } })
+    const params = new URLSearchParams();
+    if (mapFilters.date) params.set('date', mapFilters.date);
+    if (mapFilters.time_window) params.set('time_window', mapFilters.time_window);
+    const qs = params.toString();
+    fetch(`${API_URL}/api/logistics/orders${qs ? `?${qs}` : ''}`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(data => {
         const arr = Array.isArray(data) ? data : [];
         if (arr.length > 0) {
-          // Data already comes in the correct format from the logistics endpoint
           const mapped = arr.map(o => ({
             ...o,
             _backendId: o.id,
@@ -134,7 +139,9 @@ export function LogisticsMap() {
       })
       .catch(() => { /* keep mock orders */ })
       .finally(() => setLoadingBackend(false));
-  }, []);
+  }, [mapFilters]);
+
+  useEffect(() => { loadOrders(); }, [loadOrders]);
 
   // Initial route optimization
   useEffect(() => {
@@ -479,6 +486,8 @@ export function LogisticsMap() {
           <button onClick={() => setDarkMode((v) => !v)} data-testid="dark-mode-btn" title={darkMode ? 'Modo dia' : 'Modo noche'} className="p-1.5 rounded-lg border bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">{darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}</button>
         </div>
       </div>
+      {/* Date & Time filters */}
+      <MapFilters onFilterChange={setMapFilters} activeFilters={mapFilters} />
       {isMobile && (
         <div className="bg-white border-b px-3 py-1.5 flex items-center gap-1.5 overflow-x-auto shrink-0">
           <span className="text-[9px] text-gray-400 font-semibold uppercase tracking-wide shrink-0">Filtrar:</span>
