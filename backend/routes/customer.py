@@ -13,15 +13,6 @@ from database import db
 from auth import get_current_customer
 from realtime import emit_realtime
 
-# Lazy import for file uploads
-try:
-    from file_uploads import put_object, get_object
-    _HAS_FILE_UPLOADS = True
-except ImportError:
-    _HAS_FILE_UPLOADS = False
-    put_object = None
-    get_object = None
-
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/customer", tags=["customer"])
 
@@ -448,8 +439,6 @@ async def upload_receipt(
     current_customer: dict = Depends(get_current_customer),
 ):
     """Cliente sube un comprobante de pago; devuelve el file_id para OCR."""
-    if not _HAS_FILE_UPLOADS:
-        raise HTTPException(status_code=503, detail="File upload service not available")
     data = await file.read()
     if len(data) > MAX_FILE_SIZE:
         raise HTTPException(status_code=413, detail="File too large (max 10 MB)")
@@ -465,14 +454,16 @@ async def upload_receipt(
     uid = str(uuid.uuid4())
     storage_path = f"ventura-fresh-laundry/customer_receipts/{current_customer['id']}/{uid}.{ext}"
 
-    result = put_object(storage_path, data, ct)
+    # Store binary data as base64 in MongoDB — no external storage dependency
+    data_b64 = base64.b64encode(data).decode("utf-8")
 
     file_record = {
         "id": uid,
-        "storage_path": result["path"],
+        "storage_path": storage_path,
         "original_filename": file.filename,
         "content_type": ct,
-        "size": result.get("size", len(data)),
+        "size": len(data),
+        "data_base64": data_b64,
         "context": context,
         "uploaded_by": current_customer["id"],
         "uploader_type": "customer",
@@ -485,7 +476,7 @@ async def upload_receipt(
         "id": uid,
         "filename": file.filename,
         "content_type": ct,
-        "size": file_record["size"],
+        "size": len(data),
     }
 
 
@@ -496,9 +487,8 @@ async def ocr_receipt(
 ):
     """
     Corre OCR sobre un comprobante subido por el cliente.
-    Endpoint separado de /api/files/ocr/{file_id} que usa get_current_user (staff).
+    Verifica que sea un pago COMPLETADO real (no preview, no solicitud).
     """
-    # Solo el dueño del archivo puede correr OCR sobre él
     record = await db.files.find_one(
         {
             "id": file_id,
@@ -525,14 +515,20 @@ async def ocr_receipt(
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
 
-    try:
-        image_data, _ = get_object(record["storage_path"])
-    except Exception as exc:
-        logger.error("OCR download failed: %s", exc)
-        ocr_log["status"] = "error"
-        ocr_log["error"] = "download_failed"
-        await db.ocr_logs.insert_one(ocr_log)
-        raise HTTPException(status_code=500, detail="Failed to download image")
+    # Read image from MongoDB (data_base64) or fallback to storage
+    data_b64_stored = record.get("data_base64")
+    if data_b64_stored:
+        image_data = base64.b64decode(data_b64_stored)
+    else:
+        try:
+            from file_uploads import get_object as local_get_object
+            image_data, _ = local_get_object(record["storage_path"])
+        except Exception as exc:
+            logger.error("OCR download failed: %s", exc)
+            ocr_log["status"] = "error"
+            ocr_log["error"] = "download_failed"
+            await db.ocr_logs.insert_one(ocr_log)
+            raise HTTPException(status_code=500, detail="Failed to download image")
 
     b64 = base64.b64encode(image_data).decode("utf-8")
     llm_key = os.environ.get("EMERGENT_LLM_KEY")
@@ -549,18 +545,30 @@ async def ocr_receipt(
             api_key=llm_key,
             session_id=f"customer-ocr-{file_id}",
             system_message=(
-                "You are a receipt/payment OCR assistant. "
-                "Analyze the image and extract the total amount paid. "
-                'Return ONLY valid JSON: {"amount": <number>, "description": "<text>", '
-                '"date": "<YYYY-MM-DD or empty>", "vendor": "<name or empty>"} '
-                "If you cannot determine a field, use 0 for amount, empty string for others."
+                "You are a strict payment verification assistant for Ventura Fresh Laundry. "
+                "Analyze the uploaded image and determine:\n"
+                "1. Is this a COMPLETED/SENT payment transaction? (Zelle sent, Venmo paid, CashApp sent, bank transfer completed)\n"
+                "2. Extract the total amount that was ACTUALLY PAID.\n"
+                "3. Extract the date, recipient/vendor name.\n\n"
+                "CRITICAL RULES:\n"
+                "- A payment REQUEST screen (e.g. 'Request $X' or 'Pay Now' button visible) is NOT a valid payment. Mark is_valid_payment=false.\n"
+                "- A payment PREVIEW or confirmation screen BEFORE the user taps 'Send' is NOT valid.\n"
+                "- Only COMPLETED transactions showing 'Sent', 'Paid', 'Completed', 'Transferred' are valid.\n"
+                "- Screenshots showing transaction history with a completed status are valid.\n"
+                "- If the image is not a payment receipt at all (random photo, document, etc.), mark is_valid_payment=false.\n"
+                "- If you cannot clearly see a completed payment, default to is_valid_payment=false.\n\n"
+                "Return ONLY valid JSON, no markdown, no extra text:\n"
+                '{"is_valid_payment": true|false, "amount": <number or 0>, '
+                '"description": "<brief description>", '
+                '"date": "<YYYY-MM-DD or empty>", "vendor": "<recipient name or empty>", '
+                '"rejection_reason": "<reason in Spanish if rejected, empty if valid>"}'
             ),
         )
         chat.with_model("openai", "gpt-4o")
 
         img = ImageContent(image_base64=b64)
         user_msg = UserMessage(
-            text="Extract the total amount paid from this payment receipt.",
+            text="Analyze this image. Is it a COMPLETED payment receipt? Extract the amount paid.",
             file_contents=[img],
         )
         response_text = await chat.send_message(user_msg)
@@ -570,16 +578,20 @@ async def ocr_receipt(
             cleaned = cleaned.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
         result = _json.loads(cleaned)
 
+        is_valid = bool(result.get("is_valid_payment", False))
         extracted = {
+            "is_valid_payment": is_valid,
             "amount": float(result.get("amount", 0)),
             "description": str(result.get("description", "")),
             "date": str(result.get("date", "")),
             "vendor": str(result.get("vendor", "")),
+            "rejection_reason": str(result.get("rejection_reason", "")) if not is_valid else "",
         }
 
         ocr_log["status"] = "success"
         ocr_log["result"] = extracted
         ocr_log["amount_extracted"] = extracted["amount"] > 0
+        ocr_log["is_valid_payment"] = is_valid
         await db.ocr_logs.insert_one(ocr_log)
 
         return extracted
@@ -603,14 +615,27 @@ async def download_customer_file(
             "uploaded_by": current_customer["id"],
             "uploader_type": "customer",
             "is_deleted": False,
-        }
+        },
+        {"_id": 0},
     )
     if not record:
         raise HTTPException(status_code=404, detail="File not found")
-    data, content_type = get_object(record["storage_path"])
+
+    # Read from MongoDB
+    data_b64 = record.get("data_base64")
+    if data_b64:
+        data = base64.b64decode(data_b64)
+    else:
+        # Fallback to local storage
+        try:
+            from file_uploads import get_object as local_get_object
+            data, _ = local_get_object(record["storage_path"])
+        except Exception:
+            raise HTTPException(status_code=404, detail="File data not found")
+
     return Response(
         content=data,
-        media_type=record.get("content_type", content_type),
+        media_type=record.get("content_type", "application/octet-stream"),
         headers={
             "Content-Disposition": f'inline; filename="{record.get("original_filename", "file")}"'
         },

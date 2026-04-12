@@ -1685,82 +1685,108 @@ export default function OperatorDashboard() {
                 </div>
               </div>
 
-              {/* Payment queue */}
+{/* Payment queue */}
+<div
+  className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm"
+  data-testid="pos-pickup-payment-card"
+>
+  <CardHeader
+    icon={<DollarSign className="h-4 w-4 text-emerald-500" />}
+    title={t(
+      "Pickup & Delivery — Request Payment",
+      "Pickup & Delivery — Solicitar pago"
+    )}
+    count={filteredPickupPaymentQueue.length}
+    testId="pos-pickup-payment-count"
+  />
+  <div className="divide-y divide-slate-100">
+    {filteredPickupPaymentQueue.length === 0 ? (
+      <EmptyState
+        icon={<DollarSign className="h-8 w-8" />}
+        text={t("No pickup payments pending", "Sin pagos pendientes")}
+        testId="pos-pickup-payment-empty"
+      />
+    ) : (
+      filteredPickupPaymentQueue.map((order) => {
+        const amount = calculateServiceCharge(order);
+        return (
+          <div
+            key={order.order_id || Math.random()}
+            className="p-3 sm:p-4 hover:bg-slate-50/70 transition-colors cursor-pointer"
+            role="button"
+            onClick={() => setSelectedOrder(order)}
+            data-testid={`pos-pickup-payment-${order.order_id || "unknown"}`}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                  <span className="font-mono font-semibold text-xs sm:text-sm text-slate-900">
+                    {formatOrderNumber(order)}
+                  </span>
+                  <span
+                    className={`px-1.5 py-0.5 text-xs font-medium rounded-full ${
+                      getStatusInfo(order.status, order.service_type).color
+                    }`}
+                  >
+                    {getStatusInfo(order.status, order.service_type).label}
+                  </span>
+                </div>
+                <p className="text-sm text-slate-700 font-medium truncate">
+                  {safeString(order.customer_name, t("Customer", "Cliente"))}
+                </p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {t("Charge", "Cobro")}:{" "}
+                  <span className="font-semibold text-slate-600">
+                    {amount
+                      ? formatCurrency(amount)
+                      : t("Set actual lbs", "Ingresa lbs reales")}
+                  </span>
+                </p>
+              </div>
+
+              {/* ── Botones: Cobrar + Print + PDF ── */}
               <div
-                className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm"
-                data-testid="pos-pickup-payment-card"
+                className="flex flex-col gap-1.5 shrink-0"
+                onClick={(e) => e.stopPropagation()}
               >
-                <CardHeader
-                  icon={<DollarSign className="h-4 w-4 text-emerald-500" />}
-                  title={t(
-                    "Pickup & Delivery — Request Payment",
-                    "Pickup & Delivery — Solicitar pago"
-                  )}
-                  count={filteredPickupPaymentQueue.length}
-                  testId="pos-pickup-payment-count"
-                />
-                <div className="divide-y divide-slate-100">
-                  {filteredPickupPaymentQueue.length === 0 ? (
-                    <EmptyState
-                      icon={<DollarSign className="h-8 w-8" />}
-                      text={t("No pickup payments pending", "Sin pagos pendientes")}
-                      testId="pos-pickup-payment-empty"
-                    />
-                  ) : (
-                    filteredPickupPaymentQueue.map((order) => {
-                      const amount = calculateServiceCharge(order);
-                      return (
-                        <div
-                          key={order.order_id || Math.random()}
-                          className="p-3 sm:p-4 hover:bg-slate-50/70 cursor-pointer transition-colors"
-                          role="button"
-                          onClick={() => setSelectedOrder(order)}
-                          data-testid={`pos-pickup-payment-${order.order_id || "unknown"}`}
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-center gap-1.5 mb-1">
-                                <span className="font-mono font-semibold text-xs sm:text-sm text-slate-900">
-                                  {formatOrderNumber(order)}
-                                </span>
-                                <span
-                                  className={`px-1.5 py-0.5 text-xs font-medium rounded-full ${
-                                    getStatusInfo(order.status, order.service_type).color
-                                  }`}
-                                >
-                                  {getStatusInfo(order.status, order.service_type).label}
-                                </span>
-                              </div>
-                              <p className="text-sm text-slate-700 font-medium truncate">
-                                {safeString(order.customer_name, t("Customer", "Cliente"))}
-                              </p>
-                              <p className="text-xs text-slate-400 mt-0.5">
-                                {t("Charge", "Cobro")}:{" "}
-                                <span className="font-semibold text-slate-600">
-                                  {amount
-                                    ? formatCurrency(amount)
-                                    : t("Set actual lbs", "Ingresa lbs reales")}
-                                </span>
-                              </p>
-                            </div>
-                            <Button
-                              size="sm"
-                              className="bg-emerald-600 hover:bg-emerald-700 text-xs h-7 shrink-0"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedOrder(order);
-                              }}
-                              data-testid={`pos-pickup-collect-${order.order_id}`}
-                            >
-                              {t("Collect", "Cobrar")}
-                            </Button>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
+                <Button
+                  size="sm"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-xs h-7"
+                  onClick={() => setSelectedOrder(order)}
+                  data-testid={`pos-pickup-collect-${order.order_id}`}
+                >
+                  {t("Collect", "Cobrar")}
+                </Button>
+                <div className="flex gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs h-7 px-2 gap-1 hover:border-sky-300 hover:text-sky-600"
+                    onClick={() => handlePrintTicket(order)}
+                    data-testid={`pos-pickup-payment-print-${order.order_id}`}
+                  >
+                    <Printer className="h-3 w-3" />
+                    <span className="hidden sm:inline">{t("Print", "Imprimir")}</span>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs h-7 px-2 gap-1 hover:border-emerald-300 hover:text-emerald-600"
+                    onClick={() => handleDownloadPDF(order)}
+                    data-testid={`pos-pickup-payment-pdf-${order.order_id}`}
+                  >
+                    <FileDown className="h-3 w-3" />
+                    <span className="hidden sm:inline">PDF</span>
+                  </Button>
                 </div>
               </div>
+            </div>
+          </div>
+        );
+      })
+    )}
+  </div>
+</div>
 
               {/* In Process / Ready / Out for Delivery */}
               <div
@@ -3336,3 +3362,5 @@ export function mapBackendOrder(o) {
     _backendId: o.id,
   };
 }
+
+
