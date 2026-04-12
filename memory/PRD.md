@@ -85,6 +85,15 @@ NEW -> CONFIRMED -> PROCESSING -> READY -> COMPLETED
 - [x] 5 payment methods: Stripe Card, Zelle, Venmo, CashApp, Receipt Upload (with AI OCR)
 - [x] OCR validates amount within 10% tolerance, auto-marks order as pending_verification
 
+### Phase 6b (MongoDB Image Storage + AI Strengthening) — 2026-04-12
+- [x] Migrated file storage from external Emergent Object Storage to MongoDB (base64 in documents)
+- [x] All new uploads store `data_base64` field in MongoDB `files` collection
+- [x] Download endpoints read from MongoDB first, fallback to external storage for legacy files
+- [x] Strengthened AI OCR: now verifies COMPLETED payments vs previews/requests (is_valid_payment field)
+- [x] AI rejects payment request screenshots, pending transactions, non-payment images
+- [x] Frontend shows rejection reason in Spanish when AI rejects receipt
+- [x] Fixed LlmChat timeout parameter bug in operator validation endpoints
+
 ### Customer API Endpoints (Updated)
 - `POST /api/customer/auth/register`, `POST /api/customer/auth/login`
 - `GET /api/customer/me`, `GET /api/customer/orders`, `GET /api/customer/pending-payments`
