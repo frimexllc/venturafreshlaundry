@@ -204,7 +204,7 @@ async def get_pending_payments(current_customer: dict = Depends(get_current_cust
 
     query = {
         "$or": [{"customer_id": {"$in": list(linked_ids)}}],
-        "payment_status": {"$in": ["unpaid", "pending_verification"]},
+        "payment_status": {"$in": ["unpaid", "pending", "pending_verification"]},
         "total_amount": {"$gt": 0},
     }
     if customer_email:
@@ -340,6 +340,7 @@ async def _customer_owns_order(order: dict, current_customer: dict) -> bool:
 @router.post("/order/{order_id}/mark-zelle")
 async def mark_zelle_payment(
     order_id: str,
+    method: str = Query("zelle"),
     current_customer: dict = Depends(get_current_customer),
 ):
     # Buscar la orden solo por id primero
@@ -353,18 +354,19 @@ async def mark_zelle_payment(
     if order.get("payment_status") == "paid":
         return {"ok": True, "detail": "Already paid"}
 
+    payment_method = method if method in ("zelle", "venmo", "cashapp") else "zelle"
     now = datetime.now(timezone.utc).isoformat()
     await db.orders.update_one(
         {"id": order_id},
         {
             "$set": {
                 "payment_status": "pending_verification",
-                "payment_method": "zelle",
+                "payment_method": payment_method,
                 "updated_at": now,
             },
             "$push": {
                 "status_history": {
-                    "status": "zelle_submitted",
+                    "status": f"{payment_method}_submitted",
                     "timestamp": now,
                     "by": "customer_portal",
                 }
@@ -376,10 +378,10 @@ async def mark_zelle_payment(
         "order_id": order_id,
         "order_number": order.get("order_number"),
         "payment_status": "pending_verification",
-        "payment_method": "zelle",
+        "payment_method": payment_method,
         "updated_at": now,
     })
-    return {"ok": True, "detail": "Payment submitted for verification"}
+    return {"ok": True, "detail": f"Payment via {payment_method} submitted for verification"}
 
 
 @router.post("/order/{order_id}/checkout-auth")

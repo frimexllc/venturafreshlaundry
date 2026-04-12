@@ -84,17 +84,5 @@ async def customer_login(data: CustomerLogin):
     return CustomerAuthResponse(access_token=token, token_type="bearer", customer=customer_data)
 
 
-@router.get("/customer/me")
-async def get_customer_profile(current_customer: dict = Depends(get_current_customer)):
-    """Get current customer profile"""
-    return current_customer
-
-
-@router.get("/customer/orders")
-async def get_customer_orders(current_customer: dict = Depends(get_current_customer)):
-    """Get orders for the logged-in customer"""
-    orders = await db.orders.find(
-        {"customer_id": current_customer["id"]},
-        {"_id": 0},
-    ).sort("created_at", -1).to_list(100)
-    return orders
+# NOTE: /customer/me and /customer/orders are defined in routes/customer.py
+# with better cross-ID/email matching logic. Do NOT duplicate here.

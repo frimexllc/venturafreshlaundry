@@ -181,6 +181,7 @@ export default function CustomerAccount() {
   const paymentStatusLabel = (s) => {
     const map = {
       unpaid: { en: "Unpaid", es: "Sin pagar", cls: "bg-red-50 text-red-600 border-red-200" },
+      pending: { en: "Pending", es: "Pendiente", cls: "bg-amber-50 text-amber-600 border-amber-200" },
       pending_verification: { en: "Pending", es: "Pendiente", cls: "bg-amber-50 text-amber-600 border-amber-200" },
       paid: { en: "Paid", es: "Pagado", cls: "bg-emerald-50 text-emerald-600 border-emerald-200" },
     };
@@ -215,7 +216,8 @@ export default function CustomerAccount() {
     const params = new URLSearchParams(window.location.search);
     const paidOrderId = params.get("paid");
     if (paidOrderId) {
-      fetch(`${API}/customer/order/${paidOrderId}/confirm-payment`, { method: "POST" })
+      // confirm-payment is public — try without auth first, fallback with auth
+      axios.post(`${API}/customer/order/${paidOrderId}/confirm-payment`, {})
         .then(() => {
           toast.success(t("Payment confirmed!", "¡Pago confirmado!"));
           window.history.replaceState({}, "", "/account");
@@ -225,7 +227,15 @@ export default function CustomerAccount() {
             fetchPendingPayments(freshToken);
           }
         })
-        .catch(() => {});
+        .catch((err) => {
+          const detail = err.response?.data?.detail || "";
+          if (detail === "Already paid") {
+            toast.success(t("Payment already confirmed", "Pago ya confirmado"));
+          } else {
+            toast.error(t("Could not confirm payment. Please contact support.", "No se pudo confirmar el pago. Contacta soporte."));
+          }
+          window.history.replaceState({}, "", "/account");
+        });
     }
 
     fetchOrders(token);
@@ -369,7 +379,7 @@ export default function CustomerAccount() {
   };
 
   // Carga de comprobante con OCR
-  const handleUploadReceipt = async (orderId, expectedAmount) => {
+  const handleUploadReceipt = async (orderId, expectedAmount, paymentMethod = "zelle") => {
     const token = localStorage.getItem("customer_token");
     if (!token) return;
 
@@ -380,11 +390,13 @@ export default function CustomerAccount() {
       const file = e.target.files[0];
       if (!file) return;
 
-      setUploadingReceipt({ orderId, loading: true });
+      setUploadingReceipt({ orderId, method: paymentMethod, loading: true });
       const formData = new FormData();
       formData.append("file", file);
 
       try {
+        toast.info(t("Uploading receipt...", "Subiendo comprobante..."));
+
         // 1. Subir imagen al endpoint de cliente
         const uploadRes = await axios.post(`${API}/customer/upload-receipt`, formData, {
           headers: { Authorization: `Bearer ${token}`, "Content-Type": "multipart/form-data" },
@@ -392,20 +404,26 @@ export default function CustomerAccount() {
         });
         const fileId = uploadRes.data.id;
 
+        toast.info(t("Analyzing receipt with AI...", "Analizando comprobante con IA..."));
+
         // 2. Ejecutar OCR con el endpoint de cliente
         const ocrRes = await axios.post(`${API}/customer/ocr-receipt/${fileId}`, {}, {
           headers: { Authorization: `Bearer ${token}` },
         });
         const extractedAmount = ocrRes.data.amount;
+        const vendor = ocrRes.data.vendor || "";
+        const description = ocrRes.data.description || "";
 
-        // 3. Comparar montos (tolerancia $0.01)
-        if (Math.abs(extractedAmount - expectedAmount) <= 0.01) {
+        // 3. Comparar montos (tolerancia 10% para fees de plataformas de pago)
+        const tolerance = Math.max(expectedAmount * 0.10, 1.00);
+        if (Math.abs(extractedAmount - expectedAmount) <= tolerance) {
           await axios.post(`${API}/customer/order/${orderId}/mark-zelle`, {}, {
             headers: { Authorization: `Bearer ${token}` },
+            params: { method: paymentMethod },
           });
           toast.success(t(
-            "Payment verified automatically! Order marked as paid.",
-            "¡Pago verificado automáticamente! Orden marcada como pagada."
+            `Payment of $${Number(extractedAmount).toFixed(2)} verified via ${paymentMethod.toUpperCase()}!`,
+            `¡Pago de $${Number(extractedAmount).toFixed(2)} verificado vía ${paymentMethod.toUpperCase()}!`
           ));
           const freshToken = localStorage.getItem("customer_token");
           if (freshToken) {
@@ -414,8 +432,8 @@ export default function CustomerAccount() {
           }
         } else {
           toast.error(t(
-            `Amount mismatch: expected $${Number(expectedAmount).toFixed(2)}, got $${Number(extractedAmount).toFixed(2)}`,
-            `Monto incorrecto: se esperaba $${Number(expectedAmount).toFixed(2)}, se obtuvo $${Number(extractedAmount).toFixed(2)}`
+            `Amount mismatch: expected $${Number(expectedAmount).toFixed(2)}, receipt shows $${Number(extractedAmount).toFixed(2)}. Contact support.`,
+            `Monto no coincide: se esperaba $${Number(expectedAmount).toFixed(2)}, el comprobante muestra $${Number(extractedAmount).toFixed(2)}. Contacta soporte.`
           ));
         }
       } catch (err) {
@@ -618,7 +636,7 @@ export default function CustomerAccount() {
                       <p className="text-xs text-slate-400 capitalize">{order.service_type.replace(/_/g, " ")}</p>
                     )}
 
-                    {order.payment_status === "pending_verification" ? (
+                    {(order.payment_status === "pending_verification" || order.payment_status === "pending") ? (
                       <div className="bg-amber-50 rounded-xl border border-amber-200 p-3 text-xs text-amber-700 font-medium">
                         {t("Payment submitted — waiting for verification by our team.", "Pago enviado — esperando verificación de nuestro equipo.")}
                       </div>
@@ -640,31 +658,46 @@ export default function CustomerAccount() {
 
                         {/* Zelle */}
                         <button
-                          onClick={() => handlePayZelle(order.id)}
-                          className="flex items-center justify-center gap-2 text-white rounded-xl px-4 py-3 text-sm font-semibold transition-all duration-200 hover:brightness-110 active:scale-95"
+                          onClick={() => handleUploadReceipt(order.id, order.total_amount, "zelle")}
+                          disabled={uploadingReceipt?.orderId === order.id}
+                          className="flex items-center justify-center gap-2 text-white rounded-xl px-4 py-3 text-sm font-semibold transition-all duration-200 hover:brightness-110 active:scale-95 disabled:opacity-50"
                           style={{ backgroundColor: "#6D1ED4" }}
                         >
-                          <Building2 className="h-4 w-4" />
+                          {uploadingReceipt?.orderId === order.id && uploadingReceipt?.method === "zelle" ? (
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <Building2 className="h-4 w-4" />
+                          )}
                           Zelle
                         </button>
 
                         {/* Venmo */}
                         <button
-                          onClick={() => handlePayZelle(order.id)}
-                          className="flex items-center justify-center gap-2 text-white rounded-xl px-4 py-3 text-sm font-semibold transition-all duration-200 hover:brightness-110 active:scale-95"
+                          onClick={() => handleUploadReceipt(order.id, order.total_amount, "venmo")}
+                          disabled={uploadingReceipt?.orderId === order.id}
+                          className="flex items-center justify-center gap-2 text-white rounded-xl px-4 py-3 text-sm font-semibold transition-all duration-200 hover:brightness-110 active:scale-95 disabled:opacity-50"
                           style={{ backgroundColor: "#0074DE" }}
                         >
-                          <DollarSign className="h-4 w-4" />
+                          {uploadingReceipt?.orderId === order.id && uploadingReceipt?.method === "venmo" ? (
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <DollarSign className="h-4 w-4" />
+                          )}
                           Venmo
                         </button>
 
                         {/* CashApp */}
                         <button
-                          onClick={() => handlePayZelle(order.id)}
-                          className="flex items-center justify-center gap-2 text-black rounded-xl px-4 py-3 text-sm font-semibold transition-all duration-200 hover:brightness-110 active:scale-95"
+                          onClick={() => handleUploadReceipt(order.id, order.total_amount, "cashapp")}
+                          disabled={uploadingReceipt?.orderId === order.id}
+                          className="flex items-center justify-center gap-2 text-black rounded-xl px-4 py-3 text-sm font-semibold transition-all duration-200 hover:brightness-110 active:scale-95 disabled:opacity-50"
                           style={{ backgroundColor: "#00E013" }}
                         >
-                          <DollarSign className="h-4 w-4" />
+                          {uploadingReceipt?.orderId === order.id && uploadingReceipt?.method === "cashapp" ? (
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <DollarSign className="h-4 w-4" />
+                          )}
                           CashApp
                         </button>
 
@@ -684,7 +717,7 @@ export default function CustomerAccount() {
                       </div>
                     )}
 
-                    {order.payment_status !== "pending_verification" && (
+                    {order.payment_status !== "pending_verification" && order.payment_status !== "pending" && (
                       <div className="bg-slate-50 rounded-xl p-3 text-xs text-slate-500">
                         <p className="font-semibold text-slate-600 mb-1">{t("Payment instructions:", "Instrucciones de pago:")}</p>
                         <p>
