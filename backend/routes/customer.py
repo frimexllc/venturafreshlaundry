@@ -25,8 +25,15 @@ except ImportError:
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/customer", tags=["customer"])
 
-STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY") or os.environ.get("STRIPE_API_KEY", "")
-FRONTEND_URL = os.environ.get("FRONTEND_URL") or os.environ.get("REACT_APP_BACKEND_URL", "")
+
+def _get_stripe_key():
+    """Read Stripe key lazily to ensure dotenv is loaded."""
+    return os.environ.get("STRIPE_SECRET_KEY") or os.environ.get("STRIPE_API_KEY", "")
+
+
+def _get_frontend_url():
+    """Read frontend URL lazily."""
+    return os.environ.get("FRONTEND_URL") or os.environ.get("REACT_APP_BACKEND_URL") or os.environ.get("BUSINESS_WEBSITE", "")
 
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 ALLOWED_RECEIPT_TYPES = {"image/jpeg", "image/png", "image/webp", "image/heic"}
@@ -70,14 +77,14 @@ async def create_customer_checkout(order_id: str, request: Request):
     total = float(order.get("total_amount") or 0)
     if total <= 0:
         raise HTTPException(status_code=400, detail="Invalid order total")
-    if not STRIPE_SECRET_KEY:
+    if not _get_stripe_key():
         raise HTTPException(status_code=503, detail="Payment service not configured")
 
     try:
         import stripe
-        stripe.api_key = STRIPE_SECRET_KEY
+        stripe.api_key = _get_stripe_key()
         base_url = str(request.base_url).rstrip("/")
-        frontend = FRONTEND_URL or base_url
+        frontend = _get_frontend_url() or base_url
 
         session = stripe.checkout.Session.create(
             payment_method_types=["card"],
@@ -162,11 +169,14 @@ async def get_customer_profile(current_customer: dict = Depends(get_current_cust
 
 @router.get("/orders")
 async def get_customer_orders(current_customer: dict = Depends(get_current_customer)):
-    # Busca órdenes por customer_id O por email del cliente (compatibilidad con órdenes legacy)
     customer_id = current_customer["id"]
     customer_email = current_customer.get("email", "")
 
-    query = {"$or": [{"customer_id": customer_id}]}
+    # Get all customer IDs with the same email
+    linked_ids = await _get_customer_ids_by_email(customer_email) if customer_email else set()
+    linked_ids.add(customer_id)
+
+    query = {"$or": [{"customer_id": {"$in": list(linked_ids)}}]}
     if customer_email:
         query["$or"].append({"customer_email": customer_email})
 
@@ -188,8 +198,12 @@ async def get_pending_payments(current_customer: dict = Depends(get_current_cust
     customer_id = current_customer["id"]
     customer_email = current_customer.get("email", "")
 
+    # Get all customer IDs with the same email
+    linked_ids = await _get_customer_ids_by_email(customer_email) if customer_email else set()
+    linked_ids.add(customer_id)
+
     query = {
-        "$or": [{"customer_id": customer_id}],
+        "$or": [{"customer_id": {"$in": list(linked_ids)}}],
         "payment_status": {"$in": ["unpaid", "pending_verification"]},
         "total_amount": {"$gt": 0},
     }
@@ -288,6 +302,41 @@ async def delete_customer_preferences(current_customer: dict = Depends(get_curre
     return {"ok": True}
 
 
+async def _get_customer_ids_by_email(email: str) -> set:
+    """Get all customer IDs that share the same email — handles duplicate customer records."""
+    if not email:
+        return set()
+    customers = await db.customers.find(
+        {"email": {"$regex": f"^{email}$", "$options": "i"}},
+        {"_id": 0, "id": 1},
+    ).to_list(20)
+    return {c["id"] for c in customers if c.get("id")}
+
+
+async def _customer_owns_order(order: dict, current_customer: dict) -> bool:
+    """Check if the logged-in customer owns the order (by customer_id OR email match)."""
+    current_id = current_customer["id"]
+    current_email = current_customer.get("email", "").lower()
+    order_cid = order.get("customer_id", "")
+
+    # Direct ID match
+    if order_cid == current_id:
+        return True
+
+    # Email match on the order itself
+    order_email = (order.get("customer_email") or "").lower()
+    if current_email and order_email and order_email == current_email:
+        return True
+
+    # Check if order's customer_id belongs to a customer record with same email
+    if order_cid and current_email:
+        linked_ids = await _get_customer_ids_by_email(current_email)
+        if order_cid in linked_ids:
+            return True
+
+    return False
+
+
 @router.post("/order/{order_id}/mark-zelle")
 async def mark_zelle_payment(
     order_id: str,
@@ -298,19 +347,7 @@ async def mark_zelle_payment(
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    # Verificar propiedad: el campo customer_id debe coincidir, o bien
-    # el customer_email del pedido debe coincidir con el email del cliente autenticado.
-    # Si la orden no tiene customer_id (órdenes legacy), se permite si el email coincide.
-    order_customer_id = order.get("customer_id")
-    order_customer_email = order.get("customer_email", "")
-    current_id = current_customer["id"]
-    current_email = current_customer.get("email", "")
-
-    owns_order = (
-        order_customer_id == current_id
-        or (not order_customer_id and current_email and order_customer_email == current_email)
-    )
-    if not owns_order:
+    if not await _customer_owns_order(order, current_customer):
         raise HTTPException(status_code=403, detail="Not your order")
 
     if order.get("payment_status") == "paid":
@@ -356,17 +393,7 @@ async def create_authenticated_checkout(
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    # Verificar propiedad (misma lógica que mark-zelle)
-    order_customer_id = order.get("customer_id")
-    order_customer_email = order.get("customer_email", "")
-    current_id = current_customer["id"]
-    current_email = current_customer.get("email", "")
-
-    owns_order = (
-        order_customer_id == current_id
-        or (not order_customer_id and current_email and order_customer_email == current_email)
-    )
-    if not owns_order:
+    if not await _customer_owns_order(order, current_customer):
         raise HTTPException(status_code=403, detail="Not your order")
 
     if order.get("payment_status") == "paid":
@@ -375,14 +402,14 @@ async def create_authenticated_checkout(
     total = float(order.get("total_amount") or 0)
     if total <= 0:
         raise HTTPException(status_code=400, detail="Invalid order total")
-    if not STRIPE_SECRET_KEY:
+    if not _get_stripe_key():
         raise HTTPException(status_code=503, detail="Payment service not configured")
 
     try:
         import stripe
-        stripe.api_key = STRIPE_SECRET_KEY
+        stripe.api_key = _get_stripe_key()
         base_url = str(request.base_url).rstrip("/")
-        frontend = FRONTEND_URL or base_url
+        frontend = _get_frontend_url() or base_url
 
         session = stripe.checkout.Session.create(
             payment_method_types=["card"],
