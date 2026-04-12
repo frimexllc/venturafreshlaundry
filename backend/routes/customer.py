@@ -11,8 +11,9 @@ from typing import Optional
 
 from database import db
 from auth import get_current_customer
+from realtime import emit_realtime
 
-# Lazy import for file uploads — may not be available in all environments
+# Lazy import for file uploads
 try:
     from file_uploads import put_object, get_object
     _HAS_FILE_UPLOADS = True
@@ -24,8 +25,8 @@ except ImportError:
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/customer", tags=["customer"])
 
-STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "")
-FRONTEND_URL = os.environ.get("FRONTEND_URL", "")
+STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY") or os.environ.get("STRIPE_API_KEY", "")
+FRONTEND_URL = os.environ.get("FRONTEND_URL") or os.environ.get("REACT_APP_BACKEND_URL", "")
 
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 ALLOWED_RECEIPT_TYPES = {"image/jpeg", "image/png", "image/webp", "image/heic"}
@@ -133,6 +134,14 @@ async def confirm_customer_payment(order_id: str):
             },
         },
     )
+    # Notify operator dashboard in real-time
+    await emit_realtime("order_status", {
+        "order_id": order_id,
+        "order_number": order.get("order_number"),
+        "payment_status": "paid",
+        "payment_method": "tarjeta",
+        "updated_at": now,
+    })
     return {"ok": True, "detail": "Payment confirmed"}
 
 
@@ -325,6 +334,14 @@ async def mark_zelle_payment(
             },
         },
     )
+    # Notify operator dashboard in real-time
+    await emit_realtime("order_status", {
+        "order_id": order_id,
+        "order_number": order.get("order_number"),
+        "payment_status": "pending_verification",
+        "payment_method": "zelle",
+        "updated_at": now,
+    })
     return {"ok": True, "detail": "Payment submitted for verification"}
 
 
