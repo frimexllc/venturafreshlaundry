@@ -302,19 +302,43 @@ export default function LandingPage() {
 
     <div className="min-h-screen bg-white overflow-x-hidden">
 
-      {/* ══ HERO ══════════════════════════════════════════════════════════ */}
-      <section className="relative min-h-screen flex items-center overflow-hidden">
-        <div className="absolute inset-0 z-0">
-          <video className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1200 ${vidReady?"opacity-100":"opacity-0"}`}
-            src={videoVFL} autoPlay muted loop playsInline preload="auto" onCanPlay={()=>setVidReady(true)}/>
-          {/* Cinematic layers */}
-          <div className="absolute inset-0 bg-gradient-to-r from-slate-950/92 via-slate-900/65 to-slate-800/25"/>
-          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/70 via-transparent to-slate-900/15"/>
-          <div className="absolute inset-0" style={{background:"radial-gradient(ellipse at center, transparent 35%, rgba(0,0,0,0.6) 100%)"}}/>
-          {/* Subtle scan-lines texture */}
-          <div className="absolute inset-0 opacity-[0.03]" style={{backgroundImage:"repeating-linear-gradient(0deg,#000 0px,#000 1px,transparent 1px,transparent 3px)"}}/>
-        </div>
+{/* ══ HERO ══════════════════════════════════════════════════════════ */}
+<section className="relative min-h-screen flex items-center overflow-hidden">
+  <div className="absolute inset-0 z-0">
+    <video
+      className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1200 ${
+        vidReady ? "opacity-100" : "opacity-0"
+      }`}
+      src={videoVFL}
+      autoPlay
+      muted
+      loop
+      playsInline
+      preload="auto"
+      onCanPlay={() => setVidReady(true)}
+    />
+    {/* Capa negra adicional muy sutil para oscurecer un poco más */}
+    <div className="absolute inset-0 bg-black/1" />
 
+    {/* Cinematic layers con opacidades ligeramente aumentadas */}
+    <div className="absolute inset-0 bg-gradient-to-r from-slate-950/80 via-slate-900/50 to-slate-800/20" />
+    <div className="absolute inset-0 bg-gradient-to-t from-slate-950/60 via-transparent to-slate-900/10" />
+    <div
+      className="absolute inset-0"
+      style={{
+        background:
+          "radial-gradient(ellipse at center, transparent 35%, rgba(0, 0, 0, 0.82) 100%)",
+      }}
+    />
+    {/* Subtle scan-lines texture */}
+    <div
+      className="absolute inset-0 opacity-[0.03]"
+      style={{
+        backgroundImage:
+          "repeating-linear-gradient(0deg,#000 0px,#000 1px,transparent 1px,transparent 3px)",
+      }}
+    />
+  </div>
         <PublicNav />
 
         <div className="relative z-10 px-6 sm:px-10 lg:px-14 max-w-7xl mx-auto w-full pt-24">
@@ -585,8 +609,27 @@ export default function LandingPage() {
           <div className="grid sm:grid-cols-3 gap-4">
             {[
               {icon:<MapPin className="h-5 w-5 text-primary"/>, label:t("Find us","Encuéntranos"), text:"5722 Telephone Rd #5, Ventura, CA"},
-              {icon:<Clock className="h-5 w-5 text-primary"/>,  label:t("Hours","Horario"), text:t("Mon–Sun  6:00 AM – 10:00 PM","Lun–Dom  6:00 AM – 10:00 PM")},
-              {icon:<Phone className="h-5 w-5 text-primary"/>, label:t("Call or text","Llama o escribe"), text:"(820) 234-8181"},
+{
+  icon: <Clock className="h-5 w-5 text-primary" />,
+  label: t("Hours","Horario"),
+  text: (
+    <div className="text-sm leading-tight">
+      <div>
+        <strong>{t("Self-Service:", "Autoservicio:")}</strong>{" "}
+        {t("Mon–Sun 6:00 AM – 10:00 PM","Lun–Dom 6:00 AM – 10:00 PM")}
+      </div>
+
+      <div className="text-xs">
+        {t("Last wash at 9:00 PM","Última lavada a las 9:00 PM")}
+      </div>
+
+      <div className="mt-1">
+        <strong>{t("Wash & Fold:", "Lavado y Doblado:")}</strong>{" "}
+        {t("Mon–Sun 8:00 AM – 6:00 PM","Lun–Dom 8:00 AM – 6:00 PM")}
+      </div>
+    </div>
+  )
+},              {icon:<Phone className="h-5 w-5 text-primary"/>, label:t("Call or text","Llama o escribe"), text:"(820) 234-8181"},
             ].map((c,i)=>(
               <Reveal key={i} delay={i*80} dir="up">
                 <div className="flex items-center gap-4 p-5 rounded-2xl cursor-default hover:bg-white hover:shadow-md transition-all duration-300 group">

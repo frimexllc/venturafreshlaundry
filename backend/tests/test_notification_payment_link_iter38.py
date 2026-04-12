@@ -18,8 +18,8 @@ class TestNotificationPaymentLink:
     def setup(self):
         """Setup test fixtures"""
         self.base_url = BASE_URL
-        self.admin_email = "owner@frimexllc.com"
-        self.admin_password = "admin123"
+        self.admin_email = os.environ.get("TEST_ADMIN_EMAIL", "owner@frimexllc.com")
+        self.admin_password = os.environ.get("TEST_ADMIN_PASSWORD", "admin123")
         self.unpaid_order_id = "1a8c9d67-4341-4985-8b54-eba2bfb4cf24"
         self.paid_order_id = "817df450-45db-4667-8e42-546cc74550a1"
         self.origin_header = "https://ventura-deploy-test.preview.emergentagent.com"

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { OrderDetailsModal } from './OrderDetailsModal';
@@ -18,7 +18,7 @@ import {
   optimizeRouteAdvanced, haversineDistance, mapBackendOrder,
 } from '../../utils/orders';
 import { getCurrentTrafficEvents, totalTrafficDelay, SEVERITY_COLORS, SEVERITY_LABELS } from '../../utils/traffic';
-import { requestNotificationPermission, sendNotification } from '../../utils/notifications';
+import { requestNotificationPermission } from '../../utils/notifications';
 import { saveRouteRecord, loadRouteHistory } from '../../utils/routeHistory';
 import { toast } from 'sonner';
 
@@ -26,6 +26,94 @@ const API_URL = process.env.REACT_APP_BACKEND_URL;
 const NEARBY_THRESHOLD_KM = 1.2;
 const HQ = { lat: 34.264157, lng: -119.213715 };
 const TRAFFIC_REFRESH_MS = 5 * 60 * 1000;
+
+// ========== FUNCIONES AVANZADAS PARA HORARIOS (UNIFICADAS) ==========
+function parseFlexibleTime(timeStr) {
+  if (!timeStr || typeof timeStr !== 'string') return null;
+  const str = timeStr.trim().toLowerCase();
+  
+  const keywords = {
+    'morning': { hours: 8, minutes: 0 },
+    'afternoon': { hours: 14, minutes: 0 },
+    'evening': { hours: 18, minutes: 0 },
+    'night': { hours: 20, minutes: 0 },
+  };
+  if (keywords[str]) return keywords[str];
+  
+  const rangeMatch = str.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*-\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+  if (rangeMatch) {
+    let hours = parseInt(rangeMatch[1], 10);
+    const minutes = rangeMatch[2] ? parseInt(rangeMatch[2], 10) : 0;
+    const meridiem = rangeMatch[3] || '';
+    if (meridiem === 'pm' && hours < 12) hours += 12;
+    if (meridiem === 'am' && hours === 12) hours = 0;
+    return { hours, minutes };
+  }
+  
+  const timeMatch = str.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+  if (timeMatch) {
+    let hours = parseInt(timeMatch[1], 10);
+    const minutes = timeMatch[2] ? parseInt(timeMatch[2], 10) : 0;
+    const meridiem = timeMatch[3] || '';
+    if (meridiem === 'pm' && hours < 12) hours += 12;
+    if (meridiem === 'am' && hours === 12) hours = 0;
+    return { hours, minutes };
+  }
+  
+  return null;
+}
+
+function isWithinTimeWindow(order, type, currentTime = new Date()) {
+  const schedule = order.schedule;
+  if (!schedule) return true;
+  let timeStr = null;
+  if (type === 'pickup') timeStr = schedule.pickupTime;
+  else if (type === 'delivery') timeStr = schedule.deliveryTime;
+  if (!timeStr) return true;
+  
+  const parsed = parseFlexibleTime(timeStr);
+  if (!parsed) return true;
+  
+  const scheduled = new Date(currentTime);
+  scheduled.setHours(parsed.hours, parsed.minutes, 0, 0);
+  const diffMinutes = (currentTime - scheduled) / 60000;
+  return diffMinutes >= -15;
+}
+
+function filterOrdersByTimeWindow(orders, timeWindow) {
+  if (!timeWindow || typeof timeWindow !== 'string') return orders;
+  
+  let startMinutes, endMinutes;
+  
+  if (timeWindow === 'morning') {
+    startMinutes = 8 * 60;
+    endMinutes = 12 * 60;
+  } else if (timeWindow === 'afternoon') {
+    startMinutes = 14 * 60;
+    endMinutes = 18 * 60;
+  } else {
+    const [startStr, endStr] = timeWindow.split('-');
+    if (!startStr || !endStr) return orders;
+    const start = parseFlexibleTime(startStr.trim());
+    const end = parseFlexibleTime(endStr.trim());
+    if (!start || !end) return orders;
+    startMinutes = start.hours * 60 + start.minutes;
+    endMinutes = end.hours * 60 + end.minutes;
+  }
+  
+  return orders.filter(order => {
+    let timeStr = null;
+    if (order.status === 'pending') timeStr = order.schedule?.pickupTime;
+    else if (order.status === 'ready') timeStr = order.schedule?.deliveryTime;
+    if (!timeStr) return true;
+    
+    const parsed = parseFlexibleTime(timeStr);
+    if (!parsed) return true;
+    
+    const orderMinutes = parsed.hours * 60 + parsed.minutes;
+    return orderMinutes >= startMinutes && orderMinutes <= endMinutes;
+  });
+}
 
 function buildGoogleMapsUrl(stops) {
   const origin = `${HQ.lat},${HQ.lng}`;
@@ -106,12 +194,18 @@ export function LogisticsMap() {
       .finally(() => setLoadingProducts(false));
   }, [showProducts, productsList.length]);
 
-  // Notifications
+  // Notifications permission (solo pedir permiso, no mostrar notificaciones automáticas)
   useEffect(() => { requestNotificationPermission(); }, []);
+
+  // Reemplazar sendNotification por toast.warning para tráfico pesado (evita error de constructor)
   useEffect(() => {
     const heavyNow = new Set(trafficEvents.filter(e => e.severity === 'heavy').map(e => e.id));
     const newHeavy = trafficEvents.filter(e => e.severity === 'heavy' && !prevHeavyRef.current.has(e.id));
-    if (newHeavy.length > 0) sendNotification('TIM - Trafico Pesado', `${newHeavy.map(e => e.road).join(', ')} — +${newHeavy.reduce((s, e) => s + e.delayMinutes, 0)} min de retraso.`);
+    if (newHeavy.length > 0) {
+      toast.warning(`🚨 Tráfico pesado: ${newHeavy.map(e => e.road).join(', ')} — +${newHeavy.reduce((s, e) => s + e.delayMinutes, 0)} min de retraso.`, {
+        duration: 8000,
+      });
+    }
     prevHeavyRef.current = heavyNow;
   }, [trafficEvents]);
 
@@ -126,37 +220,30 @@ export function LogisticsMap() {
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(data => {
         const arr = Array.isArray(data) ? data : [];
-        if (arr.length > 0) {
-          const mapped = arr.map(o => ({
-            ...o,
-            _backendId: o.id,
-            pricing: o.pricing || { subtotal: 0, tax: 0, total: 0 },
-            payment: o.payment || { method: 'card', status: 'pending' },
-            schedule: o.schedule || { pickupDate: '', pickupTime: '', deliveryDate: '', deliveryTime: '' },
-          }));
-          setOrders(mapped);
-        }
+        let mapped = arr.map(o => ({
+          ...o,
+          _backendId: o.id,
+          pricing: o.pricing || { subtotal: 0, tax: 0, total: 0 },
+          payment: o.payment || { method: 'card', status: 'pending' },
+          schedule: o.schedule || { pickupDate: '', pickupTime: '', deliveryDate: '', deliveryTime: '' },
+        }));
+        console.log('📦 Órdenes cargadas desde backend:', mapped.length);
+        const antes = mapped.length;
+        mapped = filterOrdersByTimeWindow(mapped, mapFilters.time_window);
+        console.log(`⏰ Filtro horario local: ${antes} → ${mapped.length} (time_window=${mapFilters.time_window})`);
+        setOrders(mapped);
       })
-      .catch(() => { /* keep mock orders */ })
+      .catch(() => { /* mantener mock orders */ })
       .finally(() => setLoadingBackend(false));
   }, [mapFilters]);
 
   useEffect(() => { loadOrders(); }, [loadOrders]);
 
-  // Initial route optimization
-  useEffect(() => {
-    if (!loadingBackend) {
-      const result = optimizeOrders(orders);
-      setRouteResult(result);
-    }
-  }, [loadingBackend, orders]);
-
-  // Traffic refresh — fetch from backend (TomTom real-time)
+  // Traffic refresh
   useEffect(() => {
     const token = localStorage.getItem('token');
     const refresh = async () => {
       if (!token || !API_URL) {
-        // Fallback to simulated if no auth
         const events = getCurrentTrafficEvents();
         setTrafficEvents(events);
         return;
@@ -175,7 +262,6 @@ export function LogisticsMap() {
           return;
         }
       } catch { /* fallback */ }
-      // Fallback to simulated
       const events = getCurrentTrafficEvents();
       setTrafficEvents(events);
     };
@@ -184,17 +270,61 @@ export function LogisticsMap() {
     return () => clearInterval(interval);
   }, []);
 
-  const filteredOrders = filterType === 'all' ? orders : orders.filter((o) => o.type === filterType);
-  const pickupCount = orders.filter((o) => o.status === 'pending' && o.type !== 'wash-fold').length;
-  const deliveryCount = orders.filter((o) => o.status === 'ready' && o.type !== 'wash-fold').length;
+  // ========== NUEVA LÓGICA DE FILTRADO POR FECHA Y HORARIO ==========
+  const filteredByDateAndTime = useMemo(() => {
+    let result = orders;
+    
+    if (mapFilters.date) {
+      result = result.filter(order => {
+        const pickupDate = order.schedule?.pickupDate || order.pickup_date || order.pickupDate;
+        const deliveryDate = order.schedule?.deliveryDate || order.delivery_date || order.deliveryDate;
+        return pickupDate === mapFilters.date || deliveryDate === mapFilters.date;
+      });
+      console.log(`📅 Filtro fecha: ${mapFilters.date} → ${result.length} órdenes restantes`);
+    }
+    
+    if (mapFilters.time_window) {
+      const antes = result.length;
+      result = filterOrdersByTimeWindow(result, mapFilters.time_window);
+      console.log(`⏰ Filtro horario local (post-fecha): ${antes} → ${result.length} (time_window=${mapFilters.time_window})`);
+    }
+    
+    return result;
+  }, [orders, mapFilters]);
+
+  const displayedOrders = filterType === 'all' 
+    ? filteredByDateAndTime 
+    : filteredByDateAndTime.filter((o) => o.type === filterType);
+
+  console.log(`🗺️ Órdenes mostradas en mapa: ${displayedOrders.length} (total original: ${orders.length}, fecha/hora: ${filteredByDateAndTime.length}, tipo: ${filterType})`);
+
+  const pickupCount = displayedOrders.filter((o) => o.status === 'pending' && o.type !== 'wash-fold').length;
+  const deliveryCount = displayedOrders.filter((o) => o.status === 'ready' && o.type !== 'wash-fold').length;
   const trafficDelay = totalTrafficDelay(trafficEvents);
   const filteredProducts = productSearch.trim() ? productsList.filter(p => p.name?.toLowerCase().includes(productSearch.toLowerCase())) : productsList;
   const productsCount = productsList.length;
 
+  // Re-optimizar ruta cuando cambian las órdenes filtradas
+  useEffect(() => {
+    if (!loadingBackend) {
+      const result = optimizeOrders(displayedOrders);
+      setRouteResult(result);
+    }
+  }, [loadingBackend, displayedOrders]);
+
+  // Forzar redimensionamiento del mapa cuando cambia el sidebar (móvil) o la altura de la hoja inferior
+  useEffect(() => {
+    // Pequeño timeout para que el DOM se actualice
+    const timer = setTimeout(() => {
+      window.dispatchEvent(new Event('resize'));
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [sidebarOpen, sheetHeight, displayedOrders]);
+
   function handleReoptimize() {
     setOptimizing(true);
     setTimeout(() => {
-      const result = optimizeOrders(orders);
+      const result = optimizeOrders(displayedOrders);
       setRouteResult(result);
       setOptimizing(false);
       if (result) {
@@ -206,6 +336,19 @@ export function LogisticsMap() {
   }
 
   function handleCompleteStop(orderId) {
+    const stop = routeResult?.stops.find(s => s.order.id === orderId);
+    if (!stop) return;
+    const order = stop.order;
+    const isPickup = order.status === 'pending';
+    const now = new Date();
+
+    if (!isWithinTimeWindow(order, isPickup ? 'pickup' : 'delivery', now)) {
+      const typeLabel = isPickup ? 'Recogida' : 'Entrega';
+      const timeStr = isPickup ? order.schedule?.pickupTime : order.schedule?.deliveryTime;
+      toast.error(`${typeLabel} programada a las ${timeStr || 'horario no definido'}. Aún no es la hora permitida (máximo 15 min antes).`);
+      return;
+    }
+
     setCompletedStops((prev) => {
       const next = new Set(prev).add(orderId);
       const total = routeResult?.stops.length ?? 0;
@@ -218,11 +361,9 @@ export function LogisticsMap() {
       }
       return next;
     });
-    const order = routeResult?.stops.find(s => s.order.id === orderId);
-    if (order) {
-      const isPickup = order.order.status === 'pending';
-      toast.success(`${isPickup ? 'Recogido' : 'Entregado'}: ${order.order.customer.name}`);
-    }
+    toast.success(`${isPickup ? 'Recogido' : 'Entregado'}: ${order.customer.name}`);
+    // Forzar resize del mapa para actualizar marcadores
+    setTimeout(() => window.dispatchEvent(new Event('resize')), 50);
   }
 
   function markOrderPaid(orderId) {
@@ -235,7 +376,6 @@ export function LogisticsMap() {
   function updateOrderStatus(orderId, newStatus) {
     setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o)));
     setSelectedOrder((prev) => prev?.id === orderId ? { ...prev, status: newStatus } : prev);
-    // Update backend via the unified logistics endpoint
     const token = localStorage.getItem('token');
     if (token) {
       fetch(`${API_URL}/api/logistics/orders/${orderId}/status`, {
@@ -255,7 +395,7 @@ export function LogisticsMap() {
   const routeOrders = routeResult?.stops.map((s) => s.order) ?? [];
   const routeWaypoints = [HQ, ...routeOrders.map((o) => ({ lat: o.location.lat, lng: o.location.lng }))];
 
-  const nearbyWashFold = orders.filter((o) => {
+  const nearbyWashFold = displayedOrders.filter((o) => {
     if (o.type !== 'wash-fold') return false;
     if (routeWaypoints.length < 2) return false;
     return Math.min(...routeWaypoints.map((wp) => haversineDistance(wp.lat, wp.lng, o.location.lat, o.location.lng))) <= NEARBY_THRESHOLD_KM;
@@ -380,6 +520,7 @@ export function LogisticsMap() {
                   const isPickup = stop.order.status === 'pending';
                   const done = completedStops.has(stop.order.id);
                   const globalIdx = routeResult.stops.findIndex(s => s.order.id === stop.order.id);
+                  const isTimeValid = isWithinTimeWindow(stop.order, isPickup ? 'pickup' : 'delivery');
                   return (
                     <div key={stop.order.id} data-testid={`stop-${globalIdx}`} className={`rounded-lg border p-2.5 transition-all ${done ? 'border-green-300 bg-green-50 dark:bg-green-950 opacity-70' : stop.onTime ? (isPickup ? 'border-orange-200 bg-orange-50/50 dark:bg-orange-950/30' : 'border-green-200 bg-green-50/50 dark:bg-green-950/30') : 'border-amber-300 bg-amber-50 dark:bg-amber-950'}`}>
                       <div className="flex items-center justify-between gap-1 mb-1">
@@ -392,7 +533,16 @@ export function LogisticsMap() {
                         <div className="flex items-center gap-1 shrink-0">
                           <span className="text-gray-400 text-[10px] flex items-center gap-0.5"><Clock className="w-2.5 h-2.5" />{stop.estimatedArrival}</span>
                           {!done && (
-                            <button onClick={(e) => { e.stopPropagation(); handleCompleteStop(stop.order.id); }} data-testid={`complete-stop-${globalIdx}`} className="ml-1 text-[9px] font-bold px-1.5 py-1 rounded-lg bg-gray-100 hover:bg-green-100 hover:text-green-700 dark:bg-gray-700 dark:hover:bg-green-900 transition-colors flex items-center gap-0.5" title={isPickup ? 'Marcar como recogido' : 'Marcar como entregado'}>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleCompleteStop(stop.order.id); }}
+                              disabled={!isTimeValid}
+                              className={`ml-1 text-[9px] font-bold px-1.5 py-1 rounded-lg transition-colors ${
+                                !isTimeValid
+                                  ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                  : 'bg-gray-100 hover:bg-green-100 hover:text-green-700 dark:bg-gray-700 dark:hover:bg-green-900'
+                              }`}
+                              title={isTimeValid ? (isPickup ? 'Marcar como recogido' : 'Marcar como entregado') : 'Horario no permitido aún'}
+                            >
                               <CheckCircle2 className="w-3 h-3" />
                             </button>
                           )}
@@ -412,7 +562,6 @@ export function LogisticsMap() {
         )}
       </div>
       <div className="sticky bottom-0 p-3 border-t bg-white dark:bg-gray-900 dark:border-gray-700 space-y-2">
-        {/* Product inventory quick panel */}
         <button onClick={() => setShowProducts(!showProducts)} data-testid="toggle-products-btn" className="w-full flex items-center justify-between text-xs font-semibold px-2 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 transition-colors">
           <span className="flex items-center gap-1.5"><ShoppingBag className="w-3.5 h-3.5" /> Productos / Inventario</span>
           <span className="flex items-center gap-1">{productsCount > 0 && <span className="bg-indigo-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">{productsCount}</span>}{showProducts ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}</span>
@@ -468,7 +617,6 @@ export function LogisticsMap() {
 
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-gray-950" style={{ fontFamily: 'system-ui, sans-serif' }} data-testid="logistics-map-page">
-      {/* Top bar */}
       <div className="bg-white dark:bg-gray-900 dark:border-gray-700 border-b px-4 py-2.5 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-2.5">
           {isMobile && <button onClick={() => setSidebarOpen((o) => !o)} className="text-gray-500 hover:text-gray-700 p-1" data-testid="mobile-menu-btn">{sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}</button>}
@@ -486,7 +634,6 @@ export function LogisticsMap() {
           <button onClick={() => setDarkMode((v) => !v)} data-testid="dark-mode-btn" title={darkMode ? 'Modo dia' : 'Modo noche'} className="p-1.5 rounded-lg border bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">{darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}</button>
         </div>
       </div>
-      {/* Date & Time filters */}
       <MapFilters onFilterChange={setMapFilters} activeFilters={mapFilters} />
       {isMobile && (
         <div className="bg-white border-b px-3 py-1.5 flex items-center gap-1.5 overflow-x-auto shrink-0">
@@ -501,7 +648,16 @@ export function LogisticsMap() {
       <div className={`flex ${isMobile ? 'flex-col' : ''}`} style={{ height: isMobile ? 'calc(100vh - 98px)' : 'calc(100vh - 53px)' }}>
         {!isMobile && <div className="w-[310px] shrink-0 bg-white dark:bg-gray-900 border-r dark:border-gray-700 flex flex-col overflow-hidden">{SidebarContent}</div>}
         <div className="flex-1 relative" style={{ isolation: 'isolate' }}>
-          <MapView key="main-road-map" orders={filteredOrders} hqLocation={HQ} routeOrders={routeOrders} nearbyWashFold={nearbyWashFold} trafficEvents={trafficEvents} completedStops={completedStops} onOrderClick={handleOrderClick} />
+          <MapView
+            key={`map-${displayedOrders.length}-${routeOrders.length}-${sidebarOpen}`}
+            orders={displayedOrders}
+            hqLocation={HQ}
+            routeOrders={routeOrders}
+            nearbyWashFold={nearbyWashFold}
+            trafficEvents={trafficEvents}
+            completedStops={completedStops}
+            onOrderClick={handleOrderClick}
+          />
           {!isMobile && (
             <div className="absolute top-3 right-3 z-[1000] bg-white/95 backdrop-blur-sm rounded-xl shadow-lg border px-3 py-2">
               <div className="text-[10px] text-gray-400 font-semibold mb-1.5 uppercase tracking-wide">Filtrar vista</div>
@@ -563,7 +719,7 @@ export function LogisticsMap() {
           </div>
         </div>
       )}
-      <TimAssistant routeResult={routeResult} trafficEvents={trafficEvents} nearbyOpportunities={nearbyWashFold} totalTrafficDelay={trafficDelay} timRef={timRef} orders={orders}
+      <TimAssistant routeResult={routeResult} trafficEvents={trafficEvents} nearbyOpportunities={nearbyWashFold} totalTrafficDelay={trafficDelay} timRef={timRef} orders={displayedOrders}
         onCompleteStop={(stopIndex) => { const stop = routeResult?.stops[stopIndex]; if (stop) handleCompleteStop(stop.order.id); }}
         onUpdateOrderStatus={updateOrderStatus}
       />

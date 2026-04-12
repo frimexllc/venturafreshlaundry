@@ -342,9 +342,27 @@ export default function ContactPage() {
                 <InfoCard icon={MapPin} label={t("Address", "Dirección")} delay={120}>
                   <span className="not-italic">5722 Telephone Rd #5, Ventura, CA 93003</span>
                 </InfoCard>
-                <InfoCard icon={Clock} label={t("Hours", "Horario")} delay={180}>
-                  <span className="not-italic">{t("Monday – Sunday · 7:00 AM – 10:00 PM", "Lunes – Domingo · 7:00 AM – 10:00 PM")}</span>
-                </InfoCard>
+<InfoCard icon={Clock} label={t("Hours", "Horario")} delay={180}>
+  <div className="not-italic space-y-1">
+    
+    <div>
+      <strong>{t("Self-Service:", "Autoservicio:")}</strong>
+      <br />
+      {t("Monday – Sunday · 6:00 AM – 10:00 PM", "Lunes – Domingo · 6:00 AM – 10:00 PM")}
+      <br />
+      <span className="text-sm">
+        {t("Last wash at 9:00 PM", "Última lavada a las 9:00 PM")}
+      </span>
+    </div>
+
+    <div>
+      <strong>{t("Wash & Fold:", "Lavado y Doblado:")}</strong>
+      <br />
+      {t("Monday – Sunday · 8:00 AM – 6:00 PM", "Lunes – Domingo · 8:00 AM – 6:00 PM")}
+    </div>
+
+  </div>
+</InfoCard>
 
                 {/* Map */}
                 <Reveal delay={220} dir="up" dur={400}>
@@ -544,7 +562,7 @@ export default function ContactPage() {
             <Reveal delay={220} dir="up" dur={300}>
               <div className="text-center mt-10">
                 <p className="text-slate-400 text-sm mb-5 not-italic">{t("Still have questions?", "¿Todavía tienes preguntas?")}</p>
-                <Mag as="a" href="tel:+18058368872" strength={0.25}
+                <Mag as="a" href="tel:+1(820) 234-8181" strength={0.25}
                   className="inline-flex items-center gap-2 overflow-hidden relative bg-primary text-white rounded-full px-10 py-4 text-[13px] font-bold uppercase tracking-widest shadow-lg shadow-primary/30 cursor-pointer hover:-translate-y-0.5 transition-transform duration-200 active:scale-95 group">
                   <span className="relative z-10 flex items-center gap-2 not-italic">
                     📞 {t("Call Us Now", "Llámanos Ahora")}

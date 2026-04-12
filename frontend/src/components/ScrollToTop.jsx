@@ -15,6 +15,32 @@ export default function ScrollToTop() {
       return;
     }
 
+    // ★ Comportamiento especial para páginas con formulario
+    if (pathname === "/schedule-pickup") {
+      requestAnimationFrame(() => {
+        const formContainer = document.getElementById("schedule-pickup-form");
+        if (formContainer) {
+          formContainer.scrollIntoView({ behavior: "auto", block: "start" });
+        } else {
+          window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+        }
+      });
+      return;
+    }
+
+    // ★ Nuevo: para Wash & Fold
+    if (pathname === "/wash-fold") {
+      requestAnimationFrame(() => {
+        const formContainer = document.getElementById("wash-fold-form");
+        if (formContainer) {
+          formContainer.scrollIntoView({ behavior: "auto", block: "start" });
+        } else {
+          window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+        }
+      });
+      return;
+    }
+
     // Default: siempre arriba al cambiar ruta
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, [pathname, search, hash]);

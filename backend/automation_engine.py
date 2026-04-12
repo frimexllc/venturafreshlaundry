@@ -993,121 +993,108 @@ async def get_sla_alerts():
 
 # ==================== OPERATOR DASHBOARD ====================
 
-@automation_router.get("/operator-dashboard")
-async def get_operator_dashboard():
-    """
-    Dashboard for operator - shows only what they need to act on.
-    The operator only needs to update order status.
-    """
-    now = datetime.now(timezone.utc)
-    today = now.strftime("%Y-%m-%d")
+def _normalize_order_for_dashboard(order: Dict) -> Dict:
+    """Normalize a raw order document into a dashboard-friendly format."""
+    status = normalize_status(order.get("status") or order.get("estado_actual"))
+    service_type = order.get("service_type")
+    return {
+        "order_id": order.get("order_id") or order.get("order_number") or order.get("id"),
+        "id": order.get("id"),
+        "order_number": order.get("order_number") or order.get("order_id"),
+        "status": status,
+        "next_status": get_next_status(status, service_type),
+        "action_label": get_action_label(status, service_type),
+        "customer_name": order.get("customer_name"),
+        "customer_phone": order.get("customer_phone"),
+        "customer_email": order.get("customer_email"),
+        "preferred_contact": order.get("preferred_contact"),
+        "membership_plan": order.get("membership_plan"),
+        "membership_status": order.get("membership_status"),
+        "service_type": service_type,
+        "pickup_date": order.get("pickup_date"),
+        "pickup_time": order.get("pickup_time") or order.get("pickup_time_window"),
+        "pickup_address": order.get("pickup_address"),
+        "delivery_address": order.get("delivery_address") or order.get("pickup_address"),
+        "gate_code": order.get("gate_code"),
+        "preferences_id": order.get("preferences_id"),
+        "preferences_snapshot": order.get("preferences_snapshot"),
+        "special_instructions": order.get("special_instructions") or order.get("notes"),
+        "estimated_lbs": order.get("estimated_lbs"),
+        "actual_lbs": order.get("actual_lbs"),
+        "total_amount": order.get("total_amount"),
+        "payment_status": order.get("payment_status"),
+        "payment_method": order.get("payment_method"),
+        "amount_paid": order.get("amount_paid"),
+        "change_due": order.get("change_due"),
+        "created_at": order.get("created_at"),
+    }
 
-    terminal_statuses = ["COMPLETED", "CANCELLED", "completed", "cancelled"]
-    pickup_delivery_statuses = {"PICKED_UP", "PROCESSING", "READY", "OUT_FOR_DELIVERY", "DELIVERED"}
-    wash_fold_ready_statuses = {"PROCESSING", "READY"}
-    processing_statuses = {"PROCESSING"}
 
-    active_orders = await db.orders.find(
-        {"status": {"$nin": terminal_statuses}},
-        {"_id": 0}
-    ).sort("updated_at", -1).to_list(500)
+def _categorize_orders(normalized_orders: list, today: str) -> Dict:
+    """Split normalized orders into dashboard sections (pickups, delivery, W&F)."""
+    PD_ACTIVE = {"PICKED_UP", "PROCESSING", "READY", "OUT_FOR_DELIVERY", "DELIVERED"}
+    WF_READY = {"PROCESSING", "READY"}
 
-    urgent_tickets = await db.tickets.find({
-        "status": {"$in": ["OPEN", "open"]},
-        "priority": {"$in": ["HIGH", "high"]}
-    }, {"_id": 0}).to_list(20)
-
-    active_orders = await enrich_orders_with_customers(active_orders)
-
-    def normalize_order(order: Dict):
-        status = normalize_status(order.get("status") or order.get("estado_actual"))
-        order_id = order.get("order_id") or order.get("order_number") or order.get("id")
-        pickup_time = order.get("pickup_time") or order.get("pickup_time_window")
-        delivery_address = order.get("delivery_address") or order.get("pickup_address")
-        service_type = order.get("service_type")
-        return {
-            "order_id": order_id,
-            "id": order.get("id"),
-            "order_number": order.get("order_number") or order.get("order_id"),
-            "status": status,
-            "next_status": get_next_status(status, service_type),
-            "action_label": get_action_label(status, service_type),
-            "customer_name": order.get("customer_name"),
-            "customer_phone": order.get("customer_phone"),
-            "customer_email": order.get("customer_email"),
-            "preferred_contact": order.get("preferred_contact"),
-            "membership_plan": order.get("membership_plan"),
-            "membership_status": order.get("membership_status"),
-            "service_type": service_type,
-            "pickup_date": order.get("pickup_date"),
-            "pickup_time": pickup_time,
-            "pickup_address": order.get("pickup_address"),
-            "delivery_address": delivery_address,
-            "gate_code": order.get("gate_code"),
-            "preferences_id": order.get("preferences_id"),
-            "preferences_snapshot": order.get("preferences_snapshot"),
-            "special_instructions": order.get("special_instructions") or order.get("notes"),
-            "estimated_lbs": order.get("estimated_lbs"),
-            "actual_lbs": order.get("actual_lbs"),
-            "total_amount": order.get("total_amount"),
-            "payment_status": order.get("payment_status"),
-            "payment_method": order.get("payment_method"),
-            "amount_paid": order.get("amount_paid"),
-            "change_due": order.get("change_due"),
-            "created_at": order.get("created_at")
-        }
-
-    normalized_orders = [normalize_order(order) for order in active_orders]
-
-    todays_pickups = []
-    ready_for_delivery = []
-    wash_fold_dropoffs = []
-    wash_fold_ready = []
+    todays_pickups, ready_for_delivery = [], []
+    wash_fold_dropoffs, wash_fold_ready = [], []
 
     for order in normalized_orders:
         status = normalize_status(order.get("status")) or "NEW"
-        service_type = normalize_service_type(order.get("service_type"))
-        is_wash_fold = service_type in WASH_FOLD_SERVICE_TYPES
-
-        if is_wash_fold:
-            if status in wash_fold_ready_statuses:
-                wash_fold_ready.append(order)
-            else:
-                wash_fold_dropoffs.append(order)
-            continue
-
-        if status in pickup_delivery_statuses:
-            ready_for_delivery.append(order)
+        is_wf = normalize_service_type(order.get("service_type")) in WASH_FOLD_SERVICE_TYPES
+        if is_wf:
+            (wash_fold_ready if status in WF_READY else wash_fold_dropoffs).append(order)
         else:
-            todays_pickups.append(order)
+            (ready_for_delivery if status in PD_ACTIVE else todays_pickups).append(order)
 
-    pickups_remaining_today = len([
-        order for order in normalized_orders
-        if normalize_service_type(order.get("service_type")) not in WASH_FOLD_SERVICE_TYPES
-        and order.get("pickup_date") == today
-        and normalize_status(order.get("status")) not in {"PICKED_UP", "COMPLETED", "CANCELLED"}
-    ])
+    pickups_remaining = sum(
+        1 for o in normalized_orders
+        if normalize_service_type(o.get("service_type")) not in WASH_FOLD_SERVICE_TYPES
+        and o.get("pickup_date") == today
+        and normalize_status(o.get("status")) not in {"PICKED_UP", "COMPLETED", "CANCELLED"}
+    )
+    processing_count = sum(1 for o in normalized_orders if normalize_status(o.get("status")) == "PROCESSING")
 
-    orders_in_processing = len([
-        order for order in normalized_orders
-        if normalize_status(order.get("status")) in processing_statuses
-    ])
-    
-    stats = {
-        "pickups_remaining_today": pickups_remaining_today,
-        "orders_in_processing": orders_in_processing,
-        "orders_ready": len(ready_for_delivery),
-        "urgent_tickets": len(urgent_tickets)
-    }
-    
     return {
-        "generated_at": now.isoformat(),
-        "stats": stats,
         "todays_pickups": todays_pickups,
         "ready_for_delivery": ready_for_delivery,
         "wash_fold_dropoffs": wash_fold_dropoffs,
         "wash_fold_ready": wash_fold_ready,
-        "urgent_tickets": urgent_tickets
+        "pickups_remaining": pickups_remaining,
+        "processing_count": processing_count,
+    }
+
+
+@automation_router.get("/operator-dashboard")
+async def get_operator_dashboard():
+    """Dashboard for operator - shows only what they need to act on."""
+    now = datetime.now(timezone.utc)
+    today = now.strftime("%Y-%m-%d")
+
+    active_orders = await db.orders.find(
+        {"status": {"$nin": ["COMPLETED", "CANCELLED", "completed", "cancelled"]}}, {"_id": 0}
+    ).sort("updated_at", -1).to_list(500)
+
+    urgent_tickets = await db.tickets.find(
+        {"status": {"$in": ["OPEN", "open"]}, "priority": {"$in": ["HIGH", "high"]}}, {"_id": 0}
+    ).to_list(20)
+
+    active_orders = await enrich_orders_with_customers(active_orders)
+    normalized = [_normalize_order_for_dashboard(o) for o in active_orders]
+    cats = _categorize_orders(normalized, today)
+
+    return {
+        "generated_at": now.isoformat(),
+        "stats": {
+            "pickups_remaining_today": cats["pickups_remaining"],
+            "orders_in_processing": cats["processing_count"],
+            "orders_ready": len(cats["ready_for_delivery"]),
+            "urgent_tickets": len(urgent_tickets),
+        },
+        "todays_pickups": cats["todays_pickups"],
+        "ready_for_delivery": cats["ready_for_delivery"],
+        "wash_fold_dropoffs": cats["wash_fold_dropoffs"],
+        "wash_fold_ready": cats["wash_fold_ready"],
+        "urgent_tickets": urgent_tickets,
     }
 
 

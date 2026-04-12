@@ -12,7 +12,7 @@ BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
 
 # Test credentials
 ADMIN_EMAIL = os.environ.get("TEST_ADMIN_EMAIL", "owner@frimexllc.com")
-ADMIN_PASSWORD = "Fr!m3x##$$"
+ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD", "admin123")
 
 
 class TestAuthEndpoints:
@@ -122,7 +122,7 @@ class TestDeliveryRules:
         })
         assert response.status_code == 200
         data = response.json()
-        assert data["valid"] is True
+        assert data["valid"] == True
         assert data["zip_code"] == "93001"
         assert "city" in data
         print(f"ZIP 93001 valid: city={data['city']}, zone={data.get('zone')}")
@@ -134,7 +134,7 @@ class TestDeliveryRules:
         })
         assert response.status_code == 200
         data = response.json()
-        assert data["valid"] is False
+        assert data["valid"] == False
         assert "message" in data
         print(f"ZIP 90210 invalid: {data['message']}")
     
@@ -146,7 +146,7 @@ class TestDeliveryRules:
         })
         assert response.status_code == 200
         data = response.json()
-        assert data["eligible"] is True
+        assert data["eligible"] == True
         assert data["fee"] == 0
         assert data["free_miles"] == 3
         print(f"Fee for 2 miles in 93001: ${data['fee']} (free within {data['free_miles']} miles)")
@@ -159,7 +159,7 @@ class TestDeliveryRules:
         })
         assert response.status_code == 200
         data = response.json()
-        assert data["eligible"] is True
+        assert data["eligible"] == True
         # 5 miles - 3 free = 2 extra miles * $1.50 = $3.00
         assert data["fee"] == 3.0
         print(f"Fee for 5 miles in 93003: ${data['fee']} (extra miles: {data.get('extra_miles')})")
@@ -193,7 +193,7 @@ class TestDeliveryRules:
         })
         assert response.status_code == 200
         data = response.json()
-        assert data["valid"] is True
+        assert data["valid"] == True
         assert data["method"] == "card"
         print(f"Payment card valid: {data}")
     
@@ -205,7 +205,7 @@ class TestDeliveryRules:
         })
         assert response.status_code == 200
         data = response.json()
-        assert data["valid"] is False
+        assert data["valid"] == False
         assert "message" in data
         print(f"Payment bitcoin invalid: {data['message']}")
 

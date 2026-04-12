@@ -29,7 +29,7 @@ class TestLogisticsOrdersEndpoint:
             f"{BASE_URL}/api/auth/login",
             json={
                 "email": ADMIN_EMAIL,
-                "password": "Fr!m3x##$$"
+                "password": os.environ.get("TEST_ADMIN_PASSWORD", "admin123")
             }
         )
         if response.status_code == 200:
@@ -159,7 +159,7 @@ class TestLogisticsStatusUpdate:
             f"{BASE_URL}/api/auth/login",
             json={
                 "email": ADMIN_EMAIL,
-                "password": "Fr!m3x##$$"
+                "password": os.environ.get("TEST_ADMIN_PASSWORD", "admin123")
             }
         )
         if response.status_code == 200:
@@ -289,7 +289,7 @@ class TestGeocodeCache:
             f"{BASE_URL}/api/auth/login",
             json={
                 "email": ADMIN_EMAIL,
-                "password": "Fr!m3x##$$"
+                "password": os.environ.get("TEST_ADMIN_PASSWORD", "admin123")
             }
         )
         if response.status_code == 200:
@@ -335,7 +335,7 @@ class TestOrderTypeMapping:
             f"{BASE_URL}/api/auth/login",
             json={
                 "email": ADMIN_EMAIL,
-                "password": "Fr!m3x##$$"
+                "password": os.environ.get("TEST_ADMIN_PASSWORD", "admin123")
             }
         )
         if response.status_code == 200:
@@ -392,7 +392,7 @@ class TestWashFoldNearbyOpportunity:
             f"{BASE_URL}/api/auth/login",
             json={
                 "email": ADMIN_EMAIL,
-                "password": "Fr!m3x##$$"
+                "password": os.environ.get("TEST_ADMIN_PASSWORD", "admin123")
             }
         )
         if response.status_code == 200:

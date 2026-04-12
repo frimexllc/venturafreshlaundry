@@ -11,7 +11,7 @@ BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
 # Test data
 TEST_CUSTOMER_EMAIL = f"test_customer_{uuid.uuid4().hex[:8]}@example.com"
-TEST_CUSTOMER_PASSWORD = "TestPass123!"
+TEST_CUSTOMER_PASSWORD = os.environ.get("TEST_CUSTOMER_PASSWORD", "TestPass123!")
 TEST_CUSTOMER_NAME = "Test Customer Portal"
 
 

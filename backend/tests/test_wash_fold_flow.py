@@ -33,7 +33,7 @@ class TestWashFoldStatusFlow:
         
         assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
         data = response.json()
-        assert data.get("success") is True
+        assert data.get("success") == True
         assert "order_number" in data
         print(f"Created wash_fold order: {data['order_number']}")
         return data["order_number"]
@@ -54,7 +54,7 @@ class TestWashFoldStatusFlow:
         
         assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
         data = response.json()
-        assert data.get("success") is True
+        assert data.get("success") == True
         print(f"Created wash_fold order with address: {data['order_number']}")
     
     def test_wash_fold_operator_dashboard_shows_correct_next_status(self):

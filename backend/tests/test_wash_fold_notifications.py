@@ -33,7 +33,7 @@ class TestWashFoldContactPreference:
         
         assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
         data = response.json()
-        assert data.get("success") is True
+        assert data.get("success") == True
         order_number = data["order_number"]
         
         # Login as admin to verify order preferred_contact

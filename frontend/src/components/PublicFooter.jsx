@@ -27,10 +27,25 @@ export default function PublicFooter() {
                 <MapPin className="h-4 w-4 flex-shrink-0 mt-0.5" />
                 <span>5722 Telephone Rd #5, Ventura, CA 93003</span>
               </div>
-              <div className="flex items-center gap-2">
-                <Clock className="h-4 w-4 flex-shrink-0" />
-                <span>{t("Mon-Sun 6:00 AM - 10:00 PM", "Lun-Dom 6:00 AM - 10:00 PM")}</span>
-              </div>
+              <div className="flex items-start gap-2">
+  <Clock className="h-4 w-4 flex-shrink-0 mt-1" />
+  
+  <div className="text-sm leading-tight">
+    <div>
+      <strong>{t("Self-Service:", "Autoservicio:")}</strong>{" "}
+      {t("Mon-Sun 6:00 AM - 10:00 PM", "Lun-Dom 6:00 AM - 10:00 PM")}
+    </div>
+
+    <div className="text-xs">
+      {t("Last wash at 9:00 PM", "Última lavada a las 9:00 PM")}
+    </div>
+
+    <div className="mt-1">
+      <strong>{t("Wash & Fold:", "Lavado y Doblado:")}</strong>{" "}
+      {t("Mon-Sun 8:00 AM - 6:00 PM", "Lun-Dom 8:00 AM - 6:00 PM")}
+    </div>
+  </div>
+</div>
               <div className="flex items-center gap-2">
                 <Phone className="h-4 w-4 flex-shrink-0" />
                 <span>(820) 234-8181</span>

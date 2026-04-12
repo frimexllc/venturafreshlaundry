@@ -297,7 +297,6 @@ const ChipSet = ({ options, value, onChange }) => (
   </div>
 );
 
-// CHANGED: 3-column grid + accent/badge props support
 const OptionCards = ({ options, value, onChange }) => (
   <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
     {options.map((o) => {
@@ -329,7 +328,75 @@ const OptionCards = ({ options, value, onChange }) => (
   </div>
 );
 
-// NEW: Airbnb host detail panel
+// ─── Plan Selector (sin precios visibles) ─────────────────────────────────────
+const PlanSelector = ({ value, onChange }) => {
+  const { t } = useLocale();
+  const plans = [
+    { val: "standard", icon: "🕒", label: t("Standard (36h)", "Estándar (36h)"), desc: t("Budget-friendly", "Económico") },
+    { val: "premium",  icon: "⭐", label: t("Premium (24h)",  "Premium (24h)"),  desc: t("Most popular", "Más popular") },
+    { val: "express",  icon: "⚡", label: t("Express (Same Day)", "Express (mismo día)"), desc: t("Fastest service", "Servicio más rápido") },
+  ];
+  return (
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+      {plans.map((p) => (
+        <button
+          key={p.val}
+          type="button"
+          onClick={() => onChange(p.val)}
+          style={{
+            flex: 1, padding: "10px 8px", borderRadius: 10, textAlign: "center",
+            border: `1.5px solid ${value === p.val ? "#0ea5e9" : "hsl(var(--border))"}`,
+            background: value === p.val ? "rgba(14,165,233,.1)" : "hsl(var(--secondary))",
+            cursor: "pointer", transition: "all .15s",
+            transform: value === p.val ? "scale(1.02)" : "scale(1)",
+            fontFamily: "inherit",
+          }}
+        >
+          <div style={{ fontSize: 20, marginBottom: 4 }}>{p.icon}</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: value === p.val ? "#0ea5e9" : "hsl(var(--foreground))" }}>{p.label}</div>
+          <div style={{ fontSize: 9, color: "hsl(var(--muted-foreground))", marginTop: 2 }}>{p.desc}</div>
+        </button>
+      ))}
+    </div>
+  );
+};
+
+// ─── Service Info Panels ──────────────────────────────────────────────────────
+const PickupDeliveryInfoPanel = ({ t }) => (
+  <div style={{ padding: "13px 15px", borderRadius: 11, marginTop: 8,
+    background: "linear-gradient(135deg,rgba(14,165,233,.06),rgba(56,189,248,.04))",
+    border: "1px solid rgba(14,165,233,.25)", animation: "tl_panel .25s ease both" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 9 }}>
+      <span style={{ fontSize: 17 }}>🚚</span>
+      <span style={{ fontSize: 12, fontWeight: 700, color: "#0ea5e9" }}>
+        {t("Pickup & Delivery Service", "Servicio de Recogida y Entrega")}
+      </span>
+    </div>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "5px 12px", marginBottom: 9 }}>
+      {[
+        { icon: "⚡", en: "Same-day available",     es: "Disponible el mismo día" },
+        { icon: "🌿", en: "Eco-friendly detergents", es: "Detergentes ecológicos" },
+        { icon: "🩸", en: "Stain treatment",        es: "Tratamiento de manchas" },
+        { icon: "📦", en: "Folding & packaging",    es: "Doblado y empaquetado" },
+        { icon: "✅", en: "Satisfaction guaranteed", es: "Garantía de satisfacción" },
+      ].map((f) => (
+        <div key={f.icon} style={{ display: "flex", alignItems: "center", gap: 5,
+          fontSize: 11, color: "hsl(var(--foreground))" }}>
+          <span style={{ fontSize: 13 }}>{f.icon}</span>
+          <span>{t(f.en, f.es)}</span>
+        </div>
+      ))}
+    </div>
+    <div style={{ padding: "7px 10px", borderRadius: 8, background: "rgba(14,165,233,.07)",
+      fontSize: 10, color: "#0369a1", lineHeight: 1.55 }}>
+      {t(
+        "💡 We'll pick up your laundry at your convenience, wash with care, and deliver back fresh & folded.",
+        "💡 Recogemos tu ropa cuando prefieras, la lavamos con cuidado y te la devolvemos fresca y doblada."
+      )}
+    </div>
+  </div>
+);
+
 const AirbnbInfoPanel = ({ t }) => (
   <div style={{ padding: "13px 15px", borderRadius: 11, marginTop: 8,
     background: "linear-gradient(135deg,rgba(255,92,37,.06),rgba(255,56,92,.04))",
@@ -366,7 +433,42 @@ const AirbnbInfoPanel = ({ t }) => (
   </div>
 );
 
-// CHANGED: now accepts `options` prop so it works for both wash & dry
+const CommercialInfoPanel = ({ t }) => (
+  <div style={{ padding: "13px 15px", borderRadius: 11, marginTop: 8,
+    background: "linear-gradient(135deg,rgba(99,102,241,.06),rgba(79,70,229,.04))",
+    border: "1px solid rgba(99,102,241,.25)", animation: "tl_panel .25s ease both" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 9 }}>
+      <span style={{ fontSize: 17 }}>🏢</span>
+      <span style={{ fontSize: 12, fontWeight: 700, color: "#4f46e5" }}>
+        {t("Commercial / B2B Service", "Servicio Comercial / B2B")}
+      </span>
+    </div>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "5px 12px", marginBottom: 9 }}>
+      {[
+        { icon: "💰", en: "Bulk pricing",           es: "Precios por volumen" },
+        { icon: "📅", en: "Weekly contracts",       es: "Contratos semanales" },
+        { icon: "👕", en: "Uniforms & linens",      es: "Uniformes y ropa de cama" },
+        { icon: "⚡", en: "Fast turnaround",        es: "Plazo rápido" },
+        { icon: "👤", en: "Dedicated account manager", es: "Gestor de cuenta dedicado" },
+        { icon: "⚙️", en: "Customizable service",    es: "Servicio personalizable" },
+      ].map((f) => (
+        <div key={f.icon} style={{ display: "flex", alignItems: "center", gap: 5,
+          fontSize: 11, color: "hsl(var(--foreground))" }}>
+          <span style={{ fontSize: 13 }}>{f.icon}</span>
+          <span>{t(f.en, f.es)}</span>
+        </div>
+      ))}
+    </div>
+    <div style={{ padding: "7px 10px", borderRadius: 8, background: "rgba(99,102,241,.07)",
+      fontSize: 10, color: "#3730a3", lineHeight: 1.55 }}>
+      {t(
+        "💡 Ideal for hotels, restaurants, gyms, and offices. We adapt to your volume and schedule.",
+        "💡 Ideal para hoteles, restaurantes, gimnasios y oficinas. Nos adaptamos a tu volumen y horario."
+      )}
+    </div>
+  </div>
+);
+
 const TempRow = ({ value, onChange, options }) => (
   <div style={{ display: "flex", gap: 6 }}>
     {options.map((o) => (
@@ -384,12 +486,11 @@ const TempRow = ({ value, onChange, options }) => (
   </div>
 );
 
-// NEW: option arrays for wash & dry temperatures
 const WASH_TEMP_OPTIONS = [
-  { val: "cold", icon: "❄️",  label: "Cold",     sub: "≤30°C"    },
-  { val: "warm", icon: "🌡️", label: "Warm",     sub: "40°C"     },
-  { val: "hot",  icon: "🔥",  label: "Hot",      sub: "60°C+"    },
-  { val: "any",  icon: "✨",  label: "Any",      sub: "Trust us" },
+  { val: "cold", icon: "❄️",  label: "Cold",  sub: "≤30°C"    },
+  { val: "warm", icon: "🌡️", label: "Warm",  sub: "40°C"     },
+  { val: "hot",  icon: "🔥",  label: "Hot",   sub: "60°C+"    },
+  { val: "any",  icon: "✨",  label: "Any",   sub: "Trust us" },
 ];
 
 const DRY_TEMP_OPTIONS = [
@@ -520,18 +621,20 @@ const ConveyorTrack = ({ cur, locale, onStageClick }) => {
 };
 
 // ─── Main ──────────────────────────────────────────────────────────────────────
-// CHANGED: added dry_temp to EMPTY
 const EMPTY = {
   first_name: "", last_name: "", email: "", phone: "", dialCode: "+1", dialIso: "US",
   contact_method: "", sms_consent: false,
   address_line1: "", address_line2: "", city: "", state: "", zip_code: "", addr_notes: "",
-  service_type: "", wash_temp: "", dry_temp: "", notes: "",
+  service_type: "", service_plan: "",   // <--- nuevo campo
+  wash_temp: "", dry_temp: "", notes: "",
   pickup_date: "", pickup_time: "", terms: false,
 };
 
 export default function SchedulePickup() {
   const { t, locale } = useLocale();
   const topRef  = useRef(null);
+  const formRef = useRef(null);
+
   const [cur,        setCur]        = useState(0);
   const [formKey,    setFormKey]    = useState(0);
   const [form,       setForm]       = useState({ ...EMPTY });
@@ -558,8 +661,10 @@ export default function SchedulePickup() {
   }, []);
 
   const setF = useCallback((k, v) => setForm((p) => ({ ...p, [k]: v })), []);
-  const scrollTop = () => topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  const goTo = (n) => { setCur(n); setFormKey((k) => k + 1); scrollTop(); };
+
+  const scrollToForm = () => formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+  const goTo = (n) => { setCur(n); setFormKey((k) => k + 1); scrollToForm(); };
 
   const validate = () => {
     const err = (msg) => { toast.error(msg); return false; };
@@ -578,7 +683,11 @@ export default function SchedulePickup() {
       if (!form.state.trim())         return err(t("Enter your state",   "Ingresa tu estado"));
       if (!form.zip_code.trim())      return err(t("Enter your ZIP",     "Ingresa tu código postal"));
     }
-    if (cur === 2 && !form.service_type) return err(t("Select a service", "Selecciona un servicio"));
+    if (cur === 2) {
+      if (!form.service_type) return err(t("Select a service", "Selecciona un servicio"));
+      if (form.service_type === "pickup_delivery" && !form.service_plan)
+        return err(t("Select a turnaround plan", "Selecciona un plan de tiempo"));
+    }
     if (cur === 3 && !form.pickup_time)  return err(t("Select a time window", "Selecciona un horario"));
     if (cur === 4 && !form.terms)        return err(t("Accept terms to continue", "Acepta los términos"));
     return true;
@@ -597,19 +706,20 @@ export default function SchedulePickup() {
     try {
       const fullPhone   = `${form.dialCode} ${form.phone}`.trim();
       const fullAddress = [form.address_line1, form.address_line2, form.city, form.state, form.zip_code].filter(Boolean).join(", ");
-      // CHANGED: dry_temp included in notes
       const notes = [
         form.wash_temp ? `Wash temp: ${form.wash_temp}` : "",
         form.dry_temp  ? `Dry temp: ${form.dry_temp}`   : "",
         form.notes?.trim(),
         form.addr_notes ? `Pickup note: ${form.addr_notes}` : "",
         `Contact via: ${form.contact_method}`,
+        form.service_plan ? `Service plan: ${form.service_plan}` : "",
       ].filter(Boolean).join("\n");
       await axios.post(`${API}/public/pickup-request`, {
         name: `${form.first_name} ${form.last_name}`.trim(),
         email: form.email.trim(), phone: fullPhone,
         address: fullAddress, pickup_date: form.pickup_date,
         pickup_time: form.pickup_time, service_type: form.service_type,
+        service_plan: form.service_plan,
         contact_method: form.contact_method, sms_consent: form.sms_consent, notes,
       });
     } catch (e) { toast.error(getErr(e)); }
@@ -620,29 +730,32 @@ export default function SchedulePickup() {
 
   const handleReset = () => {
     setForm({ ...EMPTY }); setCur(0); setFormKey((k) => k + 1);
-    setWashPhase(-1); setWashDone(false); scrollTop();
+    setWashPhase(-1); setWashDone(false); scrollToForm();
   };
 
   const g2   = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 };
   const g3   = { display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 8 };
   const fGap = { display: "flex", flexDirection: "column", gap: 14 };
 
-  // CHANGED: airbnb_host added to svcMap
   const svcMap  = {
     pickup_delivery: t("Pickup & Delivery", "Recogida y Entrega"),
     airbnb_host:     t("Airbnb Host",       "Anfitrión Airbnb"),
     commercial:      t("Commercial / B2B",  "Comercial / B2B"),
   };
   const tempMap = { cold: "Cold ≤30°C", warm: "Warm 40°C", hot: "Hot 60°C+", any: t("Any temperature", "Cualquier temperatura") };
-  // NEW: dryMap for confirm summary
   const dryMap  = {
-    low:    t("Low heat",   "Calor bajo"),
-    medium: t("Medium heat","Calor medio"),
-    high:   t("High heat",  "Calor alto"),
-    air:    t("Air dry",    "Secado al aire"),
+    low:    t("Low heat",    "Calor bajo"),
+    medium: t("Medium heat", "Calor medio"),
+    high:   t("High heat",   "Calor alto"),
+    air:    t("Air dry",     "Secado al aire"),
   };
   const timeMap = { "8am-12pm": "8:00 AM – 12:00 PM", "2pm-6pm": "2:00 PM – 6:00 PM" };
   const cmMap   = { phone: t("Phone call", "Llamada"), text: "Text/SMS", email: "Email" };
+  const planMap = {
+    standard: t("Standard (36h)", "Estándar (36h)"),
+    premium:  t("Premium (24h)",  "Premium (24h)"),
+    express:  t("Express (Same Day)", "Express (mismo día)"),
+  };
 
   return (
     <div className="min-h-screen" style={{ background: "hsl(var(--background))" }}>
@@ -661,45 +774,45 @@ export default function SchedulePickup() {
       `}</style>
 
       {/* Hero */}
-     <section ref={topRef} style={{
-  paddingTop: 80, paddingBottom: 0,
-  background: "linear-gradient(150deg,#0b1929 0%,#081320 55%,#040c16 100%)",
-  position: "relative", overflow: "hidden",
-}}>
-  <div style={{ position: "absolute", inset: 0, backgroundImage: "linear-gradient(rgba(255,255,255,.022) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)", backgroundSize: "44px 44px", pointerEvents: "none" }} />
-  <div style={{ position: "absolute", top: -80, left: -60, width: 340, height: 340, borderRadius: "50%", background: "radial-gradient(circle,rgba(14,165,233,.14) 0%,transparent 65%)", filter: "blur(40px)", pointerEvents: "none" }} />
+      <section ref={topRef} style={{
+        paddingTop: 80, paddingBottom: 0,
+        background: "linear-gradient(150deg,#0b1929 0%,#081320 55%,#040c16 100%)",
+        position: "relative", overflow: "hidden",
+      }}>
+        <div style={{ position: "absolute", inset: 0, backgroundImage: "linear-gradient(rgba(255,255,255,.022) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)", backgroundSize: "44px 44px", pointerEvents: "none" }} />
+        <div style={{ position: "absolute", top: -80, left: -60, width: 340, height: 340, borderRadius: "50%", background: "radial-gradient(circle,rgba(14,165,233,.14) 0%,transparent 65%)", filter: "blur(40px)", pointerEvents: "none" }} />
 
-  {/* ── Banner image ── */}
-  <div style={{ width: "100%", maxHeight: 280, overflow: "hidden", position: "relative" }}>
-    <img src={heroBanner} alt="Ventura Fresh Laundry"
-      style={{ width: "100%", height: 280, objectFit: "cover", objectPosition: "center", display: "block", opacity: 0.75 }} />
-    <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 120, background: "linear-gradient(to bottom, transparent, #081320)", pointerEvents: "none" }} />
-    <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 60, background: "linear-gradient(to bottom, #0b1929, transparent)", pointerEvents: "none" }} />
-  </div>
+        {/* Banner image */}
+        <div style={{ width: "100%", maxHeight: 280, overflow: "hidden", position: "relative" }}>
+          <img src={heroBanner} alt="Ventura Fresh Laundry"
+            style={{ width: "100%", height: 280, objectFit: "cover", objectPosition: "center", display: "block", opacity: 0.75 }} />
+          <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 120, background: "linear-gradient(to bottom, transparent, #081320)", pointerEvents: "none" }} />
+          <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 60, background: "linear-gradient(to bottom, #0b1929, transparent)", pointerEvents: "none" }} />
+        </div>
 
-  {/* ── Text ── */}
-  <div style={{ maxWidth: 900, margin: "0 auto", padding: "20px 24px 40px", position: "relative", zIndex: 2 }}>
-    <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 20, padding: "4px 12px", marginBottom: 14 }}>
-      <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#34d399", boxShadow: "0 0 6px rgba(52,211,153,.9)", display: "inline-block" }} />
-      <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".16em", color: "rgba(255,255,255,.5)" }}>
-        {t("Premium Laundry Service", "Servicio Premium de Lavandería")}
-      </span>
-    </div>
-    <h1 style={{ fontFamily: "'Manrope',sans-serif", fontSize: "clamp(24px,4vw,42px)", fontWeight: 800, color: "white", lineHeight: 1.15, letterSpacing: "-.02em", margin: "0 0 10px" }}>
-      {t("Your Pick-up", "Tu Recogida")}<br />
-      <span style={{ color: "#38bdf8" }}>{t("Begins Here.", "Comienza Aquí.")}</span>
-    </h1>
-    <p style={{ fontSize: 14, color: "rgba(255,255,255,.45)", lineHeight: 1.7, maxWidth: 380, margin: 0 }}>
-      {t("Follow the wash cycle — each stage is a step on the conveyor belt.", "Sigue el ciclo de lavado — cada etapa es un paso en la cinta transportadora.")}
-    </p>
-  </div>
-</section>
+        {/* Text */}
+        <div style={{ maxWidth: 900, margin: "0 auto", padding: "20px 24px 40px", position: "relative", zIndex: 2 }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 20, padding: "4px 12px", marginBottom: 14 }}>
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#34d399", boxShadow: "0 0 6px rgba(52,211,153,.9)", display: "inline-block" }} />
+            <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".16em", color: "rgba(255,255,255,.5)" }}>
+              {t("Premium Laundry Service", "Servicio Premium de Lavandería")}
+            </span>
+          </div>
+          <h1 style={{ fontFamily: "'Manrope',sans-serif", fontSize: "clamp(24px,4vw,42px)", fontWeight: 800, color: "white", lineHeight: 1.15, letterSpacing: "-.02em", margin: "0 0 10px" }}>
+            {t("Your Pick-up", "Tu Recogida")}<br />
+            <span style={{ color: "#38bdf8" }}>{t("Begins Here.", "Comienza Aquí.")}</span>
+          </h1>
+          <p style={{ fontSize: 14, color: "rgba(255,255,255,.45)", lineHeight: 1.7, maxWidth: 380, margin: 0 }}>
+            {t("Follow the wash cycle — each stage is a step on the conveyor belt.", "Sigue el ciclo de lavado — cada etapa es un paso en la cinta transportadora.")}
+          </p>
+        </div>
+      </section>
+
       {/* Main content */}
       <section style={{ padding: "0 0 64px" }}>
         <div style={{ maxWidth: 800, margin: "0 auto", padding: "0 16px" }}>
 
-          {/* Conveyor track */}
-          <div style={{ marginTop: "-20px", position: "relative", zIndex: 2 }}>
+          <div ref={formRef} id="schedule-pickup-form" style={{ marginTop: "-20px", position: "relative", zIndex: 2 }}>
             <ConveyorTrack cur={washPhase >= 0 ? 4 : cur} locale={locale} onStageClick={(i) => { if (washPhase < 0) goTo(i); }} />
           </div>
 
@@ -827,10 +940,9 @@ export default function SchedulePickup() {
                     </>
                   )}
 
-                  {/* Step 2 — Service  *** ALL CHANGES HERE *** */}
+                  {/* Step 2 — Service */}
                   {cur === 2 && (
                     <>
-                      {/* CHANGED: 3 cards — Pickup | Airbnb Host | Commercial */}
                       <FF label={t("Service type *", "Tipo de servicio *")}>
                         <OptionCards value={form.service_type} onChange={(v) => setF("service_type", v)}
                           options={[
@@ -857,20 +969,27 @@ export default function SchedulePickup() {
                               desc:  t("Bulk & business laundry", "Lavado masivo y empresas"),
                             },
                           ]} />
-                        {/* NEW: Airbnb detail panel */}
+                        {/* Mostrar panel y selector de plan solo para pickup_delivery */}
+                        {form.service_type === "pickup_delivery" && (
+                          <>
+                            <FF label={t("Turnaround plan *", "Plan de tiempo *")}>
+                              <PlanSelector value={form.service_plan} onChange={(v) => setF("service_plan", v)} />
+                            </FF>
+                            <PickupDeliveryInfoPanel t={t} />
+                          </>
+                        )}
                         {form.service_type === "airbnb_host" && <AirbnbInfoPanel t={t} />}
+                        {form.service_type === "commercial" && <CommercialInfoPanel t={t} />}
                         <p style={{ fontSize: 11, color: "hsl(var(--muted-foreground))", marginTop: 8 }}>
                           {t("Need Wash & Fold drop-off?", "¿Necesitas Wash & Fold drop-off?")}{" "}
                           <Link to="/wash-fold" style={{ color: "#0ea5e9", fontWeight: 600 }}>{t("Go to form →", "Ir al formulario →")}</Link>
                         </p>
                       </FF>
 
-                      {/* CHANGED: passes WASH_TEMP_OPTIONS */}
                       <FF label={t("Wash temperature", "Temperatura de lavado")}>
                         <TempRow value={form.wash_temp} onChange={(v) => setF("wash_temp", v)} options={WASH_TEMP_OPTIONS} />
                       </FF>
 
-                      {/* NEW: Dry temperature */}
                       <FF label={t("Dry temperature", "Temperatura de secado")}>
                         <TempRow value={form.dry_temp} onChange={(v) => setF("dry_temp", v)} options={DRY_TEMP_OPTIONS} />
                         <p style={{ fontSize: 10, color: "hsl(var(--muted-foreground))", marginTop: 5, lineHeight: 1.5 }}>
@@ -913,9 +1032,9 @@ export default function SchedulePickup() {
                         [t("Street","Calle"),               form.address_line1],
                         [t("City / State / ZIP","Ciudad / Estado / CP"), [form.city,form.state,form.zip_code].filter(Boolean).join(", ")],
                       ]} />
-                      {/* CHANGED: wash_temp + NEW dry_temp row */}
                       <SumBlock title={`🧺 ${t("Service", "Servicio")}`} rows={[
-                        [t("Type","Tipo"),              svcMap[form.service_type]],
+                        [t("Type","Tipo"), svcMap[form.service_type]],
+                        ...(form.service_type === "pickup_delivery" && form.service_plan ? [[t("Plan","Plan"), planMap[form.service_plan]]] : []),
                         [t("Wash temp","Temp lavado"),  tempMap[form.wash_temp]],
                         [t("Dry temp","Temp secado"),   dryMap[form.dry_temp]],
                         ...(form.notes ? [[t("Notes","Notas"), form.notes.slice(0,70)]] : []),

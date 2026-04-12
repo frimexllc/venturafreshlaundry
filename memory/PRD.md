@@ -30,101 +30,50 @@ NEW -> CONFIRMED -> PROCESSING -> READY -> COMPLETED
 - Store coordinates: 34.283, -119.293 (Ventura, CA)
 
 ## Customer Portal & Auth
-- **Registration required**: All service forms (Schedule Pickup, Wash & Fold, Request Quote, Membership) require customer login
-- **Auth Guard**: `CustomerProtectedRoute` in App.js wraps service routes → redirects to `/account/login?redirect=...`
-- **Customer Login**: `/account/login` supports `?redirect=` query param for post-login redirection
-- **Customer Account**: `/account` shows profile, orders, pending payments, membership upsell
-- **Pending Payments**: Unpaid orders shown with 3 payment methods (Stripe Card, Zelle, Cash on Delivery)
-- **Preferences**: Only visible to customers with active membership (`membership_status === "active"`)
-- **Pre-fill forms**: Logged-in customer data auto-fills name/email/phone in SchedulePickup & WashFoldRequest
-- **Payment Links in Notifications**: SMS/Email payment links redirect to `/account` (customer portal)
+- **Registration required**: All service forms require customer login
+- **Auth Guard**: `CustomerProtectedRoute` in App.js redirects to `/account/login?redirect=...`
+- **Customer Account**: `/account` — profile, orders, pending payments, membership upsell
+- **Pending Payments**: 3 methods (Stripe Card, Zelle, Cash on Delivery)
+- **Preferences**: Only for customers with active membership
 
 ### Customer API Endpoints
-- `POST /api/customer/auth/register` — Register new customer
-- `POST /api/customer/auth/login` — Login, returns JWT token
-- `GET /api/customer/me` — Get current customer profile
-- `GET /api/customer/orders` — Get customer's orders
-- `GET /api/customer/pending-payments` — Get unpaid orders
-- `GET /api/customer/membership-status` — Check membership status
-- `GET /api/customer/preferences` — Get preferences (403 if no membership)
-- `POST /api/customer/preferences` — Save preferences (403 if no membership)
-- `POST /api/customer/order/{id}/checkout-auth` — Create Stripe checkout (authenticated)
-- `POST /api/customer/order/{id}/mark-zelle` — Mark Zelle payment submitted
-- `POST /api/customer/order/{id}/confirm-payment` — Confirm Stripe payment after checkout
+- `POST /api/customer/auth/register`, `POST /api/customer/auth/login`
+- `GET /api/customer/me`, `GET /api/customer/orders`, `GET /api/customer/pending-payments`
+- `GET /api/customer/membership-status`
+- `GET/POST/DELETE /api/customer/preferences` (403 if no membership)
+- `POST /api/customer/order/{id}/checkout-auth` (Stripe checkout)
+- `POST /api/customer/order/{id}/mark-zelle`, `POST /api/customer/order/{id}/confirm-payment`
 
 ## Operator Dashboard Tabs
-- Tab 1: **Ordenes de Servicio** — POS grid with P&D and W&F order cards, Print+PDF buttons
+- Tab 1: **Ordenes de Servicio** — POS grid with P&D and W&F order cards
 - Tab 2: **Store Orders** — Store orders table + DeliveryZonesManager
-- Tab 3: **Mapa Logistico** — Leaflet map with order markers + MapFilters (date picker, Morning/Afternoon)
-
-## Logistics Map Filters
-- Date picker: Filters orders by `pickup_date`
-- Morning (8-12): Filters by `pickup_time_window=8-12`
-- Afternoon (14-18): Filters by `pickup_time_window=14-18`
-- Backend: `GET /api/logistics/orders?date=YYYY-MM-DD&time_window=morning|afternoon`
-
-## Notification Fallback Chain
-- WhatsApp → SMS → Email (cascade on failure, logged)
-
-## PWA Push Notifications
-- Service Worker: `/sw.js` (push event + notificationclick)
-- Hook: `useOperatorNotifications.js` (Socket.IO + Notification API)
-- Events: `order_created`, `order_status` → Browser notifications
-- Permission requested on Operator Dashboard load
-
-## Pacific Time (dateUtils.js)
-- `formatDatePT()`, `formatShortDatePT()`, `formatTimePT()`, `formatRelative()`
-
-## POS Quick Sale Payment Methods
-1. Tap to Pay — Stripe Terminal SDK
-2. Tarjeta en Pantalla — Stripe Elements PaymentElement
-3. Efectivo — Cash payment
-
-## Print Ticket & PDF
-- `GET /api/orders/{id}/ticket` — Full HTML thermal receipt
-- Print via window.print(), PDF via html2pdf.js
+- Tab 3: **Mapa Logistico** — Leaflet map with MapFilters (date/shift)
 
 ## Completed Features
 
 ### Phase 1 (State Machine, Tickets, Zelle)
 - [x] CONFIRMED state + can_transition() validation
-- [x] Driver endpoint PATCH /api/driver/orders/{id}/status
-- [x] HTML Ticket endpoint with financial breakdown
-- [x] Zelle payment method + multi-payment notifications
-- [x] Stripe Checkout links in SMS/Email
-- [x] POS Tap to Pay via @stripe/terminal-js
+- [x] Driver endpoint, HTML Ticket, Zelle, Stripe Checkout, POS Tap to Pay
 
 ### Phase 2 (Tabs, Timezone, PDF)
-- [x] Tabs layout (Service Orders, Store Orders, Logistics Map)
-- [x] Pacific Time date formatting (formatShortDatePT)
-- [x] PDF download button alongside Print (html2pdf.js)
-- [x] Backend validations: fecha obligatoria, time_window, weight positivo
-- [x] Processing fee 3% for card payments
+- [x] Tabs layout, Pacific Time, PDF download, validations, processing fee
 
 ### Phase 3 (Delivery Rules, Filters, Mobile, PWA) — 2026-04-04
-- [x] Delivery Zone Rules: GET /api/geocode/distance (OpenRouteService)
-- [x] Logistics Map Filters: date picker + Morning(8-12)/Afternoon(14-18)
-- [x] Service Orders Filters: date picker + Morning(8-12)/Afternoon(14-18) in Orders tab
-- [x] WhatsApp contact option on Contact page
-- [x] WhatsApp→SMS→Email notification fallback chain
-- [x] PWA Service Worker for push notifications
-- [x] Real-time operator notifications via Socket.IO + Notification API
-- [x] PWA manifest.json with maskable icons
+- [x] Delivery Zone Rules, Map Filters, WhatsApp fallback, PWA Service Worker
 
 ### Phase 4 (Customer Portal & Auth) — 2026-04-06
 - [x] Customer registration/login required before placing orders
-- [x] CustomerProtectedRoute wraps /schedule-pickup, /wash-fold, /request-quote, /membership
-- [x] Login with ?redirect= param → post-login redirect to intended page
-- [x] Customer Account: Pending Payments section with Stripe/Zelle/Cash options
-- [x] Payment status badges (UNPAID/PENDING/PAID) on all orders
-- [x] Preferences section hidden for non-members → "Upgrade to Membership" upsell shown
-- [x] Membership status check API (403 on preferences for non-members)
-- [x] Authenticated Stripe Checkout from customer account
-- [x] Zelle mark-as-sent endpoint (sets pending_verification)
-- [x] Form pre-fill (name/email/phone) from customer localStorage data
-- [x] Notification payment links redirect to /account
+- [x] Pending Payments section with Stripe/Zelle/Cash
+- [x] Preferences hidden for non-members with membership upsell
+- [x] Pre-fill forms from customer data, notification links → /account
+
+### Phase 5 (Code Quality & Refactoring) — 2026-04-12
+- [x] Fixed 2 syntax errors in test files (test_ai_operations.py, test_refactoring_verification.py)
+- [x] Removed all hardcoded secrets from 17 test files → os.environ.get()
+- [x] Replaced MD5 with SHA-256 in ai_assistant.py cache key
+- [x] Fixed `is True/False` identity comparisons in 3 test files
+- [x] Refactored ai_assistant.py: extracted _collect_briefing_data(), _build_briefing_prompt(), _parse_rate_limit_wait(), _suggest_stuck_orders(), _suggest_ready_backlog(), _suggest_unpaid_completed()
+- [x] Refactored automation_engine.py: extracted _normalize_order_for_dashboard(), _categorize_orders()
 
 ## Backlog
-- (P1) Code Quality: Fix syntax errors in test files, remove hardcoded secrets, replace MD5 with SHA-256
-- (P2) Refactoring automation_engine.py and ai_assistant.py (complex functions)
-- (P3) Automated Stripe Sync every 6 hours (paused by user)
+- (P3) Advanced Stripe Sync bidirectional (PAUSED by user)

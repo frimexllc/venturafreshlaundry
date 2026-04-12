@@ -17,7 +17,7 @@ import base64
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
 ADMIN_EMAIL = os.environ.get("TEST_ADMIN_EMAIL", "owner@frimexllc.com")
-ADMIN_PASSWORD = "Fr!m3x##$$"
+ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD", "admin123")
 
 
 @pytest.fixture(scope="module")
@@ -175,7 +175,7 @@ class TestCustomerAuthModule:
     def test_customer_register_and_login(self):
         """POST /api/customer/auth/register and /api/customer/auth/login"""
         test_email = f"test_customer_{uuid.uuid4().hex[:8]}@test.com"
-        test_password = "TestPass123!"
+        test_password = os.environ.get("TEST_CUSTOMER_PASSWORD", "TestPass123!")
         
         # REGISTER
         register_resp = requests.post(

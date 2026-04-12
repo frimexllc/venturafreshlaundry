@@ -84,7 +84,7 @@ class _ResponseCache:
         self._store: Dict[str, Dict] = {}
 
     def _key(self, *parts) -> str:
-        return hashlib.md5("|".join(str(p) for p in parts).encode()).hexdigest()
+        return hashlib.sha256("|".join(str(p) for p in parts).encode()).hexdigest()
 
     def get(self, *key_parts) -> Optional[str]:
         k = self._key(*key_parts)
@@ -135,78 +135,52 @@ def get_groq_client() -> Optional[Groq]:
     return Groq(api_key=GROQ_API_KEY)
 
 
+def _parse_rate_limit_wait(err_str: str) -> Optional[float]:
+    """Extract wait time from Groq 429 error message. Returns None if too long."""
+    import re
+    m = re.search(r"try again in\s+([\d.]+)s", err_str)
+    if m:
+        return min(float(m.group(1)), 60)
+    if "min" in err_str:
+        return None  # Too long to wait
+    return 15  # Conservative default
+
+
 def _groq_call(client: Groq, messages: list, max_tokens: int,
                temperature: float = 0.7) -> Optional[str]:
     """
-    Llama a Groq con un reintento en caso de 429.
-    Consume el budget automáticamente.
-    Retorna None si falla o el budget está agotado.
+    Call Groq with a single retry on 429. Returns None on failure.
     """
-    # Estimación conservadora: prompt ~400 tokens + respuesta
     estimated = max_tokens + 400
     if not _budget.has_budget(estimated):
-        logger.warning(
-            f"Groq daily token budget exhausted "
-            f"({_budget.used}/{DAILY_TOKEN_BUDGET}). Using fallback."
-        )
+        logger.warning(f"Groq daily token budget exhausted ({_budget.used}/{DAILY_TOKEN_BUDGET})")
         return None
 
-    for attempt in range(2):   # máximo 2 intentos (original + 1 reintento)
+    for attempt in range(2):
         try:
             response = client.chat.completions.create(
-                messages=messages,
-                model="llama-3.3-70b-versatile",
-                temperature=temperature,
-                max_tokens=max_tokens,
+                messages=messages, model="llama-3.3-70b-versatile",
+                temperature=temperature, max_tokens=max_tokens,
             )
             text = response.choices[0].message.content.strip()
-
-            # Consumir tokens reales reportados por la API
             usage = getattr(response, "usage", None)
-            if usage:
-                _budget.consume(
-                    getattr(usage, "total_tokens", estimated)
-                )
-            else:
-                _budget.consume(estimated)
-
+            _budget.consume(getattr(usage, "total_tokens", estimated) if usage else estimated)
             return text
 
         except Exception as e:
             err_str = str(e)
-            # Detectar 429 y extraer el tiempo de espera sugerido
-            if "429" in err_str or "rate_limit_exceeded" in err_str:
-                if attempt == 0:
-                    # Intentar leer el retry-after del mensaje de error
-                    wait_s = 15  # default conservador
-                    import re
-                    m = re.search(r"try again in\s+([\d.]+)s", err_str)
-                    if m:
-                        wait_s = min(float(m.group(1)), 60)
-                    elif "min" in err_str:
-                        # "18m51.84s" → demasiado largo, no esperamos
-                        logger.warning(
-                            f"Groq 429 with long retry window. "
-                            f"Skipping retry. Budget remaining: {_budget.remaining}"
-                        )
-                        return None
-                    logger.warning(
-                        f"Groq 429 on attempt {attempt+1}. "
-                        f"Waiting {wait_s}s before retry."
-                    )
-                    import asyncio, threading
-                    # En contexto síncrono, usar time.sleep
-                    try:
-                        loop = asyncio.get_running_loop()
-                        # Estamos en async — no bloqueamos el event loop
-                        # simplemente retornamos None (ya se manejará con fallback)
-                        logger.warning("Groq 429 in async context — returning None immediately")
-                        return None
-                    except RuntimeError:
-                        time.sleep(wait_s)
-                else:
-                    logger.error(f"Groq 429 persists after retry: {err_str[:200]}")
+            if ("429" in err_str or "rate_limit_exceeded" in err_str) and attempt == 0:
+                wait_s = _parse_rate_limit_wait(err_str)
+                if wait_s is None:
+                    logger.warning("Groq 429 with long retry window — skipping")
                     return None
+                logger.warning(f"Groq 429 — waiting {wait_s}s before retry")
+                try:
+                    import asyncio
+                    asyncio.get_running_loop()
+                    return None  # Don't block async event loop
+                except RuntimeError:
+                    time.sleep(wait_s)
             else:
                 logger.error(f"Groq API error: {err_str[:300]}")
                 return None
@@ -261,40 +235,13 @@ def _analyze_fallback(query: str) -> str:
 # generate_daily_briefing — CORREGIDO
 # ─────────────────────────────────────────────────────────────────────────────
 
-async def generate_daily_briefing(db, user_role: str, user_name: str) -> Dict[str, Any]:
-    """
-    Genera el briefing diario con protección contra rate limiting.
-
-    Mejoras respecto a la versión original:
-    - Cooldown de 2 min por usuario: evita múltiples llamadas en reconexiones
-    - Cache de 5 min: el mismo usuario recibe la respuesta cacheada
-    - Prompt compacto: ~400 tokens en lugar de ~800
-    - max_tokens reducido a 600 en lugar de 1500 (ahorro de 60 %)
-    - Fallback estático inmediato si no hay budget
-    """
+async def _collect_briefing_data(db) -> Dict[str, Any]:
+    """Collect business metrics for the daily briefing."""
     now = datetime.now(timezone.utc)
-
-    # ── Cooldown por usuario ───────────────────────────────────────────────
-    cooldown_key = f"briefing:{user_name}:{user_role}"
-    if _is_in_cooldown(cooldown_key):
-        remaining_s = BRIEFING_COOLDOWN_S - (time.monotonic() - _last_call.get(cooldown_key, 0))
-        logger.info(f"Briefing cooldown active for {user_name} ({remaining_s:.0f}s remaining)")
-        # Si hay algo en cache, devolverlo
-        cached = _cache.get("briefing", user_name, user_role)
-        if cached:
-            return {
-                "briefing": cached,
-                "data": {},
-                "generated_at": now.isoformat(),
-                "user_role": user_role,
-                "from_cache": True,
-            }
-
-    # ── Recopilar datos del negocio ────────────────────────────────────────
-    data = {}
-    all_orders = await db.orders.find({}, {"_id": 0}).to_list(1000)
     today_str = now.strftime("%Y-%m-%d")
+    data = {}
 
+    all_orders = await db.orders.find({}, {"_id": 0}).to_list(1000)
     data["orders_today"]           = sum(1 for o in all_orders if (o.get("created_at") or "")[:10] == today_str)
     data["orders_new"]             = sum(1 for o in all_orders if (o.get("status") or "").lower() == "new")
     data["orders_processing"]      = sum(1 for o in all_orders if (o.get("status") or "").lower() == "processing")
@@ -322,41 +269,13 @@ async def generate_daily_briefing(db, user_role: str, user_name: str) -> Dict[st
     leads = await db.leads.find({"status": "new"}, {"_id": 0}).to_list(200)
     data["leads_new"] = len(leads)
 
-    # ── Intentar respuesta cacheada ────────────────────────────────────────
-    # La clave incluye un snapshot de los números principales para que el
-    # cache se invalide si cambian los datos significativamente
-    cache_signature = (
-        data["orders_new"], data["orders_ready"],
-        data["orders_pending_payment"], data["tickets_high_priority"]
-    )
-    cached = _cache.get("briefing", user_name, user_role, *cache_signature)
-    if cached:
-        logger.info(f"Returning cached briefing for {user_name}")
-        return {
-            "briefing": cached,
-            "data": data,
-            "generated_at": now.isoformat(),
-            "user_role": user_role,
-            "from_cache": True,
-        }
+    return data
 
-    # ── Intentar llamada a Groq ────────────────────────────────────────────
-    client = get_groq_client()
-    if not client or not _budget.has_budget(MAX_BRIEFING_TOKENS + 400):
-        briefing_text = _briefing_fallback(user_name, data, now)
-        return {
-            "briefing": briefing_text,
-            "data": data,
-            "generated_at": now.isoformat(),
-            "user_role": user_role,
-            "from_cache": False,
-            "fallback": True,
-        }
 
+def _build_briefing_prompt(user_name: str, user_role: str, data: Dict, now: datetime) -> str:
+    """Build the compact LLM prompt for the daily briefing."""
     role_ctx = "administrador con acceso completo" if user_role == "admin" else "operador enfocado en operaciones diarias"
-
-    # Prompt compacto — ~350 tokens en lugar de ~800
-    prompt = _truncate_prompt(
+    return _truncate_prompt(
         f"Eres el asistente de {BUSINESS_NAME}. "
         f"Usuario: {user_name} ({role_ctx}). "
         f"Hora: {now.strftime('%A %d/%m/%Y %H:%M')} UTC.\n\n"
@@ -374,29 +293,44 @@ async def generate_daily_briefing(db, user_role: str, user_name: str) -> Dict[st
         f"En español. Formato Markdown simple."
     )
 
+
+async def generate_daily_briefing(db, user_role: str, user_name: str) -> Dict[str, Any]:
+    """
+    Genera el briefing diario con protección contra rate limiting.
+    Incluye cooldown de 2 min, cache de 5 min, y fallback estático.
+    """
+    now = datetime.now(timezone.utc)
+
+    # ── Cooldown por usuario ───────────────────────────────────────────────
+    cooldown_key = f"briefing:{user_name}:{user_role}"
+    if _is_in_cooldown(cooldown_key):
+        cached = _cache.get("briefing", user_name, user_role)
+        if cached:
+            return {"briefing": cached, "data": {}, "generated_at": now.isoformat(), "user_role": user_role, "from_cache": True}
+
+    # ── Recopilar datos ────────────────────────────────────────────────────
+    data = await _collect_briefing_data(db)
+
+    # ── Cache check ────────────────────────────────────────────────────────
+    cache_sig = (data["orders_new"], data["orders_ready"], data["orders_pending_payment"], data["tickets_high_priority"])
+    cached = _cache.get("briefing", user_name, user_role, *cache_sig)
+    if cached:
+        return {"briefing": cached, "data": data, "generated_at": now.isoformat(), "user_role": user_role, "from_cache": True}
+
+    # ── LLM call (or fallback) ─────────────────────────────────────────────
+    client = get_groq_client()
+    if not client or not _budget.has_budget(MAX_BRIEFING_TOKENS + 400):
+        return {"briefing": _briefing_fallback(user_name, data, now), "data": data, "generated_at": now.isoformat(), "user_role": user_role, "from_cache": False, "fallback": True}
+
     _mark_called(cooldown_key)
-    briefing_text = _groq_call(
-        client,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=MAX_BRIEFING_TOKENS,
-        temperature=0.6,
-    )
+    prompt = _build_briefing_prompt(user_name, user_role, data, now)
+    briefing_text = _groq_call(client, messages=[{"role": "user", "content": prompt}], max_tokens=MAX_BRIEFING_TOKENS, temperature=0.6)
 
     if not briefing_text:
-        briefing_text = _briefing_fallback(user_name, data, now)
-        fallback = True
-    else:
-        _cache.set(briefing_text, "briefing", user_name, user_role, *cache_signature)
-        fallback = False
+        return {"briefing": _briefing_fallback(user_name, data, now), "data": data, "generated_at": now.isoformat(), "user_role": user_role, "from_cache": False, "fallback": True}
 
-    return {
-        "briefing": briefing_text,
-        "data": data,
-        "generated_at": now.isoformat(),
-        "user_role": user_role,
-        "from_cache": False,
-        "fallback": fallback,
-    }
+    _cache.set(briefing_text, "briefing", user_name, user_role, *cache_sig)
+    return {"briefing": briefing_text, "data": data, "generated_at": now.isoformat(), "user_role": user_role, "from_cache": False, "fallback": False}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -474,62 +408,61 @@ async def ai_analyze_business(db, query: str, user_role: str) -> Dict[str, Any]:
 # ai_suggest_actions — sin cambios en lógica, añade guard de budget
 # ─────────────────────────────────────────────────────────────────────────────
 
-async def ai_suggest_actions(db, context_type: str) -> List[Dict[str, Any]]:
-    """
-    Genera sugerencias de acciones basadas en el estado actual.
-    No llama a Groq — solo análisis local, sin consumo de tokens.
-    """
-    suggestions = []
-    now = datetime.now(timezone.utc)
+def _suggest_stuck_orders(orders, now) -> List[Dict]:
+    """Find orders stuck in processing for 2+ days."""
+    results = []
+    for order in orders:
+        if (order.get("status") or "").lower() != "processing":
+            continue
+        created = order.get("created_at") or ""
+        if not created:
+            continue
+        try:
+            created_date = datetime.fromisoformat(created.replace("Z", "+00:00"))
+            days_stuck = (now - created_date).days
+            if days_stuck >= 2:
+                oid = order.get("id") or ""
+                results.append({
+                    "type": "warning", "priority": "high",
+                    "title": f"Orden {order.get('order_number', oid[:8])} atascada en proceso",
+                    "description": f"Lleva {days_stuck} días en procesamiento",
+                    "action": {"type": "update_order_status", "order_id": oid, "suggested_status": "ready"},
+                })
+        except Exception:
+            pass
+    return results
 
+
+def _suggest_ready_backlog(orders) -> List[Dict]:
+    """Warn about too many ready-but-undelivered orders."""
+    ready = [o for o in orders if (o.get("status") or "").lower() == "ready"]
+    if len(ready) > 3:
+        return [{"type": "info", "priority": "medium",
+                 "title": f"{len(ready)} órdenes listas para entrega",
+                 "description": "Considera programar entregas para limpiar la cola", "action": None}]
+    return []
+
+
+def _suggest_unpaid_completed(orders) -> List[Dict]:
+    """Flag completed orders with pending payments."""
+    pending = [o for o in orders if (o.get("payment_status") or "").lower() != "paid" and (o.get("status") or "").lower() == "completed"]
+    if pending:
+        total = sum(float(o.get("total_amount") or 0) for o in pending)
+        return [{"type": "revenue", "priority": "high",
+                 "title": f"${total:.2f} en pagos pendientes",
+                 "description": f"{len(pending)} órdenes completadas sin cobrar", "action": None}]
+    return []
+
+
+async def ai_suggest_actions(db, context_type: str) -> List[Dict[str, Any]]:
+    """Genera sugerencias de acciones basadas en el estado actual (local, sin LLM)."""
+    now = datetime.now(timezone.utc)
     orders = await db.orders.find({}, {"_id": 0}).to_list(500)
 
-    # Órdenes atascadas en processing > 2 días
-    for order in orders:
-        if (order.get("status") or "").lower() == "processing":
-            created = order.get("created_at") or ""
-            if created:
-                try:
-                    created_date = datetime.fromisoformat(created.replace("Z", "+00:00"))
-                    days_stuck = (now - created_date).days
-                    if days_stuck >= 2:
-                        order_id = order.get("id") or ""
-                        suggestions.append({
-                            "type":        "warning",
-                            "title":       f"Orden {order.get('order_number', order_id[:8])} atascada en proceso",
-                            "description": f"Lleva {days_stuck} días en procesamiento",
-                            "action":      {"type": "update_order_status", "order_id": order_id, "suggested_status": "ready"},
-                            "priority":    "high",
-                        })
-                except Exception:
-                    pass
-
-    # Muchas órdenes listas sin entregar
-    ready_orders = [o for o in orders if (o.get("status") or "").lower() == "ready"]
-    if len(ready_orders) > 3:
-        suggestions.append({
-            "type":        "info",
-            "title":       f"{len(ready_orders)} órdenes listas para entrega",
-            "description": "Considera programar entregas para limpiar la cola",
-            "action":      None,
-            "priority":    "medium",
-        })
-
-    # Pagos pendientes en órdenes completadas
-    pending_payment = [
-        o for o in orders
-        if (o.get("payment_status") or "").lower() != "paid"
-        and (o.get("status") or "").lower() == "completed"
-    ]
-    if pending_payment:
-        total = sum(float(o.get("total_amount") or 0) for o in pending_payment)
-        suggestions.append({
-            "type":        "revenue",
-            "title":       f"${total:.2f} en pagos pendientes",
-            "description": f"{len(pending_payment)} órdenes completadas sin cobrar",
-            "action":      None,
-            "priority":    "high",
-        })
+    suggestions = []
+    suggestions.extend(_suggest_stuck_orders(orders, now))
+    suggestions.extend(_suggest_ready_backlog(orders))
+    suggestions.extend(_suggest_unpaid_completed(orders))
 
     # Tickets de alta prioridad
     tickets = await db.tickets.find(
@@ -537,11 +470,9 @@ async def ai_suggest_actions(db, context_type: str) -> List[Dict[str, Any]]:
     ).to_list(100)
     if tickets:
         suggestions.append({
-            "type":        "urgent",
-            "title":       f"{len(tickets)} tickets de alta prioridad",
-            "description": "Problemas de clientes que requieren atención inmediata",
-            "action":      None,
-            "priority":    "critical",
+            "type": "urgent", "priority": "critical",
+            "title": f"{len(tickets)} tickets de alta prioridad",
+            "description": "Problemas de clientes que requieren atención inmediata", "action": None,
         })
 
     return suggestions[:10]
@@ -600,10 +531,10 @@ def format_leads_for_ai(leads: List[Dict]) -> str:
     if not leads:
         return "Sin leads nuevos"
     return "\n".join(
-        f"- {l.get('name', 'N/A')}: {l.get('email', 'sin email')} | "
-        f"Fuente: {l.get('source', 'desconocida')} | "
-        f"Estado: {l.get('status', 'new')}"
-        for l in leads[:8]
+        f"- {lead.get('name', 'N/A')}: {lead.get('email', 'sin email')} | "
+        f"Fuente: {lead.get('source', 'desconocida')} | "
+        f"Estado: {lead.get('status', 'new')}"
+        for lead in leads[:8]
     )
 
 

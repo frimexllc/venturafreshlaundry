@@ -766,21 +766,22 @@ async def notify_customer_direct(
                 breakdown += f"\u2022 Delivery: ${delivery_fee:.2f}\n"
             breakdown += f"\u2022 Total: {total_text}\n"
 
-        msg = (
-            f"\U0001f9fc Ventura Fresh Laundry\n\n"
-            f"Hola {name} \U0001f44b\n"
-            f"Tu orden #{order_num} esta lista para pago.\n"
-            f"{breakdown}\n"
-            f"\U0001f4b3 Tarjeta (rapido y seguro)\n"
-            f"\U0001f449 {short_url or 'Link no disponible'}\n\n"
-            f"\U0001f4f2 Zelle\n"
-            f"\U0001f449 Enviar a: payments@venturafreshlaundry.com\n"
-            f"\U0001f4dd Nota: Agrega tu numero de orden {order_num}\n\n"
-            f"\U0001f4b5 Efectivo\n"
-            f"\U0001f449 Pagar al recoger o entregar\n\n"
-            f"Una vez realizado el pago, tu orden continuara en proceso \U0001f680\n"
-            f"Gracias por confiar en Ventura Fresh Laundry \U0001f9fc\u2728"
-        )
+        last4 = order_num[-4:] if len(order_num) >= 4 else order_num
+
+    msg = (
+        f"\U0001f9fc Ventura Fresh Laundry\n\n"
+        f"Hola {name} \U0001f44b\n"
+        f"Tu orden #{order_num} está lista para pago.\n"
+        f"{breakdown}\n"
+        f"\U0001f4b3 Tarjeta (rápido y seguro)\n"
+        f"\U0001f449 {short_url or 'Link no disponible'}\n\n"
+        f"\U0001f4f2 Zelle (Preferido): venturafreshlaundry\n"
+        f"\U0001f4f2 Venmo: @Venturafreshlaundry\n"
+        f"\U0001f4f2 Cash App: $venturafreshlaundry\n"
+        f"\U0001f4de También por teléfono: +1 (805) 626-2524\n\n"
+        f"\U0001f4dd Incluye las últimas 4 de tu orden: {last4}\n\n"
+        f"Gracias por confiar en Ventura Fresh Laundry \U0001f9fc\u2728"
+          )
 
     # ── Build HTML email ──────────────────────────────────────
     if pay_status == "paid":
@@ -830,7 +831,7 @@ async def notify_customer_direct(
 
 
 def _build_paid_email_html(name, order_num, total_text, method):
-    method_name = (method or "").capitalize() or "Tarjeta"
+    method_name = (method or "").capitalize() or "Card"
     return f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
 <body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
@@ -839,18 +840,18 @@ def _build_paid_email_html(name, order_num, total_text, method):
 <table width="100%" style="max-width:520px;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.06);" cellpadding="0" cellspacing="0">
   <tr><td style="background:linear-gradient(135deg,#059669,#10b981);padding:28px 30px;text-align:center;">
     <h1 style="margin:0;color:#fff;font-size:20px;">Ventura Fresh Laundry</h1>
-    <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Pago Confirmado</p>
+    <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Payment Confirmed</p>
   </td></tr>
   <tr><td style="padding:30px;text-align:center;">
     <div style="width:64px;height:64px;background:#dcfce7;border-radius:50%;margin:0 auto 16px;line-height:64px;font-size:32px;">&#10003;</div>
-    <p style="margin:0;font-size:15px;color:#334155;">Hola <strong>{name}</strong>,</p>
-    <p style="margin:10px 0 0;font-size:14px;color:#64748b;">Confirmamos el pago de tu orden.</p>
+    <p style="margin:0;font-size:15px;color:#334155;">Hello <strong>{name}</strong>,</p>
+    <p style="margin:10px 0 0;font-size:14px;color:#64748b;">We confirm payment for your order.</p>
     <table style="margin:20px auto;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;" cellpadding="12" cellspacing="0">
-      <tr><td style="font-size:13px;color:#64748b;border-bottom:1px solid #e2e8f0;">Orden</td><td style="font-weight:700;color:#0f172a;border-bottom:1px solid #e2e8f0;">{order_num}</td></tr>
+      <tr><td style="font-size:13px;color:#64748b;border-bottom:1px solid #e2e8f0;">Order</td><td style="font-weight:700;color:#0f172a;border-bottom:1px solid #e2e8f0;">{order_num}</td></tr>
       <tr><td style="font-size:13px;color:#64748b;border-bottom:1px solid #e2e8f0;">Total</td><td style="font-weight:800;font-size:18px;color:#059669;border-bottom:1px solid #e2e8f0;">{total_text}</td></tr>
-      <tr><td style="font-size:13px;color:#64748b;">Metodo</td><td style="font-weight:600;color:#0f172a;">{method_name}</td></tr>
+      <tr><td style="font-size:13px;color:#64748b;">Method</td><td style="font-weight:600;color:#0f172a;">{method_name}</td></tr>
     </table>
-    <p style="margin:20px 0 0;font-size:13px;color:#64748b;">Gracias por confiar en nosotros!</p>
+    <p style="margin:20px 0 0;font-size:13px;color:#64748b;">Thank you for trusting us!</p>
   </td></tr>
   <tr><td style="padding:0 30px 28px;">
     <hr style="border:none;border-top:1px solid #e2e8f0;margin:0 0 16px;">
@@ -863,64 +864,85 @@ def _build_unpaid_email_html(name, order_num, lbs, rate, subtotal, delivery_fee,
     breakdown_rows = ""
     if lbs > 0:
         breakdown_rows = f"""
-      <tr><td style="font-size:13px;color:#64748b;padding:10px 16px;border-bottom:1px solid #e2e8f0;">Peso</td><td style="font-weight:600;color:#0f172a;padding:10px 16px;border-bottom:1px solid #e2e8f0;text-align:right;">{lbs} lbs x ${rate:.2f}/lb</td></tr>
-      <tr><td style="font-size:13px;color:#64748b;padding:10px 16px;border-bottom:1px solid #e2e8f0;">Subtotal</td><td style="font-weight:600;color:#0f172a;padding:10px 16px;border-bottom:1px solid #e2e8f0;text-align:right;">${subtotal:.2f}</td></tr>"""
+      <tr><td style="font-size:13px;color:#64748b;padding:10px 16px;border-bottom:1px solid #e2e8f0;">Weight</td>
+       <td style="font-weight:600;color:#0f172a;padding:10px 16px;border-bottom:1px solid #e2e8f0;text-align:right;">{lbs} lbs × ${rate:.2f}/lb</td>
+    </tr>
+    <tr><td style="font-size:13px;color:#64748b;padding:10px 16px;border-bottom:1px solid #e2e8f0;">Subtotal</td>
+       <td style="font-weight:600;color:#0f172a;padding:10px 16px;border-bottom:1px solid #e2e8f0;text-align:right;">${subtotal:.2f}</td>
+    </tr>"""
         if delivery_fee > 0:
             breakdown_rows += f"""
-      <tr><td style="font-size:13px;color:#64748b;padding:10px 16px;border-bottom:1px solid #e2e8f0;">Delivery</td><td style="font-weight:600;color:#0f172a;padding:10px 16px;border-bottom:1px solid #e2e8f0;text-align:right;">${delivery_fee:.2f}</td></tr>"""
+    <tr><td style="font-size:13px;color:#64748b;padding:10px 16px;border-bottom:1px solid #e2e8f0;">Delivery</td>
+       <td style="font-weight:600;color:#0f172a;padding:10px 16px;border-bottom:1px solid #e2e8f0;text-align:right;">${delivery_fee:.2f}</td>
+    </tr>"""
 
     pay_btn = ""
     if payment_url:
         pay_btn = f"""
   <tr><td style="padding:24px 30px 0;text-align:center;">
-    <a href="{payment_url}" style="display:inline-block;padding:16px 48px;background:#0891b2;color:#fff;text-decoration:none;font-weight:700;font-size:16px;border-radius:12px;">Pagar {total_text} Ahora</a>
-    <p style="margin:10px 0 0;font-size:11px;color:#94a3b8;">Enlace seguro con Stripe &middot; Tarjeta, Apple Pay, Google Pay</p>
-  </td></tr>"""
+    <a href="{payment_url}" style="display:inline-block;padding:16px 48px;background:#0891b2;color:#fff;text-decoration:none;font-weight:700;font-size:16px;border-radius:12px;">Pay {total_text} Now</a>
+    <p style="margin:10px 0 0;font-size:11px;color:#94a3b8;">Secure Stripe link &middot; Card, Apple Pay, Google Pay</p>
+    </td>
+    </tr>"""
 
     return f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
 <body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:30px 0;">
-<tr><td align="center">
+  <tr><td align="center">
 <table width="100%" style="max-width:520px;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.06);" cellpadding="0" cellspacing="0">
   <tr><td style="background:linear-gradient(135deg,#0e7490,#0891b2);padding:28px 30px;">
     <h1 style="margin:0;color:#fff;font-size:20px;">Ventura Fresh Laundry</h1>
-    <p style="margin:4px 0 0;color:rgba(255,255,255,.8);font-size:13px;">Tu orden esta lista para pago</p>
-  </td></tr>
+    <p style="margin:4px 0 0;color:rgba(255,255,255,.8);font-size:13px;">Your order is ready for payment</p>
+    </td>
+  </tr>
   <tr><td style="padding:28px 30px 0;">
-    <p style="margin:0;font-size:15px;color:#334155;">Hola <strong>{name}</strong>,</p>
-    <p style="margin:8px 0 0;font-size:14px;color:#64748b;">Tu orden <strong>#{order_num}</strong> esta lista. Aqui tienes las opciones de pago:</p>
-  </td></tr>
+    <p style="margin:0;font-size:15px;color:#334155;">Hello <strong>{name}</strong>,</p>
+    <p style="margin:8px 0 0;font-size:14px;color:#64748b;">Your order <strong>#{order_num}</strong> is ready. Here are your payment options:</p>
+    </td>
+  </tr>
   <!-- Breakdown -->
   <tr><td style="padding:20px 30px 0;">
     <table width="100%" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;" cellpadding="0" cellspacing="0">
       {breakdown_rows}
-      <tr><td style="font-size:14px;font-weight:700;color:#0f172a;padding:14px 16px;background:#f0f9ff;">TOTAL</td><td style="font-size:20px;font-weight:800;color:#0891b2;padding:14px 16px;background:#f0f9ff;text-align:right;">{total_text}</td></tr>
+      <tr><td style="font-size:14px;font-weight:700;color:#0f172a;padding:14px 16px;background:#f0f9ff;">TOTAL</td>
+       <td style="font-size:20px;font-weight:800;color:#0891b2;padding:14px 16px;background:#f0f9ff;text-align:right;">{total_text}</td>
+    </tr>
     </table>
-  </td></tr>
+    </td>
+  </tr>
   {pay_btn}
-  <!-- Other methods -->
+  <!-- Other payment methods -->
   <tr><td style="padding:20px 30px 0;">
     <table width="100%" style="border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;" cellpadding="0" cellspacing="0">
       <tr><td style="padding:14px 16px;border-bottom:1px solid #e2e8f0;background:#fefce8;">
-        <p style="margin:0;font-size:13px;font-weight:700;color:#854d0e;">Zelle</p>
-        <p style="margin:4px 0 0;font-size:12px;color:#713f12;">Enviar a: <strong>payments@venturafreshlaundry.com</strong></p>
-        <p style="margin:2px 0 0;font-size:11px;color:#a16207;">Nota: Agrega tu numero de orden {order_num}</p>
-      </td></tr>
+        <p style="margin:0;font-size:13px;font-weight:700;color:#854d0e;">Zelle (Preferido) / Venmo / Cash App</p>
+        <p style="margin:4px 0 0;font-size:12px;color:#713f12;">Zelle: <strong>venturafreshlaundry</strong></p>
+        <p style="margin:2px 0 0;font-size:12px;color:#713f12;">Venmo: <strong>@Venturafreshlaundry</strong></p>
+        <p style="margin:2px 0 0;font-size:12px;color:#713f12;">Cash App: <strong>$venturafreshlaundry</strong></p>
+        <p style="margin:4px 0 0;font-size:11px;color:#a16207;">Note: Please include your order number {order_num}</p>
+        </td>
+      </tr>
       <tr><td style="padding:14px 16px;background:#f0fdf4;">
-        <p style="margin:0;font-size:13px;font-weight:700;color:#166534;">Efectivo</p>
-        <p style="margin:4px 0 0;font-size:12px;color:#15803d;">Pagar al recoger o entregar</p>
-      </td></tr>
+        <p style="margin:0;font-size:13px;font-weight:700;color:#166534;">Cash</p>
+        <p style="margin:4px 0 0;font-size:12px;color:#15803d;">Pay upon pickup or delivery</p>
+        </td>
+      </tr>
     </table>
-  </td></tr>
+    </td>
+  </tr>
   <tr><td style="padding:24px 30px;">
-    <p style="margin:0;font-size:13px;color:#64748b;">Una vez realizado el pago, tu orden continuara en proceso.</p>
-    <p style="margin:6px 0 0;font-size:13px;color:#64748b;">Gracias por confiar en Ventura Fresh Laundry!</p>
+    <p style="margin:0;font-size:13px;color:#64748b;">Once payment is completed, your order will continue processing.</p>
+    <p style="margin:6px 0 0;font-size:13px;color:#64748b;">Thank you for trusting Ventura Fresh Laundry!</p>
     <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0;">
     <p style="margin:0;font-size:11px;color:#94a3b8;text-align:center;">Ventura Fresh Laundry &middot; 5722 Telephone Rd Suite 5, Ventura CA 93003 &middot; (805) 515-4030</p>
-  </td></tr>
-</table></td></tr></table></body></html>"""
-
+    </td>
+  </tr>
+</table>
+    </td>
+  </table>
+</table>
+</body></html>"""
 
 # ══════════════════════════════════════════════════════════════════════
 # PRINT TICKET — Full HTML receipt

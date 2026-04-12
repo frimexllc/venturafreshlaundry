@@ -373,11 +373,44 @@ export default function AboutPage() {
                   <span className="block text-primary font-bold not-italic">{t("Location.", "Ubicación.")}</span>
                 </h2>
               </Reveal>
-              <div className="space-y-5 mb-10">
-                <InfoRow icon={MapPin} label={t("Address", "Dirección")} value="5722 Telephone Rd #5, Ventura, CA 93003" delay={80} />
-                <InfoRow icon={Clock}  label={t("Hours", "Horario")}     value={t("Monday – Sunday: 6:00 AM – 10:00 PM", "Lunes a Domingo: 6:00 AM – 10:00 PM")} delay={130} />
-                <InfoRow icon={Phone}  label={t("Phone / Text", "Teléfono / Mensaje")} value="(820) 234-8181" delay={180} />
-              </div>
+<div className="space-y-5 mb-10">
+  <InfoRow 
+    icon={MapPin} 
+    label={t("Address", "Dirección")} 
+    value="5722 Telephone Rd #5, Ventura, CA 93003" 
+    delay={80} 
+  />
+
+  <InfoRow 
+    icon={Clock}  
+    label={t("Hours", "Horario")}     
+    value={
+      <div className="text-sm leading-tight">
+        <div>
+          <strong>{t("Self-Service:", "Autoservicio:")}</strong>{" "}
+          {t("Monday – Sunday · 6:00 AM – 10:00 PM", "Lunes – Domingo · 6:00 AM – 10:00 PM")}
+        </div>
+
+        <div className="text-xs">
+          {t("Last wash at 9:00 PM", "Última lavada a las 9:00 PM")}
+        </div>
+
+        <div className="mt-1">
+          <strong>{t("Wash & Fold:", "Lavado y Doblado:")}</strong>{" "}
+          {t("Monday – Sunday · 8:00 AM – 6:00 PM", "Lunes – Domingo · 8:00 AM – 6:00 PM")}
+        </div>
+      </div>
+    } 
+    delay={130} 
+  />
+
+  <InfoRow 
+    icon={Phone}  
+    label={t("Phone / Text", "Teléfono / Mensaje")} 
+    value="(820) 234-8181" 
+    delay={180} 
+  />
+</div>
               <Reveal delay={220} dur={300}>
                 <Link to="/contact">
                   <Mag as="div" strength={0.28}

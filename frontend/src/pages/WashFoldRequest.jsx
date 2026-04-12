@@ -10,6 +10,8 @@ import AddressAutocomplete from "../components/AddressAutocomplete";
 import { useLocale } from "../context/LocaleContext";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+
+// ─── Preference Grid (wash/dry temps) ─────────────────────────────────────────
 const PreferenceGrid = ({ title, options, selected, onSelect }) => {
   return (
     <div style={{ marginBottom: 20 }}>
@@ -83,6 +85,41 @@ const DRY_OPTIONS = [
   { value: "high", icon: "☀️", label: "High", sub: "Heavy duty" },
   { value: "air", icon: "🌿", label: "Air dry", sub: "No heat" },
 ];
+
+// ─── Plan Selector para Wash & Fold (sin precios visibles) ────────────────────
+const PlanSelector = ({ value, onChange }) => {
+  const { t } = useLocale();
+  const plans = [
+    { val: "standard", icon: "🕒", label: t("Standard (36h)", "Estándar (36h)"), desc: t("Budget-friendly", "Económico") },
+    { val: "premium",  icon: "⭐", label: t("Premium (24h)",  "Premium (24h)"),  desc: t("Most popular", "Más popular") },
+    { val: "express",  icon: "⚡", label: t("Express (Same Day)", "Express (mismo día)"), desc: t("Fastest service", "Servicio más rápido") },
+  ];
+  return (
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+      {plans.map((p) => (
+        <button
+          key={p.val}
+          type="button"
+          onClick={() => onChange(p.val)}
+          style={{
+            flex: 1, padding: "10px 8px", borderRadius: 10, textAlign: "center",
+            border: `1.5px solid ${value === p.val ? "#0ea5e9" : "#e2e8f0"}`,
+            background: value === p.val ? "rgba(14,165,233,.1)" : "#f8fafc",
+            cursor: "pointer", transition: "all .15s",
+            transform: value === p.val ? "scale(1.02)" : "scale(1)",
+            fontFamily: "inherit",
+          }}
+        >
+          <div style={{ fontSize: 20, marginBottom: 4 }}>{p.icon}</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: value === p.val ? "#0ea5e9" : "#0f172a" }}>{p.label}</div>
+          <div style={{ fontSize: 9, color: "#64748b", marginTop: 2 }}>{p.desc}</div>
+        </button>
+      ))}
+    </div>
+  );
+};
+
+// ─── Utilities ────────────────────────────────────────────────────────────────
 const getErr = (e) => {
   const d = e.response?.data?.detail;
   if (typeof d === "string") return d;
@@ -138,10 +175,7 @@ const BasketSVG = ({ phase = 0, done = false, size = 120 }) => {
         <filter id="bk_gl"><feGaussianBlur stdDeviation="1" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
       </defs>
 
-      {/* Shadow */}
       <ellipse cx="60" cy="137" rx="36" ry="5" fill="#000" opacity=".1"/>
-
-      {/* Basket body */}
       <ellipse cx="60" cy="85" rx="48" ry="38" fill="#f0f9ff" stroke="#bae6fd" strokeWidth="2"/>
       {[70,78,86,94,102,110].map((y,i)=>(
         <line key={i} x1="13" y1={y} x2="107" y2={y} stroke="#e0f2fe" strokeWidth="1.2" opacity=".7"/>
@@ -150,7 +184,6 @@ const BasketSVG = ({ phase = 0, done = false, size = 120 }) => {
         <line key={i} x1={x} y1="50" x2={x} y2="122" stroke="#e0f2fe" strokeWidth="1" opacity=".45"/>
       ))}
 
-      {/* Water */}
       {phase>=1 && phase<=3 && (
         <g clipPath="url(#bk_cl)">
           <rect x="16" y="100" width="88" height="30" fill="url(#bk_w)">
@@ -164,7 +197,6 @@ const BasketSVG = ({ phase = 0, done = false, size = 120 }) => {
         </g>
       )}
 
-      {/* Clothes */}
       {phase!==4 && (
         <g clipPath="url(#bk_cl)">
           {clothColors.slice(0,done?3:Math.max(2,5-phase)).map((c,i)=>(
@@ -174,7 +206,6 @@ const BasketSVG = ({ phase = 0, done = false, size = 120 }) => {
         </g>
       )}
 
-      {/* Folded stack */}
       {(phase>=4||done) && (
         <g transform="translate(24,62)">
           {[0,1,2].map(i=>(
@@ -187,7 +218,6 @@ const BasketSVG = ({ phase = 0, done = false, size = 120 }) => {
         </g>
       )}
 
-      {/* Bubbles when washing */}
       {(phase===1||phase===2) && bubbles.map((b,i)=>(
         <circle key={i} cx={b.cx} cy={b.cy} r={b.r} fill="none" stroke="#7dd3fc" strokeWidth="1.2" opacity=".7">
           <animate attributeName="cy" values={`${b.cy};${b.cy-28};${b.cy-28}`} dur={b.dur} begin={b.delay} repeatCount="indefinite"/>
@@ -196,7 +226,6 @@ const BasketSVG = ({ phase = 0, done = false, size = 120 }) => {
         </circle>
       ))}
 
-      {/* Steam when rinsing */}
       {phase===3 && [
         {d:"M40,18 Q44,10 40,2",delay:"0s",dur:"2s"},
         {d:"M60,14 Q64,6 60,-2",delay:".5s",dur:"1.8s"},
@@ -207,15 +236,11 @@ const BasketSVG = ({ phase = 0, done = false, size = 120 }) => {
         </path>
       ))}
 
-      {/* Rim */}
       <ellipse cx="60" cy="50" rx="48" ry="14" fill="#e0f2fe" stroke="#bae6fd" strokeWidth="1.8"/>
       <ellipse cx="60" cy="50" rx="40" ry="10" fill="#f8fafc" stroke="#bae6fd" strokeWidth="1"/>
-
-      {/* Handles */}
       <path d="M18,55 Q8,40 18,28" fill="none" stroke="#bae6fd" strokeWidth="3" strokeLinecap="round"/>
       <path d="M102,55 Q112,40 102,28" fill="none" stroke="#bae6fd" strokeWidth="3" strokeLinecap="round"/>
 
-      {/* Done ring */}
       {done && (
         <circle cx="60" cy="50" r="30" fill="none" stroke="#22d3ee" strokeWidth="2" opacity=".5">
           <animate attributeName="opacity" values=".5;.1;.5" dur="2s" repeatCount="indefinite"/>
@@ -249,7 +274,6 @@ const JourneyTrack = ({ cur, locale, onStageClick }) => {
       <div style={{ position:"absolute", inset:0,
         backgroundImage:"radial-gradient(circle,rgba(14,165,233,.1) 1px,transparent 1px)",
         backgroundSize:"18px 18px", pointerEvents:"none" }}/>
-      {/* Clothesline rope */}
       <div style={{ position:"absolute", top:46, left:0, right:0, height:2,
         background:"linear-gradient(90deg,transparent,#7dd3fc 10%,#38bdf8 50%,#7dd3fc 90%,transparent)",
         opacity:.45, zIndex:0 }}/>
@@ -258,7 +282,6 @@ const JourneyTrack = ({ cur, locale, onStageClick }) => {
         <div ref={trackRef} style={{ display:"flex", alignItems:"flex-start",
           minWidth:"max-content", padding:"8px 12px 4px", position:"relative", gap:0 }}>
 
-          {/* Rider */}
           <div style={{ position:"absolute", top:0, left:rLeft,
             transition:"left .7s cubic-bezier(.34,1.56,.64,1)", zIndex:3, pointerEvents:"none",
             animation:"wf_float 3.5s ease-in-out infinite" }}>
@@ -452,17 +475,55 @@ const SumBlock=({title,rows})=>(
   </div>
 );
 
+// ─── Info panel para Wash & Fold ──────────────────────────────────────────────
+const WashFoldInfoPanel = ({ t }) => (
+  <div style={{ padding: "13px 15px", borderRadius: 11, marginTop: 16,
+    background: "linear-gradient(135deg,rgba(14,165,233,.06),rgba(56,189,248,.04))",
+    border: "1px solid rgba(14,165,233,.25)", animation: "wf_fadein .25s ease both" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 9 }}>
+      <span style={{ fontSize: 17 }}>🧺</span>
+      <span style={{ fontSize: 12, fontWeight: 700, color: "#0ea5e9" }}>
+        {t("Wash & Fold Service", "Servicio de Lavado y Doblado")}
+      </span>
+    </div>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "5px 12px", marginBottom: 9 }}>
+      {[
+        { icon: "💧", en: "Professional washing",   es: "Lavado profesional" },
+        { icon: "🩸", en: "Stain treatment",        es: "Tratamiento de manchas" },
+        { icon: "👕", en: "Expert folding",         es: "Doblado experto" },
+        { icon: "🌿", en: "Eco-friendly detergents", es: "Detergentes ecológicos" },
+        { icon: "⚡", en: "Quick turnaround",       es: "Plazo rápido" },
+        { icon: "✅", en: "Ready for pickup",       es: "Listo para recoger" },
+      ].map((f) => (
+        <div key={f.icon} style={{ display: "flex", alignItems: "center", gap: 5,
+          fontSize: 11, color: "#0f172a" }}>
+          <span style={{ fontSize: 13 }}>{f.icon}</span>
+          <span>{t(f.en, f.es)}</span>
+        </div>
+      ))}
+    </div>
+    <div style={{ padding: "7px 10px", borderRadius: 8, background: "rgba(14,165,233,.07)",
+      fontSize: 10, color: "#0369a1", lineHeight: 1.55 }}>
+      {t(
+        "💡 Just drop off your laundry at our store. We wash, fold, and have it ready for you.",
+        "💡 Solo deja tu ropa en nuestra tienda. Lavamos, doblamos y la dejamos lista para ti."
+      )}
+    </div>
+  </div>
+);
+
 const EMPTY={
   first_name:"",last_name:"",email:"",phone:"",dialCode:"+1",dialIso:"US",
   contact_method:"",sms_consent:false,
   address_line1:"",address_line2:"",city:"",state:"",zip_code:"",
   dropoff_date:"",notes:"",terms:false,
+  plan:"", // <--- nuevo campo para el plan
 };
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function WashFoldRequest() {
   const [washTemp, setWashTemp] = useState("");
-const [dryTemp, setDryTemp] = useState("");
+  const [dryTemp, setDryTemp] = useState("");
   const {t,locale}=useLocale();
   const topRef=useRef(null);
   const [cur,setCur]=useState(0);
@@ -471,8 +532,22 @@ const [dryTemp, setDryTemp] = useState("");
   const [submitting,setSubmitting]=useState(false);
   const [foldPhase,setFoldPhase]=useState(-1);
   const [foldDone,setFoldDone]=useState(false);
-
+  const formRef = useRef(null);
   const setF=useCallback((k,v)=>setForm(p=>({...p,[k]:v})),[]);
+
+  const scrollToForm = () => {
+    if (formRef.current) {
+      formRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
+
+  const goTo = (n) => {
+    setCur(n);
+    setFormKey(k => k + 1);
+    requestAnimationFrame(() => {
+      scrollToForm();
+    });
+  };
 
   // Pre-fill customer data if logged in
   useEffect(()=>{
@@ -492,9 +567,6 @@ const [dryTemp, setDryTemp] = useState("");
     }catch{/* silent */}
   },[]);
 
-  const scrollTop=()=>topRef.current?.scrollIntoView({behavior:"smooth",block:"start"});
-  const goTo=n=>{setCur(n);setFormKey(k=>k+1);scrollTop();};
-
   const validate=()=>{
     const err=msg=>{toast.error(msg);return false;};
     if(cur===0){
@@ -508,6 +580,8 @@ const [dryTemp, setDryTemp] = useState("");
     }
     if(cur===1&&!form.dropoff_date)
       return err(t("Select a drop-off date","Selecciona fecha de entrega"));
+    if(cur===2&&!form.plan) // <--- validar plan seleccionado
+      return err(t("Select a turnaround plan","Selecciona un plan de tiempo"));
     if(cur===3&&!form.terms)
       return err(t("Accept terms to continue","Acepta los términos"));
     return true;
@@ -532,6 +606,7 @@ const [dryTemp, setDryTemp] = useState("");
         address:fullAddr||null,dropoff_date:form.dropoff_date,dropoff_time:"",
         contact_method:form.contact_method,sms_consent:form.sms_consent,
         notes:form.notes?.trim()||"",
+        plan:form.plan, // <--- enviar plan al backend
       });
     }catch(e){toast.error(getErr(e));}
     finally{setSubmitting(false);}
@@ -541,20 +616,16 @@ const [dryTemp, setDryTemp] = useState("");
 
   const handleReset=()=>{
     setForm({...EMPTY});setCur(0);setFormKey(k=>k+1);
-    setFoldPhase(-1);setFoldDone(false);scrollTop();
+    setFoldPhase(-1);setFoldDone(false);
+    scrollToForm();
   };
 
   const cmMap={phone:t("Phone call","Llamada"),text:"Text/SMS",email:"Email"};
-  const QUICK_OPTS=[
-    {icon:"❄️",label:t("Cold wash","Lavado frío")},
-    {icon:"🌡️",label:t("Warm wash","Lavado cálido")},
-    {icon:"🌿",label:t("Air dry","Secar al aire")},
-    {icon:"🧴",label:t("No softener","Sin suavizante")},
-    {icon:"👕",label:t("Fold flat","Doblar plano")},
-    {icon:"👔",label:t("Hang items","Colgar prendas")},
-    {icon:"🪴",label:t("Eco detergent","Detergente ecológico")},
-    {icon:"🚫",label:t("No bleach","Sin blanqueador")},
-  ];
+  const planMap = {
+    standard: t("Standard (36h)", "Estándar (36h)"),
+    premium:  t("Premium (24h)",  "Premium (24h)"),
+    express:  t("Express (Same Day)", "Express (mismo día)"),
+  };
 
   return (
     <div style={{ minHeight:"100vh", background:"#f8fafc" }}>
@@ -634,8 +705,7 @@ const [dryTemp, setDryTemp] = useState("");
       <section style={{ padding:"0 0 72px" }}>
         <div style={{ maxWidth:700, margin:"0 auto", padding:"0 16px" }}>
 
-          {/* Journey track */}
-          <div style={{ marginTop:"-26px", position:"relative", zIndex:2, marginBottom:16 }}>
+          <div ref={formRef} id="wash-fold-form" style={{ marginTop:"-26px", position:"relative", zIndex:2, marginBottom:16 }}>
             <JourneyTrack cur={foldPhase>=0?3:cur} locale={locale}
               onStageClick={i=>{ if(foldPhase<0) goTo(i); }}/>
           </div>
@@ -701,7 +771,6 @@ const [dryTemp, setDryTemp] = useState("");
 
               <div style={{ height:3, background:"linear-gradient(90deg,#38bdf8,#0ea5e9,#0284c7)" }}/>
 
-              {/* Card header */}
               <div style={{ display:"flex", alignItems:"center", gap:10, padding:"14px 22px",
                 borderBottom:"1px solid #f1f5f9", background:"#f8fafc" }}>
                 <div style={{ width:38, height:38, borderRadius:10, background:"rgba(14,165,233,.1)",
@@ -726,7 +795,6 @@ const [dryTemp, setDryTemp] = useState("");
                 </div>
               </div>
 
-              {/* Form body */}
               <div style={{ padding:"22px 24px" }}>
                 <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
 
@@ -812,36 +880,43 @@ const [dryTemp, setDryTemp] = useState("");
                     </>
                   )}
 
-                  {/* Step 2 — Laundry prefs */}
-                 {cur === 2 && (
-  <>
-    <PreferenceGrid
-      title="WASH TEMPERATURE"
-      options={WASH_OPTIONS}
-      selected={washTemp}
-      onSelect={setWashTemp}
-    />
+                  {/* Step 2 — Laundry prefs (incluye selector de plan) */}
+                  {cur === 2 && (
+                    <>
+                      {/* Selector de plan */}
+                      <FF label={t("Turnaround plan *","Plan de tiempo *")}>
+                        <PlanSelector value={form.plan} onChange={(v) => setF("plan", v)} />
+                      </FF>
 
-    <PreferenceGrid
-      title="DRY TEMPERATURE"
-      options={DRY_OPTIONS}
-      selected={dryTemp}
-      onSelect={setDryTemp}
-    />
+                      <PreferenceGrid
+                        title="WASH TEMPERATURE"
+                        options={WASH_OPTIONS}
+                        selected={washTemp}
+                        onSelect={setWashTemp}
+                      />
 
-    <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 6 }}>
-      Choose low or air dry for delicates, knits and activewear.
-    </div>
+                      <PreferenceGrid
+                        title="DRY TEMPERATURE"
+                        options={DRY_OPTIONS}
+                        selected={dryTemp}
+                        onSelect={setDryTemp}
+                      />
 
-    <FF label="Special instructions (optional)">
-      <FTextarea
-        value={form.notes}
-        onChange={e => setF("notes", e.target.value)}
-        rows={5}
-      />
-    </FF>
-  </>
-)}
+                      <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 6 }}>
+                        Choose low or air dry for delicates, knits and activewear.
+                      </div>
+
+                      <FF label="Special instructions (optional)">
+                        <FTextarea
+                          value={form.notes}
+                          onChange={e => setF("notes", e.target.value)}
+                          rows={5}
+                        />
+                      </FF>
+
+                      <WashFoldInfoPanel t={t} />
+                    </>
+                  )}
 
                   {/* Step 3 — Confirm */}
                   {cur===3 && (
@@ -857,11 +932,12 @@ const [dryTemp, setDryTemp] = useState("");
                          [form.address_line1,form.city,form.state].filter(Boolean).join(", ")||t("In-store","En tienda")],
                         [t("Date","Fecha"), form.dropoff_date||t("Flexible","Flexible")],
                       ]}/>
-                      {form.notes && (
-                        <SumBlock title={`🧺 ${t("Preferences","Preferencias")}`} rows={[
-                          [t("Notes","Notas"), form.notes.slice(0,100)+(form.notes.length>100?"…":"")],
-                        ]}/>
-                      )}
+                      <SumBlock title={`🧺 ${t("Service Details","Detalles del servicio")}`} rows={[
+                        [t("Plan","Plan"), planMap[form.plan] || form.plan],
+                        [t("Wash temp","Temp lavado"), washTemp ? { cold:"Cold", warm:"Warm", hot:"Hot", any:"Any" }[washTemp] : "-"],
+                        [t("Dry temp","Temp secado"), dryTemp ? { low:"Low", medium:"Medium", high:"High", air:"Air dry" }[dryTemp] : "-"],
+                        ...(form.notes ? [[t("Notes","Notas"), form.notes.slice(0,100)+(form.notes.length>100?"…":"")]] : []),
+                      ]}/>
                       <div style={{ display:"flex", alignItems:"flex-start", gap:9, padding:"11px 13px",
                         background:"#f0f9ff", borderRadius:10, border:"1px solid #bae6fd" }}>
                         <input type="checkbox" id="wf-terms" checked={form.terms}
