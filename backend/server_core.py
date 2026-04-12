@@ -341,16 +341,22 @@ try:
     from routes.logistics import router as logistics_router
     app.include_router(logistics_router)
     logger.info("Logistics router enabled at /api/logistics/*")
+except Exception as e:
+    logger.warning(f"Logistics router not loaded: {e}")
 
+try:
     from routes.geocode import router as geocode_router
     app.include_router(geocode_router, prefix="/api")
     logger.info("Geocode router enabled at /api/geocode/*")
+except Exception as e:
+    logger.warning(f"Geocode router not loaded: {e}")
 
+try:
     from routes.customer import router as customer_router
     app.include_router(customer_router, prefix="/api")
     logger.info("Customer router enabled at /api/customer/*")
 except Exception as e:
-    logger.warning(f"Logistics router not loaded: {e}")
+    logger.warning(f"Customer router not loaded: {e}")
 
 # Include Stripe Payments router (PaymentIntents, tap-to-pay, POS)
 try:

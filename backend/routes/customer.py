@@ -12,8 +12,14 @@ from typing import Optional
 from database import db
 from auth import get_current_customer
 
-# Importación correcta desde el módulo real
-from file_uploads import put_object, get_object
+# Lazy import for file uploads — may not be available in all environments
+try:
+    from file_uploads import put_object, get_object
+    _HAS_FILE_UPLOADS = True
+except ImportError:
+    _HAS_FILE_UPLOADS = False
+    put_object = None
+    get_object = None
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/customer", tags=["customer"])
@@ -396,6 +402,8 @@ async def upload_receipt(
     current_customer: dict = Depends(get_current_customer),
 ):
     """Cliente sube un comprobante de pago; devuelve el file_id para OCR."""
+    if not _HAS_FILE_UPLOADS:
+        raise HTTPException(status_code=503, detail="File upload service not available")
     data = await file.read()
     if len(data) > MAX_FILE_SIZE:
         raise HTTPException(status_code=413, detail="File too large (max 10 MB)")
