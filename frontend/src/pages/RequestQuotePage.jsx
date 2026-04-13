@@ -306,6 +306,30 @@ export default function RequestQuotePage() {
   const setF = useCallback((k, v) => setForm((p) => ({ ...p, [k]: v })), []);
   const scrollTop = () => topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
 
+  // Pre-fill from customer_data if logged in
+  useEffect(() => {
+    try {
+      const cd = localStorage.getItem("customer_data");
+      if (cd) {
+        const c = JSON.parse(cd);
+        const nameParts = (c.name || "").split(" ");
+        const addrParts = (c.address || "").split(",").map(s => s.trim());
+        setForm(p => ({
+          ...p,
+          first_name:    p.first_name    || nameParts[0] || "",
+          last_name:     p.last_name     || nameParts.slice(1).join(" ") || "",
+          email:         p.email         || c.email || "",
+          phone:         p.phone         || (c.phone || "").replace(/^\+\d+\s?/, "") || "",
+          address_line1: p.address_line1 || c.address_line1 || addrParts[0] || "",
+          city:          p.city          || c.city || addrParts[1] || "",
+          state:         p.state         || c.state || addrParts[2] || "",
+          zip_code:      p.zip_code      || c.zip_code || addrParts[3] || "",
+        }));
+      }
+    } catch { /* silent */ }
+  }, []);
+
+
   const goTo = (n) => { setCur(n); setFormKey((k) => k + 1); scrollTop(); };
 
   const validate = () => {

@@ -770,18 +770,16 @@ async def notify_customer_direct(
 
     msg = (
         f"\U0001f9fc Ventura Fresh Laundry\n\n"
-        f"Hola {name} \U0001f44b\n"
-        f"Tu orden #{order_num} está lista para pago.\n"
-        f"{breakdown}\n"
-        f"\U0001f4b3 Tarjeta (rápido y seguro)\n"
-        f"\U0001f449 {short_url or 'Link no disponible'}\n\n"
-        f"\U0001f4f2 Zelle (Preferido): venturafreshlaundry\n"
-        f"\U0001f4f2 Venmo: @Venturafreshlaundry\n"
-        f"\U0001f4f2 Cash App: $venturafreshlaundry\n"
-        f"\U0001f4de También por teléfono: +1 (805) 626-2524\n\n"
-        f"\U0001f4dd Incluye las últimas 4 de tu orden: {last4}\n\n"
-        f"Gracias por confiar en Ventura Fresh Laundry \U0001f9fc\u2728"
-          )
+        f"Hi {name} \U0001f44b\n"
+        f"Your order #{order_num} is ready for payment.\n"
+        f"{breakdown}\n\n"
+        f"\U0001f4b3 Complete your payment securely through your customer portal\n"
+        f"\U0001f449 Please click the link below to access your account and finalize your payment:\n"
+        f"{short_url or 'Link not available'}\n\n"
+        f"\u26a1 Fast, secure, and easy process\n\n"
+        f"If you have any questions, feel free to contact us at (805) 234-8181\n\n"
+        f"Thank you for choosing Ventura Fresh Laundry \U0001f9fc\u2728"
+      )
 
     # ── Build HTML email ──────────────────────────────────────
     if pay_status == "paid":

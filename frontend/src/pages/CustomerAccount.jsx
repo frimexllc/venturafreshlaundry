@@ -587,7 +587,20 @@ export default function CustomerAccount() {
             </Card>
           </Tilt>
         </Reveal>
-
+        {/* CTA */}
+        <Reveal delay={300} dir="scale">
+          <div className="relative overflow-hidden bg-gradient-to-br from-sky-950 to-sky-800 rounded-2xl p-8 text-center shadow-xl">
+            <div className="absolute inset-0 opacity-[0.08]" style={{ backgroundImage:"radial-gradient(rgba(255,255,255,0.8) 1px,transparent 1px)", backgroundSize:"22px 22px" }} />
+            <Sparkles className="w-8 h-8 text-sky-300 mx-auto mb-4 float-animation" />
+            <h3 className="text-xl font-bold text-white mb-1">{t("Ready for your next pickup?","¿Listo para tu próxima recogida?")}</h3>
+            <p className="text-white/60 text-sm mb-6">{t("Schedule in seconds, we'll handle the rest.","Programa en segundos, nosotros hacemos el resto.")}</p>
+            <Link to="/schedule-pickup">
+              <Mag as="div" strength={0.22} className="inline-flex items-center gap-2 bg-gradient-to-r from-primary to-sky-500 text-white rounded-full px-8 py-3.5 text-sm font-bold uppercase tracking-wider shadow-lg hover:shadow-xl cursor-pointer hover:-translate-y-0.5 transition-all duration-300 active:scale-95 group overflow-hidden relative">
+                <span className="relative z-10 flex items-center gap-2">🚚 {t("Schedule Pickup","Programar Recogida")}<ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-1" /></span>
+              </Mag>
+            </Link>
+          </div>
+        </Reveal>
         {/* Membership upsell */}
         {!hasMembership && (
           <Reveal delay={120} dir="up">
@@ -669,11 +682,7 @@ export default function CustomerAccount() {
                       </div>
                     ) : (
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                        <button onClick={() => handlePayStripe(order.id)} disabled={payingOrderId===order.id}
-                          className="flex items-center justify-center gap-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl px-4 py-3 text-sm font-semibold transition-all duration-200 disabled:opacity-50">
-                          {payingOrderId===order.id ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <CreditCard className="h-4 w-4" />}
-                          {t("Card","Tarjeta")}
-                        </button>
+
                         <button onClick={() => openPaymentModal("zelle", order)}
                           className="flex items-center justify-center gap-2 text-white rounded-xl px-4 py-3 text-sm font-semibold transition-all duration-200 hover:brightness-110 active:scale-95"
                           style={{ backgroundColor:"#6D1ED4" }}>
@@ -688,6 +697,11 @@ export default function CustomerAccount() {
                           className="flex items-center justify-center gap-2 text-black rounded-xl px-4 py-3 text-sm font-semibold transition-all duration-200 hover:brightness-110 active:scale-95"
                           style={{ backgroundColor:"#00E013" }}>
                           <DollarSign className="h-4 w-4" /> CashApp
+                        </button>
+                                                <button onClick={() => handlePayStripe(order.id)} disabled={payingOrderId===order.id}
+                          className="flex items-center justify-center gap-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl px-4 py-3 text-sm font-semibold transition-all duration-200 disabled:opacity-50">
+                          {payingOrderId===order.id ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <CreditCard className="h-4 w-4" />}
+                          {t("Card","Tarjeta")}
                         </button>
                       </div>
                     )}
@@ -927,20 +941,7 @@ export default function CustomerAccount() {
           </Card>
         </Reveal>
 
-        {/* CTA */}
-        <Reveal delay={300} dir="scale">
-          <div className="relative overflow-hidden bg-gradient-to-br from-sky-950 to-sky-800 rounded-2xl p-8 text-center shadow-xl">
-            <div className="absolute inset-0 opacity-[0.08]" style={{ backgroundImage:"radial-gradient(rgba(255,255,255,0.8) 1px,transparent 1px)", backgroundSize:"22px 22px" }} />
-            <Sparkles className="w-8 h-8 text-sky-300 mx-auto mb-4 float-animation" />
-            <h3 className="text-xl font-bold text-white mb-1">{t("Ready for your next pickup?","¿Listo para tu próxima recogida?")}</h3>
-            <p className="text-white/60 text-sm mb-6">{t("Schedule in seconds, we'll handle the rest.","Programa en segundos, nosotros hacemos el resto.")}</p>
-            <Link to="/schedule-pickup">
-              <Mag as="div" strength={0.22} className="inline-flex items-center gap-2 bg-gradient-to-r from-primary to-sky-500 text-white rounded-full px-8 py-3.5 text-sm font-bold uppercase tracking-wider shadow-lg hover:shadow-xl cursor-pointer hover:-translate-y-0.5 transition-all duration-300 active:scale-95 group overflow-hidden relative">
-                <span className="relative z-10 flex items-center gap-2">🚚 {t("Schedule Pickup","Programar Recogida")}<ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-1" /></span>
-              </Mag>
-            </Link>
-          </div>
-        </Reveal>
+
 
         {/* Profile + Address */}
         <div className="grid sm:grid-cols-2 gap-5">

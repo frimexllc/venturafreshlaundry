@@ -1,6 +1,7 @@
 """Customer Authentication endpoints — extracted from server_core.py"""
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, EmailStr
+from typing import Optional
 from datetime import datetime, timezone
 import uuid
 
@@ -15,6 +16,11 @@ class CustomerRegister(BaseModel):
     name: str
     email: EmailStr
     password: str
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    zip_code: Optional[str] = None
 
 
 class CustomerLogin(BaseModel):
@@ -31,17 +37,32 @@ class CustomerAuthResponse(BaseModel):
 @router.post("/customer/auth/register", response_model=CustomerAuthResponse)
 async def customer_register(data: CustomerRegister):
     """Register a new customer account"""
+    # Build address string from parts
+    addr_parts = [p for p in [data.address, data.city, data.state, data.zip_code] if p]
+    full_address = ", ".join(addr_parts) if addr_parts else None
+
     existing = await db.customers.find_one({"email": data.email.lower()})
     if existing:
         if existing.get("password_hash"):
             raise HTTPException(status_code=400, detail="Email already registered. Please login.")
+        update_fields = {
+            "password_hash": hash_password(data.password),
+            "name": data.name,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if data.phone:
+            update_fields["phone"] = data.phone
+        if full_address:
+            update_fields["address"] = full_address
+        if data.city:
+            update_fields["city"] = data.city
+        if data.state:
+            update_fields["state"] = data.state
+        if data.zip_code:
+            update_fields["zip_code"] = data.zip_code
         await db.customers.update_one(
             {"email": data.email.lower()},
-            {"$set": {
-                "password_hash": hash_password(data.password),
-                "name": data.name,
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            }},
+            {"$set": update_fields},
         )
         customer = await db.customers.find_one({"email": data.email.lower()}, {"_id": 0, "password_hash": 0})
     else:
@@ -51,8 +72,11 @@ async def customer_register(data: CustomerRegister):
             "id": customer_id,
             "name": data.name,
             "email": data.email.lower(),
-            "phone": None,
-            "address": None,
+            "phone": data.phone,
+            "address": full_address,
+            "city": data.city,
+            "state": data.state,
+            "zip_code": data.zip_code,
             "preferred_contact": "email",
             "notes": None,
             "status": "active",

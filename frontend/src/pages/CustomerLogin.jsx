@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import axios from "axios";
 import { toast } from "sonner";
-import { User, Mail, Lock, ArrowRight, Eye, EyeOff } from "lucide-react";
+import { User, Mail, Lock, ArrowRight, Eye, EyeOff, Phone, MapPin, Building2, Hash, ShieldCheck, X } from "lucide-react";
 import PublicNav from "../components/PublicNav";
 import { useLocale } from "../context/LocaleContext";
 
@@ -182,7 +182,9 @@ export default function CustomerLogin() {
   const [loading,          setLoading]          = useState(false);
   const [showPass,         setShowPass]         = useState(false);
   const [acceptedPolicies, setAcceptedPolicies] = useState(false);
-  const [form, setForm] = useState({ name: "", email: "", password: "" });
+  const [regStep,          setRegStep]          = useState(1); // 1=basic, 2=contact+address
+  const [showTermsModal,   setShowTermsModal]   = useState(false);
+  const [form, setForm] = useState({ name: "", email: "", password: "", phone: "", address: "", city: "", state: "", zip_code: "" });
   const setF = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
   // Get redirect path from URL params (stable ref - only read once on mount)
@@ -197,7 +199,8 @@ export default function CustomerLogin() {
 
   const switchMode = (m) => {
     setMode(m);
-    setForm(p => ({ name: "", email: p.email, password: "" }));
+    setRegStep(1);
+    setForm(p => ({ name: "", email: p.email, password: "", phone: "", address: "", city: "", state: "", zip_code: "" }));
     setShowPass(false);
   };
 
@@ -207,6 +210,16 @@ export default function CustomerLogin() {
       toast.error(t("Accept terms to continue", "Acepta los términos para continuar"));
       return;
     }
+
+    if (mode === "register" && regStep === 1) {
+      // Validate step 1 fields
+      if (!form.name.trim()) { toast.error(t("Enter your name", "Ingresa tu nombre")); return; }
+      if (!form.email.includes("@")) { toast.error(t("Enter a valid email", "Correo inválido")); return; }
+      if (form.password.length < 6) { toast.error(t("Password must be at least 6 characters", "La contraseña debe tener al menos 6 caracteres")); return; }
+      setRegStep(2);
+      return;
+    }
+
     setLoading(true);
     try {
       if (mode === "login") {
@@ -216,15 +229,36 @@ export default function CustomerLogin() {
         toast.success(t("Welcome back!", "¡Bienvenido de nuevo!"));
         navigate(redirectPath);
       } else {
-        const res = await axios.post(`${API}/customer/auth/register`, { name: form.name, email: form.email, password: form.password });
+        // Validate step 2 fields
+        if (!form.phone.trim()) { toast.error(t("Enter your phone number", "Ingresa tu número de teléfono")); setLoading(false); return; }
+        if (!form.address.trim()) { toast.error(t("Enter your address", "Ingresa tu dirección")); setLoading(false); return; }
+        if (!form.city.trim()) { toast.error(t("Enter your city", "Ingresa tu ciudad")); setLoading(false); return; }
+        if (!form.zip_code.trim()) { toast.error(t("Enter your zip code", "Ingresa tu código postal")); setLoading(false); return; }
+
+        const res = await axios.post(`${API}/customer/auth/register`, {
+          name: form.name,
+          email: form.email,
+          password: form.password,
+          phone: form.phone.trim(),
+          address: form.address.trim(),
+          city: form.city.trim(),
+          state: form.state.trim(),
+          zip_code: form.zip_code.trim(),
+        });
         localStorage.setItem("customer_token", res.data.access_token);
         localStorage.setItem("customer_data", JSON.stringify(res.data.customer));
-        toast.success(t("Account created!", "¡Cuenta creada!"));
-        navigate(redirectPath);
+        // Show privacy/terms modal after registration
+        setShowTermsModal(true);
       }
     } catch (err) {
       toast.error(err.response?.data?.detail || t("Authentication failed", "Autenticación fallida"));
     } finally { setLoading(false); }
+  };
+
+  const handleAcceptTermsModal = () => {
+    setShowTermsModal(false);
+    toast.success(t("Account created!", "¡Cuenta creada!"));
+    navigate(redirectPath);
   };
 
   const isLogin = mode === "login";
@@ -395,60 +429,67 @@ export default function CustomerLogin() {
 
                   <form onSubmit={handleSubmit} className="p-6 flex flex-col gap-4">
 
-                    {/* Name — register only */}
-                    <div style={{
-                      overflow: "hidden",
-                      transition: "max-height 0.25s var(--ease-smooth), opacity 0.2s ease",
-                      maxHeight: !isLogin ? "80px" : "0px",
-                      opacity: !isLogin ? 1 : 0,
-                    }}>
-                      <Field
-                        label={t("Full Name", "Nombre completo")}
-                        icon={User}
-                        value={form.name}
-                        onChange={e => setF("name", e.target.value)}
-                        required={!isLogin}
-                        placeholder={t("John Smith", "Juan García")}
-                        testId="customer-name-input"
-                        autoComplete="name"
-                      />
-                    </div>
+                    {/* ─── LOGIN FIELDS ──────────────────── */}
+                    {isLogin && (<>
+                      <Field label={t("Email Address", "Correo electrónico")} icon={Mail} type="email"
+                        value={form.email} onChange={e => setF("email", e.target.value)} required
+                        placeholder="you@example.com" testId="customer-email-input" autoComplete="email" />
+                      <Field label={t("Password", "Contraseña")} hint={t("Forgot?", "¿Olvidaste?")} icon={Lock}
+                        type={showPass ? "text" : "password"} value={form.password}
+                        onChange={e => setF("password", e.target.value)} required placeholder="••••••••"
+                        testId="customer-password-input" autoComplete="current-password"
+                        rightEl={<button type="button" onClick={() => setShowPass(p => !p)} className="text-slate-400 hover:text-slate-600 transition-colors duration-100 focus:outline-none">{showPass ? <EyeOff className="w-[15px] h-[15px]" /> : <Eye className="w-[15px] h-[15px]" />}</button>} />
+                    </>)}
 
-                    {/* Email */}
-                    <Field
-                      label={t("Email Address", "Correo electrónico")}
-                      icon={Mail}
-                      type="email"
-                      value={form.email}
-                      onChange={e => setF("email", e.target.value)}
-                      required
-                      placeholder="you@example.com"
-                      testId="customer-email-input"
-                      autoComplete="email"
-                    />
+                    {/* ─── REGISTER STEP 1: Basic info ──── */}
+                    {!isLogin && regStep === 1 && (<>
+                      <Field label={t("Full Name", "Nombre completo")} icon={User}
+                        value={form.name} onChange={e => setF("name", e.target.value)} required
+                        placeholder={t("John Smith", "Juan García")} testId="customer-name-input" autoComplete="name" />
+                      <Field label={t("Email Address", "Correo electrónico")} icon={Mail} type="email"
+                        value={form.email} onChange={e => setF("email", e.target.value)} required
+                        placeholder="you@example.com" testId="customer-email-input" autoComplete="email" />
+                      <Field label={t("Password", "Contraseña")} icon={Lock}
+                        type={showPass ? "text" : "password"} value={form.password}
+                        onChange={e => setF("password", e.target.value)} required placeholder="••••••••"
+                        testId="customer-password-input" autoComplete="new-password"
+                        rightEl={<button type="button" onClick={() => setShowPass(p => !p)} className="text-slate-400 hover:text-slate-600 transition-colors duration-100 focus:outline-none">{showPass ? <EyeOff className="w-[15px] h-[15px]" /> : <Eye className="w-[15px] h-[15px]" />}</button>} />
+                    </>)}
 
-                    {/* Password */}
-                    <Field
-                      label={t("Password", "Contraseña")}
-                      hint={isLogin ? t("Forgot?", "¿Olvidaste?") : null}
-                      icon={Lock}
-                      type={showPass ? "text" : "password"}
-                      value={form.password}
-                      onChange={e => setF("password", e.target.value)}
-                      required
-                      placeholder="••••••••"
-                      testId="customer-password-input"
-                      autoComplete={isLogin ? "current-password" : "new-password"}
-                      rightEl={
-                        <button
-                          type="button"
-                          onClick={() => setShowPass(p => !p)}
-                          className="text-slate-400 hover:text-slate-600 transition-colors duration-100 focus:outline-none"
-                        >
-                          {showPass ? <EyeOff className="w-[15px] h-[15px]" /> : <Eye className="w-[15px] h-[15px]" />}
+                    {/* ─── REGISTER STEP 2: Contact + Address ──── */}
+                    {!isLogin && regStep === 2 && (<>
+                      {/* Step indicator */}
+                      <div className="flex items-center gap-2 mb-1">
+                        <button type="button" onClick={() => setRegStep(1)} className="text-[10px] font-bold text-sky-500 hover:text-sky-600 transition-colors" data-testid="reg-back-btn">
+                          ← {t("Back", "Atrás")}
                         </button>
-                      }
-                    />
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          {t("Step 2 of 2 — Contact & Address", "Paso 2 de 2 — Contacto y Dirección")}
+                        </span>
+                      </div>
+
+                      <Field label={t("Phone Number", "Número de teléfono")} icon={Phone}
+                        type="tel" value={form.phone} onChange={e => setF("phone", e.target.value)}
+                        required placeholder="(805) 555-1234" testId="customer-phone-input" autoComplete="tel" />
+
+                      <Field label={t("Street Address", "Dirección")} icon={MapPin}
+                        value={form.address} onChange={e => setF("address", e.target.value)}
+                        required placeholder={t("1120 Main St, Apt 2B", "1120 Calle Principal, Apt 2B")}
+                        testId="customer-address-input" autoComplete="street-address" />
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <Field label={t("City", "Ciudad")} icon={Building2}
+                          value={form.city} onChange={e => setF("city", e.target.value)}
+                          required placeholder="Ventura" testId="customer-city-input" autoComplete="address-level2" />
+                        <Field label={t("State", "Estado")} icon={Building2}
+                          value={form.state} onChange={e => setF("state", e.target.value)}
+                          placeholder="CA" testId="customer-state-input" autoComplete="address-level1" />
+                      </div>
+
+                      <Field label={t("Zip Code", "Código Postal")} icon={Hash}
+                        value={form.zip_code} onChange={e => setF("zip_code", e.target.value)}
+                        required placeholder="93003" testId="customer-zip-input" autoComplete="postal-code" />
+                    </>)}
 
                     {/* Divider */}
                     <div className="h-px bg-border" />
@@ -507,7 +548,12 @@ export default function CustomerLogin() {
                         </>
                       ) : (
                         <>
-                          {isLogin ? t("Sign In", "Iniciar sesión") : t("Create Account", "Crear cuenta")}
+                          {isLogin
+                            ? t("Sign In", "Iniciar sesión")
+                            : regStep === 1
+                              ? t("Continue", "Continuar")
+                              : t("Create Account", "Crear cuenta")
+                          }
                           <ArrowRight className="w-3.5 h-3.5 transition-transform duration-150 group-hover:translate-x-0.5" />
                         </>
                       )}
@@ -551,6 +597,85 @@ export default function CustomerLogin() {
 
         </div>
       </div>
+
+      {/* ══ POST-REGISTRATION TERMS & DATA STORAGE MODAL ══════════════ */}
+      {showTermsModal && (
+        <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/60 backdrop-blur-sm" data-testid="terms-modal-overlay">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 overflow-hidden animate-slide-up" data-testid="terms-modal">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-sky-600 to-sky-500 px-6 py-5">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
+                  <ShieldCheck className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-white font-bold text-lg leading-tight">
+                    {t("Welcome to Ventura Fresh Laundry!", "¡Bienvenido a Ventura Fresh Laundry!")}
+                  </h2>
+                  <p className="text-white/70 text-xs font-medium mt-0.5">
+                    {t("Your data, your trust", "Tus datos, tu confianza")}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="px-6 py-5 space-y-4">
+              <p className="text-sm text-slate-600 leading-relaxed">
+                {t(
+                  "Your personal information (name, phone, address) will be stored securely with the sole purpose of improving your service experience:",
+                  "Tu información personal (nombre, teléfono, dirección) será almacenada de forma segura con el único propósito de mejorar tu experiencia de servicio:"
+                )}
+              </p>
+
+              <ul className="space-y-2.5">
+                {[
+                  t("Auto-fill your pickup and delivery forms for faster orders.", "Autocompletar tus formularios de recogida y entrega para órdenes más rápidas."),
+                  t("Send you order updates via SMS and email.", "Enviarte actualizaciones de tus órdenes por SMS y correo."),
+                  t("Personalize your laundry preferences.", "Personalizar tus preferencias de lavandería."),
+                  t("We will never share your data with third parties.", "Nunca compartiremos tus datos con terceros."),
+                ].map((item, i) => (
+                  <li key={i} className="flex items-start gap-2.5">
+                    <div className="w-5 h-5 rounded-full bg-sky-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <svg className="w-3 h-3 text-sky-500" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                    <span className="text-sm text-slate-600">{item}</span>
+                  </li>
+                ))}
+              </ul>
+
+              <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  {t(
+                    "By continuing, you agree to our Terms and Conditions and Privacy Policy. You can request deletion of your data at any time.",
+                    "Al continuar, aceptas nuestros Términos y Condiciones y Política de Privacidad. Puedes solicitar la eliminación de tus datos en cualquier momento."
+                  )}
+                  {" "}
+                  <Link to="/terms-and-conditions" className="text-sky-500 font-semibold hover:underline" onClick={() => setShowTermsModal(false)}>
+                    {t("Read full terms", "Leer términos completos")}
+                  </Link>
+                </p>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 pb-5">
+              <button
+                onClick={handleAcceptTermsModal}
+                data-testid="terms-modal-accept-btn"
+                className="btn-primary w-full flex items-center justify-center gap-2 py-3 text-sm font-bold uppercase tracking-wider group relative overflow-hidden"
+              >
+                <ShieldCheck className="w-4 h-4" />
+                {t("I Understand, Continue", "Entendido, Continuar")}
+                <ArrowRight className="w-4 h-4 transition-transform duration-150 group-hover:translate-x-0.5" />
+                <span className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-500 bg-gradient-to-r from-transparent via-white/10 to-transparent pointer-events-none" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

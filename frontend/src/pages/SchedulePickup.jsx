@@ -328,7 +328,7 @@ const OptionCards = ({ options, value, onChange }) => (
   </div>
 );
 
-// ─── Plan Selector (sin precios visibles) ─────────────────────────────────────
+// ─── Plan Selector ─────────────────────────────────────────────────────────────
 const PlanSelector = ({ value, onChange }) => {
   const { t } = useLocale();
   const plans = [
@@ -620,41 +620,100 @@ const ConveyorTrack = ({ cur, locale, onStageClick }) => {
   );
 };
 
-// ─── Main ──────────────────────────────────────────────────────────────────────
+// ─── localStorage key ──────────────────────────────────────────────────────────
+const LS_FORM_KEY = "vfl_pickup_form";
+const LS_STEP_KEY = "vfl_pickup_step";
+
 const EMPTY = {
   first_name: "", last_name: "", email: "", phone: "", dialCode: "+1", dialIso: "US",
   contact_method: "", sms_consent: false,
   address_line1: "", address_line2: "", city: "", state: "", zip_code: "", addr_notes: "",
-  service_type: "", service_plan: "",   // <--- nuevo campo
+  service_type: "", service_plan: "",
   wash_temp: "", dry_temp: "", notes: "",
   pickup_date: "", pickup_time: "", terms: false,
 };
 
+// ─── Helper: load form from localStorage, merging with EMPTY for safety ────────
+const loadSavedForm = () => {
+  try {
+    const saved = localStorage.getItem(LS_FORM_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return { ...EMPTY, ...parsed };
+    }
+  } catch { /* silent */ }
+  return { ...EMPTY };
+};
+
+// ─── Helper: load saved step ───────────────────────────────────────────────────
+const loadSavedStep = () => {
+  try {
+    const saved = localStorage.getItem(LS_STEP_KEY);
+    if (saved !== null) {
+      const n = parseInt(saved, 10);
+      if (!isNaN(n) && n >= 0 && n <= 4) return n;
+    }
+  } catch { /* silent */ }
+  return 0;
+};
+
+// ─── Main ──────────────────────────────────────────────────────────────────────
 export default function SchedulePickup() {
   const { t, locale } = useLocale();
   const topRef  = useRef(null);
   const formRef = useRef(null);
 
-  const [cur,        setCur]        = useState(0);
+  // ── Initialize form & step from localStorage ────────────────────────────────
+  const [cur,        setCur]        = useState(() => loadSavedStep());
   const [formKey,    setFormKey]    = useState(0);
-  const [form,       setForm]       = useState({ ...EMPTY });
+  const [form,       setForm]       = useState(() => loadSavedForm());
   const [submitting, setSubmitting] = useState(false);
   const [washPhase,  setWashPhase]  = useState(-1);
   const [washDone,   setWashDone]   = useState(false);
+  // Controls the "resume session" banner visibility
+  const [showResumeBanner, setShowResumeBanner] = useState(() => {
+    try {
+      const saved = localStorage.getItem(LS_FORM_KEY);
+      if (!saved) return false;
+      const parsed = JSON.parse(saved);
+      // Show banner only if there's meaningful saved data
+      return !!(parsed.first_name || parsed.email || parsed.address_line1);
+    } catch { return false; }
+  });
 
-  // Pre-fill customer data if logged in
+  // ── Persist form to localStorage on every change ────────────────────────────
+  useEffect(() => {
+    try {
+      localStorage.setItem(LS_FORM_KEY, JSON.stringify(form));
+    } catch { /* silent */ }
+  }, [form]);
+
+  // ── Persist current step to localStorage ────────────────────────────────────
+  useEffect(() => {
+    try {
+      localStorage.setItem(LS_STEP_KEY, String(cur));
+    } catch { /* silent */ }
+  }, [cur]);
+
+  // ── Pre-fill from customer_data if localStorage form is empty ───────────────
   useEffect(() => {
     try {
       const cd = localStorage.getItem("customer_data");
       if (cd) {
         const c = JSON.parse(cd);
         const nameParts = (c.name || "").split(" ");
-        setForm(p => ({
+        // Parse address parts from customer data
+        const addrParts = (c.address || "").split(",").map(s => s.trim());
+        setForm((p) => ({
           ...p,
-          first_name: p.first_name || nameParts[0] || "",
-          last_name: p.last_name || nameParts.slice(1).join(" ") || "",
-          email: p.email || c.email || "",
-          phone: p.phone || (c.phone || "").replace(/^\+\d+\s?/, "") || "",
+          first_name:    p.first_name    || nameParts[0] || "",
+          last_name:     p.last_name     || nameParts.slice(1).join(" ") || "",
+          email:         p.email         || c.email || "",
+          phone:         p.phone         || (c.phone || "").replace(/^\+\d+\s?/, "") || "",
+          address_line1: p.address_line1 || c.address_line1 || addrParts[0] || "",
+          city:          p.city          || c.city || addrParts[1] || "",
+          state:         p.state         || c.state || addrParts[2] || "",
+          zip_code:      p.zip_code      || c.zip_code || addrParts[3] || "",
         }));
       }
     } catch { /* silent */ }
@@ -665,6 +724,14 @@ export default function SchedulePickup() {
   const scrollToForm = () => formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
 
   const goTo = (n) => { setCur(n); setFormKey((k) => k + 1); scrollToForm(); };
+
+  // ── Clear localStorage helpers ───────────────────────────────────────────────
+  const clearSavedSession = () => {
+    try {
+      localStorage.removeItem(LS_FORM_KEY);
+      localStorage.removeItem(LS_STEP_KEY);
+    } catch { /* silent */ }
+  };
 
   const validate = () => {
     const err = (msg) => { toast.error(msg); return false; };
@@ -725,12 +792,22 @@ export default function SchedulePickup() {
     } catch (e) { toast.error(getErr(e)); }
     finally { setSubmitting(false); }
 
-    setTimeout(() => { setWashPhase(5); setWashDone(true); }, cum + 400);
+    setTimeout(() => {
+      setWashPhase(5);
+      setWashDone(true);
+      clearSavedSession(); // ← limpiar localStorage tras envío exitoso
+    }, cum + 400);
   };
 
   const handleReset = () => {
-    setForm({ ...EMPTY }); setCur(0); setFormKey((k) => k + 1);
-    setWashPhase(-1); setWashDone(false); scrollToForm();
+    setForm({ ...EMPTY });
+    setCur(0);
+    setFormKey((k) => k + 1);
+    setWashPhase(-1);
+    setWashDone(false);
+    setShowResumeBanner(false);
+    clearSavedSession(); // ← limpiar localStorage al resetear
+    scrollToForm();
   };
 
   const g2   = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 };
@@ -815,6 +892,44 @@ export default function SchedulePickup() {
           <div ref={formRef} id="schedule-pickup-form" style={{ marginTop: "-20px", position: "relative", zIndex: 2 }}>
             <ConveyorTrack cur={washPhase >= 0 ? 4 : cur} locale={locale} onStageClick={(i) => { if (washPhase < 0) goTo(i); }} />
           </div>
+
+          {/* ── Resume session banner ─────────────────────────────────────────── */}
+          {showResumeBanner && washPhase < 0 && (
+            <div style={{
+              marginTop: 12, padding: "11px 16px", borderRadius: 12,
+              background: "linear-gradient(135deg,rgba(14,165,233,.08),rgba(56,189,248,.04))",
+              border: "1px solid rgba(14,165,233,.3)",
+              display: "flex", alignItems: "center", gap: 10,
+              animation: "tl_panel .3s ease both",
+            }}>
+              <span style={{ fontSize: 18, flexShrink: 0 }}>💾</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#0ea5e9" }}>
+                  {t("You have a saved session", "Tienes una sesión guardada")}
+                </div>
+                <div style={{ fontSize: 11, color: "hsl(var(--muted-foreground))", marginTop: 2 }}>
+                  {t(
+                    `Resuming from step ${cur + 1} · ${form.first_name ? `Hi, ${form.first_name}!` : ""}`,
+                    `Retomando desde el paso ${cur + 1}${form.first_name ? ` · ¡Hola, ${form.first_name}!` : ""}`
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setShowResumeBanner(false); }}
+                style={{ fontSize: 11, fontWeight: 700, color: "#0ea5e9", background: "none", border: "none", cursor: "pointer", padding: "4px 8px", fontFamily: "inherit" }}
+              >
+                {t("Continue →", "Continuar →")}
+              </button>
+              <button
+                type="button"
+                onClick={() => { handleReset(); }}
+                style={{ fontSize: 11, color: "hsl(var(--muted-foreground))", background: "none", border: "none", cursor: "pointer", padding: "4px 8px", fontFamily: "inherit" }}
+              >
+                {t("Start over", "Empezar de nuevo")}
+              </button>
+            </div>
+          )}
 
           {/* Wash overlay */}
           {washPhase >= 0 && (
@@ -969,7 +1084,6 @@ export default function SchedulePickup() {
                               desc:  t("Bulk & business laundry", "Lavado masivo y empresas"),
                             },
                           ]} />
-                        {/* Mostrar panel y selector de plan solo para pickup_delivery */}
                         {form.service_type === "pickup_delivery" && (
                           <>
                             <FF label={t("Turnaround plan *", "Plan de tiempo *")}>
