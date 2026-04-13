@@ -14,6 +14,7 @@ Routes: orders, kpis, finances, ai, store, stripe_payments, operator, geocode, l
 ## Credentials
 - Admin: owner@frimexllc.com / admin123
 - Test Customer: testcustomer@example.com / test123456
+- Extended Test: maria_extended@test.com / test123456
 
 ## State Machine
 ### Pickup & Delivery
@@ -93,6 +94,13 @@ NEW -> CONFIRMED -> PROCESSING -> READY -> COMPLETED
 - [x] AI rejects payment request screenshots, pending transactions, non-payment images
 - [x] Frontend shows rejection reason in Spanish when AI rejects receipt
 - [x] Fixed LlmChat timeout parameter bug in operator validation endpoints
+
+### Phase 7 (Enhanced Registration + Auto-fill) — 2026-04-13
+- [x] 2-step customer registration: Step 1 (name/email/password) → Step 2 (phone/address/city/state/zip)
+- [x] Backend CustomerRegister model accepts phone, address, city, state, zip_code
+- [x] Post-registration Terms & Privacy modal explaining data storage purposes
+- [x] Auto-fill service forms (SchedulePickup, WashFold, RequestQuote) from customer_data
+- [x] Restored /api/orders router (was accidentally overwritten by testing agent)
 
 ### Customer API Endpoints (Updated)
 - `POST /api/customer/auth/register`, `POST /api/customer/auth/login`
