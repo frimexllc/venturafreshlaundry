@@ -90,6 +90,20 @@ async def customer_register(data: CustomerRegister):
         customer = {k: v for k, v in customer.items() if k not in ["password_hash", "_id"]}
 
     token = create_customer_token(customer["id"], customer["email"])
+
+    # Backfill customer_email on orders that belong to this customer (by any linked ID)
+    email_lower = data.email.lower()
+    linked = await db.customers.find(
+        {"email": {"$regex": f"^{email_lower}$", "$options": "i"}},
+        {"_id": 0, "id": 1},
+    ).to_list(20)
+    linked_ids = [c["id"] for c in linked if c.get("id")]
+    if linked_ids:
+        await db.orders.update_many(
+            {"customer_id": {"$in": linked_ids}, "$or": [{"customer_email": {"$exists": False}}, {"customer_email": ""}, {"customer_email": None}]},
+            {"$set": {"customer_email": email_lower}},
+        )
+
     return CustomerAuthResponse(access_token=token, token_type="bearer", customer=customer)
 
 
@@ -105,6 +119,20 @@ async def customer_login(data: CustomerLogin):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     customer_data = {k: v for k, v in customer.items() if k not in ["_id", "password_hash"]}
     token = create_customer_token(customer["id"], customer["email"])
+
+    # Backfill customer_email on orders missing it
+    email_lower = data.email.lower()
+    linked = await db.customers.find(
+        {"email": {"$regex": f"^{email_lower}$", "$options": "i"}},
+        {"_id": 0, "id": 1},
+    ).to_list(20)
+    linked_ids = [c["id"] for c in linked if c.get("id")]
+    if linked_ids:
+        await db.orders.update_many(
+            {"customer_id": {"$in": linked_ids}, "$or": [{"customer_email": {"$exists": False}}, {"customer_email": ""}, {"customer_email": None}]},
+            {"$set": {"customer_email": email_lower}},
+        )
+
     return CustomerAuthResponse(access_token=token, token_type="bearer", customer=customer_data)
 
 

@@ -10,16 +10,13 @@
 - Email: `testcustomer@example.com`
 - Password: `test123456`
 - Login endpoint: `POST /api/customer/auth/login`
-- Token field: `access_token`
-- Customer ID: `0d5b140b-f091-4c23-81e9-a73c32eb737a`
+
+## Alejandro (Real Customer)
+- Email: `al222210545@gmail.com`
+- Password: `alejandro123`
+- Customer ID: `5a3ea1ca-a596-4f1b-9444-59fea82ac4d2`
+- Has: phone, address, city, state, zip_code filled
 
 ## Extended Registration Test Customer
 - Email: `maria_extended@test.com`
 - Password: `test123456`
-- Has: phone, address, city, state, zip_code
-
-## Test Order
-- Order ID: `9eee9824-7d47-4f12-8d4a-e65c1e6bb465`
-- Order Number: `VFL-20260412-2cf04bbc`
-- Amount: $25.50
-- Customer Email: `testcustomer@example.com`

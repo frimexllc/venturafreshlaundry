@@ -155,7 +155,52 @@ async def get_customer_profile(current_customer: dict = Depends(get_current_cust
         "email": current_customer.get("email", ""),
         "phone": current_customer.get("phone", ""),
         "address": current_customer.get("address", ""),
+        "city": current_customer.get("city", ""),
+        "state": current_customer.get("state", ""),
+        "zip_code": current_customer.get("zip_code", ""),
     }
+
+
+@router.put("/me")
+async def update_customer_profile(
+    body: dict,
+    current_customer: dict = Depends(get_current_customer),
+):
+    """Update customer profile (name, phone, address, city, state, zip_code)."""
+    allowed = {"name", "phone", "address", "city", "state", "zip_code"}
+    updates = {k: v for k, v in body.items() if k in allowed and v is not None}
+    if not updates:
+        raise HTTPException(status_code=400, detail="No valid fields to update")
+
+    # Build full address from parts if individual fields provided
+    city = updates.get("city", current_customer.get("city", ""))
+    state = updates.get("state", current_customer.get("state", ""))
+    zip_code = updates.get("zip_code", current_customer.get("zip_code", ""))
+    addr = updates.get("address") or current_customer.get("address", "")
+
+    # If city/state/zip updated but address is a full string, reconstruct
+    if any(k in updates for k in ("city", "state", "zip_code")) and addr:
+        base_addr = addr.split(",")[0].strip() if "," in addr else addr
+        addr_parts = [p for p in [base_addr, city, state, zip_code] if p]
+        updates["address"] = ", ".join(addr_parts)
+
+    updates["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+    await db.customers.update_one(
+        {"id": current_customer["id"]},
+        {"$set": updates},
+    )
+
+    # Also update all linked customer records with same email
+    customer_email = current_customer.get("email", "")
+    if customer_email:
+        await db.customers.update_many(
+            {"email": {"$regex": f"^{customer_email}$", "$options": "i"}, "id": {"$ne": current_customer["id"]}},
+            {"$set": {k: v for k, v in updates.items() if k in ("phone", "address", "city", "state", "zip_code", "updated_at")}},
+        )
+
+    updated = await db.customers.find_one({"id": current_customer["id"]}, {"_id": 0, "password_hash": 0})
+    return updated
 
 
 @router.get("/orders")

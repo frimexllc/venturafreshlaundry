@@ -7,6 +7,7 @@ import {
   Mail, MapPin, Package, LogOut, Calendar, Clock,
   ArrowRight, Sparkles, ChevronDown, Settings, Heart, Award,
   CreditCard, Building2, DollarSign, ScanLine, X, Copy, CheckCircle,
+  Phone, Edit3, Save, Hash,
 } from "lucide-react";
 import PublicNav from "../components/PublicNav";
 import PublicFooter from "../components/PublicFooter";
@@ -272,6 +273,11 @@ export default function CustomerAccount() {
   const [paymentModal, setPaymentModal] = useState(null);
   const [paymentInfo, setPaymentInfo] = useState(null);
 
+  // Profile editing state
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [profileForm, setProfileForm] = useState({ name: "", phone: "", address: "", city: "", state: "", zip_code: "" });
+  const [savingProfile, setSavingProfile] = useState(false);
+
   const [preferences, setPreferences] = useState({
     detergent_type: "", water_temperature: "", fabric_softener: "", dryer_sheets: "",
     bleach: "", drying: "", folding_style: "", special_care: "", garment_separation: "",
@@ -387,6 +393,16 @@ export default function CustomerAccount() {
     fetchOrders(token);
     fetchPendingPayments(token);
     fetchMembershipStatus(token).then(hasMem => { if (hasMem) fetchPreferences(token); });
+
+    // Fetch fresh profile with extended fields (city, state, zip_code)
+    axios.get(`${API}/customer/me`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(res => {
+        if (res.data) {
+          setCustomer(res.data);
+          localStorage.setItem("customer_data", JSON.stringify(res.data));
+        }
+      })
+      .catch(() => {});
   }, [navigate]); // Dependencias mínimas; las funciones se definen fuera y son estables
 
   // ─── Handlers ──────────────────────────────────────────────────────────────
@@ -485,6 +501,40 @@ export default function CustomerAccount() {
 
   const openPaymentModal = (method, order) => setPaymentModal({ method, order });
   const closePaymentModal = () => setPaymentModal(null);
+
+  const startEditProfile = () => {
+    const addrParts = (customer?.address || "").split(",").map(s => s.trim());
+    setProfileForm({
+      name: customer?.name || "",
+      phone: (customer?.phone || "").replace(/^\+\d+\s?/, ""),
+      address: customer?.address_line1 || addrParts[0] || "",
+      city: customer?.city || addrParts[1] || "",
+      state: customer?.state || addrParts[2] || "",
+      zip_code: customer?.zip_code || addrParts[3] || "",
+    });
+    setEditingProfile(true);
+  };
+
+  const handleSaveProfile = async () => {
+    const token = localStorage.getItem("customer_token");
+    if (!token) return;
+    setSavingProfile(true);
+    try {
+      const res = await axios.put(`${API}/customer/me`, profileForm, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const updated = res.data;
+      setCustomer(updated);
+      localStorage.setItem("customer_data", JSON.stringify(updated));
+      setEditingProfile(false);
+      toast.success(t("Profile updated", "Perfil actualizado"));
+    } catch (err) {
+      toast.error(err.response?.data?.detail || t("Could not update profile", "No se pudo actualizar el perfil"));
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
   const setPref = (k, v) => setPreferences(p => ({ ...p, [k]: v }));
   const formatDate = (ds) => {
     if (!ds) return "";
@@ -943,48 +993,117 @@ export default function CustomerAccount() {
 
 
 
-        {/* Profile + Address */}
-        <div className="grid sm:grid-cols-2 gap-5">
-          <Reveal delay={200} dir="left">
-            <Tilt depth={3}>
-              <Card hover glass>
-                <div className="px-6 py-5">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-9 h-9 bg-primary/10 rounded-xl flex items-center justify-center"><Mail className="h-4 w-4 text-primary" /></div>
-                    <h2 className="font-bold text-slate-800 text-sm uppercase tracking-wider">{t("Profile","Perfil")}</h2>
-                  </div>
-                  <div className="space-y-2 text-sm">
+        {/* Profile + Address (Editable) */}
+        <Reveal delay={200} dir="up">
+          <Card hover>
+            <div className="px-7 py-5 flex items-center justify-between border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
+                  <Mail className="h-5 w-5 text-primary" />
+                </div>
+                <h2 className="font-bold text-slate-800 text-lg">{t("My Profile", "Mi Perfil")}</h2>
+              </div>
+              {!editingProfile ? (
+                <button onClick={startEditProfile} data-testid="edit-profile-btn"
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-slate-200 text-slate-500 text-xs font-semibold hover:border-primary/30 hover:text-primary hover:bg-sky-50 transition-all duration-200">
+                  <Edit3 className="w-3.5 h-3.5" />
+                  {t("Edit", "Editar")}
+                </button>
+              ) : (
+                <div className="flex gap-2">
+                  <button onClick={() => setEditingProfile(false)} className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-500 text-xs font-semibold hover:bg-slate-50 transition-all">
+                    {t("Cancel", "Cancelar")}
+                  </button>
+                  <button onClick={handleSaveProfile} disabled={savingProfile} data-testid="save-profile-btn"
+                    className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-primary text-white text-xs font-bold hover:bg-primary/90 transition-all disabled:opacity-50">
+                    {savingProfile ? <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                    {t("Save", "Guardar")}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="px-7 py-5">
+              {editingProfile ? (
+                <div className="space-y-4">
+                  <div className="grid sm:grid-cols-2 gap-4">
                     <div>
-                      <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">{t("Email","Correo")}</p>
-                      <p className="text-slate-700 font-medium break-words">{customer?.email}</p>
+                      <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{t("Full Name", "Nombre completo")}</label>
+                      <input value={profileForm.name} onChange={e => setProfileForm(p => ({...p, name: e.target.value}))}
+                        className={inputCls} data-testid="profile-name-input" />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{t("Phone", "Teléfono")}</label>
+                      <input value={profileForm.phone} onChange={e => setProfileForm(p => ({...p, phone: e.target.value}))}
+                        className={inputCls} placeholder="(805) 555-1234" data-testid="profile-phone-input" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{t("Street Address", "Dirección")}</label>
+                    <input value={profileForm.address} onChange={e => setProfileForm(p => ({...p, address: e.target.value}))}
+                      className={inputCls} placeholder="1120 Carlsbad Place" data-testid="profile-address-input" />
+                  </div>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{t("City", "Ciudad")}</label>
+                      <input value={profileForm.city} onChange={e => setProfileForm(p => ({...p, city: e.target.value}))}
+                        className={inputCls} placeholder="Ventura" data-testid="profile-city-input" />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{t("State", "Estado")}</label>
+                      <input value={profileForm.state} onChange={e => setProfileForm(p => ({...p, state: e.target.value}))}
+                        className={inputCls} placeholder="CA" data-testid="profile-state-input" />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{t("Zip", "C.P.")}</label>
+                      <input value={profileForm.zip_code} onChange={e => setProfileForm(p => ({...p, zip_code: e.target.value}))}
+                        className={inputCls} placeholder="93003" data-testid="profile-zip-input" />
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    {t("This information auto-fills your service forms for faster orders.", "Esta información auto-completa tus formularios de servicio para órdenes más rápidas.")}
+                  </p>
+                </div>
+              ) : (
+                <div className="grid sm:grid-cols-2 gap-6">
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">{t("Email", "Correo")}</p>
+                      <p className="text-slate-700 font-medium text-sm break-words">{customer?.email}</p>
                     </div>
                     {customer?.phone && (
                       <div>
-                        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">{t("Phone","Teléfono")}</p>
-                        <p className="text-slate-700 font-medium">{customer.phone}</p>
+                        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">{t("Phone", "Teléfono")}</p>
+                        <p className="text-slate-700 font-medium text-sm flex items-center gap-1.5"><Phone className="w-3.5 h-3.5 text-slate-400" />{customer.phone}</p>
+                      </div>
+                    )}
+                    {!customer?.phone && (
+                      <div>
+                        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">{t("Phone", "Teléfono")}</p>
+                        <button onClick={startEditProfile} className="text-sky-500 text-xs font-semibold hover:underline">
+                          + {t("Add phone number", "Agregar teléfono")}
+                        </button>
                       </div>
                     )}
                   </div>
-                </div>
-              </Card>
-            </Tilt>
-          </Reveal>
-          <Reveal delay={260} dir="right">
-            <Tilt depth={3}>
-              <Card hover glass>
-                <div className="px-6 py-5">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-9 h-9 bg-primary/10 rounded-xl flex items-center justify-center"><MapPin className="h-4 w-4 text-primary" /></div>
-                    <h2 className="font-bold text-slate-800 text-sm uppercase tracking-wider">{t("Address","Dirección")}</h2>
+                  <div>
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">{t("Address", "Dirección")}</p>
+                    {customer?.address ? (
+                      <p className="text-slate-700 font-medium text-sm flex items-start gap-1.5">
+                        <MapPin className="w-3.5 h-3.5 text-slate-400 mt-0.5 flex-shrink-0" />
+                        <span className="break-words">{customer.address}</span>
+                      </p>
+                    ) : (
+                      <button onClick={startEditProfile} className="text-sky-500 text-xs font-semibold hover:underline">
+                        + {t("Add address for auto-fill", "Agregar dirección para auto-completar")}
+                      </button>
+                    )}
                   </div>
-                  {customer?.address
-                    ? <p className="text-slate-600 text-sm leading-relaxed break-words">{customer.address}</p>
-                    : <p className="text-slate-400 text-sm italic">{t("No address saved","No hay dirección guardada")}</p>}
                 </div>
-              </Card>
-            </Tilt>
-          </Reveal>
-        </div>
+              )}
+            </div>
+          </Card>
+        </Reveal>
       </div>
 
       <PublicFooter />
