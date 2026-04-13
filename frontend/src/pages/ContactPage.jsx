@@ -438,7 +438,6 @@ export default function ContactPage() {
                               {[
                                 { val: "phone", icon: "📞", en: t("Phone Call", "Llamada") },
                                 { val: "text",  icon: "💬", en: "Text/SMS" },
-                                { val: "whatsapp", icon: "📱", en: "WhatsApp" },
                                 { val: "email", icon: "✉️", en: "Email" },
                               ].map((o) => (
                                 <button

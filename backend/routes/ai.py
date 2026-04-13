@@ -137,16 +137,113 @@ def get_ai_router(
         await emit_realtime("notification", {"type": "order_payment", "order_id": order.get("id"), "status": "paid", "method": method})
         return {"ok": True, "order_id": order.get("id"), **update_data}
 
-    @router.get("/ai/briefing")
-    async def get_daily_briefing_endpoint(current_user: dict = Depends(get_current_user)):
-        if not AI_ASSISTANT_ENABLED:
-            raise HTTPException(status_code=503, detail="AI Assistant not available")
-        try:
-            briefing = await generate_daily_briefing(db, current_user.get("role", "operator"), current_user.get("name", "User"))
-            return briefing
-        except Exception as e:
-            logger.error(f"Error generating briefing: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
+from zoneinfo import ZoneInfo
+from datetime import datetime, timedelta
+import os
+from groq import Groq
+
+PT = ZoneInfo("America/Los_Angeles")
+
+@router.get("/ai/briefing")
+async def get_daily_briefing(current_user: dict = Depends(get_current_user)):
+    if not AI_ASSISTANT_ENABLED:
+        raise HTTPException(status_code=503, detail="AI Assistant not available")
+    try:
+        # 1. Obtener hora actual en Pacific Time
+        now_pt = datetime.now(PT)
+        today_start = now_pt.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+        today_end = now_pt.replace(hour=23, minute=59, second=59, microsecond=999999).isoformat()
+        month_start = now_pt.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+
+        # 2. Consultar estadísticas usando rangos en Pacific Time (las fechas en DB están en UTC,
+        #    pero como convertimos a ISO string, funciona correctamente)
+        orders_today = await db.orders.count_documents({
+            "created_at": {"$gte": today_start, "$lte": today_end}
+        })
+        orders_new = await db.orders.count_documents({"status": "new"})
+        orders_processing = await db.orders.count_documents({"status": "processing"})
+        orders_ready = await db.orders.count_documents({"status": "ready"})
+        orders_out_delivery = await db.orders.count_documents({"status": "out_for_delivery"})
+
+        # Ingresos del mes (pagos realizados en este mes)
+        revenue_pipeline = [
+            {"$match": {"payment_status": "paid", "paid_at": {"$gte": month_start}}},
+            {"$group": {"_id": None, "total": {"$sum": "$total_amount"}}}
+        ]
+        revenue_result = await db.orders.aggregate(revenue_pipeline).to_list(1)
+        total_revenue = revenue_result[0]["total"] if revenue_result else 0.0
+
+        pending_pipeline = [
+            {"$match": {"payment_status": {"$in": ["unpaid", "pending", "pending_verification"]}}},
+            {"$group": {"_id": None, "total": {"$sum": "$total_amount"}}}
+        ]
+        pending_result = await db.orders.aggregate(pending_pipeline).to_list(1)
+        pending_revenue = pending_result[0]["total"] if pending_result else 0.0
+
+        # 3. Construir prompt en inglés con la hora actual en Pacific Time
+        current_time_str = now_pt.strftime("%Y-%m-%d %H:%M:%S %Z")
+        prompt = f"""
+You are an AI business assistant for Ventura Fresh Laundry, a laundry service in Ventura County, California.
+Current date and time in Pacific Time (America/Los_Angeles): {current_time_str}
+
+Based on the following real-time data, write a concise executive briefing (2-3 short paragraphs) in English.
+Focus on key metrics, actionable insights, and any notable trends.
+
+**Business Data:**
+- Orders created today: {orders_today}
+- New orders (status 'new'): {orders_new}
+- Orders in process: {orders_processing}
+- Orders ready for delivery: {orders_ready}
+- Orders out for delivery: {orders_out_delivery}
+- Total revenue collected (this month): ${total_revenue:,.2f}
+- Pending payments: ${pending_revenue:,.2f}
+
+Please write a friendly, professional briefing. Include:
+- A summary of today's activity.
+- A note about pending payments.
+- Any recommendation based on the data (e.g., follow up on pending payments).
+- End with a positive, encouraging sentence.
+
+Use natural language, no markdown, and keep it under 200 words.
+"""
+
+        system = (
+            "You are an AI assistant for a laundry business. Always respond in English. "
+            "Use the provided Pacific Time zone for any time references. Be concise and professional."
+        )
+
+        # 4. Llamar a Groq (puedes usar call_ollama si prefieres, pero Groq es más rápido)
+        api_key = os.environ.get("GROQ_API_KEY")
+        if not api_key:
+            raise HTTPException(status_code=503, detail="GROQ_API_KEY not configured")
+        client = Groq(api_key=api_key)
+        completion = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.5,
+            max_tokens=800,
+        )
+        briefing_text = completion.choices[0].message.content.strip()
+
+        # 5. Devolver el briefing y los datos (incluyendo la hora actual en Pacific Time)
+        return {
+            "briefing": briefing_text,
+            "data": {
+                "orders_new": orders_new,
+                "orders_processing": orders_processing,
+                "orders_ready": orders_ready,
+                "orders_out_delivery": orders_out_delivery,
+                "total_revenue": total_revenue,
+                "pending_revenue": pending_revenue,
+                "current_time_pacific": now_pt.isoformat()
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error generating briefing: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
     @router.get("/ai/suggestions")
     async def get_ai_suggestions_endpoint(current_user: dict = Depends(get_current_user)):

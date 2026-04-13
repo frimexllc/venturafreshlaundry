@@ -1,7 +1,9 @@
 """
 AI Business Assistant - Groq-powered intelligent management
 
-CORRECCIONES v2:
+CORRECCIONES v3 (2025):
+  - Zona horaria Pacific Time (America/Los_Angeles)
+  - Respuestas en inglés forzadas (prompt, system, fallback)
   - Token budget diario con contador persistente en memoria (resetea a medianoche)
   - Cache de respuestas con TTL configurable para evitar llamadas idénticas
   - Prompts truncados: briefing 600 tokens max, analyze 800 tokens max
@@ -14,6 +16,7 @@ import time
 import hashlib
 import logging
 from datetime import datetime, timezone, timedelta, date
+from zoneinfo import ZoneInfo
 from typing import Optional, Dict, Any, List
 
 from groq import Groq
@@ -22,6 +25,9 @@ logger = logging.getLogger(__name__)
 
 GROQ_API_KEY   = os.environ.get("GROQ_API_KEY")
 BUSINESS_NAME  = os.environ.get("BUSINESS_NAME", "Ventura Fresh Laundry")
+
+# Zona horaria de Pacific Time (Ventura, California)
+PT = ZoneInfo("America/Los_Angeles")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Configuración de rate limiting (todas sobreponibles por env var)
@@ -197,52 +203,64 @@ def _truncate_prompt(text: str, max_chars: int = MAX_PROMPT_CHARS) -> str:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Fallbacks estáticos (se usan cuando Groq no está disponible o sin budget)
+# Fallbacks estáticos en INGLÉS (se usan cuando Groq no está disponible o sin budget)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _briefing_fallback(user_name: str, data: Dict, now: datetime) -> str:
-    hour = now.hour
-    greeting = "Buenos días" if hour < 12 else ("Buenas tardes" if hour < 19 else "Buenas noches")
+    # Ahora la hora está en Pacific Time, formatearla para display
+    now_pt = now.astimezone(PT)
+    time_str = now_pt.strftime("%I:%M %p %Z")
+    greeting = "Good morning" if now_pt.hour < 12 else ("Good afternoon" if now_pt.hour < 18 else "Good evening")
     urgent = []
     if data.get("tickets_high_priority", 0) > 0:
-        urgent.append(f"⚠️ {data['tickets_high_priority']} tickets de alta prioridad")
+        urgent.append(f"⚠️ {data['tickets_high_priority']} high-priority tickets")
     if data.get("orders_pending_payment", 0) > 0:
-        urgent.append(f"💰 ${data.get('pending_revenue', 0):.2f} en pagos pendientes")
+        urgent.append(f"💰 ${data.get('pending_revenue', 0):.2f} pending payments")
     if data.get("orders_new", 0) > 0:
-        urgent.append(f"📦 {data['orders_new']} órdenes nuevas esperando")
-    urgent_block = "\n".join(urgent) if urgent else "✅ Sin alertas urgentes"
+        urgent.append(f"📦 {data['orders_new']} new orders awaiting")
+    urgent_block = "\n".join(urgent) if urgent else "✅ No urgent alerts"
     return (
-        f"{greeting}, {user_name}!\n\n"
-        f"📊 **Resumen rápido:**\n"
-        f"- {data.get('orders_today', 0)} órdenes hoy\n"
-        f"- {data.get('orders_ready', 0)} listas para entrega\n"
-        f"- {data.get('orders_out_delivery', 0)} en camino\n"
-        f"- {data.get('total_customers', 0)} clientes ({data.get('active_members', 0)} miembros)\n\n"
-        f"🚨 **Prioritario:**\n{urgent_block}\n\n"
-        f"_(Resumen generado sin IA — budget diario agotado o IA no disponible)_"
+        f"{greeting}, {user_name}! ({time_str})\n\n"
+        f"📊 **Quick Summary:**\n"
+        f"- {data.get('orders_today', 0)} orders today\n"
+        f"- {data.get('orders_ready', 0)} ready for delivery\n"
+        f"- {data.get('orders_out_delivery', 0)} out for delivery\n"
+        f"- {data.get('total_customers', 0)} customers ({data.get('active_members', 0)} members)\n\n"
+        f"🚨 **Priority:**\n{urgent_block}\n\n"
+        f"_(Fallback summary — daily token limit reached or AI unavailable)_"
     )
 
 
 def _analyze_fallback(query: str) -> str:
     return (
-        "El asistente de IA no está disponible en este momento "
-        "(límite diario de tokens alcanzado o servicio no configurado). "
-        "Por favor intenta de nuevo más tarde o revisa los datos directamente en el panel."
+        "The AI assistant is currently unavailable (daily token limit reached or service not configured). "
+        "Please try again later or review data directly in the dashboard."
     )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# generate_daily_briefing — CORREGIDO
+# generate_daily_briefing — CORREGIDO (Pacific Time + English)
 # ─────────────────────────────────────────────────────────────────────────────
 
 async def _collect_briefing_data(db) -> Dict[str, Any]:
-    """Collect business metrics for the daily briefing."""
-    now = datetime.now(timezone.utc)
-    today_str = now.strftime("%Y-%m-%d")
+    """Collect business metrics for the daily briefing (using Pacific Time for 'today')."""
+    now_pt = datetime.now(PT)
+    today_str = now_pt.strftime("%Y-%m-%d")
     data = {}
 
     all_orders = await db.orders.find({}, {"_id": 0}).to_list(1000)
-    data["orders_today"]           = sum(1 for o in all_orders if (o.get("created_at") or "")[:10] == today_str)
+    # Convertir created_at a Pacific Time para comparar fechas correctamente
+    def is_today(created_str):
+        if not created_str:
+            return False
+        try:
+            dt = datetime.fromisoformat(created_str.replace("Z", "+00:00"))
+            dt_pt = dt.astimezone(PT)
+            return dt_pt.strftime("%Y-%m-%d") == today_str
+        except:
+            return False
+
+    data["orders_today"]           = sum(1 for o in all_orders if is_today(o.get("created_at")))
     data["orders_new"]             = sum(1 for o in all_orders if (o.get("status") or "").lower() == "new")
     data["orders_processing"]      = sum(1 for o in all_orders if (o.get("status") or "").lower() == "processing")
     data["orders_ready"]           = sum(1 for o in all_orders if (o.get("status") or "").lower() == "ready")
@@ -273,33 +291,36 @@ async def _collect_briefing_data(db) -> Dict[str, Any]:
 
 
 def _build_briefing_prompt(user_name: str, user_role: str, data: Dict, now: datetime) -> str:
-    """Build the compact LLM prompt for the daily briefing."""
-    role_ctx = "administrador con acceso completo" if user_role == "admin" else "operador enfocado en operaciones diarias"
+    """Build the compact LLM prompt for the daily briefing (English)."""
+    now_pt = now.astimezone(PT)
+    time_str = now_pt.strftime("%Y-%m-%d %I:%M %p %Z")
+    role_ctx = "admin with full access" if user_role == "admin" else "operator focused on daily operations"
     return _truncate_prompt(
-        f"Eres el asistente de {BUSINESS_NAME}. "
-        f"Usuario: {user_name} ({role_ctx}). "
-        f"Hora: {now.strftime('%A %d/%m/%Y %H:%M')} UTC.\n\n"
-        f"DATOS:\n"
-        f"Hoy: {data['orders_today']} órdenes | Nuevas: {data['orders_new']} | "
-        f"Proceso: {data['orders_processing']} | Listas: {data['orders_ready']} | "
-        f"En camino: {data['orders_out_delivery']}\n"
-        f"Pagos pendientes: {data['orders_pending_payment']} (${data['pending_revenue']:.0f}) | "
-        f"Ingresos cobrados: ${data['total_revenue']:.0f}\n"
-        f"Clientes: {data['total_customers']} ({data['active_members']} miembros)\n"
-        f"Tickets abiertos: {data['tickets_open']} ({data['tickets_high_priority']} alta prioridad)\n"
-        f"Cotizaciones pendientes: {data['quotes_pending']} | Leads nuevos: {data['leads_new']} | "
-        f"Membresías pendientes: {data['signups_pending']}\n\n"
-        f"Genera un briefing breve (máx 3 párrafos): saludo, prioridades urgentes, recomendación. "
-        f"En español. Formato Markdown simple."
+        f"You are the AI business assistant for {BUSINESS_NAME}. "
+        f"User: {user_name} ({role_ctx}). "
+        f"Current Pacific Time: {time_str}\n\n"
+        f"REAL-TIME DATA:\n"
+        f"Today: {data['orders_today']} orders | New: {data['orders_new']} | "
+        f"In process: {data['orders_processing']} | Ready: {data['orders_ready']} | "
+        f"Out for delivery: {data['orders_out_delivery']}\n"
+        f"Pending payments: {data['orders_pending_payment']} orders (${data['pending_revenue']:.0f}) | "
+        f"Collected revenue this month: ${data['total_revenue']:.0f}\n"
+        f"Customers: {data['total_customers']} ({data['active_members']} members)\n"
+        f"Open tickets: {data['tickets_open']} ({data['tickets_high_priority']} high priority)\n"
+        f"Pending quotes: {data['quotes_pending']} | New leads: {data['leads_new']} | "
+        f"Pending memberships: {data['signups_pending']}\n\n"
+        f"Write a concise executive briefing in English (max 3 short paragraphs): "
+        f"greeting, summary of today's activity, urgent priorities, and a recommendation. "
+        f"Use natural language, no markdown. Keep it under 200 words."
     )
 
 
 async def generate_daily_briefing(db, user_role: str, user_name: str) -> Dict[str, Any]:
     """
-    Genera el briefing diario con protección contra rate limiting.
-    Incluye cooldown de 2 min, cache de 5 min, y fallback estático.
+    Generates the daily briefing in English, using Pacific Timezone.
+    Includes cooldown (2 min), cache (5 min), and static fallback.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(PT)  # Base time in Pacific for all calculations
 
     # ── Cooldown por usuario ───────────────────────────────────────────────
     cooldown_key = f"briefing:{user_name}:{user_role}"
@@ -334,22 +355,16 @@ async def generate_daily_briefing(db, user_role: str, user_name: str) -> Dict[st
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ai_analyze_business — CORREGIDO
+# ai_analyze_business — CORREGIDO (inglés opcional, se puede dejar español o inglés)
 # ─────────────────────────────────────────────────────────────────────────────
 
 async def ai_analyze_business(db, query: str, user_role: str) -> Dict[str, Any]:
     """
     Responde consultas del usuario con datos del negocio.
-
-    Mejoras:
-    - Cache por query (evita recalcular la misma pregunta)
-    - Contexto de datos truncado a MAX_PROMPT_CHARS
-    - max_tokens reducido a 800 en lugar de 2000 (ahorro de 60 %)
-    - Fallback descriptivo si no hay budget
+    (Se mantiene en español o se puede cambiar a inglés; no es el briefing principal)
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(PT)
 
-    # Cache por query + role (la misma pregunta en 5 min devuelve lo mismo)
     cached = _cache.get("analyze", query.strip().lower(), user_role)
     if cached:
         logger.info(f"Returning cached analysis for query: {query[:50]}")
@@ -367,31 +382,30 @@ async def ai_analyze_business(db, query: str, user_role: str) -> Dict[str, Any]:
     tickets   = await db.tickets.find({"status": {"$nin": ["closed", "resolved"]}}, {"_id": 0}).to_list(20)
     services  = await db.services.find({"is_active": True}, {"_id": 0}).to_list(20)
 
-    # Construir contexto compacto
     context = _truncate_prompt(
-        f"NEGOCIO: {BUSINESS_NAME} | ROL: {user_role} | HORA: {now.strftime('%Y-%m-%d %H:%M')} UTC\n\n"
-        f"ÓRDENES RECIENTES:\n{format_orders_for_ai(orders[:15])}\n\n"
-        f"CLIENTES: {len(customers)} total, {sum(1 for c in customers if c.get('membership_status') == 'active')} miembros\n\n"
-        f"COTIZACIONES PENDIENTES:\n{format_quotes_for_ai([q for q in quotes if (q.get('status') or '').lower() in ['new', 'pending', 'sent']][:8])}\n\n"
-        f"LEADS NUEVOS:\n{format_leads_for_ai(leads[:8])}\n\n"
-        f"TICKETS ABIERTOS:\n{format_tickets_for_ai(tickets[:8])}\n\n"
-        f"SERVICIOS ACTIVOS:\n{format_services_for_ai(services)}"
+        f"BUSINESS: {BUSINESS_NAME} | ROLE: {user_role} | TIME (Pacific): {now.strftime('%Y-%m-%d %H:%M %Z')}\n\n"
+        f"RECENT ORDERS:\n{format_orders_for_ai(orders[:15])}\n\n"
+        f"CUSTOMERS: {len(customers)} total, {sum(1 for c in customers if c.get('membership_status') == 'active')} members\n\n"
+        f"PENDING QUOTES:\n{format_quotes_for_ai([q for q in quotes if (q.get('status') or '').lower() in ['new', 'pending', 'sent']][:8])}\n\n"
+        f"NEW LEADS:\n{format_leads_for_ai(leads[:8])}\n\n"
+        f"OPEN TICKETS:\n{format_tickets_for_ai(tickets[:8])}\n\n"
+        f"ACTIVE SERVICES:\n{format_services_for_ai(services)}"
     )
 
     system_prompt = (
-        f"Eres el asistente de negocio de {BUSINESS_NAME}. "
-        f"Responde de forma concisa y accionable. "
-        f"Para ejecutar acciones, incluye un bloque JSON:\n"
-        '```json\n{"action": "tipo", "params": {...}}\n```\n'
-        "Acciones disponibles: update_order_status, update_order_lbs, "
+        f"You are the business assistant for {BUSINESS_NAME}. "
+        f"Answer concisely and actionably. To execute actions, include a JSON block:\n"
+        '```json\n{"action": "type", "params": {...}}\n```\n'
+        "Available actions: update_order_status, update_order_lbs, "
         "update_payment_status, update_quote_status, update_lead_status, update_ticket_status."
+        "Respond in English unless the user asks otherwise."
     )
 
     result = _groq_call(
         client,
         messages=[
             {"role": "system", "content": system_prompt},
-            {"role": "user",   "content": f"{context}\n\nPREGUNTA: {query}"},
+            {"role": "user",   "content": f"{context}\n\nUSER QUERY: {query}"},
         ],
         max_tokens=MAX_ANALYZE_TOKENS,
         temperature=0.5,
@@ -405,11 +419,11 @@ async def ai_analyze_business(db, query: str, user_role: str) -> Dict[str, Any]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ai_suggest_actions — sin cambios en lógica, añade guard de budget
+# ai_suggest_actions — sin cambios (solo ajuste de formato opcional)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _suggest_stuck_orders(orders, now) -> List[Dict]:
-    """Find orders stuck in processing for 2+ days."""
+    """Find orders stuck in processing for 2+ days (using Pacific Time)."""
     results = []
     for order in orders:
         if (order.get("status") or "").lower() != "processing":
@@ -418,14 +432,14 @@ def _suggest_stuck_orders(orders, now) -> List[Dict]:
         if not created:
             continue
         try:
-            created_date = datetime.fromisoformat(created.replace("Z", "+00:00"))
-            days_stuck = (now - created_date).days
+            created_dt = datetime.fromisoformat(created.replace("Z", "+00:00")).astimezone(PT)
+            days_stuck = (now - created_dt).days
             if days_stuck >= 2:
                 oid = order.get("id") or ""
                 results.append({
                     "type": "warning", "priority": "high",
-                    "title": f"Orden {order.get('order_number', oid[:8])} atascada en proceso",
-                    "description": f"Lleva {days_stuck} días en procesamiento",
+                    "title": f"Order {order.get('order_number', oid[:8])} stuck in process",
+                    "description": f"Has been processing for {days_stuck} days",
                     "action": {"type": "update_order_status", "order_id": oid, "suggested_status": "ready"},
                 })
         except Exception:
@@ -434,29 +448,27 @@ def _suggest_stuck_orders(orders, now) -> List[Dict]:
 
 
 def _suggest_ready_backlog(orders) -> List[Dict]:
-    """Warn about too many ready-but-undelivered orders."""
     ready = [o for o in orders if (o.get("status") or "").lower() == "ready"]
     if len(ready) > 3:
         return [{"type": "info", "priority": "medium",
-                 "title": f"{len(ready)} órdenes listas para entrega",
-                 "description": "Considera programar entregas para limpiar la cola", "action": None}]
+                 "title": f"{len(ready)} orders ready for delivery",
+                 "description": "Consider scheduling deliveries to clear the backlog", "action": None}]
     return []
 
 
 def _suggest_unpaid_completed(orders) -> List[Dict]:
-    """Flag completed orders with pending payments."""
     pending = [o for o in orders if (o.get("payment_status") or "").lower() != "paid" and (o.get("status") or "").lower() == "completed"]
     if pending:
         total = sum(float(o.get("total_amount") or 0) for o in pending)
         return [{"type": "revenue", "priority": "high",
-                 "title": f"${total:.2f} en pagos pendientes",
-                 "description": f"{len(pending)} órdenes completadas sin cobrar", "action": None}]
+                 "title": f"${total:.2f} in pending payments",
+                 "description": f"{len(pending)} completed orders not paid", "action": None}]
     return []
 
 
 async def ai_suggest_actions(db, context_type: str) -> List[Dict[str, Any]]:
     """Genera sugerencias de acciones basadas en el estado actual (local, sin LLM)."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(PT)
     orders = await db.orders.find({}, {"_id": 0}).to_list(500)
 
     suggestions = []
@@ -464,15 +476,14 @@ async def ai_suggest_actions(db, context_type: str) -> List[Dict[str, Any]]:
     suggestions.extend(_suggest_ready_backlog(orders))
     suggestions.extend(_suggest_unpaid_completed(orders))
 
-    # Tickets de alta prioridad
     tickets = await db.tickets.find(
         {"status": {"$in": ["open", "new"]}, "priority": "high"}, {"_id": 0}
     ).to_list(100)
     if tickets:
         suggestions.append({
             "type": "urgent", "priority": "critical",
-            "title": f"{len(tickets)} tickets de alta prioridad",
-            "description": "Problemas de clientes que requieren atención inmediata", "action": None,
+            "title": f"{len(tickets)} high-priority tickets",
+            "description": "Customer issues requiring immediate attention", "action": None,
         })
 
     return suggestions[:10]
@@ -502,60 +513,60 @@ def get_budget_status() -> Dict[str, Any]:
 
 def format_orders_for_ai(orders: List[Dict]) -> str:
     if not orders:
-        return "Sin órdenes recientes"
+        return "No recent orders"
     lines = []
     for o in orders[:15]:
         amount     = float(o.get("total_amount") or 0)
         order_num  = o.get("order_number") or (o.get("id", "")[:8] if o.get("id") else "N/A")
         lines.append(
             f"- {order_num}: {o.get('status', 'unknown')} | "
-            f"Pago: {o.get('payment_status', 'pending')} | "
-            f"${amount:.2f} | Cliente: {o.get('customer_name', 'N/A')}"
+            f"Payment: {o.get('payment_status', 'pending')} | "
+            f"${amount:.2f} | Customer: {o.get('customer_name', 'N/A')}"
         )
     return "\n".join(lines)
 
 
 def format_quotes_for_ai(quotes: List[Dict]) -> str:
     if not quotes:
-        return "Sin cotizaciones pendientes"
+        return "No pending quotes"
     return "\n".join(
         f"- {q.get('quote_number', q.get('id', '')[:8])}: "
         f"{q.get('company_name', 'N/A')} | "
-        f"Estado: {q.get('status', 'new')} | "
-        f"Est: {q.get('estimated_lbs_per_week', 'N/A')} lbs/sem"
+        f"Status: {q.get('status', 'new')} | "
+        f"Est: {q.get('estimated_lbs_per_week', 'N/A')} lbs/week"
         for q in quotes[:8]
     )
 
 
 def format_leads_for_ai(leads: List[Dict]) -> str:
     if not leads:
-        return "Sin leads nuevos"
+        return "No new leads"
     return "\n".join(
-        f"- {lead.get('name', 'N/A')}: {lead.get('email', 'sin email')} | "
-        f"Fuente: {lead.get('source', 'desconocida')} | "
-        f"Estado: {lead.get('status', 'new')}"
+        f"- {lead.get('name', 'N/A')}: {lead.get('email', 'no email')} | "
+        f"Source: {lead.get('source', 'unknown')} | "
+        f"Status: {lead.get('status', 'new')}"
         for lead in leads[:8]
     )
 
 
 def format_tickets_for_ai(tickets: List[Dict]) -> str:
     if not tickets:
-        return "Sin tickets abiertos"
+        return "No open tickets"
     return "\n".join(
         f"- #{t.get('ticket_number', t.get('id', '')[:8])}: "
-        f"{(t.get('subject') or 'Sin asunto')[:50]} | "
-        f"Prioridad: {t.get('priority', 'normal')} | "
-        f"Estado: {t.get('status', 'open')}"
+        f"{(t.get('subject') or 'No subject')[:50]} | "
+        f"Priority: {t.get('priority', 'normal')} | "
+        f"Status: {t.get('status', 'open')}"
         for t in tickets[:8]
     )
 
 
 def format_services_for_ai(services: List[Dict]) -> str:
     if not services:
-        return "Sin servicios configurados"
+        return "No services configured"
     lines = [
         f"- {s.get('name', 'N/A')}: ${float(s.get('price', 0)):.2f} {s.get('price_unit', '')}"
         for s in services
         if s.get("is_active")
     ]
-    return "\n".join(lines) if lines else "Sin servicios activos"
+    return "\n".join(lines) if lines else "No active services"

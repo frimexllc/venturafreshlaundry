@@ -100,8 +100,7 @@ async def _persist_log(entry: dict):
 
 MILESTONES = {
     "wash_fold":       {"order_created", "order_received", "processing", "ready_for_pickup", "completed"},
-    "pickup_delivery": {"order_created", "pickup_confirmed", "processing",
-                        "ready", "out_for_delivery", "delivered", "cancelled"},
+    "pickup_delivery": {"order_created", "pickup_confirmed", "ready", "out_for_delivery", "delivered", "cancelled"},
     "quote":           {"order_created"},
     "contact":         {"order_created"},
     "support":         {"order_created"},
@@ -456,7 +455,7 @@ def _html_generic(name: str, is_es: bool, title: Optional[str] = None, body_text
     accent = VFL_BLUE
     heading = title or ("Actualización" if is_es else "Update")
     text = body_text or (f"Hola {name}, tienes una actualización de tu servicio." if is_es else f"Hi {name}, you have a service update.")
-    body = f'<p style="font-size:22px;font-weight:700">{heading}</p><p>{text}</p>' + _spacer(16) + _tip_box("Contáctanos si tienes dudas." if is_es else "Contact us if you have questions.", accent)
+    body = f'<p style="font-size:22px;font-weight:700">{heading}</p><p>{text}</p>' + _spacer(16) + _tip_box("Gracias por elegir Ventura Fresh Laundry. Agradecemos sinceramente su confianza en nuestro servicio." if is_es else "Thank you for choosing Ventura Fresh Laundry. We truly appreciate your trust in our service.", accent)
     return _html_base(_status_band("Actualización" if is_es else "Update", accent) + _body_wrap(body), accent)
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -622,6 +621,8 @@ def _voice(event: str, name: str, order_number: str, language: str) -> str:
                              f"Hi {n}, this is {biz} calling to confirm we received your order number {order_number}. We'll be in touch soon. Goodbye!"),
         "pickup_confirmed": (f"Hola {n}, tu recolección con {biz} ha sido confirmada. Estaremos en tu domicilio en el horario acordado. ¡Gracias por confiar en nosotros!",
                              f"Hi {n}, your pickup with {biz} has been confirmed. We will arrive at your address during the scheduled time. Thank you!"),
+        "processing":       (f"Hola {n}, le habla {biz}. Confirmamos que su ropa ha sido recogida y está en proceso. Pronto le avisaremos cuando esté lista. ¡Gracias!",
+                             f"Hi {n}, this is {biz}. We confirm your laundry has been picked up and is being processed. We'll notify you when it's ready. Thank you!"),
         "ready":            (f"Hola {n}, tu ropa con {biz} está lista y pronto estará en camino. ¡Gracias!",
                              f"Hi {n}, your laundry with {biz} is ready and will be on its way shortly. Thank you!"),
         "out_for_delivery": (f"Hola {n}, tu entrega de {biz} está en camino. Llegaremos en breve. ¡Gracias!",

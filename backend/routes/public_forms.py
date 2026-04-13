@@ -19,7 +19,11 @@ def normalize_yes_no(value):
     if v in ("no", "0", "false"): return "no"
     return value.strip()
 
-from notifications import notify_order_created, send_sms, send_email, send_whatsapp, normalize_preferred_contact, build_premium_message, detect_language
+# Importar todas las funciones de notificaciones, incluyendo send_voice_call
+from notifications import (
+    notify_order_created, send_sms, send_email, send_whatsapp, send_voice_call,
+    normalize_preferred_contact, build_premium_message, detect_language
+)
 from ai_assistant import get_groq_client
 
 
@@ -429,6 +433,9 @@ PERSONALITY GUIDELINES:
             "message": "¡Gracias! Tu solicitud de Wash & Fold ha sido recibida."
         }
 
+    # ──────────────────────────────────────────────────────────────────────────
+    # RUTA DE CONTACTO (CORREGIDA – DENTRO DE LA FUNCIÓN)
+    # ──────────────────────────────────────────────────────────────────────────
     @router.post("/public/contact")
     async def public_contact(data: PublicContactRequest):
         now = datetime.now(timezone.utc).isoformat()
@@ -472,24 +479,54 @@ PERSONALITY GUIDELINES:
         await create_audit_log("TICKET_CREATED", "ticket", ticket_id, None, {"source": "public_form"})
 
         # Send confirmation notification based on user's preferred contact
+                # Send confirmation notification based on user's preferred contact
         try:
             contact_pref = preferred_contact or "email"
-            lang = "es" if any(c in (normalized_message or "").lower() for c in ["hola", "gracias", "solicitud"]) else "en"
-            is_es = lang == "es"
-            msg = (f"Hola {normalized_name or data.name}, hemos recibido tu solicitud ({ticket_number}). Nos pondremos en contacto contigo pronto. — {os.environ.get('BUSINESS_NAME', 'Ventura Fresh Laundry')}"
-                   if is_es else
-                   f"Hi {normalized_name or data.name}, we've received your request ({ticket_number}). We'll get back to you soon. — {os.environ.get('BUSINESS_NAME', 'Ventura Fresh Laundry')}")
+            # Detectar idioma
+            is_es = any(c in (normalized_message or "").lower() for c in ["hola", "gracias", "solicitud"])
+            customer_display_name = normalized_name or data.name or ("Cliente" if is_es else "Customer")
+
+            # Mensajes
+            if is_es:
+                msg = (f"Hola {customer_display_name}, gracias por contactar a Ventura Fresh Laundry. "
+                       f"Tu mensaje ha sido recibido y está siendo revisado por nuestro equipo. "
+                       f"Te responderemos pronto con asistencia personalizada.")
+                call_msg = ("Hola, gracias por contactar a Ventura Fresh Laundry. "
+                            "Hemos recibido tu mensaje y un miembro de nuestro equipo se comunicará contigo en breve. "
+                            "Agradecemos tu interés en nuestros servicios y esperamos poder ayudarte. "
+                            "Que tengas un buen día.")
+            else:
+                msg = (f"Hello {customer_display_name}, thank you for contacting Ventura Fresh Laundry. "
+                       f"Your message has been received and is being reviewed by our team. "
+                       f"We will get back to you shortly with personalized assistance.")
+                call_msg = ("Hello, thank you for contacting Ventura Fresh Laundry. "
+                            "We have received your message, and a member of our team will be reaching out to you shortly. "
+                            "We appreciate your interest in our services and look forward to assisting you. "
+                            "Have a great day.")
+
             subj = "Solicitud recibida" if is_es else "Request received"
+
+            # LOG para depuración
+            logger.info(f"Contact: contact_pref={contact_pref}, phone={normalized_phone}, email={normalized_email}")
+
+            # Enviar según preferencia
             if contact_pref == "email" and normalized_email:
                 await send_email(normalized_email, subj, msg)
-            elif contact_pref == "whatsapp" and normalized_phone:
+            elif contact_pref in ("whatsapp",) and normalized_phone:
                 await send_whatsapp(normalized_phone, msg)
             elif contact_pref in ("sms", "text") and normalized_phone:
                 await send_sms(normalized_phone, msg)
+            elif contact_pref == "call" and normalized_phone:
+                voice_lang = "es-MX" if is_es else "en-US"
+                await send_voice_call(normalized_phone, call_msg, voice_lang)
             elif normalized_email:
+                # fallback a email
                 await send_email(normalized_email, subj, msg)
             elif normalized_phone:
+                # fallback a sms
                 await send_sms(normalized_phone, msg)
+            else:
+                logger.warning("No contact method available for notification")
         except Exception as e:
             logger.error(f"Contact notification failed: {e}")
 

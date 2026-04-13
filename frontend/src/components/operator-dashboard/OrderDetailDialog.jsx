@@ -21,7 +21,7 @@ const authHeaders = () => ({
   Authorization: `Bearer ${token()}`,
 });
 
-// ── Receipt Viewer ────────────────────────────────────────────────────────────
+// ── Receipt Viewer (sin cambios relevantes) ──────────────────────────────────
 function ReceiptCard({ receipt, onValidate, validating }) {
   const { t } = useLocale();
   const [expanded, setExpanded] = useState(false);
@@ -29,35 +29,34 @@ function ReceiptCard({ receipt, onValidate, validating }) {
   const [imgError, setImgError] = useState(false);
   const [imgLoading, setImgLoading] = useState(true);
 
-  // Fetch the image as a blob using auth header — <img src> can't send auth headers
   useEffect(() => {
     let objectUrl = null;
     setImgLoading(true);
     setImgError(false);
 
-const fetchImage = async (retry = true) => {
-  try {
-    const tk = localStorage.getItem("token");
-    const res = await fetch(`${API_URL}/api/files/${receipt.id}/download`, {
-      headers: { Authorization: `Bearer ${tk}` },
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(`HTTP ${res.status}: ${text.slice(0, 80)}`);
-    }
-    const blob = await res.blob();
-    const objectUrl = URL.createObjectURL(blob);
-    setBlobUrl(objectUrl);
-  } catch (err) {
-    console.error("Image load error:", err);
-    if (retry) {
-      setTimeout(() => fetchImage(false), 1000);
-    } else {
-      setImgError(true);
-      setImgLoading(false);
-    }
-  }
-};
+    const fetchImage = async (retry = true) => {
+      try {
+        const tk = localStorage.getItem("token");
+        const res = await fetch(`${API_URL}/api/files/${receipt.id}/download`, {
+          headers: { Authorization: `Bearer ${tk}` },
+        });
+        if (!res.ok) {
+          const text = await res.text().catch(() => "");
+          throw new Error(`HTTP ${res.status}: ${text.slice(0, 80)}`);
+        }
+        const blob = await res.blob();
+        objectUrl = URL.createObjectURL(blob);
+        setBlobUrl(objectUrl);
+      } catch (err) {
+        console.error("Image load error:", err);
+        if (retry) {
+          setTimeout(() => fetchImage(false), 1000);
+        } else {
+          setImgError(true);
+          setImgLoading(false);
+        }
+      }
+    };
 
     fetchImage();
 
@@ -86,7 +85,6 @@ const fetchImage = async (retry = true) => {
 
   return (
     <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm">
-      {/* Header row */}
       <div className="flex items-center gap-2 px-3 py-2.5 bg-slate-50 border-b border-slate-100">
         <ImageIcon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
         <span className="text-xs font-medium text-slate-600 truncate flex-1">
@@ -97,7 +95,6 @@ const fetchImage = async (retry = true) => {
         </span>
       </div>
 
-      {/* Image preview */}
       <div
         className={`relative bg-slate-100 cursor-pointer transition-all duration-300 ${
           expanded ? "min-h-[200px]" : "min-h-[120px]"
@@ -111,13 +108,13 @@ const fetchImage = async (retry = true) => {
         )}
 
         {imgError && (
-  <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-slate-400">
-    <AlertTriangle className="w-6 h-6" />
-    <span className="text-[11px] text-center px-2">
-      {t("Could not load image. Check that the file exists.", "No se pudo cargar la imagen. Verifica que el archivo exista.")}
-    </span>
-  </div>
-)}
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-slate-400">
+            <AlertTriangle className="w-6 h-6" />
+            <span className="text-[11px] text-center px-2">
+              {t("Could not load image. Check that the file exists.", "No se pudo cargar la imagen. Verifica que el archivo exista.")}
+            </span>
+          </div>
+        )}
 
         {blobUrl && !imgError && (
           <img
@@ -142,7 +139,6 @@ const fetchImage = async (retry = true) => {
         )}
       </div>
 
-      {/* AI validation result */}
       <div className={`px-3 py-2 border-t border-slate-100 flex items-start gap-2 ${statusCls} border rounded-b-none`}>
         <div className="shrink-0 mt-0.5">{statusIcon}</div>
         <div className="flex-1 min-w-0">
@@ -202,7 +198,6 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
     }
   }, [order]);
 
-  // Load receipts when dialog opens
   const loadReceipts = useCallback(async (orderId) => {
     if (!orderId) return;
     setReceiptsLoading(true);
@@ -216,7 +211,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
         setReceipts(data || []);
       }
     } catch {
-      // silent — receipts are optional
+      // silent
     } finally {
       setReceiptsLoading(false);
     }
@@ -276,7 +271,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
     }
   };
 
-  // ── Save lbs ───────────────────────────────────────────────────────────────
+  // ── Save lbs + automatic notification ──────────────────────────────────────
   const handleSaveLbs = async () => {
     if (!lbs || isNaN(Number(lbs)) || Number(lbs) <= 0) {
       toast.error(t("Enter valid lbs", "Ingresa libras validas"));
@@ -298,6 +293,24 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
         }));
         toast.success(t("Lbs saved & total recalculated", "Libras guardadas y total recalculado"));
         onRefresh?.();
+
+        // ── NOTIFICACIÓN AUTOMÁTICA al cliente ──────────────────────────────
+        try {
+          const preferred = localOrder.preferred_contact || "sms";
+          const notifyRes = await fetch(`${API_URL}/api/orders/${orderId}/notify-customer`, {
+            method: "POST",
+            headers: authHeaders(),
+            body: JSON.stringify({ channel: preferred }),
+          });
+          const notifyData = await notifyRes.json();
+          if (notifyRes.ok && notifyData.ok) {
+            toast.success(t("Notification sent to customer", "Notificación enviada al cliente"));
+          } else {
+            console.warn("Auto-notification failed:", notifyData.detail);
+          }
+        } catch (err) {
+          console.error("Auto-notify error:", err);
+        }
       } else {
         const err = await res.json().catch(() => ({}));
         toast.error(err.detail || t("Error saving lbs", "Error al guardar libras"));
@@ -309,7 +322,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
     }
   };
 
-  // ── Payment ────────────────────────────────────────────────────────────────
+  // ── Payment handler ────────────────────────────────────────────────────────
   const handlePayment = async () => {
     if (payMethod === "card") {
       setProcessing(true);
@@ -372,7 +385,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
     }
   };
 
-  // ── Notification ───────────────────────────────────────────────────────────
+  // ── Manual notification ────────────────────────────────────────────────────
   const handleSendNotification = async () => {
     setNotifySending(true);
     try {
@@ -399,7 +412,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
     }
   };
 
-  // ── Print ──────────────────────────────────────────────────────────────────
+  // ── Print & PDF ────────────────────────────────────────────────────────────
   const handlePrintTicket = async () => {
     try {
       const res = await fetch(`${API_URL}/api/orders/${orderId}/ticket`, {
@@ -444,7 +457,6 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
     }
   };
 
-  // Count verified receipts
   const verifiedReceipts = receipts.filter((r) => r.ai_validation_status === "verified_paid");
   const hasVerifiedReceipt = verifiedReceipts.length > 0;
 
@@ -465,42 +477,27 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
 
         <div className="space-y-4 text-sm">
           {/* Customer info */}
-          <div
-            className="grid grid-cols-2 gap-3 bg-slate-50 rounded-lg p-3"
-            data-testid="order-detail-customer"
-          >
+          <div className="grid grid-cols-2 gap-3 bg-slate-50 rounded-lg p-3" data-testid="order-detail-customer">
             <div>
               <span className="text-slate-400 text-xs">{t("Customer", "Cliente")}</span>
-              <p className="font-semibold text-slate-800">
-                {safeString(localOrder.customer_name, "N/A")}
-              </p>
+              <p className="font-semibold text-slate-800">{safeString(localOrder.customer_name, "N/A")}</p>
             </div>
             <div>
               <span className="text-slate-400 text-xs">{t("Phone", "Telefono")}</span>
-              <p className="font-medium text-slate-700">
-                {safeString(localOrder.customer_phone, "N/A")}
-              </p>
+              <p className="font-medium text-slate-700">{safeString(localOrder.customer_phone, "N/A")}</p>
             </div>
             <div>
               <span className="text-slate-400 text-xs">{t("Email", "Email")}</span>
-              <p className="font-medium text-slate-700 truncate">
-                {safeString(localOrder.customer_email, "N/A")}
-              </p>
+              <p className="font-medium text-slate-700 truncate">{safeString(localOrder.customer_email, "N/A")}</p>
             </div>
             <div>
               <span className="text-slate-400 text-xs">{t("Service", "Servicio")}</span>
-              <p className="font-medium text-slate-700">
-                {isWF ? "Wash & Fold" : "Pickup & Delivery"}
-              </p>
+              <p className="font-medium text-slate-700">{isWF ? "Wash & Fold" : "Pickup & Delivery"}</p>
             </div>
             {localOrder.preferred_contact && (
               <div>
-                <span className="text-slate-400 text-xs">
-                  {t("Contact pref.", "Pref. contacto")}
-                </span>
-                <p className="font-medium text-slate-700 capitalize">
-                  {localOrder.preferred_contact}
-                </p>
+                <span className="text-slate-400 text-xs">{t("Contact pref.", "Pref. contacto")}</span>
+                <p className="font-medium text-slate-700 capitalize">{localOrder.preferred_contact}</p>
               </div>
             )}
             {localOrder.membership_plan && (
@@ -513,35 +510,23 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
 
           {/* Addresses */}
           {(localOrder.pickup_address || localOrder.delivery_address) && (
-            <div
-              className="bg-slate-50 rounded-lg p-3 space-y-2"
-              data-testid="order-detail-addresses"
-            >
+            <div className="bg-slate-50 rounded-lg p-3 space-y-2" data-testid="order-detail-addresses">
               {localOrder.pickup_address && (
                 <div>
-                  <span className="text-slate-400 text-xs">
-                    {t("Pickup address", "Dir. pickup")}
-                  </span>
+                  <span className="text-slate-400 text-xs">{t("Pickup address", "Dir. pickup")}</span>
                   <p className="font-medium text-slate-700">{localOrder.pickup_address}</p>
                 </div>
               )}
-              {localOrder.delivery_address &&
-                localOrder.delivery_address !== localOrder.pickup_address && (
-                  <div>
-                    <span className="text-slate-400 text-xs">
-                      {t("Delivery address", "Dir. entrega")}
-                    </span>
-                    <p className="font-medium text-slate-700">{localOrder.delivery_address}</p>
-                  </div>
-                )}
+              {localOrder.delivery_address && localOrder.delivery_address !== localOrder.pickup_address && (
+                <div>
+                  <span className="text-slate-400 text-xs">{t("Delivery address", "Dir. entrega")}</span>
+                  <p className="font-medium text-slate-700">{localOrder.delivery_address}</p>
+                </div>
+              )}
               {localOrder.gate_code && (
                 <div>
-                  <span className="text-slate-400 text-xs">
-                    {t("Gate code", "Codigo porton")}
-                  </span>
-                  <p className="font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded inline-block">
-                    {localOrder.gate_code}
-                  </p>
+                  <span className="text-slate-400 text-xs">{t("Gate code", "Codigo porton")}</span>
+                  <p className="font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded inline-block">{localOrder.gate_code}</p>
                 </div>
               )}
             </div>
@@ -567,13 +552,8 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
 
           {/* Notes */}
           {notes && (
-            <div
-              className="bg-amber-50 border border-amber-100 rounded-lg p-3"
-              data-testid="order-detail-notes"
-            >
-              <span className="text-amber-600 text-xs font-semibold">
-                {t("Notes / Instructions", "Notas / Instrucciones")}
-              </span>
+            <div className="bg-amber-50 border border-amber-100 rounded-lg p-3" data-testid="order-detail-notes">
+              <span className="text-amber-600 text-xs font-semibold">{t("Notes / Instructions", "Notas / Instrucciones")}</span>
               <p className="text-sm text-slate-700 mt-1">{notes}</p>
             </div>
           )}
@@ -598,19 +578,11 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
           )}
 
           {/* ── PAYMENT RECEIPTS SECTION ─────────────────────────────────── */}
-          <div
-            className="border border-slate-200 rounded-xl overflow-hidden"
-            data-testid="order-detail-receipts"
-          >
-            {/* Header */}
+          <div className="border border-slate-200 rounded-xl overflow-hidden" data-testid="order-detail-receipts">
             <div className="flex items-center gap-2 px-4 py-3 bg-slate-50 border-b border-slate-100">
               <ImageIcon className="w-4 h-4 text-slate-500 shrink-0" />
-              <h3 className="font-semibold text-slate-800 text-sm flex-1">
-                {t("Payment Receipts", "Comprobantes de Pago")}
-              </h3>
-              {receiptsLoading && (
-                <RefreshCw className="w-3.5 h-3.5 text-slate-400 animate-spin" />
-              )}
+              <h3 className="font-semibold text-slate-800 text-sm flex-1">{t("Payment Receipts", "Comprobantes de Pago")}</h3>
+              {receiptsLoading && <RefreshCw className="w-3.5 h-3.5 text-slate-400 animate-spin" />}
               {hasVerifiedReceipt && (
                 <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">
                   <CheckCircle2 className="w-3 h-3" />
@@ -625,8 +597,6 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
                 <RefreshCw className="w-3.5 h-3.5" />
               </button>
             </div>
-
-            {/* Content */}
             <div className="p-3">
               {receiptsLoading ? (
                 <div className="py-6 text-center text-slate-400 text-xs flex flex-col items-center gap-2">
@@ -641,21 +611,12 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
               ) : (
                 <div className="space-y-3">
                   {receipts.map((receipt) => (
-                    <ReceiptCard
-                      key={receipt.id}
-                      receipt={receipt}
-                      onValidate={handleValidateReceipt}
-                      validating={validatingId}
-                    />
+                    <ReceiptCard key={receipt.id} receipt={receipt} onValidate={handleValidateReceipt} validating={validatingId} />
                   ))}
                 </div>
               )}
-
-              {/* Alert if pending_verification but no verified receipts */}
-              {(localOrder.payment_status === "pending_verification" ||
-                localOrder.payment_status === "pending") &&
-                !hasVerifiedReceipt &&
-                receipts.length > 0 && (
+              {(localOrder.payment_status === "pending_verification" || localOrder.payment_status === "pending") &&
+                !hasVerifiedReceipt && receipts.length > 0 && (
                   <div className="mt-3 flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 text-xs text-amber-800">
                     <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                     <p>
@@ -670,10 +631,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
           </div>
 
           {/* ── Lbs + Amount section ─────────────────────────────────────── */}
-          <div
-            className="border-t border-slate-200 pt-4 space-y-3"
-            data-testid="order-detail-lbs-payment"
-          >
+          <div className="border-t border-slate-200 pt-4 space-y-3" data-testid="order-detail-lbs-payment">
             <div className="flex items-end gap-2">
               <div className="flex-1">
                 <Label className="text-xs flex items-center gap-1.5">
@@ -698,33 +656,20 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
                 className="h-9 bg-sky-600 hover:bg-sky-700"
                 data-testid="order-detail-save-lbs"
               >
-                {saving ? (
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  t("Save lbs", "Guardar lbs")
-                )}
+                {saving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : t("Save lbs", "Guardar lbs")}
               </Button>
             </div>
 
             <div className="flex items-center justify-between py-2 bg-slate-50 rounded-lg px-3">
               <span className="text-slate-500 font-medium">{t("Total", "Total")}</span>
-              <span
-                className="text-xl font-bold text-slate-900"
-                data-testid="order-detail-total"
-              >
-                {totalAmount
-                  ? formatCurrency(totalAmount)
-                  : t("Pending lbs", "Pendiente lbs")}
+              <span className="text-xl font-bold text-slate-900" data-testid="order-detail-total">
+                {totalAmount ? formatCurrency(totalAmount) : t("Pending lbs", "Pendiente lbs")}
               </span>
             </div>
 
-            {/* Payment status */}
             <div className="flex items-center justify-between">
               <span className="text-slate-500">{t("Payment", "Pago")}</span>
-              <Badge
-                variant={isPaid ? "default" : "destructive"}
-                data-testid="order-detail-payment-status"
-              >
+              <Badge variant={isPaid ? "default" : "destructive"} data-testid="order-detail-payment-status">
                 {isPaid ? t("Paid", "Pagado") : t("Unpaid", "Sin pagar")}
               </Badge>
             </div>
@@ -737,34 +682,17 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
 
             {/* Payment form — only if not paid */}
             {!isPaid && (
-              <div
-                className="space-y-3 border border-sky-100 bg-sky-50/30 rounded-lg p-3"
-                data-testid="order-detail-pay-section"
-              >
+              <div className="space-y-3 border border-sky-100 bg-sky-50/30 rounded-lg p-3" data-testid="order-detail-pay-section">
                 <div>
                   <Label className="text-xs">{t("Payment method", "Metodo de pago")}</Label>
-                  <div className="grid grid-cols-4 gap-1.5 mt-1.5">
+                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 mt-1.5">
                     {[
-                      {
-                        val: "card",
-                        label: "Stripe",
-                        icon: <CreditCard className="w-3.5 h-3.5" />,
-                      },
-                      {
-                        val: "cash",
-                        label: t("Cash", "Efectivo"),
-                        icon: <Banknote className="w-3.5 h-3.5" />,
-                      },
-                      {
-                        val: "zelle",
-                        label: "Zelle",
-                        icon: <Send className="w-3.5 h-3.5" />,
-                      },
-                      {
-                        val: "other",
-                        label: t("Other", "Otro"),
-                        icon: <DollarSign className="w-3.5 h-3.5" />,
-                      },
+                      { val: "zelle", label: "Zelle", icon: <Send className="w-3.5 h-3.5" /> },
+                      { val: "venmo", label: "Venmo", icon: <Send className="w-3.5 h-3.5" /> },
+                      { val: "cashapp", label: "CashApp", icon: <DollarSign className="w-3.5 h-3.5" /> },
+                      { val: "card", label: "Stripe", icon: <CreditCard className="w-3.5 h-3.5" /> },
+                      { val: "cash", label: t("Cash", "Efectivo"), icon: <Banknote className="w-3.5 h-3.5" /> },
+                      { val: "other", label: t("Other", "Otro"), icon: <DollarSign className="w-3.5 h-3.5" /> },
                     ].map((m) => (
                       <button
                         key={m.val}
@@ -800,18 +728,24 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
                 )}
 
                 {payMethod === "zelle" && (
-                  <div
-                    className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-xs text-amber-800"
-                    data-testid="order-detail-zelle-info"
-                  >
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-xs text-amber-800" data-testid="order-detail-zelle-info">
                     <p className="font-semibold mb-1">Instrucciones Zelle:</p>
+                    <p>Enviar a: <strong>payments@venturafreshlaundry.com</strong></p>
+                    <p>Nota: Orden <strong>{formatOrderNumber(localOrder)}</strong></p>
+                  </div>
+                )}
+                {(payMethod === "venmo" || payMethod === "cashapp") && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-xs text-amber-800">
+                    <p className="font-semibold mb-1">
+                      {payMethod === "venmo" ? "Instrucciones Venmo:" : "Instrucciones Cash App:"}
+                    </p>
                     <p>
                       Enviar a:{" "}
-                      <strong>payments@venturafreshlaundry.com</strong>
+                      <strong>
+                        {payMethod === "venmo" ? "@VenturaFreshLaundry" : "$venturafreshlaundry"}
+                      </strong>
                     </p>
-                    <p>
-                      Nota: Orden <strong>{formatOrderNumber(localOrder)}</strong>
-                    </p>
+                    <p>Nota: Orden <strong>{formatOrderNumber(localOrder)}</strong></p>
                   </div>
                 )}
 
@@ -832,10 +766,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
                 </Button>
                 {!totalAmount && (
                   <p className="text-xs text-amber-600 text-center">
-                    {t(
-                      "Enter lbs first to calculate total",
-                      "Ingresa libras primero para calcular total"
-                    )}
+                    {t("Enter lbs first to calculate total", "Ingresa libras primero para calcular total")}
                   </p>
                 )}
               </div>
@@ -843,26 +774,11 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
           </div>
 
           {/* Action buttons */}
-          <div
-            className="flex flex-wrap gap-2 border-t border-slate-200 pt-3"
-            data-testid="order-detail-actions"
-          >
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-xs gap-1"
-              onClick={handlePrintTicket}
-              data-testid="order-detail-print"
-            >
+          <div className="flex flex-wrap gap-2 border-t border-slate-200 pt-3" data-testid="order-detail-actions">
+            <Button variant="outline" size="sm" className="text-xs gap-1" onClick={handlePrintTicket} data-testid="order-detail-print">
               <Printer className="w-3.5 h-3.5" /> {t("Print Ticket", "Imprimir Ticket")}
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-xs gap-1"
-              onClick={handleDownloadPDF}
-              data-testid="order-detail-pdf"
-            >
+            <Button variant="outline" size="sm" className="text-xs gap-1" onClick={handleDownloadPDF} data-testid="order-detail-pdf">
               <FileDown className="w-3.5 h-3.5" /> PDF
             </Button>
             <div className="flex items-center gap-1" data-testid="order-detail-notify-group">
@@ -874,7 +790,6 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
               >
                 <option value="sms">SMS</option>
                 <option value="email">Email</option>
-                <option value="whatsapp">WhatsApp</option>
               </select>
               <Button
                 variant="outline"
@@ -884,17 +799,10 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
                 disabled={notifySending}
                 data-testid="order-detail-notify"
               >
-                <Send className="w-3.5 h-3.5" />{" "}
-                {notifySending ? "..." : t("Notify", "Notificar")}
+                <Send className="w-3.5 h-3.5" /> {notifySending ? "..." : t("Notify", "Notificar")}
               </Button>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-xs gap-1 ml-auto"
-              onClick={onClose}
-              data-testid="order-detail-close"
-            >
+            <Button variant="outline" size="sm" className="text-xs gap-1 ml-auto" onClick={onClose} data-testid="order-detail-close">
               <X className="w-3.5 h-3.5" /> {t("Close", "Cerrar")}
             </Button>
           </div>
