@@ -102,6 +102,15 @@ NEW -> CONFIRMED -> PROCESSING -> READY -> COMPLETED
 - [x] Auto-fill service forms (SchedulePickup, WashFold, RequestQuote) from customer_data
 - [x] Restored /api/orders router (was accidentally overwritten by testing agent)
 
+### Phase 7b (Profile Editing + Alejandro Verification) — 2026-04-13
+- [x] PUT /api/customer/me endpoint for profile updates (name, phone, address, city, state, zip_code)
+- [x] Profile updates propagate to ALL linked customer records (same email)
+- [x] Inline profile edit mode in CustomerAccount.jsx with Edit/Save/Cancel
+- [x] "Add phone" / "Add address" links for empty fields
+- [x] Login/Register backfills customer_email on existing orders (fixes ownership matching)
+- [x] GET /api/customer/me returns extended fields (city, state, zip_code)
+- [x] Verified Alejandro's real account: login, 13 orders visible, 8 pending payments, profile editing
+
 ### Customer API Endpoints (Updated)
 - `POST /api/customer/auth/register`, `POST /api/customer/auth/login`
 - `GET /api/customer/me`, `GET /api/customer/orders`, `GET /api/customer/pending-payments`
