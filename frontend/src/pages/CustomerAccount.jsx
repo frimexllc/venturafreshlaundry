@@ -7,7 +7,7 @@ import {
   Mail, MapPin, Package, LogOut, Calendar, Clock,
   ArrowRight, Sparkles, ChevronDown, Settings, Heart, Award,
   CreditCard, Building2, DollarSign, ScanLine, X, Copy, CheckCircle,
-  Phone, Edit3, Save, Hash,
+  Phone, Edit3, Save, Camera, ExternalLink, Truck
 } from "lucide-react";
 import PublicNav from "../components/PublicNav";
 import PublicFooter from "../components/PublicFooter";
@@ -123,11 +123,126 @@ const PreferencesSkeleton = () => (
   </div>
 );
 
+// ─── Order Image Block ─────────────────────────────────────────────────────
+// Carga la imagen con fetch+token y la convierte a blob URL para evitar problemas de auth
+function OrderImageBlock({ orderId, type, token, t }) {
+  const [blobUrl, setBlobUrl] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [noImage, setNoImage] = useState(false);
+
+  const isPickup   = type === "pickup";
+  const endpoint   = `${API}/order/${orderId}/${type}-image/view`;
+  const bgClass    = isPickup ? "bg-slate-50 border-slate-100" : "bg-emerald-50 border-emerald-100";
+  const headerCls  = isPickup ? "text-slate-500" : "text-emerald-700";
+  const iconColor  = isPickup ? "text-slate-400" : "text-emerald-400";
+  const checkColor = isPickup ? "text-emerald-500" : "text-emerald-600";
+  const linkColor  = isPickup ? "text-primary" : "text-emerald-600";
+  const borderImg  = isPickup ? "border-slate-200" : "border-emerald-200";
+  const Icon       = isPickup ? Camera : Truck;
+  const title      = isPickup
+    ? t("Pickup Confirmation Photo", "Foto de Confirmación de Recolección")
+    : t("Delivery Confirmation Photo", "Foto de Confirmación de Entrega");
+  const driverMsg  = isPickup
+    ? t("Driver confirmed pickup", "El conductor confirmó la recolección")
+    : t("Driver confirmed delivery", "El conductor confirmó la entrega");
+  const footerMsg  = isPickup
+    ? t("This photo was taken by the driver as proof of pickup", "Esta foto fue tomada por el conductor como comprobante de recolección")
+    : t("This photo was taken by the driver as proof of delivery", "Esta foto fue tomada por el conductor como comprobante de entrega");
+
+  useEffect(() => {
+    let revoked = false;
+    setLoading(true);
+    setNoImage(false);
+    setBlobUrl(null);
+
+    fetch(endpoint, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then(async (res) => {
+        if (!res.ok) { setNoImage(true); return; }
+        const blob = await res.blob();
+        if (!revoked) {
+          const url = URL.createObjectURL(blob);
+          setBlobUrl(url);
+        }
+      })
+      .catch(() => setNoImage(true))
+      .finally(() => setLoading(false));
+
+    return () => {
+      revoked = true;
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderId, type, token]);
+
+  // Abrir la imagen en pestaña nueva (re-fetch con token → blob URL temporal)
+  const openFullSize = async () => {
+    try {
+      const res = await fetch(endpoint, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) return;
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const win  = window.open(url, "_blank");
+      if (win) setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch {}
+  };
+
+  return (
+    <div className={`rounded-xl p-4 border ${bgClass}`}>
+      <h4 className={`text-xs font-bold uppercase tracking-wider mb-3 flex items-center gap-2 ${headerCls}`}>
+        <Icon className="w-3.5 h-3.5" />
+        {title}
+      </h4>
+
+      {loading && (
+        <div className="flex items-center justify-center py-10">
+          <div className="w-8 h-8 rounded-full border-2 border-slate-200 border-t-primary animate-spin" />
+        </div>
+      )}
+
+      {!loading && noImage && (
+        <div className="text-center py-8 text-slate-400">
+          <Icon className={`w-10 h-10 mx-auto mb-2 opacity-30 ${iconColor}`} />
+          <p className="text-sm">{t("No photo available yet", "Foto aún no disponible")}</p>
+        </div>
+      )}
+
+      {!loading && blobUrl && (
+        <div className="space-y-3">
+          <div className={`relative rounded-lg overflow-hidden bg-white border ${borderImg}`}>
+            <img
+              src={blobUrl}
+              alt={isPickup ? "Pickup confirmation" : "Delivery confirmation"}
+              className="w-full h-auto max-h-72 object-contain cursor-pointer hover:opacity-90 transition-opacity"
+              onClick={openFullSize}
+            />
+          </div>
+          <div className="flex items-center justify-between text-xs text-slate-500">
+            <span className="flex items-center gap-1">
+              <CheckCircle className={`w-3.5 h-3.5 ${checkColor}`} />
+              {driverMsg}
+            </span>
+            <button onClick={openFullSize} className={`hover:underline flex items-center gap-1 ${linkColor}`}>
+              <ExternalLink className="w-3 h-3" />
+              {t("View full size", "Ver tamaño completo")}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <p className="text-[11px] text-slate-400 mt-3 text-center">{footerMsg}</p>
+    </div>
+  );
+}
+
 // ─── Payment Instruction Modal ────────────────────────────────────────────────
 const PAYMENT_DEFAULTS = {
-  zelle:   { phone: "(805) 626-2524", handle: "venturafreshlaundry" },
-  venmo:   { phone: "(805) 626-2524", handle: "@VenturaFreshLaundry" },
-  cashapp: { phone: "(805) 626-2524", tag: "$venturafreshlaundry" },
+  zelle:   { phone: "(805) 626-2524", handle: "VFLaundry" },
+  venmo:   { phone: "(805) 626-2524", handle: "@VFLaundry" },
+  cashapp: { phone: "(805) 626-2524", tag: "$VFLaundry" },
 };
 
 function PaymentInstructionModal({ method, order, onClose, onReceiptUpload, uploadingReceipt, paymentInfo }) {
@@ -146,8 +261,7 @@ function PaymentInstructionModal({ method, order, onClose, onReceiptUpload, uplo
 
   const CopyBtn = ({ value, label }) => (
     <button onClick={() => copy(value, label)}
-      className="ml-2 text-slate-400 hover:text-primary transition-colors flex-shrink-0"
-      title="Copy">
+      className="ml-2 text-slate-400 hover:text-primary transition-colors flex-shrink-0" title="Copy">
       {copied === label ? <CheckCircle className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
     </button>
   );
@@ -164,9 +278,7 @@ function PaymentInstructionModal({ method, order, onClose, onReceiptUpload, uplo
 
   const configs = {
     zelle: {
-      title: "💙 Zelle® Payment",
-      color: "from-purple-600 to-indigo-600",
-      badge: "bg-purple-100 text-purple-700",
+      title: "💙 Zelle® Payment", color: "from-purple-600 to-indigo-600",
       rows: [
         { emoji: "💰", label: "Amount", value: `$${amount}`, copyKey: "amount" },
         { emoji: "📱", label: "Phone",  value: info.zelle_phone  || PAYMENT_DEFAULTS.zelle.phone,  copyKey: "phone"  },
@@ -175,9 +287,7 @@ function PaymentInstructionModal({ method, order, onClose, onReceiptUpload, uplo
       ],
     },
     venmo: {
-      title: "💜 Pay with Venmo",
-      color: "from-blue-600 to-sky-500",
-      badge: "bg-blue-100 text-blue-700",
+      title: "💜 Pay with Venmo", color: "from-blue-600 to-sky-500",
       rows: [
         { emoji: "💰", label: "Amount", value: `$${amount}`, copyKey: "amount" },
         { emoji: "📱", label: "Phone",  value: info.zelle_phone || PAYMENT_DEFAULTS.venmo.phone,   copyKey: "phone"  },
@@ -186,20 +296,17 @@ function PaymentInstructionModal({ method, order, onClose, onReceiptUpload, uplo
       ],
     },
     cashapp: {
-      title: "💚 Pay with Cash App",
-      color: "from-green-600 to-emerald-500",
-      badge: "bg-green-100 text-green-700",
+      title: "💚 Pay with Cash App", color: "from-green-600 to-emerald-500",
       rows: [
-        { emoji: "💰", label: "Amount",     value: `$${amount}`,  copyKey: "amount" },
-        { emoji: "💲", label: "$Cashtag",   value: info.cashapp_tag || PAYMENT_DEFAULTS.cashapp.tag, copyKey: "tag"  },
-        { emoji: "📱", label: "Phone",      value: info.zelle_phone || PAYMENT_DEFAULTS.cashapp.phone, copyKey: "phone" },
-        { emoji: "📝", label: "Note",       value: `Order #${orderNum}`, copyKey: "note" },
+        { emoji: "💰", label: "Amount",   value: `$${amount}`,  copyKey: "amount" },
+        { emoji: "💲", label: "$Cashtag", value: info.cashapp_tag || PAYMENT_DEFAULTS.cashapp.tag, copyKey: "tag" },
+        { emoji: "📱", label: "Phone",    value: info.zelle_phone || PAYMENT_DEFAULTS.cashapp.phone, copyKey: "phone" },
+        { emoji: "📝", label: "Note",     value: `Order #${orderNum}`, copyKey: "note" },
       ],
     },
   };
 
   const cfg = configs[method];
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
@@ -213,9 +320,7 @@ function PaymentInstructionModal({ method, order, onClose, onReceiptUpload, uplo
           </button>
         </div>
         <div className="px-6 py-4">
-          {cfg.rows.map((r, i) => (
-            <Row key={i} emoji={r.emoji} label={r.label} value={r.value} copyKey={r.copyKey} />
-          ))}
+          {cfg.rows.map((r, i) => <Row key={i} emoji={r.emoji} label={r.label} value={r.value} copyKey={r.copyKey} />)}
         </div>
         <div className="px-6 pb-6 space-y-3">
           <button
@@ -272,6 +377,7 @@ export default function CustomerAccount() {
   const [uploadingReceipt, setUploadingReceipt] = useState(null);
   const [paymentModal, setPaymentModal] = useState(null);
   const [paymentInfo, setPaymentInfo] = useState(null);
+  const [customerToken, setCustomerToken] = useState(null);
 
   // Profile editing state
   const [editingProfile, setEditingProfile] = useState(false);
@@ -286,6 +392,9 @@ export default function CustomerAccount() {
   });
   const [preferencesMeta, setPreferencesMeta] = useState({ updated_at: null, version: null });
   const [preferencesLoading, setPreferencesLoading] = useState(false);
+
+  // Expandable order detail tracking
+  const [viewingOrderDetails, setViewingOrderDetails] = useState(null);
 
   const statusLabel = (s) => { const c = statusConfig[s]; return c ? (locale === "es" ? c.label.es : c.label.en) : s; };
   const statusCls   = (s) => statusConfig[s]?.cls || "bg-slate-100 text-slate-600 border-slate-200";
@@ -303,7 +412,7 @@ export default function CustomerAccount() {
 
   const isPendingVerification = (s) => s === "pending_verification" || s === "pending";
 
-  // ─── Funciones de datos (definidas ANTES del useEffect) ───────────────────
+  // ─── Funciones de datos ───────────────────────────────────────────────────
   const fetchOrders = async (token) => {
     try {
       const r = await axios.get(`${API}/customer/orders`, { headers: { Authorization: `Bearer ${token}` } });
@@ -372,6 +481,7 @@ export default function CustomerAccount() {
     const token = localStorage.getItem("customer_token");
     const cd    = localStorage.getItem("customer_data");
     if (!token) { navigate("/account/login"); return; }
+    setCustomerToken(token);
     if (cd) setCustomer(JSON.parse(cd));
 
     const params      = new URLSearchParams(window.location.search);
@@ -394,7 +504,6 @@ export default function CustomerAccount() {
     fetchPendingPayments(token);
     fetchMembershipStatus(token).then(hasMem => { if (hasMem) fetchPreferences(token); });
 
-    // Fetch fresh profile with extended fields (city, state, zip_code)
     axios.get(`${API}/customer/me`, { headers: { Authorization: `Bearer ${token}` } })
       .then(res => {
         if (res.data) {
@@ -403,7 +512,7 @@ export default function CustomerAccount() {
         }
       })
       .catch(() => {});
-  }, [navigate]); // Dependencias mínimas; las funciones se definen fuera y son estables
+  }, [navigate]);
 
   // ─── Handlers ──────────────────────────────────────────────────────────────
   const handleSavePreferences = async () => {
@@ -461,45 +570,32 @@ export default function CustomerAccount() {
           headers: { Authorization: `Bearer ${token}` },
         });
 
-        // Verificar que la IA confirme que es un pago completado real
         const isValid = ocrRes.data.is_valid_payment;
         const extracted = ocrRes.data.amount;
         const rejectionReason = ocrRes.data.rejection_reason || "";
 
         if (!isValid) {
-          toast.error(
-            rejectionReason || t(
-              "This does not appear to be a completed payment receipt.",
-              "Esto no parece ser un comprobante de pago completado."
-            ),
-            { duration: 8000 }
-          );
+          toast.error(rejectionReason || t("This does not appear to be a completed payment receipt.", "Esto no parece ser un comprobante de pago completado."), { duration: 8000 });
           return;
         }
 
         const tolerance = Math.max(Number(expectedAmount) * 0.10, 1.00);
         if (Math.abs(extracted - Number(expectedAmount)) <= tolerance) {
-          await axios.post(`${API}/customer/order/${orderId}/mark-zelle?method=${method}`, {}, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
+          await axios.post(`${API}/customer/order/${orderId}/mark-zelle?method=${method}`, {}, { headers: { Authorization: `Bearer ${token}` } });
           toast.success(t(`Payment of $${Number(extracted).toFixed(2)} verified!`, `¡Pago de $${Number(extracted).toFixed(2)} verificado!`));
           const tk = localStorage.getItem("customer_token");
           if (tk) { await fetchPendingPayments(tk); await fetchOrders(tk); }
         } else {
-          toast.error(t(
-            `Amount mismatch: expected $${Number(expectedAmount).toFixed(2)}, got $${Number(extracted).toFixed(2)}`,
-            `Monto no coincide: esperado $${Number(expectedAmount).toFixed(2)}, obtenido $${Number(extracted).toFixed(2)}`,
-          ), { duration: 8000 });
+          toast.error(t(`Amount mismatch: expected $${Number(expectedAmount).toFixed(2)}, got $${Number(extracted).toFixed(2)}`, `Monto no coincide: esperado $${Number(expectedAmount).toFixed(2)}, obtenido $${Number(extracted).toFixed(2)}`), { duration: 8000 });
         }
       } catch (err) {
-        console.error("Receipt upload error:", err);
         toast.error(err.response?.data?.detail || t("Error processing receipt", "Error al procesar el comprobante"));
       } finally { setUploadingReceipt(null); }
     };
     input.click();
   };
 
-  const openPaymentModal = (method, order) => setPaymentModal({ method, order });
+  const openPaymentModal  = (method, order) => setPaymentModal({ method, order });
   const closePaymentModal = () => setPaymentModal(null);
 
   const startEditProfile = () => {
@@ -520,19 +616,14 @@ export default function CustomerAccount() {
     if (!token) return;
     setSavingProfile(true);
     try {
-      const res = await axios.put(`${API}/customer/me`, profileForm, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const updated = res.data;
-      setCustomer(updated);
-      localStorage.setItem("customer_data", JSON.stringify(updated));
+      const res = await axios.put(`${API}/customer/me`, profileForm, { headers: { Authorization: `Bearer ${token}` } });
+      setCustomer(res.data);
+      localStorage.setItem("customer_data", JSON.stringify(res.data));
       setEditingProfile(false);
       toast.success(t("Profile updated", "Perfil actualizado"));
     } catch (err) {
       toast.error(err.response?.data?.detail || t("Could not update profile", "No se pudo actualizar el perfil"));
-    } finally {
-      setSavingProfile(false);
-    }
+    } finally { setSavingProfile(false); }
   };
 
   const setPref = (k, v) => setPreferences(p => ({ ...p, [k]: v }));
@@ -540,6 +631,11 @@ export default function CustomerAccount() {
     if (!ds) return "";
     return new Date(ds).toLocaleDateString(locale === "es" ? "es-ES" : "en-US", { year: "numeric", month: "long", day: "numeric" });
   };
+
+  // Qué estados muestran foto de pickup
+  const PICKUP_STATUSES   = ['picked_up', 'processing', 'ready', 'out_for_delivery', 'delivered', 'completed'];
+  // Qué estados muestran foto de entrega
+  const DELIVERY_STATUSES = ['delivered', 'completed'];
 
   if (loading) return (
     <div className="min-h-screen bg-white">
@@ -555,12 +651,9 @@ export default function CustomerAccount() {
   return (<>
     {paymentModal && (
       <PaymentInstructionModal
-        method={paymentModal.method}
-        order={paymentModal.order}
-        onClose={closePaymentModal}
-        onReceiptUpload={handleUploadReceipt}
-        uploadingReceipt={uploadingReceipt}
-        paymentInfo={paymentInfo}
+        method={paymentModal.method} order={paymentModal.order}
+        onClose={closePaymentModal} onReceiptUpload={handleUploadReceipt}
+        uploadingReceipt={uploadingReceipt} paymentInfo={paymentInfo}
       />
     )}
 
@@ -637,6 +730,7 @@ export default function CustomerAccount() {
             </Card>
           </Tilt>
         </Reveal>
+
         {/* CTA */}
         <Reveal delay={300} dir="scale">
           <div className="relative overflow-hidden bg-gradient-to-br from-sky-950 to-sky-800 rounded-2xl p-8 text-center shadow-xl">
@@ -651,6 +745,7 @@ export default function CustomerAccount() {
             </Link>
           </div>
         </Reveal>
+
         {/* Membership upsell */}
         {!hasMembership && (
           <Reveal delay={120} dir="up">
@@ -675,7 +770,7 @@ export default function CustomerAccount() {
           </Reveal>
         )}
 
-        {/* Stats - CORREGIDO: ya no usa CheckCircle2 */}
+        {/* Stats */}
         <div className="grid grid-cols-3 gap-5">
           {[
             { value: orders.length, label: t("Orders","Órdenes"), color:"from-sky-400 to-primary", icon: Package },
@@ -723,42 +818,30 @@ export default function CustomerAccount() {
                       </div>
                       <span className="font-black text-primary text-xl">${Number(order.total_amount||0).toFixed(2)}</span>
                     </div>
-
                     {order.service_type && <p className="text-xs text-slate-400 capitalize">{order.service_type.replace(/_/g," ")}</p>}
-
                     {isPendingVerification(order.payment_status) ? (
                       <div className="bg-amber-50 rounded-xl border border-amber-200 p-3 text-xs text-amber-700 font-medium">
                         {t("Payment submitted — waiting for verification by our team.", "Pago enviado — esperando verificación de nuestro equipo.")}
                       </div>
                     ) : (
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-
-                        <button onClick={() => openPaymentModal("zelle", order)}
-                          className="flex items-center justify-center gap-2 text-white rounded-xl px-4 py-3 text-sm font-semibold transition-all duration-200 hover:brightness-110 active:scale-95"
-                          style={{ backgroundColor:"#6D1ED4" }}>
+                        <button onClick={() => openPaymentModal("zelle", order)} className="flex items-center justify-center gap-2 text-white rounded-xl px-4 py-3 text-sm font-semibold transition-all duration-200 hover:brightness-110 active:scale-95" style={{ backgroundColor:"#6D1ED4" }}>
                           <Building2 className="h-4 w-4" /> Zelle
                         </button>
-                        <button onClick={() => openPaymentModal("venmo", order)}
-                          className="flex items-center justify-center gap-2 text-white rounded-xl px-4 py-3 text-sm font-semibold transition-all duration-200 hover:brightness-110 active:scale-95"
-                          style={{ backgroundColor:"#0074DE" }}>
+                        <button onClick={() => openPaymentModal("venmo", order)} className="flex items-center justify-center gap-2 text-white rounded-xl px-4 py-3 text-sm font-semibold transition-all duration-200 hover:brightness-110 active:scale-95" style={{ backgroundColor:"#0074DE" }}>
                           <DollarSign className="h-4 w-4" /> Venmo
                         </button>
-                        <button onClick={() => openPaymentModal("cashapp", order)}
-                          className="flex items-center justify-center gap-2 text-black rounded-xl px-4 py-3 text-sm font-semibold transition-all duration-200 hover:brightness-110 active:scale-95"
-                          style={{ backgroundColor:"#00E013" }}>
+                        <button onClick={() => openPaymentModal("cashapp", order)} className="flex items-center justify-center gap-2 text-black rounded-xl px-4 py-3 text-sm font-semibold transition-all duration-200 hover:brightness-110 active:scale-95" style={{ backgroundColor:"#00E013" }}>
                           <DollarSign className="h-4 w-4" /> CashApp
                         </button>
-                                                <button onClick={() => handlePayStripe(order.id)} disabled={payingOrderId===order.id}
-                          className="flex items-center justify-center gap-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl px-4 py-3 text-sm font-semibold transition-all duration-200 disabled:opacity-50">
+                        <button onClick={() => handlePayStripe(order.id)} disabled={payingOrderId===order.id} className="flex items-center justify-center gap-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl px-4 py-3 text-sm font-semibold transition-all duration-200 disabled:opacity-50">
                           {payingOrderId===order.id ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <CreditCard className="h-4 w-4" />}
                           {t("Card","Tarjeta")}
                         </button>
                       </div>
                     )}
-
                     {!isPendingVerification(order.payment_status) && (
-                      <button onClick={() => handleUploadReceipt(order.id, order.total_amount)}
-                        disabled={uploadingReceipt?.orderId===order.id}
+                      <button onClick={() => handleUploadReceipt(order.id, order.total_amount)} disabled={uploadingReceipt?.orderId===order.id}
                         className="w-full flex items-center justify-center gap-2 bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-200 disabled:opacity-50">
                         {uploadingReceipt?.orderId===order.id ? <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" /> : <ScanLine className="h-4 w-4" />}
                         📤 {t("Upload receipt for instant verification","Sube comprobante para verificación instantánea")}
@@ -791,12 +874,10 @@ export default function CustomerAccount() {
                   <ChevronDown className="w-4 h-4" />
                 </div>
               </button>
-
               <div className={`overflow-hidden transition-all duration-500 ease-in-out ${prefOpen ? "max-h-[2500px] opacity-100" : "max-h-0 opacity-0"}`}>
                 <div className="px-7 pb-7 border-t border-slate-100">
                   {preferencesLoading ? <PreferencesSkeleton /> : (
                     <div className="pt-5 space-y-5">
-                      {/* Aquí va todo el formulario de preferencias (sin cambios) */}
                       <div className="grid sm:grid-cols-3 gap-4">
                         <Field label={t("Detergent","Detergente")}>
                           <Select value={preferences.detergent_type} onValueChange={v => setPref("detergent_type",v)}>
@@ -964,24 +1045,146 @@ export default function CustomerAccount() {
                 <div className="space-y-3">
                   {orders.map((order, i) => (
                     <Reveal key={order.id} delay={i * 60} dir="up">
-                      <div className="relative flex items-center justify-between flex-wrap gap-3 p-4 rounded-2xl border border-slate-100 hover:border-primary/30 hover:shadow-lg hover:shadow-sky-50 transition-all duration-300 group bg-white overflow-hidden">
+                      <div className="relative p-4 rounded-2xl border border-slate-100 hover:border-primary/30 hover:shadow-lg hover:shadow-sky-50 transition-all duration-300 group bg-white overflow-hidden">
                         <div className="absolute inset-0 bg-gradient-to-r from-sky-50/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-                        <div className="relative">
-                          <div className="flex items-center gap-3 mb-2 flex-wrap">
-                            <span className="font-bold text-slate-800 text-sm">{order.order_number}</span>
-                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${statusCls(order.status)}`}>{statusLabel(order.status)}</span>
-                            {order.payment_status && <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${paymentStatusLabel(order.payment_status).cls}`}>{paymentStatusLabel(order.payment_status).label}</span>}
+
+                        {/* Cabecera */}
+                        <div className="relative flex items-center justify-between flex-wrap gap-3">
+                          <div>
+                            <div className="flex items-center gap-3 mb-2 flex-wrap">
+                              <span className="font-bold text-slate-800 text-sm">{order.order_number}</span>
+                              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${statusCls(order.status)}`}>
+                                {statusLabel(order.status)}
+                              </span>
+                              {order.payment_status && (
+                                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${paymentStatusLabel(order.payment_status).cls}`}>
+                                  {paymentStatusLabel(order.payment_status).label}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-4 text-xs text-slate-400 flex-wrap">
+                              <span className="flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5" />{order.pickup_date || "TBD"}</span>
+                              {order.pickup_time_window && <span className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" />{order.pickup_time_window}</span>}
+                              {order.pickup_address && <span className="flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5" />{order.pickup_address.split(",")[0]}</span>}
+                            </div>
                           </div>
-                          <div className="flex items-center gap-4 text-xs text-slate-400 flex-wrap">
-                            <span className="flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5" />{order.pickup_date||"TBD"}</span>
-                            {order.pickup_time_window && <span className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" />{order.pickup_time_window}</span>}
-                            {order.pickup_address && <span className="flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5" />{order.pickup_address.split(",")[0]}</span>}
+                          <div className="relative flex items-center gap-3">
+                            {order.service_type && <p className="text-xs text-slate-400 capitalize">{order.service_type.replace("_", " ")}</p>}
+                            {order.total_amount != null && <p className="font-black text-primary text-lg">${Number(order.total_amount).toFixed(2)}</p>}
+                            <button
+                              onClick={() => setViewingOrderDetails(prev => prev === order.id ? null : order.id)}
+                              className="ml-2 p-2 rounded-lg bg-slate-100 hover:bg-primary/10 text-slate-500 hover:text-primary transition-all duration-200"
+                              title={t("View details", "Ver detalles")}
+                            >
+                              <ChevronDown className={`w-4 h-4 transition-transform duration-300 ${viewingOrderDetails === order.id ? 'rotate-180' : ''}`} />
+                            </button>
                           </div>
                         </div>
-                        <div className="relative text-right">
-                          {order.service_type && <p className="text-xs text-slate-400 mb-0.5 capitalize">{order.service_type.replace("_"," ")}</p>}
-                          {order.total_amount!=null && <p className="font-black text-primary text-lg">${Number(order.total_amount).toFixed(2)}</p>}
-                        </div>
+
+                        {/* Panel expandible */}
+                        {viewingOrderDetails === order.id && (
+                          <div className="mt-4 pt-4 border-t border-slate-100 space-y-4">
+
+                            {/* Info recolección */}
+                            {order.pickup_address && (
+                              <div className="bg-slate-50 rounded-xl p-4">
+                                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3 flex items-center gap-2">
+                                  <MapPin className="w-3.5 h-3.5" />
+                                  {t("Pickup Information", "Información de Recolección")}
+                                </h4>
+                                <div className="grid sm:grid-cols-2 gap-3 text-sm">
+                                  <div>
+                                    <p className="text-slate-400 text-xs mb-1">{t("Address", "Dirección")}</p>
+                                    <p className="font-medium text-slate-700">{order.pickup_address}</p>
+                                  </div>
+                                  {order.pickup_date && (
+                                    <div>
+                                      <p className="text-slate-400 text-xs mb-1">{t("Date & Time", "Fecha y Hora")}</p>
+                                      <p className="font-medium text-slate-700">{order.pickup_date} {order.pickup_time_window && `(${order.pickup_time_window})`}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* ── FOTO DE RECOLECCIÓN ── */}
+                            {PICKUP_STATUSES.includes(order.status) && customerToken && (
+                              <OrderImageBlock
+                                key={`pickup-${order.id}`}
+                                orderId={order.id}
+                                type="pickup"
+                                token={customerToken}
+                                t={t}
+                              />
+                            )}
+
+                            {/* ── FOTO DE ENTREGA ── */}
+                            {DELIVERY_STATUSES.includes(order.status) && customerToken && (
+                              <OrderImageBlock
+                                key={`delivery-${order.id}`}
+                                orderId={order.id}
+                                type="delivery"
+                                token={customerToken}
+                                t={t}
+                              />
+                            )}
+
+                            {/* Info entrega */}
+                            {order.delivery_address && (
+                              <div className="bg-slate-50 rounded-xl p-4">
+                                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3 flex items-center gap-2">
+                                  <Package className="w-3.5 h-3.5" />
+                                  {t("Delivery Information", "Información de Entrega")}
+                                </h4>
+                                <div className="grid sm:grid-cols-2 gap-3 text-sm">
+                                  <div>
+                                    <p className="text-slate-400 text-xs mb-1">{t("Address", "Dirección")}</p>
+                                    <p className="font-medium text-slate-700">{order.delivery_address}</p>
+                                  </div>
+                                  {order.delivery_date && (
+                                    <div>
+                                      <p className="text-slate-400 text-xs mb-1">{t("Estimated Delivery", "Entrega Estimada")}</p>
+                                      <p className="font-medium text-slate-700">{order.delivery_date}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Notas */}
+                            {order.notes && (
+                              <div className="bg-amber-50 rounded-xl p-4 border border-amber-100">
+                                <h4 className="text-xs font-bold uppercase tracking-wider text-amber-700 mb-2">{t("Order Notes", "Notas de la Orden")}</h4>
+                                <p className="text-sm text-slate-700">{order.notes}</p>
+                              </div>
+                            )}
+
+                            {/* Timeline */}
+                            {order.status_history && order.status_history.length > 0 && (
+                              <div className="bg-slate-50 rounded-xl p-4">
+                                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">{t("Order Timeline", "Línea de Tiempo")}</h4>
+                                <div className="space-y-2">
+                                  {order.status_history.slice().reverse().map((event, idx) => (
+                                    <div key={idx} className="flex items-start gap-3 text-sm">
+                                      <div className="w-2 h-2 rounded-full bg-primary mt-1.5 flex-shrink-0" />
+                                      <div className="flex-1">
+                                        <p className="text-slate-700">
+                                          <span className="font-medium">{statusLabel(event.to || event.status)}</span>
+                                          {event.from && event.from !== event.to && <span className="text-slate-400"> ← {statusLabel(event.from)}</span>}
+                                        </p>
+                                        {event.changed_at && (
+                                          <p className="text-xs text-slate-400">
+                                            {new Date(event.changed_at).toLocaleString(locale === "es" ? "es-ES" : "en-US", { dateStyle: "medium", timeStyle: "short" })}
+                                          </p>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </Reveal>
                   ))}
@@ -991,9 +1194,7 @@ export default function CustomerAccount() {
           </Card>
         </Reveal>
 
-
-
-        {/* Profile + Address (Editable) */}
+        {/* Profile */}
         <Reveal delay={200} dir="up">
           <Card hover>
             <div className="px-7 py-5 flex items-center justify-between border-b border-slate-100">
@@ -1022,47 +1223,38 @@ export default function CustomerAccount() {
                 </div>
               )}
             </div>
-
             <div className="px-7 py-5">
               {editingProfile ? (
                 <div className="space-y-4">
                   <div className="grid sm:grid-cols-2 gap-4">
                     <div>
                       <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{t("Full Name", "Nombre completo")}</label>
-                      <input value={profileForm.name} onChange={e => setProfileForm(p => ({...p, name: e.target.value}))}
-                        className={inputCls} data-testid="profile-name-input" />
+                      <input value={profileForm.name} onChange={e => setProfileForm(p => ({...p, name: e.target.value}))} className={inputCls} data-testid="profile-name-input" />
                     </div>
                     <div>
                       <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{t("Phone", "Teléfono")}</label>
-                      <input value={profileForm.phone} onChange={e => setProfileForm(p => ({...p, phone: e.target.value}))}
-                        className={inputCls} placeholder="(805) 555-1234" data-testid="profile-phone-input" />
+                      <input value={profileForm.phone} onChange={e => setProfileForm(p => ({...p, phone: e.target.value}))} className={inputCls} placeholder="(805) 555-1234" data-testid="profile-phone-input" />
                     </div>
                   </div>
                   <div>
                     <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{t("Street Address", "Dirección")}</label>
-                    <input value={profileForm.address} onChange={e => setProfileForm(p => ({...p, address: e.target.value}))}
-                      className={inputCls} placeholder="1120 Carlsbad Place" data-testid="profile-address-input" />
+                    <input value={profileForm.address} onChange={e => setProfileForm(p => ({...p, address: e.target.value}))} className={inputCls} placeholder="1120 Carlsbad Place" data-testid="profile-address-input" />
                   </div>
                   <div className="grid grid-cols-3 gap-4">
                     <div>
                       <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{t("City", "Ciudad")}</label>
-                      <input value={profileForm.city} onChange={e => setProfileForm(p => ({...p, city: e.target.value}))}
-                        className={inputCls} placeholder="Ventura" data-testid="profile-city-input" />
+                      <input value={profileForm.city} onChange={e => setProfileForm(p => ({...p, city: e.target.value}))} className={inputCls} placeholder="Ventura" data-testid="profile-city-input" />
                     </div>
                     <div>
                       <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{t("State", "Estado")}</label>
-                      <input value={profileForm.state} onChange={e => setProfileForm(p => ({...p, state: e.target.value}))}
-                        className={inputCls} placeholder="CA" data-testid="profile-state-input" />
+                      <input value={profileForm.state} onChange={e => setProfileForm(p => ({...p, state: e.target.value}))} className={inputCls} placeholder="CA" data-testid="profile-state-input" />
                     </div>
                     <div>
                       <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{t("Zip", "C.P.")}</label>
-                      <input value={profileForm.zip_code} onChange={e => setProfileForm(p => ({...p, zip_code: e.target.value}))}
-                        className={inputCls} placeholder="93003" data-testid="profile-zip-input" />
+                      <input value={profileForm.zip_code} onChange={e => setProfileForm(p => ({...p, zip_code: e.target.value}))} className={inputCls} placeholder="93003" data-testid="profile-zip-input" />
                     </div>
                   </div>
-                  <p className="text-[11px] text-slate-400">
-                    {t("This information auto-fills your service forms for faster orders.", "Esta información auto-completa tus formularios de servicio para órdenes más rápidas.")}
-                  </p>
+                  <p className="text-[11px] text-slate-400">{t("This information auto-fills your service forms for faster orders.", "Esta información auto-completa tus formularios de servicio para órdenes más rápidas.")}</p>
                 </div>
               ) : (
                 <div className="grid sm:grid-cols-2 gap-6">
@@ -1071,18 +1263,15 @@ export default function CustomerAccount() {
                       <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">{t("Email", "Correo")}</p>
                       <p className="text-slate-700 font-medium text-sm break-words">{customer?.email}</p>
                     </div>
-                    {customer?.phone && (
+                    {customer?.phone ? (
                       <div>
                         <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">{t("Phone", "Teléfono")}</p>
                         <p className="text-slate-700 font-medium text-sm flex items-center gap-1.5"><Phone className="w-3.5 h-3.5 text-slate-400" />{customer.phone}</p>
                       </div>
-                    )}
-                    {!customer?.phone && (
+                    ) : (
                       <div>
                         <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">{t("Phone", "Teléfono")}</p>
-                        <button onClick={startEditProfile} className="text-sky-500 text-xs font-semibold hover:underline">
-                          + {t("Add phone number", "Agregar teléfono")}
-                        </button>
+                        <button onClick={startEditProfile} className="text-sky-500 text-xs font-semibold hover:underline">+ {t("Add phone number", "Agregar teléfono")}</button>
                       </div>
                     )}
                   </div>
@@ -1094,9 +1283,7 @@ export default function CustomerAccount() {
                         <span className="break-words">{customer.address}</span>
                       </p>
                     ) : (
-                      <button onClick={startEditProfile} className="text-sky-500 text-xs font-semibold hover:underline">
-                        + {t("Add address for auto-fill", "Agregar dirección para auto-completar")}
-                      </button>
+                      <button onClick={startEditProfile} className="text-sky-500 text-xs font-semibold hover:underline">+ {t("Add address for auto-fill", "Agregar dirección para auto-completar")}</button>
                     )}
                   </div>
                 </div>

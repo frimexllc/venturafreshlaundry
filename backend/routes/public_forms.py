@@ -433,9 +433,6 @@ PERSONALITY GUIDELINES:
             "message": "¡Gracias! Tu solicitud de Wash & Fold ha sido recibida."
         }
 
-    # ──────────────────────────────────────────────────────────────────────────
-    # RUTA DE CONTACTO (CORREGIDA – DENTRO DE LA FUNCIÓN)
-    # ──────────────────────────────────────────────────────────────────────────
     @router.post("/public/contact")
     async def public_contact(data: PublicContactRequest):
         now = datetime.now(timezone.utc).isoformat()
@@ -479,14 +476,11 @@ PERSONALITY GUIDELINES:
         await create_audit_log("TICKET_CREATED", "ticket", ticket_id, None, {"source": "public_form"})
 
         # Send confirmation notification based on user's preferred contact
-                # Send confirmation notification based on user's preferred contact
         try:
             contact_pref = preferred_contact or "email"
-            # Detectar idioma
             is_es = any(c in (normalized_message or "").lower() for c in ["hola", "gracias", "solicitud"])
             customer_display_name = normalized_name or data.name or ("Cliente" if is_es else "Customer")
 
-            # Mensajes
             if is_es:
                 msg = (f"Hola {customer_display_name}, gracias por contactar a Ventura Fresh Laundry. "
                        f"Tu mensaje ha sido recibido y está siendo revisado por nuestro equipo. "
@@ -506,10 +500,8 @@ PERSONALITY GUIDELINES:
 
             subj = "Solicitud recibida" if is_es else "Request received"
 
-            # LOG para depuración
             logger.info(f"Contact: contact_pref={contact_pref}, phone={normalized_phone}, email={normalized_email}")
 
-            # Enviar según preferencia
             if contact_pref == "email" and normalized_email:
                 await send_email(normalized_email, subj, msg)
             elif contact_pref in ("whatsapp",) and normalized_phone:
@@ -520,10 +512,8 @@ PERSONALITY GUIDELINES:
                 voice_lang = "es-MX" if is_es else "en-US"
                 await send_voice_call(normalized_phone, call_msg, voice_lang)
             elif normalized_email:
-                # fallback a email
                 await send_email(normalized_email, subj, msg)
             elif normalized_phone:
-                # fallback a sms
                 await send_sms(normalized_phone, msg)
             else:
                 logger.warning("No contact method available for notification")
@@ -572,9 +562,7 @@ PERSONALITY GUIDELINES:
         await db.quotes.insert_one(quote)
         await create_audit_log("QUOTE_CREATED", "quote", quote_id, None, {"source": "public_form"})
 
-        # Send confirmation notification
         try:
-            lang = "es"
             msg = f"Hola {normalized_contact or data.contact_name}, hemos recibido tu solicitud de cotización ({quote_number}). Te contactaremos pronto. — {os.environ.get('BUSINESS_NAME', 'Ventura Fresh Laundry')}"
             subj = "Cotización recibida"
             if normalized_email:
@@ -653,6 +641,9 @@ PERSONALITY GUIDELINES:
             "message": "¡Gracias! Tu solicitud de membresía fue recibida. Te contactaremos para confirmar tu plan."
         }
 
+    # ================================================================
+    # B2B QUOTE ENDPOINT - CON NOTIFICACIONES AL CLIENTE
+    # ================================================================
     @router.post("/public/b2b-quote")
     async def create_b2b_quote(data: B2BQuoteRequest):
         now = datetime.now(timezone.utc).isoformat()
@@ -722,14 +713,86 @@ PERSONALITY GUIDELINES:
         await db.quotes.insert_one(quote_doc)
         await create_audit_log("B2B_QUOTE_CREATED", "quote", quote_id, "public", {"company": data.company_legal_name, "business_type": data.business_type})
 
-        if notifications_enabled and not skip_server_notifications:
+        # ──────────────────────────────────────────────────────────────────────────
+        # NOTIFICACIONES (Cliente + Admin)
+        # ──────────────────────────────────────────────────────────────────────────
+        if notifications_enabled:
+            # 1. NOTIFICACIÓN AL CLIENTE
             try:
-                await send_sms(
-                    os.environ.get("ADMIN_PHONE", "+18055154030"),
-                    f"New B2B Quote Request: {data.company_legal_name or data.first_name} ({data.business_type}) - {data.estimated_lbs} lbs/{data.laundry_frequency}"
-                )
-            except Exception:
-                pass
+                contact_pref = preferred_contact or "email"
+                sms_ok = bool(data.sms_consent)
+                customer_name = f"{normalized_first or data.first_name} {normalized_last or data.last_name}".strip()
+                biz_name = os.environ.get("BUSINESS_NAME", "Ventura Fresh Laundry")
+                
+                # Detectar idioma
+                is_es = False
+                if normalized_phone:
+                    try:
+                        from notifications import detect_country
+                        is_es = detect_country(normalized_phone) == "mx"
+                    except:
+                        pass
+                
+                # Mensajes según idioma
+                if is_es:
+                    client_msg = f"Hola {customer_name}, recibimos tu solicitud de cotización comercial {quote_number}. Nuestro equipo te contactará en 24-48 horas. ¡Gracias por tu interés en {biz_name}!"
+                    client_subject = f"Cotización Recibida - {quote_number}"
+                    voice_msg = f"Hola {customer_name}, confirmamos tu cotización {quote_number}. Te contactaremos pronto."
+                else:
+                    client_msg = f"Hi {customer_name}, we received your commercial quote request {quote_number}. Our team will contact you within 24-48 hours. Thank you for your interest in {biz_name}!"
+                    client_subject = f"Quote Request Received - {quote_number}"
+                    voice_msg = f"Hi {customer_name}, we confirm your quote request {quote_number}. We'll be in touch soon."
+                
+                sent = False
+                
+                # Enviar según preferencia
+                if contact_pref == "email" and normalized_email:
+                    sent = await send_email(normalized_email, client_subject, client_msg)
+                    logger.info(f"B2B quote {quote_number}: Email sent to {normalized_email}")
+                elif contact_pref in ("whatsapp",) and normalized_phone and sms_ok:
+                    sent = await send_whatsapp(normalized_phone, client_msg)
+                    logger.info(f"B2B quote {quote_number}: WhatsApp sent to {normalized_phone}")
+                elif contact_pref in ("sms", "text") and normalized_phone and sms_ok:
+                    sent = await send_sms(normalized_phone, client_msg)
+                    logger.info(f"B2B quote {quote_number}: SMS sent to {normalized_phone}")
+                elif contact_pref == "call" and normalized_phone:
+                    voice_lang = "es-MX" if is_es else "en-US"
+                    sent = await send_voice_call(normalized_phone, voice_msg, voice_lang)
+                    logger.info(f"B2B quote {quote_number}: Voice call to {normalized_phone}")
+                elif normalized_email:
+                    sent = await send_email(normalized_email, client_subject, client_msg)
+                    logger.info(f"B2B quote {quote_number}: Email sent as fallback to {normalized_email}")
+                elif normalized_phone:
+                    sent = await send_sms(normalized_phone, client_msg)
+                    logger.info(f"B2B quote {quote_number}: SMS sent as fallback to {normalized_phone}")
+                
+                if not sent:
+                    logger.warning(f"B2B quote {quote_number}: No notification sent to client")
+                    
+            except Exception as e:
+                logger.error(f"B2B quote client notification failed: {e}")
+            
+            # 2. NOTIFICACIÓN AL ADMIN
+            if not skip_server_notifications:
+                try:
+                    admin_phone = os.environ.get("ADMIN_PHONE", "+18055154030")
+                    company_label = data.company_legal_name or data.dba_name or f"{data.first_name} {data.last_name}"
+                    
+                    admin_msg = (
+                        f"📋 NUEVA COTIZACIÓN B2B\n"
+                        f"📄 #{quote_number}\n"
+                        f"🏢 {company_label}\n"
+                        f"🏭 {data.business_type}\n"
+                        f"📦 {data.estimated_lbs} lbs / {data.laundry_frequency}\n"
+                        f"📧 {normalized_email}\n"
+                        f"📞 {normalized_phone or 'N/A'}"
+                    )
+                    
+                    await send_sms(admin_phone, admin_msg)
+                    logger.info(f"B2B quote {quote_number}: Admin SMS sent")
+                    
+                except Exception as e:
+                    logger.error(f"B2B quote admin notification failed: {e}")
 
         return {
             "message": "Thank you! Your quote request has been received. Our team will contact you within 24-48 hours.",

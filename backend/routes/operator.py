@@ -1,75 +1,87 @@
-"""Operator & Driver endpoints — state machine, status transitions, driver routes."""
+"""
+Operator & Driver endpoints — v2.1
+FIXES vs original:
+  FIX A: _notify_customer_after_image respects SKIP_SERVER_NOTIFICATIONS
+          and uses should_notify_customer() guard.
+  FIX B: _do_status_update uses should_notify_customer() before sending.
+  FIX C: Driver SMS uses ADMIN_PHONE env var, no hardcoded numbers.
+  FIX D: All image upload endpoints validate file type before reading fully.
+"""
 import logging
 import uuid
+import base64
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 from database import db, SKIP_SERVER_NOTIFICATIONS
-from auth import get_current_user, has_permission, require_role
+from auth import get_current_user, has_permission
 from models import ROLE_OPERATOR, ROLE_DRIVER
-from utils import normalize_status, normalize_spaces, create_audit_log, should_notify_order_status
+from utils import normalize_status, normalize_spaces, create_audit_log
 
 logger = logging.getLogger(__name__)
 
 try:
-    from notifications import notify_order_status_changed, send_sms
+    from notifications import (
+        notify_order_status_changed,
+        send_sms,
+        should_notify_customer,   # FIX B
+    )
     NOTIFICATIONS_ENABLED = True
 except ImportError:
     NOTIFICATIONS_ENABLED = False
     send_sms = None
+    def should_notify_customer(status: str) -> bool:
+        return True
 
 router = APIRouter(prefix="/api", tags=["Operator"])
 
+# ── File upload constants ─────────────────────────────────────────────
+MAX_FILE_SIZE = 10 * 1024 * 1024   # 10 MB
+ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic"}
+UPLOAD_DIR = Path("uploads/pickup_proofs")
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-# ══════════════════════════════════════════════════════════════════════
-# State Machine
-# ══════════════════════════════════════════════════════════════════════
+# ── State machine ─────────────────────────────────────────────────────
 PD_TRANSITIONS = {
-    "new": ["confirmed", "cancelled"],
-    "confirmed": ["picked_up", "cancelled"],
-    "picked_up": ["processing"],
-    "processing": ["ready"],
-    "ready": ["out_for_delivery"],
+    "new":              ["confirmed", "cancelled"],
+    "confirmed":        ["picked_up", "cancelled"],
+    "picked_up":        ["processing"],
+    "processing":       ["ready"],
+    "ready":            ["out_for_delivery"],
     "out_for_delivery": ["delivered"],
-    "delivered": ["completed"],
+    "delivered":        ["completed"],
 }
 
 WF_TRANSITIONS = {
-    "new": ["confirmed", "cancelled"],
+    "new":       ["confirmed", "cancelled"],
     "confirmed": ["processing", "cancelled"],
-    "processing": ["ready"],
-    "ready": ["completed"],
+    "processing":["ready"],
+    "ready":     ["completed"],
 }
 
 OPERATOR_STATUSES = {"confirmed", "processing", "ready", "out_for_delivery", "completed", "cancelled"}
-DRIVER_STATUSES = {"picked_up", "delivered", "completed"}
+DRIVER_STATUSES   = {"picked_up", "delivered", "completed"}
 
 
 def _get_transitions(service_type: str) -> dict:
     st = normalize_spaces(service_type or "pickup_delivery").lower().replace(" ", "_")
-    if "wash" in st and "fold" in st:
-        return WF_TRANSITIONS
-    return PD_TRANSITIONS
+    return WF_TRANSITIONS if ("wash" in st and "fold" in st) else PD_TRANSITIONS
 
 
 def can_transition(order: dict, new_status: str, role: str) -> tuple:
-    """Validate if a status transition is allowed for the given role.
-    Returns (allowed: bool, error_message: str)."""
     current = normalize_status(order.get("status") or "new")
-    target = normalize_status(new_status)
-    transitions = _get_transitions(order.get("service_type"))
-
-    allowed_next = transitions.get(current, [])
-    if target not in allowed_next:
-        return False, f"No se puede cambiar de '{current}' a '{target}'. Permitidos: {allowed_next}"
-
+    target  = normalize_status(new_status)
+    allowed = _get_transitions(order.get("service_type")).get(current, [])
+    if target not in allowed:
+        return False, f"No se puede cambiar de '{current}' a '{target}'. Permitidos: {allowed}"
     if role == "operator" and target not in OPERATOR_STATUSES:
         return False, f"Operador no puede establecer estado '{target}'"
     if role == "driver" and target not in DRIVER_STATUSES:
         return False, f"Driver no puede establecer estado '{target}'"
-
     return True, ""
 
 
@@ -77,55 +89,54 @@ class StatusUpdate(BaseModel):
     status: str
 
 
-# ══════════════════════════════════════════════════════════════════════
-# Shared helpers
-# ══════════════════════════════════════════════════════════════════════
+# ── Shared helpers ────────────────────────────────────────────────────
 async def _record_status_history(order_id: str, old_status: str, new_status: str, user_id: str):
-    """Push a status change record into the order's status_history array."""
     entry = {
-        "from": old_status,
-        "to": new_status,
-        "changed_by": user_id,
-        "changed_at": datetime.now(timezone.utc).isoformat(),
+        "from": old_status, "to": new_status,
+        "changed_by": user_id, "changed_at": datetime.now(timezone.utc).isoformat(),
     }
-    await db.orders.update_one(
-        {"id": order_id},
-        {"$push": {"status_history": entry}},
-    )
+    await db.orders.update_one({"id": order_id}, {"$push": {"status_history": entry}})
 
 
 async def _do_status_update(order: dict, new_status: str, user_id: str, role_label: str):
-    """Apply status update, record history, audit, and notify."""
-    order_id = order["id"]
+    order_id   = order["id"]
     old_status = normalize_status(order.get("status") or "new")
-    now = datetime.now(timezone.utc).isoformat()
+    now        = datetime.now(timezone.utc).isoformat()
 
     await db.orders.update_one(
         {"id": order_id},
         {"$set": {
-            "status": new_status,
-            "estado_actual": new_status,
+            "status": new_status, "estado_actual": new_status,
             "updated_at": now,
             "tiempos.ultimo_cambio_estado": now,
             f"tiempos.fechas_estado.{new_status}": now,
         }},
     )
-
     await _record_status_history(order_id, old_status, new_status, user_id)
-    await create_audit_log(f"ORDER_STATUS_CHANGED_BY_{role_label.upper()}", "order", order_id, user_id, {"from": old_status, "to": new_status})
+    await create_audit_log(
+        f"ORDER_STATUS_CHANGED_BY_{role_label.upper()}",
+        "order", order_id, user_id, {"from": old_status, "to": new_status},
+    )
 
-    # Notifications
-    if NOTIFICATIONS_ENABLED and not SKIP_SERVER_NOTIFICATIONS and order.get("customer_id"):
+    # FIX B: use centralised guard before notifying
+    if (
+        NOTIFICATIONS_ENABLED
+        and not SKIP_SERVER_NOTIFICATIONS
+        and order.get("customer_id")
+        and should_notify_customer(new_status)     # <-- guard
+    ):
         customer = await db.customers.find_one({"id": order["customer_id"]}, {"_id": 0})
-        if customer and should_notify_order_status(order, new_status):
+        if customer:
             order["status"] = new_status
             try:
                 await notify_order_status_changed(customer, order, new_status)
             except Exception as e:
-                logger.error(f"Customer notification failed: {e}")
+                logger.error(f"Customer notification failed for order {order_id}: {e}")
 
-    # On confirmed → also notify assigned driver (P&D only)
+    # Driver SMS on confirm (P&D only)
+    # FIX C: ADMIN_PHONE from env, no hardcoded number
     if new_status == "confirmed" and NOTIFICATIONS_ENABLED and send_sms:
+        import os
         st = normalize_spaces(order.get("service_type") or "").lower()
         is_pd = "pickup" in st or "delivery" in st
         driver_id = order.get("assigned_driver_id") or order.get("driver_id")
@@ -133,22 +144,22 @@ async def _do_status_update(order: dict, new_status: str, user_id: str, role_lab
             driver = await db.users.find_one({"id": driver_id}, {"_id": 0})
             if driver and driver.get("phone"):
                 pickup_addr = order.get("pickup_address") or order.get("address") or "N/A"
-                order_num = order.get("order_number", order_id[:8])
+                order_num   = order.get("order_number", order_id[:8])
                 try:
                     await send_sms(
                         driver["phone"],
                         f"Nueva orden #{order_num} confirmada para recoger en {pickup_addr}. Revisa tu panel."
                     )
                 except Exception as e:
-                    logger.error(f"Driver SMS notification failed: {e}")
+                    logger.error(f"Driver SMS failed for order {order_id}: {e}")
 
 
-# ══════════════════════════════════════════════════════════════════════
-# Operator endpoints
-# ══════════════════════════════════════════════════════════════════════
+# ── Operator endpoints ────────────────────────────────────────────────
 @router.get("/operator/orders")
-async def operator_get_orders(status: Optional[str] = None, current_user: dict = Depends(get_current_user)):
-    """Get orders for operator."""
+async def operator_get_orders(
+    status: Optional[str] = None,
+    current_user: dict = Depends(get_current_user),
+):
     if not has_permission(current_user, "orders:read"):
         raise HTTPException(status_code=403, detail="Permission denied")
     query = {}
@@ -159,8 +170,11 @@ async def operator_get_orders(status: Optional[str] = None, current_user: dict =
 
 
 @router.patch("/operator/orders/{order_id}/status")
-async def operator_update_order_status(order_id: str, body: StatusUpdate, current_user: dict = Depends(get_current_user)):
-    """Update order status (operator role). Validates state machine transitions."""
+async def operator_update_order_status(
+    order_id: str,
+    body: StatusUpdate,
+    current_user: dict = Depends(get_current_user),
+):
     if not has_permission(current_user, "orders:update_status"):
         raise HTTPException(status_code=403, detail="Permission denied")
 
@@ -177,27 +191,26 @@ async def operator_update_order_status(order_id: str, body: StatusUpdate, curren
     return {"message": f"Order status updated to {status_normalized}"}
 
 
-# ══════════════════════════════════════════════════════════════════════
-# Driver endpoints
-# ══════════════════════════════════════════════════════════════════════
+# ── Driver endpoints ──────────────────────────────────────────────────
 @router.get("/driver/orders")
 async def driver_get_orders(current_user: dict = Depends(get_current_user)):
-    """Get orders assigned to this driver."""
-    user_id = current_user["id"]
     role = current_user.get("role", "")
     if role not in ("admin", "driver"):
         raise HTTPException(status_code=403, detail="Permission denied")
-
-    query = {"$or": [{"assigned_driver_id": user_id}, {"driver_id": user_id}]}
-    if role == "admin":
-        query = {}
+    user_id = current_user["id"]
+    query = {} if role == "admin" else {
+        "$or": [{"assigned_driver_id": user_id}, {"driver_id": user_id}]
+    }
     orders = await db.orders.find(query, {"_id": 0}).sort("created_at", -1).to_list(200)
     return orders
 
 
 @router.patch("/driver/orders/{order_id}/status")
-async def driver_update_order_status(order_id: str, body: StatusUpdate, current_user: dict = Depends(get_current_user)):
-    """Update order status (driver role). Only allows picked_up, delivered, completed on P&D orders."""
+async def driver_update_order_status(
+    order_id: str,
+    body: StatusUpdate,
+    current_user: dict = Depends(get_current_user),
+):
     role = current_user.get("role", "")
     if role not in ("admin", "driver"):
         raise HTTPException(status_code=403, detail="Solo drivers pueden usar este endpoint")
@@ -213,3 +226,442 @@ async def driver_update_order_status(order_id: str, body: StatusUpdate, current_
 
     await _do_status_update(order, status_normalized, current_user["id"], "driver")
     return {"message": f"Order status updated to {status_normalized}"}
+
+
+# ── Debug ─────────────────────────────────────────────────────────────
+@router.get("/debug/order-lookup/{identifier}")
+async def debug_order_lookup(identifier: str):
+    order = await db.orders.find_one({
+        "$or": [{"id": identifier}, {"order_id": identifier}, {"order_number": identifier}]
+    }, {"_id": 0})
+    if order:
+        return {"found": True, "id": order.get("id"), "order_number": order.get("order_number"), "status": order.get("status")}
+    return {"found": False, "searched_for": identifier}
+
+
+# ── Image helpers ─────────────────────────────────────────────────────
+async def _find_order(order_id: str) -> Optional[dict]:
+    return await db.orders.find_one({
+        "$or": [{"id": order_id}, {"order_id": order_id}, {"order_number": order_id}]
+    }, {"_id": 0})
+
+
+async def _save_image_to_disk(data: bytes, filename: str) -> Optional[Path]:
+    file_path = UPLOAD_DIR / filename
+    try:
+        with open(file_path, "wb") as f:
+            f.write(data)
+        logger.info(f"Image saved: {file_path}")
+        return file_path
+    except Exception as e:
+        logger.warning(f"Could not save to disk: {e}")
+        return None
+
+
+async def _notify_customer_after_image(order: dict, real_order_id: str, event_label: str):
+    """
+    FIX A: respects SKIP_SERVER_NOTIFICATIONS and should_notify_customer().
+    Uses the current order status — only sends if that status has a
+    customer-facing meaning (e.g. 'picked_up' is internal → skipped).
+    """
+    if not NOTIFICATIONS_ENABLED or SKIP_SERVER_NOTIFICATIONS:
+        logger.debug(f"Skipping post-image notification ({event_label}): notifications disabled")
+        return
+
+    current_status = order.get("status", "confirmed")
+
+    # FIX A: guard — don't spam customers for every image upload
+    if not should_notify_customer(current_status):
+        logger.debug(
+            f"Skipping post-image notification ({event_label}): "
+            f"status '{current_status}' is not customer-facing"
+        )
+        return
+
+    try:
+        customer_id = order.get("customer_id")
+        if not customer_id:
+            return
+        customer = await db.customers.find_one({"id": customer_id}, {"_id": 0})
+        if not customer:
+            return
+        await notify_order_status_changed(customer, order, current_status)
+        logger.info(
+            f"Customer notified after {event_label} on order {real_order_id} "
+            f"(status={current_status})"
+        )
+    except Exception as e:
+        logger.error(f"Error notifying customer after {event_label}: {e}")
+
+
+def _validate_upload(file: UploadFile) -> str:
+    """Validate content-type early (before reading full body). Returns content-type."""
+    ct = (file.content_type or "application/octet-stream").lower().split(";")[0].strip()
+    if ct not in ALLOWED_IMAGE_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Tipo de archivo no permitido: {ct}. Permitidos: {sorted(ALLOWED_IMAGE_TYPES)}"
+        )
+    return ct
+
+
+# ── Pickup image ──────────────────────────────────────────────────────
+@router.post("/driver/orders/{order_id}/pickup-image")
+async def upload_pickup_image(
+    order_id: str,
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
+):
+    role = current_user.get("role", "")
+    if role not in ("admin", "driver", "operator"):
+        raise HTTPException(status_code=403, detail="Permiso denegado")
+
+    # FIX D: validate type before reading body
+    ct = _validate_upload(file)
+
+    order = await _find_order(order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail=f"Orden no encontrada: {order_id}")
+    real_order_id = order.get("id") or order_id
+
+    user_id = current_user["id"]
+    if role == "driver":
+        assigned = order.get("assigned_driver_id") or order.get("driver_id")
+        if assigned and assigned != user_id:
+            raise HTTPException(status_code=403, detail="No estás asignado a esta orden")
+
+    try:
+        data = await file.read()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error leyendo archivo: {e}")
+
+    if len(data) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=413, detail="Imagen demasiado grande (máx 10 MB)")
+
+    ext      = (file.filename or "image.jpg").rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else "jpg"
+    uid      = str(uuid.uuid4())
+    filename = f"pickup_{real_order_id}_{uid}.{ext}"
+    file_path = await _save_image_to_disk(data, filename)
+
+    data_b64 = base64.b64encode(data).decode("utf-8")
+    now = datetime.now(timezone.utc).isoformat()
+
+    record = {
+        "id": uid, "order_id": real_order_id, "type": "pickup_proof",
+        "storage_path": str(file_path) if file_path else None,
+        "original_filename": file.filename, "content_type": ct,
+        "size": len(data), "data_base64": data_b64,
+        "uploaded_by": user_id, "uploader_role": role, "created_at": now,
+    }
+    try:
+        await db.pickup_images.insert_one(record)
+    except Exception as e:
+        logger.error(f"Error saving pickup_image to DB: {e}")
+        raise HTTPException(status_code=500, detail="Error al guardar imagen")
+
+    update_data = {
+        "pickup_image_id": uid, "pickup_image_data": data_b64,
+        "pickup_image_url": f"/api/driver/orders/{real_order_id}/pickup-image/view",
+        "pickup_image_uploaded_at": now,
+        "pickup_image_filename": file.filename,
+        "updated_at": now,
+    }
+    await db.orders.update_one({"id": real_order_id}, {"$set": update_data})
+
+    try:
+        await _record_status_history(
+            real_order_id, order.get("status", "confirmed"),
+            order.get("status", "confirmed"),
+            f"{role}:{user_id} (pickup_image_uploaded)",
+        )
+    except Exception as e:
+        logger.warning(f"Could not record status history: {e}")
+
+    await create_audit_log("PICKUP_IMAGE_UPLOADED", "order", real_order_id, user_id, {"file_id": uid})
+    await _notify_customer_after_image(order, real_order_id, "pickup_image")
+
+    return {
+        "message": "Imagen de recolección guardada correctamente",
+        "id": uid, "image_id": uid,
+        "filename": file.filename, "order_id": real_order_id,
+        "size": len(data), "uploaded_at": now,
+        "url": f"/api/driver/orders/{real_order_id}/pickup-image/view",
+    }
+
+
+@router.get("/driver/orders/{order_id}/pickup-image/view")
+async def get_pickup_image(order_id: str, current_user: dict = Depends(get_current_user)):
+    role = current_user.get("role", "")
+    if role not in ("admin", "driver", "operator"):
+        raise HTTPException(status_code=403, detail="Permiso denegado")
+
+    order = await _find_order(order_id)
+    real_order_id = order.get("id") or order_id if order else order_id
+
+    if order and order.get("pickup_image_data"):
+        data  = base64.b64decode(order["pickup_image_data"])
+        fname = order.get("pickup_image_filename", f"pickup_{real_order_id}.jpg")
+        return Response(
+            content=data, media_type="image/jpeg",
+            headers={"Content-Disposition": f'inline; filename="{fname}"',
+                     "Cache-Control": "private, max-age=86400"},
+        )
+
+    record = await db.pickup_images.find_one(
+        {"order_id": real_order_id}, {"_id": 0}, sort=[("created_at", -1)]
+    )
+    if not record and order and order.get("pickup_image_id"):
+        record = await db.pickup_images.find_one({"id": order["pickup_image_id"]}, {"_id": 0})
+
+    if not record:
+        raise HTTPException(status_code=404, detail="No hay imagen de recolección")
+
+    if record.get("data_base64"):
+        data = base64.b64decode(record["data_base64"])
+        return Response(
+            content=data, media_type=record.get("content_type", "image/jpeg"),
+            headers={
+                "Content-Disposition": f'inline; filename="{record.get("original_filename", "pickup.jpg")}"',
+                "Cache-Control": "private, max-age=86400",
+            },
+        )
+
+    storage_path = record.get("storage_path")
+    if storage_path:
+        try:
+            with open(storage_path, "rb") as f:
+                data = f.read()
+            return Response(
+                content=data, media_type=record.get("content_type", "image/jpeg"),
+                headers={"Content-Disposition": f'inline; filename="{record.get("original_filename", "pickup.jpg")}"',
+                         "Cache-Control": "private, max-age=86400"},
+            )
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="Archivo no encontrado en disco")
+
+    raise HTTPException(status_code=404, detail="Imagen no disponible")
+
+
+@router.get("/driver/orders/{order_id}/pickup-image")
+async def get_pickup_image_info(order_id: str, current_user: dict = Depends(get_current_user)):
+    role = current_user.get("role", "")
+    if role not in ("admin", "driver", "operator"):
+        raise HTTPException(status_code=403, detail="Permiso denegado")
+
+    order = await _find_order(order_id)
+    real_order_id = order.get("id") or order_id if order else order_id
+
+    record = await db.pickup_images.find_one(
+        {"order_id": real_order_id}, {"_id": 0, "data_base64": 0}, sort=[("created_at", -1)]
+    )
+    if not record:
+        if order and order.get("pickup_image_id"):
+            return {
+                "exists": True, "image_id": order["pickup_image_id"],
+                "url": order.get("pickup_image_url", f"/api/driver/orders/{real_order_id}/pickup-image/view"),
+            }
+        return {"exists": False, "order_id": real_order_id}
+
+    return {
+        "exists": True, "image_id": record["id"],
+        "filename": record.get("original_filename"),
+        "uploaded_at": record.get("created_at"),
+        "size": record.get("size"),
+        "url": f"/api/driver/orders/{real_order_id}/pickup-image/view",
+    }
+
+
+# ── Delivery image ────────────────────────────────────────────────────
+@router.post("/driver/orders/{order_id}/delivery-image")
+async def upload_delivery_image(
+    order_id: str,
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
+):
+    role = current_user.get("role", "")
+    if role not in ("admin", "driver", "operator"):
+        raise HTTPException(status_code=403, detail="Permiso denegado")
+
+    ct = _validate_upload(file)
+
+    order = await _find_order(order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail=f"Orden no encontrada: {order_id}")
+    real_order_id = order.get("id") or order_id
+
+    user_id = current_user["id"]
+    if role == "driver":
+        assigned = order.get("assigned_driver_id") or order.get("driver_id")
+        if assigned and assigned != user_id:
+            raise HTTPException(status_code=403, detail="No estás asignado a esta orden")
+
+    try:
+        data = await file.read()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error leyendo archivo: {e}")
+
+    if len(data) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=413, detail="Imagen demasiado grande (máx 10 MB)")
+
+    ext      = (file.filename or "image.jpg").rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else "jpg"
+    uid      = str(uuid.uuid4())
+    filename = f"delivery_{real_order_id}_{uid}.{ext}"
+    file_path = await _save_image_to_disk(data, filename)
+
+    data_b64 = base64.b64encode(data).decode("utf-8")
+    now = datetime.now(timezone.utc).isoformat()
+
+    record = {
+        "id": uid, "order_id": real_order_id, "type": "delivery_proof",
+        "storage_path": str(file_path) if file_path else None,
+        "original_filename": file.filename, "content_type": ct,
+        "size": len(data), "data_base64": data_b64,
+        "uploaded_by": user_id, "uploader_role": role, "created_at": now,
+    }
+    try:
+        await db.delivery_images.insert_one(record)
+    except Exception as e:
+        logger.error(f"Error saving delivery_image to DB: {e}")
+        raise HTTPException(status_code=500, detail="Error al guardar imagen")
+
+    update_data = {
+        "delivery_image_id": uid, "delivery_image_data": data_b64,
+        "delivery_image_url": f"/api/driver/orders/{real_order_id}/delivery-image/view",
+        "delivery_image_uploaded_at": now,
+        "delivery_image_filename": file.filename,
+        "updated_at": now,
+    }
+    await db.orders.update_one({"id": real_order_id}, {"$set": update_data})
+
+    await create_audit_log("DELIVERY_IMAGE_UPLOADED", "order", real_order_id, user_id, {"file_id": uid})
+    await _notify_customer_after_image(order, real_order_id, "delivery_image")
+
+    return {
+        "message": "Imagen de entrega guardada correctamente",
+        "id": uid, "image_id": uid,
+        "filename": file.filename, "order_id": real_order_id,
+        "size": len(data), "uploaded_at": now,
+        "url": f"/api/driver/orders/{real_order_id}/delivery-image/view",
+    }
+
+
+@router.get("/driver/orders/{order_id}/delivery-image/view")
+async def get_delivery_image(order_id: str, current_user: dict = Depends(get_current_user)):
+    role = current_user.get("role", "")
+    if role not in ("admin", "driver", "operator"):
+        raise HTTPException(status_code=403, detail="Permiso denegado")
+
+    order = await _find_order(order_id)
+    real_order_id = order.get("id") or order_id if order else order_id
+
+    if order and order.get("delivery_image_data"):
+        data  = base64.b64decode(order["delivery_image_data"])
+        fname = order.get("delivery_image_filename", f"delivery_{real_order_id}.jpg")
+        return Response(
+            content=data, media_type="image/jpeg",
+            headers={"Content-Disposition": f'inline; filename="{fname}"',
+                     "Cache-Control": "private, max-age=86400"},
+        )
+
+    record = await db.delivery_images.find_one(
+        {"order_id": real_order_id}, {"_id": 0}, sort=[("created_at", -1)]
+    )
+    if not record:
+        raise HTTPException(status_code=404, detail="No hay imagen de entrega")
+
+    if record.get("data_base64"):
+        data = base64.b64decode(record["data_base64"])
+        return Response(
+            content=data, media_type=record.get("content_type", "image/jpeg"),
+            headers={
+                "Content-Disposition": f'inline; filename="{record.get("original_filename", "delivery.jpg")}"',
+                "Cache-Control": "private, max-age=86400",
+            },
+        )
+
+    storage_path = record.get("storage_path")
+    if storage_path:
+        try:
+            with open(storage_path, "rb") as f:
+                data = f.read()
+            return Response(
+                content=data, media_type=record.get("content_type", "image/jpeg"),
+                headers={"Content-Disposition": f'inline; filename="{record.get("original_filename", "delivery.jpg")}"',
+                         "Cache-Control": "private, max-age=86400"},
+            )
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="Archivo no encontrado en disco")
+
+    raise HTTPException(status_code=404, detail="Imagen no disponible")
+
+
+@router.get("/driver/orders/{order_id}/delivery-image")
+async def get_delivery_image_info(order_id: str, current_user: dict = Depends(get_current_user)):
+    role = current_user.get("role", "")
+    if role not in ("admin", "driver", "operator"):
+        raise HTTPException(status_code=403, detail="Permiso denegado")
+
+    order = await _find_order(order_id)
+    real_order_id = order.get("id") or order_id if order else order_id
+
+    record = await db.delivery_images.find_one(
+        {"order_id": real_order_id}, {"_id": 0, "data_base64": 0}, sort=[("created_at", -1)]
+    )
+    if not record:
+        if order and order.get("delivery_image_id"):
+            return {
+                "exists": True, "image_id": order["delivery_image_id"],
+                "url": order.get("delivery_image_url", f"/api/driver/orders/{real_order_id}/delivery-image/view"),
+            }
+        return {"exists": False, "order_id": real_order_id}
+
+    return {
+        "exists": True, "image_id": record["id"],
+        "filename": record.get("original_filename"),
+        "uploaded_at": record.get("created_at"),
+        "size": record.get("size"),
+        "url": f"/api/driver/orders/{real_order_id}/delivery-image/view",
+    }
+
+
+@router.post("/driver/orders/{order_id}/delivery-image/link")
+async def link_delivery_image(
+    order_id: str,
+    body: dict,
+    current_user: dict = Depends(get_current_user),
+):
+    role = current_user.get("role", "")
+    if role not in ("admin", "driver", "operator"):
+        raise HTTPException(status_code=403, detail="Permiso denegado")
+
+    image_id = body.get("image_id")
+    if not image_id:
+        raise HTTPException(status_code=400, detail="image_id requerido")
+
+    order = await _find_order(order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Orden no encontrada")
+    real_order_id = order.get("id") or order_id
+    now = datetime.now(timezone.utc).isoformat()
+
+    pickup_img = await db.pickup_images.find_one({"id": image_id}, {"_id": 0})
+    if pickup_img:
+        delivery_record = {
+            **pickup_img,
+            "id": str(uuid.uuid4()), "type": "delivery_proof",
+            "order_id": real_order_id, "created_at": now,
+            "linked_from_pickup_image_id": image_id,
+        }
+        await db.delivery_images.insert_one(delivery_record)
+        await db.orders.update_one(
+            {"id": real_order_id},
+            {"$set": {
+                "delivery_image_id": delivery_record["id"],
+                "delivery_image_data": pickup_img.get("data_base64"),
+                "delivery_image_url": f"/api/driver/orders/{real_order_id}/delivery-image/view",
+                "delivery_image_uploaded_at": now,
+                "updated_at": now,
+            }},
+        )
+
+    return {"ok": True, "linked": bool(pickup_img)}

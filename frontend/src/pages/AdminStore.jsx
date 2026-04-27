@@ -43,10 +43,16 @@ export default function AdminStore() {
         fetch(`${API_URL}/api/store/products?active_only=false`),
         fetch(`${API_URL}/api/store/orders`)
       ]);
-      setProducts(await productsRes.json());
-      setOrders(await ordersRes.json());
+      const productsData = await productsRes.json();
+      const ordersData = await ordersRes.json();
+      // Aseguramos que productsData sea un array
+      setProducts(Array.isArray(productsData) ? productsData : []);
+      setOrders(Array.isArray(ordersData) ? ordersData : []);
     } catch (error) {
+      console.error('Error loading data:', error);
       toast.error(t('Error loading data', 'Error al cargar datos'));
+      setProducts([]);
+      setOrders([]);
     } finally {
       setLoading(false);
     }
@@ -104,7 +110,6 @@ export default function AdminStore() {
       
       const res = await fetch(url, {
         method: editingProduct ? 'PUT' : 'POST',
-        // No establecer Content-Type, el navegador lo hará automáticamente con el boundary
         body: formDataToSend
       });
 
@@ -118,6 +123,7 @@ export default function AdminStore() {
         toast.error(t('Error saving product', 'Error al guardar producto') + ': ' + error);
       }
     } catch (error) {
+      console.error('Error saving product:', error);
       toast.error(t('Connection error', 'Error de conexión'));
     }
   };
@@ -129,8 +135,11 @@ export default function AdminStore() {
       if (res.ok) {
         toast.success(t('Product deleted', 'Producto eliminado'));
         loadData();
+      } else {
+        toast.error(t('Error deleting', 'Error al eliminar'));
       }
     } catch (error) {
+      console.error('Error deleting product:', error);
       toast.error(t('Error deleting', 'Error al eliminar'));
     }
   };
@@ -143,8 +152,11 @@ export default function AdminStore() {
       if (res.ok) {
         toast.success(t('Status updated', 'Estado actualizado'));
         loadData();
+      } else {
+        toast.error(t('Error updating', 'Error al actualizar'));
       }
     } catch (error) {
+      console.error('Error updating order:', error);
       toast.error(t('Error updating', 'Error al actualizar'));
     }
   };
@@ -178,17 +190,19 @@ export default function AdminStore() {
     // Si el producto tiene imagen, mostramos preview
     if (product.image_url) {
       setImagePreview(product.image_url);
-      setImageFile(null); // No hay archivo nuevo, solo la URL existente
+      setImageFile(null);
     } else {
       setImagePreview(null);
     }
     setShowModal(true);
   };
 
-  const filteredProducts = products.filter(p => 
-    p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    p.category.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredProducts = Array.isArray(products) ? products.filter(p => 
+    p && p.name && (
+      p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (p.category && p.category.toLowerCase().includes(searchQuery.toLowerCase()))
+    )
+  ) : [];
 
   const statusColors = {
     pending: 'bg-yellow-100 text-yellow-800',
@@ -222,7 +236,7 @@ export default function AdminStore() {
           }`}
         >
           <Package className="h-4 w-4 inline mr-2" />
-          {t('Products', 'Productos')} ({products.length})
+          {t('Products', 'Productos')} ({Array.isArray(products) ? products.length : 0})
         </button>
         <button
           onClick={() => setActiveTab('orders')}
@@ -231,7 +245,7 @@ export default function AdminStore() {
           }`}
         >
           <DollarSign className="h-4 w-4 inline mr-2" />
-          {t('Orders', 'Órdenes')} ({orders.length})
+          {t('Orders', 'Órdenes')} ({Array.isArray(orders) ? orders.length : 0})
         </button>
       </div>
 
@@ -252,107 +266,126 @@ export default function AdminStore() {
             />
           </div>
 
-          {/* Products Grid */}
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {filteredProducts.map((product) => (
-              <div key={product.id} className="bg-white rounded-xl border border-slate-200 p-4" data-testid={`admin-product-${product.id}`}>
-                {/* Imagen del producto */}
-                <div className="aspect-square w-full bg-slate-100 rounded-lg mb-3 overflow-hidden flex items-center justify-center">
-                  {product.image_url ? (
-                    <img
-                      src={product.image_url}
-                      alt={product.name}
-                      className="w-full h-full object-cover"
-                      onError={(e) => { e.currentTarget.src = DEFAULT_PRODUCT_IMAGE; }}
-                    />
-                  ) : (
-                    <img src={DEFAULT_PRODUCT_IMAGE} alt={product.name} className="w-full h-full object-cover" />
-                  )}
-                </div>
-                <div className="flex items-start justify-between mb-2">
-                  <span className={`px-2 py-1 text-xs font-medium rounded-full ${product.is_active ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-600'}`}>
-                    {product.is_active ? t('Active', 'Activo') : t('Inactive', 'Inactivo')}
-                  </span>
-                  <div className="flex gap-1">
-                    <button onClick={() => openEdit(product)} className="p-1 text-slate-400 hover:text-sky-600">
-                      <Edit2 className="h-4 w-4" />
-                    </button>
-                    <button onClick={() => handleDelete(product.id)} className="p-1 text-slate-400 hover:text-red-600">
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+          {/* Products Grid - Solo muestra productos existentes en la BD */}
+          {filteredProducts.length === 0 ? (
+            <div className="text-center py-12 bg-slate-50 rounded-xl border border-slate-200">
+              <Package className="h-12 w-12 mx-auto text-slate-300 mb-3" />
+              <h3 className="text-lg font-medium text-slate-700 mb-1">{t('No products yet', 'Aún no hay productos')}</h3>
+              <p className="text-slate-500 mb-4">{t('Click the button above to add your first product', 'Haz clic en el botón de arriba para agregar tu primer producto')}</p>
+              <Button onClick={() => { resetForm(); setShowModal(true); }} className="bg-sky-600 hover:bg-sky-700">
+                <Plus className="h-4 w-4 mr-2" /> {t('Add Product', 'Agregar Producto')}
+              </Button>
+            </div>
+          ) : (
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {filteredProducts.map((product) => (
+                <div key={product.id} className="bg-white rounded-xl border border-slate-200 p-4" data-testid={`admin-product-${product.id}`}>
+                  {/* Imagen del producto */}
+                  <div className="aspect-square w-full bg-slate-100 rounded-lg mb-3 overflow-hidden flex items-center justify-center">
+                    {product.image_url ? (
+                      <img
+                        src={product.image_url}
+                        alt={product.name}
+                        className="w-full h-full object-cover"
+                        onError={(e) => { e.currentTarget.src = DEFAULT_PRODUCT_IMAGE; }}
+                      />
+                    ) : (
+                      <img src={DEFAULT_PRODUCT_IMAGE} alt={product.name} className="w-full h-full object-cover" />
+                    )}
                   </div>
+                  <div className="flex items-start justify-between mb-2">
+                    <span className={`px-2 py-1 text-xs font-medium rounded-full ${product.is_active ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-600'}`}>
+                      {product.is_active ? t('Active', 'Activo') : t('Inactive', 'Inactivo')}
+                    </span>
+                    <div className="flex gap-1">
+                      <button onClick={() => openEdit(product)} className="p-1 text-slate-400 hover:text-sky-600">
+                        <Edit2 className="h-4 w-4" />
+                      </button>
+                      <button onClick={() => handleDelete(product.id)} className="p-1 text-slate-400 hover:text-red-600">
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                  <h3 className="font-semibold text-slate-900 mb-1">{product.name}</h3>
+                  <p className="text-sm text-slate-600 mb-2 line-clamp-2">{product.description}</p>
+                  <div className="flex items-center justify-between">
+                    <span className="text-lg font-bold text-sky-600">${parseFloat(product.price).toFixed(2)}</span>
+                    <span className="text-sm text-slate-500">{t('Stock', 'Stock')}: {product.stock}</span>
+                  </div>
+                  <span className="inline-block mt-2 px-2 py-1 bg-slate-100 text-slate-600 text-xs rounded-full">
+                    {product.category}
+                  </span>
                 </div>
-                <h3 className="font-semibold text-slate-900 mb-1">{product.name}</h3>
-                <p className="text-sm text-slate-600 mb-2 line-clamp-2">{product.description}</p>
-                <div className="flex items-center justify-between">
-                  <span className="text-lg font-bold text-sky-600">${product.price.toFixed(2)}</span>
-                  <span className="text-sm text-slate-500">{t('Stock', 'Stock')}: {product.stock}</span>
-                </div>
-                <span className="inline-block mt-2 px-2 py-1 bg-slate-100 text-slate-600 text-xs rounded-full">
-                  {product.category}
-                </span>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </>
       ) : (
         /* Orders Table */
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-slate-50">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t('Order', 'Orden')}</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t('Email', 'Email')}</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t('Items', 'Items')}</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t('Total', 'Total')}</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t('Payment', 'Pago')}</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t('Status', 'Estado')}</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t('Date', 'Fecha')}</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t('Actions', 'Acciones')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {orders.map((order) => (
-                  <tr key={order.id} data-testid={`admin-order-${order.id}`}>
-                    <td className="px-4 py-3 font-mono text-sm">{order.order_number}</td>
-                    <td className="px-4 py-3 text-sm">{order.customer_email || '-'}</td>
-                    <td className="px-4 py-3 text-sm">{order.items?.length || 0}</td>
-                    <td className="px-4 py-3 font-medium">${order.total?.toFixed(2)}</td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                        order.payment_status === 'paid' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-                      }`}>
-                        {order.payment_status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${statusColors[order.status]}`}>
-                        {order.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-slate-500">
-                      {new Date(order.created_at).toLocaleDateString()}
-                    </td>
-                    <td className="px-4 py-3">
-                      <select
-                        value={order.status}
-                        onChange={(e) => updateOrderStatus(order.id, e.target.value)}
-                        className="text-sm border border-slate-200 rounded px-2 py-1"
-                      >
-                        <option value="pending">{t('Pending', 'Pendiente')}</option>
-                        <option value="confirmed">{t('Confirmed', 'Confirmado')}</option>
-                        <option value="processing">{t('Processing', 'Procesando')}</option>
-                        <option value="shipped">{t('Shipped', 'Enviado')}</option>
-                        <option value="delivered">{t('Delivered', 'Entregado')}</option>
-                        <option value="cancelled">{t('Cancelled', 'Cancelado')}</option>
-                      </select>
-                    </td>
+          {orders.length === 0 ? (
+            <div className="text-center py-12">
+              <DollarSign className="h-12 w-12 mx-auto text-slate-300 mb-3" />
+              <h3 className="text-lg font-medium text-slate-700 mb-1">{t('No orders yet', 'Aún no hay órdenes')}</h3>
+              <p className="text-slate-500">{t('Orders will appear here when customers make purchases', 'Las órdenes aparecerán aquí cuando los clientes realicen compras')}</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t('Order', 'Orden')}</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t('Email', 'Email')}</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t('Items', 'Items')}</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t('Total', 'Total')}</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t('Payment', 'Pago')}</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t('Status', 'Estado')}</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t('Date', 'Fecha')}</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t('Actions', 'Acciones')}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {orders.map((order) => (
+                    <tr key={order.id} data-testid={`admin-order-${order.id}`}>
+                      <td className="px-4 py-3 font-mono text-sm">{order.order_number}</td>
+                      <td className="px-4 py-3 text-sm">{order.customer_email || '-'}</td>
+                      <td className="px-4 py-3 text-sm">{order.items?.length || 0}</td>
+                      <td className="px-4 py-3 font-medium">${parseFloat(order.total || 0).toFixed(2)}</td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                          order.payment_status === 'paid' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                        }`}>
+                          {order.payment_status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${statusColors[order.status] || 'bg-slate-100 text-slate-800'}`}>
+                          {order.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-slate-500">
+                        {order.created_at ? new Date(order.created_at).toLocaleDateString() : '-'}
+                      </td>
+                      <td className="px-4 py-3">
+                        <select
+                          value={order.status || 'pending'}
+                          onChange={(e) => updateOrderStatus(order.id, e.target.value)}
+                          className="text-sm border border-slate-200 rounded px-2 py-1"
+                        >
+                          <option value="pending">{t('Pending', 'Pendiente')}</option>
+                          <option value="confirmed">{t('Confirmed', 'Confirmado')}</option>
+                          <option value="processing">{t('Processing', 'Procesando')}</option>
+                          <option value="shipped">{t('Shipped', 'Enviado')}</option>
+                          <option value="delivered">{t('Delivered', 'Entregado')}</option>
+                          <option value="cancelled">{t('Cancelled', 'Cancelado')}</option>
+                        </select>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
@@ -360,7 +393,7 @@ export default function AdminStore() {
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/50" onClick={() => setShowModal(false)} />
-          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold">{editingProduct ? t('Edit Product', 'Editar Producto') : t('New Product', 'Nuevo Producto')}</h2>
               <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600">
@@ -416,6 +449,7 @@ export default function AdminStore() {
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   required
+                  data-testid="admin-store-product-name"
                 />
               </div>
               <div>
@@ -438,6 +472,7 @@ export default function AdminStore() {
                     value={formData.price}
                     onChange={(e) => setFormData({ ...formData, price: e.target.value })}
                     required
+                    data-testid="admin-store-product-price"
                   />
                 </div>
                 <div>
@@ -448,6 +483,7 @@ export default function AdminStore() {
                     value={formData.stock}
                     onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
                     required
+                    data-testid="admin-store-product-stock"
                   />
                 </div>
               </div>

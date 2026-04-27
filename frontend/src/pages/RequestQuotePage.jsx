@@ -290,13 +290,12 @@ const EMPTY = {
   company_legal_name: "", dba_name: "", business_type: "", has_membership: "", job_title: "",
   service_type: "", laundry_frequency: "", estimated_lbs: "",
   best_date: "", best_time: "",
-  additional_notes: "", subscribe_newsletter: false,
+  additional_notes: "", subscribe_newsletter: false, terms: false,
 };
 
 /* ─── Main ─────────────────────────────────────────────────────────────────── */
 export default function RequestQuotePage() {
   const { t, locale } = useLocale();
-  const topRef = useRef(null);
   const [cur, setCur] = useState(0);
   const [formKey, setFormKey] = useState(0);
   const [form, setForm] = useState({ ...EMPTY });
@@ -304,7 +303,14 @@ export default function RequestQuotePage() {
   const [submitted, setSubmitted] = useState(false);
 
   const setF = useCallback((k, v) => setForm((p) => ({ ...p, [k]: v })), []);
-  const scrollTop = () => topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  
+  // Función de scroll que usa el ID del elemento
+  const scrollToForm = () => {
+    const el = document.getElementById("b2b-quote-form");
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
 
   // Pre-fill from customer_data if logged in
   useEffect(() => {
@@ -329,8 +335,11 @@ export default function RequestQuotePage() {
     } catch { /* silent */ }
   }, []);
 
-
-  const goTo = (n) => { setCur(n); setFormKey((k) => k + 1); scrollTop(); };
+  const goTo = (n) => { 
+    setCur(n); 
+    setFormKey((k) => k + 1); 
+    scrollToForm(); 
+  };
 
   const validate = () => {
     const err = (msg) => { toast.error(msg); return false; };
@@ -362,6 +371,7 @@ export default function RequestQuotePage() {
     if (cur === 5) {
       if (["text", "sms", "whatsapp"].includes(form.contact_method) && !form.sms_consent)
         return err(t("Accept SMS consent", "Acepta el consentimiento SMS"));
+      if (!form.terms) return err(t("Accept terms to continue", "Acepta los términos"));
     }
     return true;
   };
@@ -399,8 +409,11 @@ export default function RequestQuotePage() {
   };
 
   const handleReset = () => {
-    setForm({ ...EMPTY }); setCur(0); setFormKey((k) => k + 1);
-    setSubmitted(false); scrollTop();
+    setForm({ ...EMPTY }); 
+    setCur(0); 
+    setFormKey((k) => k + 1);
+    setSubmitted(false); 
+    scrollToForm();
   };
 
   const g2 = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 };
@@ -430,69 +443,64 @@ export default function RequestQuotePage() {
       `}</style>
 
       {/* ── Hero ── */}
-<section ref={topRef} style={{
-  paddingTop: 80, paddingBottom: 0,
-  background: "linear-gradient(150deg,#0b1929 0%,#081320 55%,#040c16 100%)",
-  position: "relative", overflow: "hidden",
-}}>
-  <div style={{ position: "absolute", inset: 0, backgroundImage: "linear-gradient(rgba(255,255,255,.022) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)", backgroundSize: "44px 44px", pointerEvents: "none" }} />
-  <div style={{ position: "absolute", top: -80, left: -60, width: 380, height: 380, borderRadius: "50%", background: "radial-gradient(circle,rgba(14,165,233,.13) 0%,transparent 65%)", filter: "blur(40px)", pointerEvents: "none" }} />
+      <section style={{
+        paddingTop: 80, paddingBottom: 0,
+        background: "linear-gradient(150deg,#0b1929 0%,#081320 55%,#040c16 100%)",
+        position: "relative", overflow: "hidden",
+      }}>
+        <div style={{ position: "absolute", inset: 0, backgroundImage: "linear-gradient(rgba(255,255,255,.022) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)", backgroundSize: "44px 44px", pointerEvents: "none" }} />
+        <div style={{ position: "absolute", top: -80, left: -60, width: 380, height: 380, borderRadius: "50%", background: "radial-gradient(circle,rgba(14,165,233,.13) 0%,transparent 65%)", filter: "blur(40px)", pointerEvents: "none" }} />
 
-  {/* ── Banner image ── */}
-  <div style={{ width: "100%", maxHeight: 280, overflow: "hidden", position: "relative" }}>
-    <img src={heroBanner} alt="Ventura Fresh Laundry"
-      style={{ width: "100%", height: 280, objectFit: "cover", objectPosition: "center", display: "block", opacity: 0.75 }} />
-    <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 120, background: "linear-gradient(to bottom, transparent, #081320)", pointerEvents: "none" }} />
-    <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 60, background: "linear-gradient(to bottom, #0b1929, transparent)", pointerEvents: "none" }} />
-  </div>
-
-  {/* ── Text ── */}
-  <div style={{ maxWidth: 900, margin: "0 auto", padding: "20px 24px 48px", position: "relative", zIndex: 2 }}>
-    {/* Badge */}
-    <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 20, padding: "4px 12px", marginBottom: 18 }}>
-      <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#34d399", boxShadow: "0 0 6px rgba(52,211,153,.9)", display: "inline-block", animation: "rq_glow 2s ease-in-out infinite" }} />
-      <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".18em", color: "rgba(255,255,255,.5)" }}>
-        {t("Commercial Laundry Services", "Servicios Comerciales de Lavandería")}
-      </span>
-    </div>
-
-    {/* Heading */}
-    <h1 style={{ fontFamily: "'Manrope',sans-serif", fontSize: "clamp(26px,4.5vw,48px)", fontWeight: 800, color: "white", lineHeight: 1.1, letterSpacing: "-.025em", margin: "0 0 12px" }}>
-      {t("Get a Custom", "Solicita una")} <span style={{ color: "#38bdf8" }}>{t("Commercial Quote", "Cotización Comercial")}</span>
-    </h1>
-
-    <p style={{ fontSize: 14, color: "rgba(255,255,255,.45)", lineHeight: 1.75, maxWidth: 420, margin: "0 0 28px" }}>
-      {t(
-        "Follow each stage on the conveyor belt — fill in your business details and our team will respond within 24–48 hours.",
-        "Completa cada etapa en la cinta — ingresa los datos de tu negocio y te respondemos en 24–48 horas."
-      )}
-    </p>
-
-    {/* Industry icons row */}
-    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-      {[
-        { icon: "🏨", en: "Hotels",      es: "Hoteles"      },
-        { icon: "🏠", en: "Airbnb",      es: "Airbnb"       },
-        { icon: "🍽️", en: "Restaurants", es: "Restaurantes" },
-        { icon: "🏥", en: "Healthcare",  es: "Salud"        },
-        { icon: "💪", en: "Gyms",        es: "Gimnasios"    },
-        { icon: "🏢", en: "Corporate",   es: "Corporativo"  },
-      ].map((item) => (
-        <div key={item.en} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 12px", borderRadius: 20, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)" }}>
-          <span style={{ fontSize: 13 }}>{item.icon}</span>
-          <span style={{ fontSize: 11, color: "rgba(255,255,255,.5)", fontWeight: 600 }}>{locale === "es" ? item.es : item.en}</span>
+        <div style={{ width: "100%", maxHeight: 280, overflow: "hidden", position: "relative" }}>
+          <img src={heroBanner} alt="Ventura Fresh Laundry"
+            style={{ width: "100%", height: 280, objectFit: "cover", objectPosition: "center", display: "block", opacity: 0.75 }} />
+          <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 120, background: "linear-gradient(to bottom, transparent, #081320)", pointerEvents: "none" }} />
+          <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 60, background: "linear-gradient(to bottom, #0b1929, transparent)", pointerEvents: "none" }} />
         </div>
-      ))}
-    </div>
-  </div>
-</section>
+
+        <div style={{ maxWidth: 900, margin: "0 auto", padding: "20px 24px 48px", position: "relative", zIndex: 2 }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 20, padding: "4px 12px", marginBottom: 18 }}>
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#34d399", boxShadow: "0 0 6px rgba(52,211,153,.9)", display: "inline-block", animation: "rq_glow 2s ease-in-out infinite" }} />
+            <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".18em", color: "rgba(255,255,255,.5)" }}>
+              {t("Commercial Laundry Services", "Servicios Comerciales de Lavandería")}
+            </span>
+          </div>
+
+          <h1 style={{ fontFamily: "'Manrope',sans-serif", fontSize: "clamp(26px,4.5vw,48px)", fontWeight: 800, color: "white", lineHeight: 1.1, letterSpacing: "-.025em", margin: "0 0 12px" }}>
+            {t("Get a Custom", "Solicita una")} <span style={{ color: "#38bdf8" }}>{t("Commercial Quote", "Cotización Comercial")}</span>
+          </h1>
+
+          <p style={{ fontSize: 14, color: "rgba(255,255,255,.45)", lineHeight: 1.75, maxWidth: 420, margin: "0 0 28px" }}>
+            {t(
+              "Follow each stage on the conveyor belt — fill in your business details and our team will respond within 24–48 hours.",
+              "Completa cada etapa en la cinta — ingresa los datos de tu negocio y te respondemos en 24–48 horas."
+            )}
+          </p>
+
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            {[
+              { icon: "🏨", en: "Hotels",      es: "Hoteles"      },
+              { icon: "🏠", en: "Airbnb",      es: "Airbnb"       },
+              { icon: "🍽️", en: "Restaurants", es: "Restaurantes" },
+              { icon: "🏥", en: "Healthcare",  es: "Salud"        },
+              { icon: "💪", en: "Gyms",        es: "Gimnasios"    },
+              { icon: "🏢", en: "Corporate",   es: "Corporativo"  },
+            ].map((item) => (
+              <div key={item.en} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 12px", borderRadius: 20, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)" }}>
+                <span style={{ fontSize: 13 }}>{item.icon}</span>
+                <span style={{ fontSize: 11, color: "rgba(255,255,255,.5)", fontWeight: 600 }}>{locale === "es" ? item.es : item.en}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
 
       {/* ── Main ── */}
       <section style={{ padding: "0 0 72px" }}>
         <div style={{ maxWidth: 760, margin: "0 auto", padding: "0 16px" }}>
 
-          {/* Conveyor */}
-          <div style={{ marginTop: "-20px", position: "relative", zIndex: 2 }}>
+          {/* Conveyor - con ID para scroll */}
+          <div id="b2b-quote-form" style={{ marginTop: "-20px", position: "relative", zIndex: 2 }}>
             <ConveyorTrack cur={submitted ? 5 : cur} locale={locale} onStageClick={(i) => { if (!submitted) goTo(i); }} />
           </div>
 
@@ -521,10 +529,8 @@ export default function RequestQuotePage() {
           {/* ── Form card ── */}
           {!submitted && (
             <div key={formKey} style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 16, boxShadow: "0 20px 60px rgba(0,0,0,.25)", overflow: "hidden", marginTop: 16, animation: "rq_panel .3s ease both" }}>
-              {/* Top accent bar */}
               <div style={{ height: 3, background: "linear-gradient(90deg,#38bdf8,#0ea5e9,#2563eb)" }} />
 
-              {/* Card header */}
               <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 22px", borderBottom: "1px solid hsl(var(--border))", background: "hsl(var(--secondary))" }}>
                 <div style={{ width: 38, height: 38, borderRadius: 10, background: "rgba(14,165,233,.1)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>
                   {STAGES[cur].icon}
@@ -537,7 +543,6 @@ export default function RequestQuotePage() {
                     {t(`Step ${cur + 1} of 6`, `Paso ${cur + 1} de 6`)} — {locale === "es" ? STAGES[cur].es : STAGES[cur].en}
                   </div>
                 </div>
-                {/* Progress dots */}
                 <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
                   {STAGES.map((_, i) => (
                     <div key={i} onClick={() => i < cur && goTo(i)}
@@ -547,7 +552,6 @@ export default function RequestQuotePage() {
                 </div>
               </div>
 
-              {/* Form body */}
               <div style={{ padding: "22px 24px" }}>
                 <div style={fGap}>
 
@@ -566,17 +570,17 @@ export default function RequestQuotePage() {
                         <FF label={t("Job title / Role", "Cargo / Rol")}>
                           <FInput value={form.job_title} onChange={(e) => setF("job_title", e.target.value)} placeholder={t("e.g. Operations Manager", "ej. Gerente de operaciones")} />
                         </FF>
-                     <FF label={t("Best way to contact you", "Cómo contactarte")}>
-  <ChipSet
-    value={form.contact_method}
-    onChange={(v) => setF("contact_method", v)}
-    options={CONTACT_METHODS.map((m) => ({
-      ...m,
-      val: m.value,
-      en: locale === "es" ? m.es : m.en,
-    }))}
-  />
-</FF>
+                        <FF label={t("Best way to contact you", "Cómo contactarte")}>
+                          <ChipSet
+                            value={form.contact_method}
+                            onChange={(v) => setF("contact_method", v)}
+                            options={CONTACT_METHODS.map((m) => ({
+                              ...m,
+                              val: m.value,
+                              en: locale === "es" ? m.es : m.en,
+                            }))}
+                          />
+                        </FF>
                       </div>
                       {["text", "sms", "whatsapp"].includes(form.contact_method) && (
                         <SmsConsentField checked={form.sms_consent} onChange={(e) => setF("sms_consent", e.target.checked)} idPrefix="rq-sms" />
@@ -677,7 +681,6 @@ export default function RequestQuotePage() {
                       <FF label={t("Additional notes", "Notas adicionales")}>
                         <FTextarea value={form.additional_notes} onChange={(e) => setF("additional_notes", e.target.value)} placeholder={t("Any specific requirements, questions or context…", "Requisitos específicos, preguntas o contexto adicional…")} rows={4} />
                       </FF>
-                      {/* Pacific Time note */}
                       <div style={{ padding: "10px 14px", borderRadius: 9, background: "rgba(14,165,233,.06)", border: "1px solid rgba(14,165,233,.18)", fontSize: 11, color: "hsl(var(--muted-foreground))", lineHeight: 1.6 }}>
                         💡 {t("Our team typically responds within 24–48 business hours. We'll reach out via your preferred contact method.", "Nuestro equipo responde en 24–48 horas hábiles. Te contactaremos por tu método preferido.")}
                       </div>
@@ -715,7 +718,6 @@ export default function RequestQuotePage() {
                         ...(form.additional_notes ? [[t("Notes", "Notas"), form.additional_notes.slice(0, 80)]] : []),
                       ]} />
 
-                      {/* Terms */}
                       <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "11px 14px", background: "hsl(var(--secondary))", borderRadius: 10, border: "0.5px solid hsl(var(--border))" }}>
                         <input type="checkbox" id="rq-terms" checked={form.terms} onChange={(e) => setF("terms", e.target.checked)} style={{ width: 15, height: 15, flexShrink: 0, marginTop: 1, accentColor: "#0ea5e9", cursor: "pointer" }} />
                         <label htmlFor="rq-terms" style={{ fontSize: 11, color: "hsl(var(--muted-foreground))", lineHeight: 1.6, cursor: "pointer" }}>

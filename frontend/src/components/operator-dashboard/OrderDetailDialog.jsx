@@ -742,7 +742,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
                     <p>
                       Enviar a:{" "}
                       <strong>
-                        {payMethod === "venmo" ? "@VenturaFreshLaundry" : "$venturafreshlaundry"}
+                        {payMethod === "venmo" ? "@VFLaundry" : "$VFLaundry"}
                       </strong>
                     </p>
                     <p>Nota: Orden <strong>{formatOrderNumber(localOrder)}</strong></p>

@@ -28,10 +28,23 @@ export default function ScrollToTop() {
       return;
     }
 
-    // ★ Nuevo: para Wash & Fold
+    // ★ Wash & Fold
     if (pathname === "/wash-fold") {
       requestAnimationFrame(() => {
         const formContainer = document.getElementById("wash-fold-form");
+        if (formContainer) {
+          formContainer.scrollIntoView({ behavior: "auto", block: "start" });
+        } else {
+          window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+        }
+      });
+      return;
+    }
+
+    // ★ Cotización comercial B2B
+    if (pathname === "/request-quote" || pathname === "/commercial" || pathname === "/b2b") {
+      requestAnimationFrame(() => {
+        const formContainer = document.getElementById("b2b-quote-form");
         if (formContainer) {
           formContainer.scrollIntoView({ behavior: "auto", block: "start" });
         } else {

@@ -685,3 +685,163 @@ async def download_customer_file(
             "Content-Disposition": f'inline; filename="{record.get("original_filename", "file")}"'
         },
     )
+
+# ══════════════════════════════════════════════════════════════════════
+# Pickup Image para Clientes
+# ══════════════════════════════════════════════════════════════════════
+
+@router.get("/order/{order_id}/pickup-image/view")
+async def get_customer_pickup_image(
+    order_id: str,
+    current_customer: dict = Depends(get_current_customer)
+):
+    """
+    Permite al cliente ver la imagen de recolección de su orden.
+    """
+    # Buscar la orden por múltiples campos
+    order = await db.orders.find_one({
+        "$or": [
+            {"id": order_id},
+            {"order_id": order_id},
+            {"order_number": order_id}
+        ]
+    }, {"_id": 0})
+    
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    # Verificar que la orden pertenece al cliente
+    customer_id = current_customer["id"]
+    customer_email = current_customer.get("email", "").lower()
+    order_customer_id = order.get("customer_id", "")
+    order_email = (order.get("customer_email") or "").lower()
+    
+    # Verificar propiedad por ID o email
+    authorized = False
+    if order_customer_id == customer_id or order_email == customer_email:
+        authorized = True
+    else:
+        linked_ids = await _get_customer_ids_by_email(customer_email) if customer_email else set()
+        if order_customer_id in linked_ids:
+            authorized = True
+    
+    if not authorized:
+        raise HTTPException(status_code=403, detail="Not your order")
+    
+    real_order_id = order.get("id") or order.get("order_id") or order_id
+    
+    # Buscar imagen en la colección pickup_images
+    image_record = await db.pickup_images.find_one(
+        {"order_id": real_order_id},
+        {"_id": 0},
+        sort=[("created_at", -1)]
+    )
+    
+    # Si no hay en colección, buscar en la orden directamente
+    if not image_record and order.get("pickup_image_data"):
+        data = base64.b64decode(order["pickup_image_data"])
+        return Response(
+            content=data,
+            media_type="image/jpeg",
+            headers={
+                "Content-Disposition": f'inline; filename="pickup_{real_order_id}.jpg"',
+                "Cache-Control": "private, max-age=86400",
+            }
+        )
+    
+    if not image_record:
+        raise HTTPException(status_code=404, detail="No pickup image found for this order")
+    
+    # Obtener los datos de la imagen
+    data_b64 = image_record.get("data_base64")
+    if not data_b64:
+        raise HTTPException(status_code=404, detail="No image data available")
+    
+    data = base64.b64decode(data_b64)
+    filename = image_record.get('original_filename') or f"pickup_{real_order_id}.jpg"
+    
+    return Response(
+        content=data,
+        media_type=image_record.get("content_type", "image/jpeg"),
+        headers={
+            "Content-Disposition": f'inline; filename="{filename}"',
+            "Cache-Control": "private, max-age=86400",
+        }
+    )
+
+
+@router.get("/order/{order_id}/delivery-image/view")
+async def get_customer_delivery_image(
+    order_id: str,
+    current_customer: dict = Depends(get_current_customer)
+):
+    """
+    Permite al cliente ver la imagen de entrega de su orden.
+    """
+    order = await db.orders.find_one({
+        "$or": [
+            {"id": order_id},
+            {"order_id": order_id},
+            {"order_number": order_id}
+        ]
+    }, {"_id": 0})
+
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    # Verificar propiedad
+    customer_id = current_customer["id"]
+    customer_email = current_customer.get("email", "").lower()
+    order_customer_id = order.get("customer_id", "")
+    order_email = (order.get("customer_email") or "").lower()
+
+    authorized = False
+    if order_customer_id == customer_id or order_email == customer_email:
+        authorized = True
+    else:
+        linked_ids = await _get_customer_ids_by_email(customer_email) if customer_email else set()
+        if order_customer_id in linked_ids:
+            authorized = True
+
+    if not authorized:
+        raise HTTPException(status_code=403, detail="Not your order")
+
+    real_order_id = order.get("id") or order.get("order_id") or order_id
+
+    # Buscar imagen en delivery_images
+    image_record = await db.delivery_images.find_one(
+        {"order_id": real_order_id},
+        {"_id": 0},
+        sort=[("created_at", -1)]
+    )
+
+    # Si no hay en colección, buscar en la orden directamente
+    if not image_record and order.get("delivery_image_data"):
+        data = base64.b64decode(order["delivery_image_data"])
+        return Response(
+            content=data,
+            media_type="image/jpeg",
+            headers={
+                "Content-Disposition": f'inline; filename="delivery_{real_order_id}.jpg"',
+                "Cache-Control": "private, max-age=86400",
+            }
+        )
+
+    if not image_record:
+        raise HTTPException(status_code=404, detail="No delivery image found for this order")
+
+    data_b64 = image_record.get("data_base64")
+    if not data_b64:
+        raise HTTPException(status_code=404, detail="No image data available")
+
+    data = base64.b64decode(data_b64)
+    filename = image_record.get('original_filename') or f"delivery_{real_order_id}.jpg"
+
+    return Response(
+        content=data,
+        media_type=image_record.get("content_type", "image/jpeg"),
+        headers={
+            "Content-Disposition": f'inline; filename="{filename}"',
+            "Cache-Control": "private, max-age=86400",
+        }
+    )    

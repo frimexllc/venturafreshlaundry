@@ -31,6 +31,8 @@ export default function Customers() {
   const [editingCustomer, setEditingCustomer] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [submitting, setSubmitting] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [customerToDelete, setCustomerToDelete] = useState(null);
 
   useEffect(() => {
     fetchCustomers();
@@ -94,12 +96,19 @@ export default function Customers() {
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm(t("Delete this customer?", "¿Eliminar este cliente?"))) return;
+  const confirmDelete = (customer) => {
+    setCustomerToDelete(customer);
+    setDeleteConfirmOpen(true);
+  };
+
+  const handleDelete = async () => {
+    if (!customerToDelete) return;
     try {
-      await axios.delete(`${API}/customers/${id}`);
+      await axios.delete(`${API}/customers/${customerToDelete.id}`);
       toast.success(t("Customer deleted", "Cliente eliminado"));
       fetchCustomers(search);
+      setDeleteConfirmOpen(false);
+      setCustomerToDelete(null);
     } catch (error) {
       toast.error(t("Error deleting customer", "Error eliminando cliente"));
     }
@@ -288,7 +297,7 @@ export default function Customers() {
                             <Edit className="h-4 w-4 mr-2" />
                             {t("Edit", "Editar")}
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleDelete(customer.id)} className="text-red-600">
+                          <DropdownMenuItem onClick={() => confirmDelete(customer)} className="text-red-600">
                             <Trash2 className="h-4 w-4 mr-2" />
                             {t("Delete", "Eliminar")}
                           </DropdownMenuItem>
@@ -302,6 +311,42 @@ export default function Customers() {
           </table>
         </div>
       </div>
+
+      {/* Modal de confirmación de eliminación */}
+      <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("Confirm deletion", "Confirmar eliminación")}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-slate-600">
+              {t("Are you sure you want to delete the customer", "¿Estás seguro de que deseas eliminar al cliente")}{" "}
+              <strong className="font-semibold text-slate-900">"{customerToDelete?.name}"</strong>?
+            </p>
+            {customerToDelete?.total_orders > 0 && (
+              <p className="text-sm text-amber-600">
+                {t("This customer has", "Este cliente tiene")} {customerToDelete.total_orders} {t("orders. Deleting will affect order history.", "órdenes. Eliminarlo afectará el historial de órdenes.")}
+              </p>
+            )}
+            <p className="text-sm text-red-600">{t("This action cannot be undone.", "Esta acción no se puede deshacer.")}</p>
+            <div className="flex gap-3 pt-2">
+              <Button 
+                variant="outline" 
+                onClick={() => setDeleteConfirmOpen(false)} 
+                className="flex-1"
+              >
+                {t("Cancel", "Cancelar")}
+              </Button>
+              <Button 
+                onClick={handleDelete} 
+                className="flex-1 bg-red-600 hover:bg-red-700"
+              >
+                {t("Delete", "Eliminar")}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

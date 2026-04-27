@@ -59,22 +59,14 @@ def init_storage() -> str:
 
 
 def _is_local_path(path: str) -> bool:
-    """Check if path points to local filesystem (not a storage key)."""
     return path.startswith("/") or "uploads/" in path or "/app/backend/" in path
 
 
 def get_object(path: str):
-    """
-    Retrieve object from storage.
-    If path looks like a local filesystem path, read from disk.
-    Otherwise fetch from Emergent object storage.
-    """
-    # Local file fallback (for legacy uploads)
     if _is_local_path(path):
         try:
             with open(path, "rb") as f:
                 data = f.read()
-            # guess content type from extension if needed
             content_type = "application/octet-stream"
             if path.endswith(".jpg") or path.endswith(".jpeg"):
                 content_type = "image/jpeg"
@@ -84,14 +76,12 @@ def get_object(path: str):
                 content_type = "image/webp"
             elif path.endswith(".pdf"):
                 content_type = "application/pdf"
-            logger.info(f"Retrieved local file: {path}")
             return data, content_type
         except FileNotFoundError:
             raise FileNotFoundError(f"Local file not found: {path}")
         except Exception as e:
             raise RuntimeError(f"Failed to read local file {path}: {e}")
 
-    # Emergent object storage
     key = init_storage()
     try:
         resp = requests.get(
@@ -105,8 +95,6 @@ def get_object(path: str):
         return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
     except requests.exceptions.HTTPError as e:
         if e.response.status_code in (401, 403):
-            # Key expired – clear cache and retry once
-            logger.warning(f"Storage auth error, reinitializing: {e}")
             _storage_key_cache.clear()
             new_key = init_storage()
             resp = requests.get(
@@ -120,12 +108,10 @@ def get_object(path: str):
             return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
         raise
     except requests.exceptions.Timeout:
-        logger.error(f"Timeout downloading {path}")
         raise TimeoutError(f"Storage timeout for {path}")
 
 
 def put_object(path: str, data: bytes, content_type: str) -> dict:
-    """Store object in Emergent storage. No local fallback for writes."""
     key = init_storage()
     resp = requests.put(
         f"{STORAGE_URL}/objects/{path}",
@@ -138,7 +124,7 @@ def put_object(path: str, data: bytes, content_type: str) -> dict:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# RUTAS CON NOMBRES FIJOS (antes de /{file_id})
+# RUTAS CON NOMBRES FIJOS (siempre antes de /{file_id}/...)
 # ──────────────────────────────────────────────────────────────────────────────
 
 @router.post("/upload")
@@ -159,7 +145,6 @@ async def upload_file(
     uid = str(uuid.uuid4())
     storage_path = f"{APP_NAME}/uploads/{current_user['id']}/{uid}.{ext}"
 
-    # Store binary data as base64 in MongoDB — no external storage dependency
     data_b64 = base64.b64encode(data).decode("utf-8")
 
     file_record = {
@@ -194,7 +179,7 @@ async def get_ocr_analytics(current_user: dict = Depends(get_current_user)):
 
     amount_ok = await db.ocr_logs.count_documents({"status": "success", "amount_extracted": True})
     vendor_ok = await db.ocr_logs.count_documents({"status": "success", "vendor_extracted": True})
-    date_ok = await db.ocr_logs.count_documents({"status": "success", "date_extracted": True})
+    date_ok   = await db.ocr_logs.count_documents({"status": "success", "date_extracted": True})
 
     pipeline = [
         {"$match": {"status": "success", "result.amount": {"$gt": 0}}},
@@ -223,7 +208,7 @@ async def get_ocr_analytics(current_user: dict = Depends(get_current_user)):
         "field_rates": {
             "amount": round(amount_ok / successful * 100, 1) if successful > 0 else 0,
             "vendor": round(vendor_ok / successful * 100, 1) if successful > 0 else 0,
-            "date": round(date_ok / successful * 100, 1) if successful > 0 else 0,
+            "date":   round(date_ok   / successful * 100, 1) if successful > 0 else 0,
         },
         "total_amount_captured": round(total_captured, 2),
         "recent_scans": recent,
@@ -243,7 +228,7 @@ async def list_files_by_context(
     context = f"{context_type}:{context_id}"
     files = await db.files.find(
         {"context": context, "is_deleted": False},
-        {"_id": 0, "storage_path": 0},
+        {"_id": 0, "storage_path": 0, "data_base64": 0},
     ).sort("created_at", -1).to_list(50)
     for f in files:
         f["url"] = f"/api/files/{f['id']}/download"
@@ -256,28 +241,21 @@ async def list_receipts_by_order(
     current_user: dict = Depends(get_current_user),
 ):
     files = await db.files.find(
-        {
-            "context": f"payment:{order_id}",
-            "is_deleted": False,
-        },
-        {"_id": 0, "storage_path": 0},
+        {"context": f"payment:{order_id}", "is_deleted": False},
+        {"_id": 0, "storage_path": 0, "data_base64": 0},
     ).sort("created_at", -1).to_list(20)
 
     for f in files:
         f["url"] = f"/api/files/{f['id']}/download"
-        validation = await db.payment_validations.find_one(
-            {"file_id": f["id"]},
-            {"_id": 0},
-        )
+        validation = await db.payment_validations.find_one({"file_id": f["id"]}, {"_id": 0})
         if validation:
             f["ai_validation_status"] = validation.get("status", "pending")
-            f["ai_validation_notes"] = validation.get("notes", "")
-            f["ai_extracted_amount"] = validation.get("amount", 0)
+            f["ai_validation_notes"]  = validation.get("notes", "")
+            f["ai_extracted_amount"]  = validation.get("amount", 0)
         else:
             f["ai_validation_status"] = "pending"
-            f["ai_validation_notes"] = ""
-            f["ai_extracted_amount"] = 0
-
+            f["ai_validation_notes"]  = ""
+            f["ai_extracted_amount"]  = 0
     return files
 
 
@@ -287,14 +265,7 @@ async def validate_payment_receipt(
     order_id: str = Query(..., description="Order ID to cross-check the amount"),
     current_user: dict = Depends(get_current_user),
 ):
-    """
-    Usa GPT-4o para validar que la imagen es un comprobante de pago COMPLETADO.
-    Aumentado timeout y manejo de errores.
-    """
-    record = await db.files.find_one(
-        {"id": file_id, "is_deleted": False},
-        {"_id": 0},
-    )
+    record = await db.files.find_one({"id": file_id, "is_deleted": False}, {"_id": 0})
     if not record:
         raise HTTPException(status_code=404, detail="File not found")
 
@@ -302,32 +273,27 @@ async def validate_payment_receipt(
     if not ct.startswith("image/"):
         raise HTTPException(status_code=400, detail="Payment validation only works with images")
 
-    # Obtener monto esperado de la orden
     order = await db.orders.find_one(
         {"$or": [{"id": order_id}, {"order_id": order_id}, {"order_number": order_id}]},
         {"_id": 0, "total_amount": 1, "order_number": 1},
     )
     expected_amount = float((order or {}).get("total_amount") or 0)
-    order_number = (order or {}).get("order_number", order_id)
+    order_number    = (order or {}).get("order_number", order_id)
 
-    # Descargar imagen — prioridad MongoDB, fallback storage externo
-    storage_path = record.get("storage_path", "")
     data_b64 = record.get("data_base64")
     if data_b64:
         image_data = base64.b64decode(data_b64)
     else:
         try:
-            image_data, _ = get_object(storage_path)
+            image_data, _ = get_object(record.get("storage_path", ""))
         except FileNotFoundError:
             raise HTTPException(status_code=404, detail="Image file not found in storage")
         except TimeoutError:
             raise HTTPException(status_code=504, detail="Storage service timeout")
         except Exception as exc:
-            logger.error(f"Payment validation download failed: {exc}")
             raise HTTPException(status_code=500, detail=f"Failed to download image: {exc}")
 
     b64 = base64.b64encode(image_data).decode("utf-8")
-
     llm_key = os.environ.get("EMERGENT_LLM_KEY")
     if not llm_key:
         raise HTTPException(status_code=500, detail="LLM key not configured")
@@ -350,19 +316,12 @@ async def validate_payment_receipt(
             '"notes": "<brief explanation in Spanish, max 120 chars>"}'
         )
 
-        chat = LlmChat(
-            api_key=llm_key,
-            session_id=f"pay-val-{file_id}",
-            system_message=system_prompt,
-        )
+        chat = LlmChat(api_key=llm_key, session_id=f"pay-val-{file_id}", system_message=system_prompt)
         chat.with_model("openai", "gpt-4o")
 
-        img = ImageContent(image_base64=b64)
+        img      = ImageContent(image_base64=b64)
         user_msg = UserMessage(
-            text=(
-                f"Analyze this image. Expected payment: ${expected_amount:.2f} "
-                f"for order {order_number}. Is this a completed payment receipt?"
-            ),
+            text=f"Analyze this image. Expected payment: ${expected_amount:.2f} for order {order_number}. Is this a completed payment receipt?",
             file_contents=[img],
         )
         response_text = await chat.send_message(user_msg)
@@ -373,27 +332,19 @@ async def validate_payment_receipt(
         result = _json.loads(cleaned)
 
         is_valid = bool(result.get("is_valid_payment", False))
-        amount = float(result.get("amount", 0))
-        status = "verified_paid" if is_valid else "rejected"
-        notes = str(result.get("notes", ""))[:200]
-
-        now = datetime.now(timezone.utc).isoformat()
+        amount   = float(result.get("amount", 0))
+        status   = "verified_paid" if is_valid else "rejected"
+        notes    = str(result.get("notes", ""))[:200]
+        now      = datetime.now(timezone.utc).isoformat()
 
         await db.payment_validations.update_one(
             {"file_id": file_id},
-            {
-                "$set": {
-                    "file_id": file_id,
-                    "order_id": order_id,
-                    "status": status,
-                    "is_valid_payment": is_valid,
-                    "amount": amount,
-                    "notes": notes,
-                    "expected_amount": expected_amount,
-                    "validated_by": current_user["id"],
-                    "validated_at": now,
-                }
-            },
+            {"$set": {
+                "file_id": file_id, "order_id": order_id, "status": status,
+                "is_valid_payment": is_valid, "amount": amount, "notes": notes,
+                "expected_amount": expected_amount,
+                "validated_by": current_user["id"], "validated_at": now,
+            }},
             upsert=True,
         )
 
@@ -401,28 +352,16 @@ async def validate_payment_receipt(
             await db.orders.update_one(
                 {"$or": [{"id": order_id}, {"order_id": order_id}]},
                 {
-                    "$set": {
-                        "payment_status": "paid",
-                        "payment_method": "transfer",
-                        "updated_at": now,
-                    },
-                    "$push": {
-                        "status_history": {
-                            "status": "payment_confirmed_by_ai",
-                            "timestamp": now,
-                            "by": f"operator:{current_user['id']}",
-                            "notes": f"AI validated receipt. Amount: ${amount:.2f}",
-                        }
-                    },
+                    "$set": {"payment_status": "paid", "payment_method": "transfer", "updated_at": now},
+                    "$push": {"status_history": {
+                        "status": "payment_confirmed_by_ai", "timestamp": now,
+                        "by": f"operator:{current_user['id']}",
+                        "notes": f"AI validated receipt. Amount: ${amount:.2f}",
+                    }},
                 },
             )
 
-        return {
-            "is_valid_payment": is_valid,
-            "amount": amount,
-            "status": status,
-            "notes": notes,
-        }
+        return {"is_valid_payment": is_valid, "amount": amount, "status": status, "notes": notes}
 
     except _json.JSONDecodeError as exc:
         logger.error(f"AI response not valid JSON: {exc}")
@@ -433,8 +372,27 @@ async def validate_payment_receipt(
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# RUTAS CON PATH-PARAMS (AL FINAL)
+# RUTAS CON PATH-PARAMS  ──  DEBEN IR DESPUÉS DE TODAS LAS RUTAS FIJAS
 # ──────────────────────────────────────────────────────────────────────────────
+
+@router.patch("/{file_id}/context")
+async def update_file_context(
+    file_id: str,
+    context: str = Query(..., description="New context, e.g. expense:abc123"),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Reasigna el contexto de un archivo ya subido.
+    Usado para vincular archivos OCR (ocr-temp) al gasto definitivo (expense:{id}).
+    """
+    result = await db.files.update_one(
+        {"id": file_id, "is_deleted": False, "uploaded_by": current_user["id"]},
+        {"$set": {"context": context}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="File not found or not yours")
+    return {"ok": True, "file_id": file_id, "context": context}
+
 
 @router.get("/{file_id}/download")
 async def download_file(
@@ -461,7 +419,7 @@ async def download_file(
     if not record:
         raise HTTPException(status_code=404, detail="File not found")
 
-    # Priority 1: Read from MongoDB (data_base64 field)
+    # Prioridad 1: datos en MongoDB
     data_b64 = record.get("data_base64")
     if data_b64:
         data = base64.b64decode(data_b64)
@@ -474,14 +432,13 @@ async def download_file(
             },
         )
 
-    # Priority 2: Fallback to external storage for legacy files
+    # Prioridad 2: storage externo (legacy)
     storage_path = record.get("storage_path")
     if not storage_path:
         raise HTTPException(status_code=400, detail="No storage path in record")
 
     try:
         data, content_type = get_object(storage_path)
-        # Migrate to MongoDB for future downloads
         await db.files.update_one(
             {"id": file_id},
             {"$set": {"data_base64": base64.b64encode(data).decode("utf-8")}},
@@ -524,25 +481,24 @@ async def ocr_extract(file_id: str, current_user: dict = Depends(get_current_use
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
 
-    storage_path = record.get("storage_path")
     data_b64_stored = record.get("data_base64")
     if data_b64_stored:
         image_data = base64.b64decode(data_b64_stored)
     else:
         try:
-            image_data, _ = get_object(storage_path)
+            image_data, _ = get_object(record.get("storage_path", ""))
         except Exception as exc:
             logger.error(f"OCR download failed: {exc}")
             ocr_log["status"] = "error"
-            ocr_log["error"] = "download_failed"
+            ocr_log["error"]  = "download_failed"
             await db.ocr_logs.insert_one(ocr_log)
             raise HTTPException(status_code=500, detail="Failed to download image")
 
-    b64 = base64.b64encode(image_data).decode("utf-8")
+    b64     = base64.b64encode(image_data).decode("utf-8")
     llm_key = os.environ.get("EMERGENT_LLM_KEY")
     if not llm_key:
         ocr_log["status"] = "error"
-        ocr_log["error"] = "no_llm_key"
+        ocr_log["error"]  = "no_llm_key"
         await db.ocr_logs.insert_one(ocr_log)
         raise HTTPException(status_code=500, detail="LLM key not configured")
 
@@ -562,7 +518,7 @@ async def ocr_extract(file_id: str, current_user: dict = Depends(get_current_use
         )
         chat.with_model("openai", "gpt-4o")
 
-        img = ImageContent(image_base64=b64)
+        img      = ImageContent(image_base64=b64)
         user_msg = UserMessage(
             text="Extract the total amount, short description, date, and vendor/store name from this receipt.",
             file_contents=[img],
@@ -575,24 +531,25 @@ async def ocr_extract(file_id: str, current_user: dict = Depends(get_current_use
         result = _json.loads(cleaned)
 
         extracted = {
-            "amount": float(result.get("amount", 0)),
+            "amount":      float(result.get("amount", 0)),
             "description": str(result.get("description", "")),
-            "date": str(result.get("date", "")),
-            "vendor": str(result.get("vendor", "")),
+            "date":        str(result.get("date", "")),
+            "vendor":      str(result.get("vendor", "")),
         }
 
-        ocr_log["status"] = "success"
-        ocr_log["result"] = extracted
+        ocr_log["status"]           = "success"
+        ocr_log["result"]           = extracted
         ocr_log["amount_extracted"] = extracted["amount"] > 0
         ocr_log["vendor_extracted"] = len(extracted["vendor"]) > 0
-        ocr_log["date_extracted"] = len(extracted["date"]) > 0
+        ocr_log["date_extracted"]   = len(extracted["date"]) > 0
         await db.ocr_logs.insert_one(ocr_log)
 
         return extracted
+
     except Exception as exc:
         logger.error(f"OCR LLM failed: {exc}")
         ocr_log["status"] = "error"
-        ocr_log["error"] = str(exc)[:200]
+        ocr_log["error"]  = str(exc)[:200]
         await db.ocr_logs.insert_one(ocr_log)
         raise HTTPException(status_code=500, detail=f"OCR analysis failed: {exc}")
 
@@ -608,12 +565,8 @@ async def soft_delete_file(file_id: str, current_user: dict = Depends(get_curren
     return {"ok": True}
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Endpoint de diagnóstico (opcional)
-# ──────────────────────────────────────────────────────────────────────────────
 @router.get("/check-storage/{file_id}")
 async def check_storage(file_id: str, current_user: dict = Depends(get_current_user)):
-    """Verifica si el archivo existe en el backend de almacenamiento."""
     record = await db.files.find_one({"id": file_id})
     if not record:
         return {"exists": False, "error": "No record in DB"}
