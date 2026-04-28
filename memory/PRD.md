@@ -111,6 +111,14 @@ NEW -> CONFIRMED -> PROCESSING -> READY -> COMPLETED
 - [x] GET /api/customer/me returns extended fields (city, state, zip_code)
 - [x] Verified Alejandro's real account: login, 13 orders visible, 8 pending payments, profile editing
 
+### Phase 8 (Password Recovery) — 2026-04-28
+- [x] POST /api/customer/auth/forgot-password: generates secure token, stores SHA-256 hash in DB, sends HTML email via SendGrid
+- [x] POST /api/customer/auth/reset-password: validates token, resets password on ALL linked records, marks token used
+- [x] Security: doesn't reveal if email exists, token expires in 1 hour, single-use
+- [x] Frontend: "Forgot your password?" link on login, email input → success message
+- [x] Frontend: Reset view detects ?reset=TOKEN in URL, shows new password + confirm fields
+- [x] NOTE: SendGrid API key returning 401 — user needs to regenerate key in SendGrid dashboard
+
 ### Customer API Endpoints (Updated)
 - `POST /api/customer/auth/register`, `POST /api/customer/auth/login`
 - `GET /api/customer/me`, `GET /api/customer/orders`, `GET /api/customer/pending-payments`
