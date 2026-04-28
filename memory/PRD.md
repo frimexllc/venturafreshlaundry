@@ -117,7 +117,17 @@ NEW -> CONFIRMED -> PROCESSING -> READY -> COMPLETED
 - [x] Security: doesn't reveal if email exists, token expires in 1 hour, single-use
 - [x] Frontend: "Forgot your password?" link on login, email input → success message
 - [x] Frontend: Reset view detects ?reset=TOKEN in URL, shows new password + confirm fields
-- [x] NOTE: SendGrid API key returning 401 — user needs to regenerate key in SendGrid dashboard
+
+### Phase 9 (Notification System Fix) — 2026-04-28
+- [x] Fixed: 'confirmed' and 'picked_up' now trigger customer notifications (removed from _NO_NOTIFY_STATUSES)
+- [x] Fixed: 'processing' event added to pickup_delivery MILESTONES
+- [x] Fixed: format_phone() defaults to US (+1) for 10-digit numbers instead of Mexico (+52)
+- [x] Fixed: notify-customer endpoint has customer lookup fallback by email
+- [x] Fixed: Simplified guard in send_preferred_notification — only blocks unmapped events
+- [x] Added: Call and WhatsApp channels to frontend dropdown and backend handler
+- [x] Verified: Twilio SMS sends OK (201), Twilio Call initiates OK (201)
+- [x] NOTE: SendGrid API key returning 401 — user needs to regenerate
+- [x] NOTE: WhatsApp requires Twilio WhatsApp Business channel setup
 
 ### Customer API Endpoints (Updated)
 - `POST /api/customer/auth/register`, `POST /api/customer/auth/login`
