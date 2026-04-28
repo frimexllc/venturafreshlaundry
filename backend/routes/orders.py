@@ -1236,6 +1236,12 @@ async def notify_customer_direct(
         if customer_id
         else None
     )
+    # Fallback: if customer not found by ID, try by email
+    if not customer and order.get("customer_email"):
+        customer = await db.customers.find_one(
+            {"email": {"$regex": f'^{order["customer_email"]}$', "$options": "i"}},
+            {"_id": 0},
+        )
 
     phone = (customer or {}).get("phone") or order.get("customer_phone") or ""
     email_addr = (customer or {}).get("email") or order.get("customer_email") or ""
@@ -1315,7 +1321,7 @@ async def notify_customer_direct(
             "payment_url": payment_url,
         }
 
-    from notifications import send_email, send_sms, send_whatsapp
+    from notifications import send_email, send_sms, send_whatsapp, send_voice_call
 
     channel = payload.channel.lower()
     sent = False
@@ -1330,12 +1336,14 @@ async def notify_customer_direct(
             sent = await send_email(email_addr, subject, msg, email_html)
         elif channel == "whatsapp" and phone:
             sent = await send_whatsapp(phone, msg)
+        elif channel == "call" and phone:
+            sent = await send_voice_call(phone, msg, "es-MX")
         elif channel == "sms" and phone:
             sent = await send_sms(phone, msg)
         else:
             available = []
             if phone:
-                available.append("sms")
+                available.extend(["sms", "call", "whatsapp"])
             if email_addr:
                 available.append("email")
             if not available:

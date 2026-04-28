@@ -127,15 +127,17 @@ async def _persist_log(entry: dict):
 MILESTONES = {
     "wash_fold":       {"order_created", "order_received", "processing",
                         "ready_for_pickup", "completed"},
-    "pickup_delivery": {"order_created", "pickup_confirmed", "ready",
-                        "out_for_delivery", "delivered", "cancelled"},
+    "pickup_delivery": {"order_created", "pickup_confirmed", "processing",
+                        "ready", "out_for_delivery", "delivered", "cancelled"},
     "quote":           {"order_created"},
     "contact":         {"order_created"},
     "support":         {"order_created"},
 }
 
-# Statuses that should NEVER generate a customer notification (operational only)
-_NO_NOTIFY_STATUSES = {"pickup_scheduled", "picked_up", "confirmed"}
+# Statuses that should NEVER generate a customer notification (purely internal/operational)
+# NOTE: "confirmed" maps to pickup_confirmed/order_received — MUST notify
+# NOTE: "picked_up" maps to processing — MUST notify
+_NO_NOTIFY_STATUSES = {"pickup_scheduled"}
 
 EVENT_MAPPING = {
     "order_created":    "order_created",
@@ -195,18 +197,18 @@ def get_groq_client():
 
 
 def format_phone(phone: str) -> Optional[str]:
+    """Convert phone to E.164 format. Defaults to +1 (US) for 10-digit numbers."""
     if not phone:
         return None
     cleaned = "".join(c for c in phone if c.isdigit() or c == "+")
     if cleaned.startswith("+"):
         return cleaned
-    if cleaned.startswith("52") and len(cleaned) >= 12:
-        return "+" + cleaned
-    if len(cleaned) == 10 and cleaned[0] in "534678":
-        return "+52" + cleaned
-    if len(cleaned) == 10:
-        return "+1" + cleaned
     if len(cleaned) == 11 and cleaned.startswith("1"):
+        return "+" + cleaned
+    if len(cleaned) == 10:
+        # Default to US (+1) — this is a US-based business (Ventura, CA)
+        return "+1" + cleaned
+    if cleaned.startswith("52") and len(cleaned) >= 12:
         return "+" + cleaned
     return "+" + cleaned if not cleaned.startswith("+") else cleaned
 
@@ -947,9 +949,9 @@ async def send_preferred_notification(
         logger.info(f"Event {mapped_event} not a milestone for {flow}, skipping.")
         return False
 
-    # FIX 5: centralised guard — skip operational-only statuses
-    if mapped_event == "status_changed" or (status and not should_notify_customer(mapped_event)):
-        logger.info(f"Status {mapped_event} not customer-facing, skipping notification.")
+    # FIX 5: centralised guard — skip unmapped status_changed events only
+    if mapped_event == "status_changed":
+        logger.info(f"Status {status} has no mapped event, skipping notification.")
         return False
 
     order_number = order.get("order_number", order.get("id", "N/A"))

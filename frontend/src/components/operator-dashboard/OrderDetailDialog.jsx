@@ -790,6 +790,8 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
               >
                 <option value="sms">SMS</option>
                 <option value="email">Email</option>
+                <option value="call">Llamada</option>
+                <option value="whatsapp">WhatsApp</option>
               </select>
               <Button
                 variant="outline"
