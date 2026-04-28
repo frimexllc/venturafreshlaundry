@@ -2,13 +2,17 @@
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, EmailStr
 from typing import Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import uuid
+import hashlib
+import secrets
+import logging
 
 from database import db
 from auth import hash_password, verify_password, create_customer_token, get_current_customer
 from utils import create_audit_log
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["Customer Auth"])
 
 
@@ -138,3 +142,115 @@ async def customer_login(data: CustomerLogin):
 
 # NOTE: /customer/me and /customer/orders are defined in routes/customer.py
 # with better cross-ID/email matching logic. Do NOT duplicate here.
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    password: str
+
+
+@router.post("/customer/auth/forgot-password")
+async def forgot_password(data: ForgotPasswordRequest):
+    """Send password reset link via email."""
+    import os
+    customer = await db.customers.find_one({"email": data.email.lower()})
+    if not customer:
+        # Don't reveal if email exists
+        return {"ok": True, "detail": "If the email exists, a reset link has been sent."}
+
+    # Generate secure token
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    expires = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+
+    await db.password_resets.delete_many({"email": data.email.lower()})
+    await db.password_resets.insert_one({
+        "email": data.email.lower(),
+        "token_hash": token_hash,
+        "expires_at": expires,
+        "used": False,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+
+    # Build reset URL
+    frontend_url = os.environ.get("FRONTEND_URL") or os.environ.get("REACT_APP_BACKEND_URL") or os.environ.get("BUSINESS_WEBSITE", "")
+    reset_url = f"{frontend_url}/account/login?reset={raw_token}"
+
+    # Send email via SendGrid
+    try:
+        from notifications import send_email
+        customer_name = customer.get("name", "").split(" ")[0] or "Cliente"
+        html = f"""
+        <div style="font-family:system-ui,-apple-system,sans-serif;max-width:480px;margin:0 auto;padding:24px;">
+            <div style="background:linear-gradient(135deg,#0284c7,#0ea5e9);border-radius:16px 16px 0 0;padding:28px 24px;text-align:center;">
+                <h1 style="color:white;font-size:22px;margin:0;">Ventura Fresh Laundry</h1>
+                <p style="color:rgba(255,255,255,0.75);font-size:13px;margin:6px 0 0;">Recuperación de contraseña</p>
+            </div>
+            <div style="background:#ffffff;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 16px 16px;padding:28px 24px;">
+                <p style="color:#334155;font-size:15px;line-height:1.6;">Hola <strong>{customer_name}</strong>,</p>
+                <p style="color:#64748b;font-size:14px;line-height:1.6;">
+                    Recibimos una solicitud para restablecer tu contraseña. Haz clic en el botón de abajo para crear una nueva:
+                </p>
+                <div style="text-align:center;margin:24px 0;">
+                    <a href="{reset_url}" style="display:inline-block;background:#0284c7;color:white;padding:14px 32px;border-radius:12px;text-decoration:none;font-weight:bold;font-size:14px;">
+                        Restablecer contraseña
+                    </a>
+                </div>
+                <p style="color:#94a3b8;font-size:12px;line-height:1.5;">
+                    Este enlace expira en 1 hora. Si no solicitaste este cambio, puedes ignorar este correo.
+                </p>
+            </div>
+        </div>
+        """
+        sent = await send_email(
+            data.email.lower(),
+            "Restablecer contraseña — Ventura Fresh Laundry",
+            f"Hola {customer_name}, usa este enlace para restablecer tu contraseña: {reset_url} (expira en 1 hora)",
+            html,
+        )
+        if not sent:
+            logger.warning(f"Password reset email failed to {data.email}")
+    except Exception as exc:
+        logger.error(f"Password reset email error: {exc}")
+
+    return {"ok": True, "detail": "If the email exists, a reset link has been sent."}
+
+
+@router.post("/customer/auth/reset-password")
+async def reset_password(data: ResetPasswordRequest):
+    """Reset password using the token from the email link."""
+    token_hash = hashlib.sha256(data.token.encode()).hexdigest()
+    record = await db.password_resets.find_one({
+        "token_hash": token_hash,
+        "used": False,
+    })
+    if not record:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+
+    if record.get("expires_at", "") < datetime.now(timezone.utc).isoformat():
+        raise HTTPException(status_code=400, detail="Reset link has expired")
+
+    if len(data.password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+
+    email = record["email"]
+    new_hash = hash_password(data.password)
+
+    # Update password on ALL customer records with this email
+    result = await db.customers.update_many(
+        {"email": {"$regex": f"^{email}$", "$options": "i"}},
+        {"$set": {"password_hash": new_hash, "updated_at": datetime.now(timezone.utc).isoformat()}},
+    )
+
+    # Mark token as used
+    await db.password_resets.update_one(
+        {"token_hash": token_hash},
+        {"$set": {"used": True, "used_at": datetime.now(timezone.utc).isoformat()}},
+    )
+
+    logger.info(f"Password reset for {email}: {result.modified_count} records updated")
+    return {"ok": True, "detail": "Password has been reset successfully"}

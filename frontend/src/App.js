@@ -174,6 +174,7 @@ function AppRoutes() {
         <Route path="settings" element={<Settings />} />
         <Route path="users" element={<UserManagement />} />
         <Route path="finances" element={<FinancesFullPage />} />
+        <Route path="financesreport" element={<Finances />} />
         <Route path="ai-metrics" element={<AiMetrics />} />
         <Route path="quick-approval" element={<QuickApproval />} />
         <Route path="logistics/map" element={<LogisticsMapPage />} />

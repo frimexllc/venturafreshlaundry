@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import axios from "axios";
 import { toast } from "sonner";
-import { User, Mail, Lock, ArrowRight, Eye, EyeOff, Phone, MapPin, Building2, Hash, ShieldCheck, X } from "lucide-react";
+import { User, Mail, Lock, ArrowRight, Eye, EyeOff, Phone, MapPin, Building2, Hash, ShieldCheck, X, CheckCircle } from "lucide-react";
 import PublicNav from "../components/PublicNav";
 import { useLocale } from "../context/LocaleContext";
 
@@ -182,19 +182,35 @@ export default function CustomerLogin() {
   const [loading,          setLoading]          = useState(false);
   const [showPass,         setShowPass]         = useState(false);
   const [acceptedPolicies, setAcceptedPolicies] = useState(false);
-  const [regStep,          setRegStep]          = useState(1); // 1=basic, 2=contact+address
+  const [regStep,          setRegStep]          = useState(1);
   const [showTermsModal,   setShowTermsModal]   = useState(false);
+  const [forgotMode,       setForgotMode]       = useState(false);
+  const [forgotEmail,      setForgotEmail]      = useState("");
+  const [forgotSent,       setForgotSent]       = useState(false);
+  const [resetToken,       setResetToken]       = useState(null);
+  const [resetPassword,    setResetPassword]    = useState("");
+  const [resetConfirm,     setResetConfirm]     = useState("");
   const [form, setForm] = useState({ name: "", email: "", password: "", phone: "", address: "", city: "", state: "", zip_code: "" });
   const setF = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
-  // Get redirect path from URL params (stable ref - only read once on mount)
+  // Get redirect path and reset token from URL
   const redirectRef = useRef(new URLSearchParams(window.location.search).get("redirect") || "/account");
   const redirectPath = redirectRef.current;
+
+  // Check for reset token in URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const rt = params.get("reset");
+    if (rt) {
+      setResetToken(rt);
+      setMode("login");
+    }
+  }, []);
 
   // If already logged in, redirect
   useEffect(() => {
     const token = localStorage.getItem("customer_token");
-    if (token) navigate(redirectPath, { replace: true });
+    if (token && !resetToken) navigate(redirectPath, { replace: true });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const switchMode = (m) => {
@@ -259,6 +275,36 @@ export default function CustomerLogin() {
     setShowTermsModal(false);
     toast.success(t("Account created!", "¡Cuenta creada!"));
     navigate(redirectPath);
+  };
+
+  const handleForgotPassword = async (e) => {
+    e.preventDefault();
+    if (!forgotEmail.includes("@")) { toast.error(t("Enter a valid email", "Correo inválido")); return; }
+    setLoading(true);
+    try {
+      await axios.post(`${API}/customer/auth/forgot-password`, { email: forgotEmail });
+      setForgotSent(true);
+      toast.success(t("Check your email for a reset link", "Revisa tu correo para el enlace de recuperación"));
+    } catch (err) {
+      toast.error(err.response?.data?.detail || t("Error sending reset email", "Error al enviar correo de recuperación"));
+    } finally { setLoading(false); }
+  };
+
+  const handleResetPassword = async (e) => {
+    e.preventDefault();
+    if (resetPassword.length < 6) { toast.error(t("Password must be at least 6 characters", "La contraseña debe tener al menos 6 caracteres")); return; }
+    if (resetPassword !== resetConfirm) { toast.error(t("Passwords don't match", "Las contraseñas no coinciden")); return; }
+    setLoading(true);
+    try {
+      await axios.post(`${API}/customer/auth/reset-password`, { token: resetToken, password: resetPassword });
+      toast.success(t("Password reset! You can now login.", "¡Contraseña restablecida! Ya puedes iniciar sesión."));
+      setResetToken(null);
+      setResetPassword("");
+      setResetConfirm("");
+      window.history.replaceState({}, "", "/account/login");
+    } catch (err) {
+      toast.error(err.response?.data?.detail || t("Reset failed", "Error al restablecer"));
+    } finally { setLoading(false); }
   };
 
   const isLogin = mode === "login";
@@ -427,6 +473,72 @@ export default function CustomerLogin() {
                   {/* Top accent */}
                   <div className="h-[3px]" style={{ background: "linear-gradient(90deg,hsl(var(--primary)),#38bdf8,#2563eb)" }} />
 
+                  {/* ─── RESET PASSWORD VIEW (from email link) ──── */}
+                  {resetToken ? (
+                    <form onSubmit={handleResetPassword} className="p-6 flex flex-col gap-4">
+                      <div className="text-center mb-2">
+                        <div className="w-12 h-12 bg-sky-50 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                          <Lock className="w-6 h-6 text-sky-500" />
+                        </div>
+                        <h2 className="text-lg font-bold text-slate-800">{t("New Password", "Nueva Contraseña")}</h2>
+                        <p className="text-xs text-slate-400 mt-1">{t("Enter your new password below", "Ingresa tu nueva contraseña")}</p>
+                      </div>
+                      <Field label={t("New Password", "Nueva contraseña")} icon={Lock}
+                        type={showPass ? "text" : "password"} value={resetPassword}
+                        onChange={e => setResetPassword(e.target.value)} required placeholder="••••••••"
+                        testId="reset-password-input" autoComplete="new-password"
+                        rightEl={<button type="button" onClick={() => setShowPass(p => !p)} className="text-slate-400 hover:text-slate-600 transition-colors"><Eye className="w-[15px] h-[15px]" /></button>} />
+                      <Field label={t("Confirm Password", "Confirmar contraseña")} icon={Lock}
+                        type="password" value={resetConfirm}
+                        onChange={e => setResetConfirm(e.target.value)} required placeholder="••••••••"
+                        testId="reset-confirm-input" autoComplete="new-password" />
+                      <button type="submit" disabled={loading} data-testid="reset-submit-btn"
+                        className="btn-primary w-full flex items-center justify-center gap-2 py-3 text-[12px] font-bold uppercase tracking-wider disabled:opacity-50">
+                        {loading ? <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : null}
+                        {t("Reset Password", "Restablecer Contraseña")}
+                      </button>
+                      <button type="button" onClick={() => { setResetToken(null); window.history.replaceState({}, "", "/account/login"); }}
+                        className="text-xs text-sky-500 font-semibold hover:underline text-center">
+                        ← {t("Back to login", "Volver al login")}
+                      </button>
+                    </form>
+
+                  /* ─── FORGOT PASSWORD VIEW ──── */
+                  ) : forgotMode ? (
+                    <form onSubmit={handleForgotPassword} className="p-6 flex flex-col gap-4">
+                      <div className="text-center mb-2">
+                        <div className="w-12 h-12 bg-sky-50 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                          <Mail className="w-6 h-6 text-sky-500" />
+                        </div>
+                        <h2 className="text-lg font-bold text-slate-800">{t("Forgot Password?", "¿Olvidaste tu contraseña?")}</h2>
+                        <p className="text-xs text-slate-400 mt-1">{t("We'll send you a reset link", "Te enviaremos un enlace de recuperación")}</p>
+                      </div>
+                      {forgotSent ? (
+                        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-center">
+                          <CheckCircle className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
+                          <p className="text-sm font-semibold text-emerald-700">{t("Email sent!", "¡Correo enviado!")}</p>
+                          <p className="text-xs text-emerald-600 mt-1">{t("Check your inbox for the reset link", "Revisa tu bandeja de entrada para el enlace")}</p>
+                        </div>
+                      ) : (
+                        <Field label={t("Email Address", "Correo electrónico")} icon={Mail} type="email"
+                          value={forgotEmail} onChange={e => setForgotEmail(e.target.value)} required
+                          placeholder="you@example.com" testId="forgot-email-input" autoComplete="email" />
+                      )}
+                      {!forgotSent && (
+                        <button type="submit" disabled={loading} data-testid="forgot-submit-btn"
+                          className="btn-primary w-full flex items-center justify-center gap-2 py-3 text-[12px] font-bold uppercase tracking-wider disabled:opacity-50">
+                          {loading ? <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : null}
+                          {t("Send Reset Link", "Enviar Enlace")}
+                        </button>
+                      )}
+                      <button type="button" onClick={() => { setForgotMode(false); setForgotSent(false); }}
+                        className="text-xs text-sky-500 font-semibold hover:underline text-center">
+                        ← {t("Back to login", "Volver al login")}
+                      </button>
+                    </form>
+
+                  /* ─── NORMAL LOGIN / REGISTER FORM ──── */
+                  ) : (
                   <form onSubmit={handleSubmit} className="p-6 flex flex-col gap-4">
 
                     {/* ─── LOGIN FIELDS ──────────────────── */}
@@ -434,11 +546,15 @@ export default function CustomerLogin() {
                       <Field label={t("Email Address", "Correo electrónico")} icon={Mail} type="email"
                         value={form.email} onChange={e => setF("email", e.target.value)} required
                         placeholder="you@example.com" testId="customer-email-input" autoComplete="email" />
-                      <Field label={t("Password", "Contraseña")} hint={t("Forgot?", "¿Olvidaste?")} icon={Lock}
+                      <Field label={t("Password", "Contraseña")} icon={Lock}
                         type={showPass ? "text" : "password"} value={form.password}
                         onChange={e => setF("password", e.target.value)} required placeholder="••••••••"
                         testId="customer-password-input" autoComplete="current-password"
                         rightEl={<button type="button" onClick={() => setShowPass(p => !p)} className="text-slate-400 hover:text-slate-600 transition-colors duration-100 focus:outline-none">{showPass ? <EyeOff className="w-[15px] h-[15px]" /> : <Eye className="w-[15px] h-[15px]" />}</button>} />
+                      <button type="button" onClick={() => { setForgotMode(true); setForgotEmail(form.email); }}
+                        className="text-xs text-sky-500 font-semibold hover:underline text-right -mt-2" data-testid="forgot-password-link">
+                        {t("Forgot your password?", "¿Olvidaste tu contraseña?")}
+                      </button>
                     </>)}
 
                     {/* ─── REGISTER STEP 1: Basic info ──── */}
@@ -458,7 +574,6 @@ export default function CustomerLogin() {
 
                     {/* ─── REGISTER STEP 2: Contact + Address ──── */}
                     {!isLogin && regStep === 2 && (<>
-                      {/* Step indicator */}
                       <div className="flex items-center gap-2 mb-1">
                         <button type="button" onClick={() => setRegStep(1)} className="text-[10px] font-bold text-sky-500 hover:text-sky-600 transition-colors" data-testid="reg-back-btn">
                           ← {t("Back", "Atrás")}
@@ -467,16 +582,13 @@ export default function CustomerLogin() {
                           {t("Step 2 of 2 — Contact & Address", "Paso 2 de 2 — Contacto y Dirección")}
                         </span>
                       </div>
-
                       <Field label={t("Phone Number", "Número de teléfono")} icon={Phone}
                         type="tel" value={form.phone} onChange={e => setF("phone", e.target.value)}
                         required placeholder="(805) 555-1234" testId="customer-phone-input" autoComplete="tel" />
-
                       <Field label={t("Street Address", "Dirección")} icon={MapPin}
                         value={form.address} onChange={e => setF("address", e.target.value)}
                         required placeholder={t("1120 Main St, Apt 2B", "1120 Calle Principal, Apt 2B")}
                         testId="customer-address-input" autoComplete="street-address" />
-
                       <div className="grid grid-cols-2 gap-3">
                         <Field label={t("City", "Ciudad")} icon={Building2}
                           value={form.city} onChange={e => setF("city", e.target.value)}
@@ -485,7 +597,6 @@ export default function CustomerLogin() {
                           value={form.state} onChange={e => setF("state", e.target.value)}
                           placeholder="CA" testId="customer-state-input" autoComplete="address-level1" />
                       </div>
-
                       <Field label={t("Zip Code", "Código Postal")} icon={Hash}
                         value={form.zip_code} onChange={e => setF("zip_code", e.target.value)}
                         required placeholder="93003" testId="customer-zip-input" autoComplete="postal-code" />
@@ -574,6 +685,7 @@ export default function CustomerLogin() {
                     </p>
 
                   </form>
+                  )}
                 </div>
               </Tilt>
 
