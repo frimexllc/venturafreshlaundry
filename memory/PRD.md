@@ -140,6 +140,16 @@ NEW -> CONFIRMED -> PROCESSING -> READY -> COMPLETED
 - [x] Operator panel: Shows rate and plan in order detail total section
 - [x] Minimums enforced: P&D $40 minimum, W&F 10 lb minimum
 
+### Phase 10b (Auto Delivery Fee + SMS/Email Only) — 2026-04-29
+- [x] Auto-geocoding: At order creation, pickup_address is geocoded via Nominatim
+- [x] Auto distance calculation: haversine formula from store coords to customer coords
+- [x] Delivery fee formula: 3 miles free, $1.50/mile after, capped at $25
+- [x] delivery_fee, distance_miles, coords stored on order at creation
+- [x] calculate_service_amount includes delivery_fee in total (subtotal + delivery)
+- [x] Frontend calculateDeliveryFee synced with backend ($1.50/mile, cap $25)
+- [x] Auto-notification after lbs save restricted to SMS or Email only (not call/whatsapp)
+- [x] Verified: P&D Premium 20lbs + 3.66mi = $60.99 ($60.00 + $0.99 delivery)
+
 ### Customer API Endpoints (Updated)
 - `POST /api/customer/auth/register`, `POST /api/customer/auth/login`
 - `GET /api/customer/me`, `GET /api/customer/orders`, `GET /api/customer/pending-payments`
