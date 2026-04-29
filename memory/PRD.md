@@ -129,6 +129,17 @@ NEW -> CONFIRMED -> PROCESSING -> READY -> COMPLETED
 - [x] NOTE: SendGrid API key returning 401 — user needs to regenerate
 - [x] NOTE: WhatsApp requires Twilio WhatsApp Business channel setup
 
+### Phase 10 (Dynamic Pricing by Service Tier) — 2026-04-29
+- [x] Pricing tables: P&D Standard $2.50/$2.75, Premium $2.75/$3.00, Express $3.00/$3.25 (member/regular)
+- [x] Pricing tables: W&F Standard $2.25, Premium $2.50, Express $2.75
+- [x] Backend: service_plan + price_per_lb stored on order at creation time
+- [x] Backend: calculate_service_amount uses stored price_per_lb (not hardcoded)
+- [x] Backend: OrderResponse includes service_plan, price_per_lb, delivery_fee, customer_email
+- [x] Frontend: PlanSelector shows prices dynamically per tier (member/regular for P&D, flat for W&F)
+- [x] Frontend: calculateServiceCharge uses order.price_per_lb for correct recalculation
+- [x] Operator panel: Shows rate and plan in order detail total section
+- [x] Minimums enforced: P&D $40 minimum, W&F 10 lb minimum
+
 ### Customer API Endpoints (Updated)
 - `POST /api/customer/auth/register`, `POST /api/customer/auth/login`
 - `GET /api/customer/me`, `GET /api/customer/orders`, `GET /api/customer/pending-payments`
