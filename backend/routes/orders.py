@@ -568,6 +568,13 @@ async def update_order_status(
                 detail="Order must be delivered before it can be completed"
             )
 
+    # Prevent cancelling completed or delivered orders
+    if normalized_status == "cancelled" and current_status in ["completed", "delivered"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot cancel an order that is already {current_status}"
+        )
+
     now = datetime.now(timezone.utc).isoformat()
     await db.orders.update_one(
         {"id": order_id},
@@ -637,7 +644,15 @@ async def update_order_status(
                 f"orden {order_id} → {normalized_status}"
             )
 
-    return {"message": f"Status updated to {normalized_status}"}
+    # Emit realtime event
+    await emit_realtime("notification", {
+        "type": "order_status_changed",
+        "order_id": order_id,
+        "status": normalized_status,
+        "order_number": order.get("order_number"),
+    })
+
+    return {"message": f"Status updated to {normalized_status}", "order_id": order_id}
 
 
 @router.patch("/orders/{order_id}/payment-status")
@@ -706,6 +721,13 @@ async def capture_order_payment(
     )
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
+
+    # Prevent double payment
+    if order.get("payment_status") == "paid":
+        raise HTTPException(
+            status_code=400,
+            detail="Order is already paid"
+        )
 
     total_amount = order.get("total_amount")
     amount_received = data.amount_received
@@ -798,6 +820,120 @@ async def capture_order_payment(
     return {"ok": True, "order_id": order.get("id"), **update_data}
 
 
+# ==================== DELETE ORDER ====================
+
+
+@router.delete("/orders/{order_id}")
+async def delete_order(
+    order_id: str,
+    current_user: dict = Depends(require_role([ROLE_OPERATOR])),
+) -> dict:
+    """
+    Delete an order permanently.
+    Requires operator role. This action cannot be undone.
+    """
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    # Prevent deletion of completed orders (optional business rule)
+    if order.get("status") == "completed":
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete completed orders. Please archive instead."
+        )
+
+    # Delete the order
+    result = await db.orders.delete_one({"id": order_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    # Create audit log
+    await create_audit_log(
+        "ORDER_DELETED",
+        "order",
+        order_id,
+        current_user["id"],
+        {
+            "order_number": order.get("order_number"),
+            "customer_name": order.get("customer_name"),
+            "service_type": order.get("service_type"),
+            "status": order.get("status"),
+        }
+    )
+
+    # Emit realtime event
+    await emit_realtime("notification", {
+        "type": "order_deleted",
+        "order_id": order_id,
+        "order_number": order.get("order_number"),
+    })
+
+    return {
+        "ok": True,
+        "message": f"Order {order.get('order_number', order_id)} deleted successfully",
+        "order_id": order_id
+    }
+
+
+@router.delete("/orders/batch-delete")
+async def batch_delete_orders(
+    order_ids: List[str],
+    current_user: dict = Depends(require_role([ROLE_OPERATOR])),
+) -> dict:
+    """
+    Delete multiple orders permanently.
+    Requires operator role. This action cannot be undone.
+    """
+    if not order_ids:
+        raise HTTPException(status_code=400, detail="No order IDs provided")
+
+    # Find all orders to delete
+    orders = await db.orders.find(
+        {"id": {"$in": order_ids}},
+        {"_id": 0}
+    ).to_list(len(order_ids))
+
+    if not orders:
+        raise HTTPException(status_code=404, detail="No orders found")
+
+    # Filter out completed orders (optional)
+    completed_orders = [o for o in orders if o.get("status") == "completed"]
+    if completed_orders:
+        completed_ids = [o.get("order_number") for o in completed_orders[:5]]
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete completed orders. Found {len(completed_orders)} completed orders: {', '.join(completed_ids)}"
+        )
+
+    # Perform deletion
+    result = await db.orders.delete_many({"id": {"$in": order_ids}})
+
+    # Create audit log
+    await create_audit_log(
+        "ORDERS_BATCH_DELETED",
+        "orders",
+        ",".join(order_ids[:10]),
+        current_user["id"],
+        {
+            "count": result.deleted_count,
+            "order_ids": order_ids[:50],  # Limit to 50 IDs in log
+        }
+    )
+
+    # Emit realtime event
+    await emit_realtime("notification", {
+        "type": "orders_batch_deleted",
+        "count": result.deleted_count,
+    })
+
+    return {
+        "ok": True,
+        "message": f"{result.deleted_count} orders deleted successfully",
+        "deleted_count": result.deleted_count
+    }
+
+
 # ==================== STRIPE CHECKOUT ====================
 
 
@@ -821,6 +957,13 @@ async def create_order_stripe_checkout(
     )
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
+
+    # Prevent duplicate checkout sessions
+    if order.get("payment_status") == "paid":
+        raise HTTPException(
+            status_code=400,
+            detail="Order is already paid"
+        )
 
     customer = None
     if order.get("customer_id"):
@@ -1135,7 +1278,7 @@ async def get_order_ticket(
     if lbs > 0:
         items_html += (
             f'<tr><td>Peso</td><td class="r">{lbs} lbs</td></tr>'
-            f'<tr><td>Rate</td><td class="r">${rate:.2f}/lb</td></tr>'
+            f'</table><td>Rate</td><td class="r">${rate:.2f}/lb</td></tr>'
             f'<tr><td>Subtotal</td><td class="r">${subtotal:.2f}</td></tr>'
         )
     if delivery_fee > 0:
@@ -1207,7 +1350,7 @@ td{{padding:3px 0;font-size:11px;vertical-align:top}}
   <p>Gracias por su preferencia!</p>
   <p>venturafreshlaundry.com</p>
 </div>
-<script>window.onload=function(){{window.print();}}</script>
+<script>window.onload=function(){{window.print();}};</script>
 </body></html>"""
 
     return HTMLResponse(content=html)
@@ -1266,13 +1409,13 @@ async def notify_customer_direct(
     if pay_status == "paid":
         method_name = (order.get("payment_method") or "").capitalize() or "Tarjeta"
         msg = (
-            f"\U0001f9fc Ventura Fresh Laundry\n\n"
-            f"Hola {name} \U0001f44b\n"
+            f"🧼 Ventura Fresh Laundry\n\n"
+            f"Hola {name} 👋\n"
             f"Confirmamos el pago de tu orden #{order_num}.\n\n"
-            f"\u2705 Total: {total_text}\n"
-            f"\u2705 Metodo: {method_name}\n"
-            f"\u2705 Estado: Pagado\n\n"
-            f"Gracias por confiar en Ventura Fresh Laundry \U0001f9fc\u2728"
+            f"✅ Total: {total_text}\n"
+            f"✅ Metodo: {method_name}\n"
+            f"✅ Estado: Pagado\n\n"
+            f"Gracias por confiar en Ventura Fresh Laundry 🧼✨"
         )
     elif payload.message:
         msg = payload.message
@@ -1282,24 +1425,24 @@ async def notify_customer_direct(
         breakdown = ""
         if lbs > 0:
             breakdown = (
-                f"\n\U0001f522 Desglose:\n"
-                f"\u2022 {lbs} lbs x ${rate:.2f}/lb = ${subtotal:.2f}\n"
+                f"\n📊 Desglose:\n"
+                f"• {lbs} lbs x ${rate:.2f}/lb = ${subtotal:.2f}\n"
             )
             if delivery_fee > 0:
-                breakdown += f"\u2022 Delivery: ${delivery_fee:.2f}\n"
-            breakdown += f"\u2022 Total: {total_text}\n"
+                breakdown += f"• Delivery: ${delivery_fee:.2f}\n"
+            breakdown += f"• Total: {total_text}\n"
 
         msg = (
-            f"\U0001f9fc Ventura Fresh Laundry\n\n"
-            f"Hi {name} \U0001f44b\n"
+            f"🧼 Ventura Fresh Laundry\n\n"
+            f"Hi {name} 👋\n"
             f"Your order #{order_num} is ready for payment.\n"
             f"{breakdown}\n\n"
-            f"\U0001f4b3 Complete your payment securely through your customer portal\n"
-            f"\U0001f449 Please click the link below to access your account:\n"
+            f"💳 Complete your payment securely through your customer portal\n"
+            f"👉 Please click the link below to access your account:\n"
             f"{short_url or 'Link not available'}\n\n"
-            f"\u26a1 Fast, secure, and easy process\n\n"
+            f"⚡ Fast, secure, and easy process\n\n"
             f"If you have any questions, feel free to contact us at (805) 234-8181\n\n"
-            f"Thank you for choosing Ventura Fresh Laundry \U0001f9fc\u2728"
+            f"Thank you for choosing Ventura Fresh Laundry 🧼✨"
         )
 
     # Build HTML email
@@ -1396,9 +1539,9 @@ def _build_paid_email_html(
   <tr><td style="background:linear-gradient(135deg,#059669,#10b981);padding:28px 30px;text-align:center;">
     <h1 style="margin:0;color:#fff;font-size:20px;">Ventura Fresh Laundry</h1>
     <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Payment Confirmed</p>
-   </td></tr>
+    </td></tr>
   <tr><td style="padding:30px;text-align:center;">
-    <div style="width:64px;height:64px;background:#dcfce7;border-radius:50%;margin:0 auto 16px;line-height:64px;font-size:32px;">&#10003;</div>
+    <div style="width:64px;height:64px;background:#dcfce7;border-radius:50%;margin:0 auto 16px;line-height:64px;font-size:32px;">✓</div>
     <p style="margin:0;font-size:15px;color:#334155;">Hello <strong>{name}</strong>,</p>
     <p style="margin:10px 0 0;font-size:14px;color:#64748b;">We confirm payment for your order.</p>
     <table style="margin:20px auto;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;" cellpadding="12" cellspacing="0">
@@ -1408,15 +1551,15 @@ def _build_paid_email_html(
        <td style="font-weight:800;font-size:18px;color:#059669;border-bottom:1px solid #e2e8f0;">{total_text}</td></tr>
       <tr><td style="font-size:13px;color:#64748b;">Method</td>
        <td style="font-weight:600;color:#0f172a;">{method_name}</td></tr>
-    </table>
+    <table>
     <p style="margin:20px 0 0;font-size:13px;color:#64748b;">Thank you for trusting us!</p>
-   </td></tr>
+    </td></tr>
   <tr><td style="padding:0 30px 28px;">
     <hr style="border:none;border-top:1px solid #e2e8f0;margin:0 0 16px;">
-    <p style="margin:0;font-size:11px;color:#94a3b8;text-align:center;">Ventura Fresh Laundry &middot; 5722 Telephone Rd Suite 5, Ventura CA 93003 &middot; (805) 515-4030</p>
-   </td></tr>
+    <p style="margin:0;font-size:11px;color:#94a3b8;text-align:center;">Ventura Fresh Laundry · 5722 Telephone Rd Suite 5, Ventura CA 93003 · (805) 515-4030</p>
+    </td></tr>
 </table>
-   </td></tr>
+    </td></tr>
 </table>
 </body></html>"""
 
@@ -1450,8 +1593,8 @@ def _build_unpaid_email_html(
         pay_btn = f"""
   <tr><td style="padding:24px 30px 0;text-align:center;">
     <a href="{payment_url}" style="display:inline-block;padding:16px 48px;background:#0891b2;color:#fff;text-decoration:none;font-weight:700;font-size:16px;border-radius:12px;">Pay {total_text} Now</a>
-    <p style="margin:10px 0 0;font-size:11px;color:#94a3b8;">Secure link &middot; Card, Apple Pay, Google Pay</p>
-   </td></tr>"""
+    <p style="margin:10px 0 0;font-size:11px;color:#94a3b8;">Secure link · Card, Apple Pay, Google Pay</p>
+    </td></tr>"""
 
     return f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
@@ -1462,11 +1605,11 @@ def _build_unpaid_email_html(
   <tr><td style="background:linear-gradient(135deg,#0e7490,#0891b2);padding:28px 30px;">
     <h1 style="margin:0;color:#fff;font-size:20px;">Ventura Fresh Laundry</h1>
     <p style="margin:4px 0 0;color:rgba(255,255,255,.8);font-size:13px;">Your order is ready for payment</p>
-   </td></tr>
+    </td></tr>
   <tr><td style="padding:28px 30px 0;">
     <p style="margin:0;font-size:15px;color:#334155;">Hello <strong>{name}</strong>,</p>
     <p style="margin:8px 0 0;font-size:14px;color:#64748b;">Your order <strong>#{order_num}</strong> is ready. Here are your payment options:</p>
-   </td></tr>
+    </td></tr>
   <!-- Breakdown -->
   <tr><td style="padding:20px 30px 0;">
     <table width="100%" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;" cellpadding="0" cellspacing="0">
@@ -1474,7 +1617,7 @@ def _build_unpaid_email_html(
       <tr><td style="font-size:14px;font-weight:700;color:#0f172a;padding:14px 16px;background:#f0f9ff;">TOTAL</td>
        <td style="font-size:20px;font-weight:800;color:#0891b2;padding:14px 16px;background:#f0f9ff;text-align:right;">{total_text}</td></tr>
     </table>
-   </td></tr>
+    </td></tr>
   {pay_btn}
   <!-- Other payment methods -->
   <tr><td style="padding:20px 30px 0;">
@@ -1485,20 +1628,20 @@ def _build_unpaid_email_html(
         <p style="margin:2px 0 0;font-size:12px;color:#713f12;">Venmo: <strong>@VFLaundry</strong></p>
         <p style="margin:2px 0 0;font-size:12px;color:#713f12;">Cash App: <strong>$@VFLaundry</strong></p>
         <p style="margin:4px 0 0;font-size:11px;color:#a16207;">Note: Please include your order number {order_num}</p>
-       </td></tr>
+        </td></tr>
       <tr><td style="padding:14px 16px;background:#f0fdf4;">
         <p style="margin:0;font-size:13px;font-weight:700;color:#166534;">Cash</p>
         <p style="margin:4px 0 0;font-size:12px;color:#15803d;">Pay upon pickup or delivery</p>
-       </td></tr>
+        </td></tr>
     </table>
-   </td></tr>
+    </td></tr>
   <tr><td style="padding:24px 30px;">
     <p style="margin:0;font-size:13px;color:#64748b;">Once payment is completed, your order will continue processing.</p>
     <p style="margin:6px 0 0;font-size:13px;color:#64748b;">Thank you for trusting Ventura Fresh Laundry!</p>
     <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0;">
-    <p style="margin:0;font-size:11px;color:#94a3b8;text-align:center;">Ventura Fresh Laundry &middot; 5722 Telephone Rd Suite 5, Ventura CA 93003 &middot; (805) 515-4030</p>
-   </td></tr>
+    <p style="margin:0;font-size:11px;color:#94a3b8;text-align:center;">Ventura Fresh Laundry · 5722 Telephone Rd Suite 5, Ventura CA 93003 · (805) 515-4030</p>
+    </td></tr>
 </table>
-   </td></tr>
+    </td></tr>
 </table>
 </body></html>"""

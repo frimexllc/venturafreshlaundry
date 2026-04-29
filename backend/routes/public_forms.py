@@ -50,6 +50,33 @@ def get_price_per_lb(service_type: str, plan: str, has_membership: bool = False)
     return PRICING_WF.get(plan, PRICING_WF["standard"])
 
 
+async def calculate_auto_delivery_fee(address: str) -> dict:
+    """Geocode address, calculate distance from store, return delivery fee info."""
+    if not address or len(address.strip()) < 5:
+        return {"distance_miles": None, "delivery_fee": 0, "coords": None}
+    try:
+        from routes.logistics import geocode_address
+        from routes.delivery_rules import haversine_miles, STORE_COORDS
+        coords = await geocode_address(address)
+        if not coords.get("lat") or not coords.get("lng"):
+            return {"distance_miles": None, "delivery_fee": 0, "coords": None}
+        distance = haversine_miles(STORE_COORDS[0], STORE_COORDS[1], coords["lat"], coords["lng"])
+        # 3 miles free, $1.50/mile after, cap $25
+        if distance <= 3:
+            fee = 0.0
+        else:
+            fee = round(min((distance - 3) * 1.50, 25.0), 2)
+        return {
+            "distance_miles": round(distance, 2),
+            "delivery_fee": fee,
+            "coords": coords,
+        }
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Auto delivery fee calculation failed: {e}")
+        return {"distance_miles": None, "delivery_fee": 0, "coords": None}
+
+
 
 class PublicPickupRequest(BaseModel):
     name: str
@@ -304,6 +331,12 @@ PERSONALITY GUIDELINES:
         service_plan = (data.service_plan or "standard").lower()
         price_lb = get_price_per_lb(normalized_service_type, service_plan, has_membership)
 
+        # Auto-calculate delivery fee based on distance from store
+        delivery_info = await calculate_auto_delivery_fee(normalized_address)
+        delivery_fee = delivery_info.get("delivery_fee", 0)
+        distance_miles = delivery_info.get("distance_miles")
+        coords = delivery_info.get("coords")
+
         order_id = str(uuid.uuid4())
         order_number = await generate_order_number()
         order = {
@@ -315,6 +348,9 @@ PERSONALITY GUIDELINES:
             "service_type": normalized_service_type,
             "service_plan": service_plan,
             "price_per_lb": price_lb,
+            "delivery_fee": delivery_fee,
+            "distance_miles": distance_miles,
+            "coords": coords,
             "pickup_date": data.pickup_date,
             "pickup_time_window": data.pickup_time,
             "pickup_address": normalized_address,

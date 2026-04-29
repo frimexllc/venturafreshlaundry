@@ -294,17 +294,19 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
         toast.success(t("Lbs saved & total recalculated", "Libras guardadas y total recalculado"));
         onRefresh?.();
 
-        // ── NOTIFICACIÓN AUTOMÁTICA al cliente ──────────────────────────────
+        // ── NOTIFICACIÓN AUTOMÁTICA al cliente (solo SMS o Email) ───────────
         try {
           const preferred = localOrder.preferred_contact || "sms";
+          // Solo notificar via SMS o Email tras setear lbs
+          const autoChannel = (preferred === "email") ? "email" : "sms";
           const notifyRes = await fetch(`${API_URL}/api/orders/${orderId}/notify-customer`, {
             method: "POST",
             headers: authHeaders(),
-            body: JSON.stringify({ channel: preferred }),
+            body: JSON.stringify({ channel: autoChannel }),
           });
           const notifyData = await notifyRes.json();
           if (notifyRes.ok && notifyData.ok) {
-            toast.success(t("Notification sent to customer", "Notificación enviada al cliente"));
+            toast.success(t(`Notification sent via ${autoChannel.toUpperCase()}`, `Notificación enviada vía ${autoChannel.toUpperCase()}`));
           } else {
             console.warn("Auto-notification failed:", notifyData.detail);
           }

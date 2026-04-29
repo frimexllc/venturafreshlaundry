@@ -115,8 +115,11 @@ function getDistanceInMiles(lat1, lng1, lat2, lng2) {
 }
 
 function calculateDeliveryFee(distanceMiles) {
+  // 3 miles free, $1.50/mile after (matches backend delivery_rules.py)
   if (distanceMiles <= 3) return 0;
-  return (distanceMiles - 3) * 2.99;
+  const extraMiles = distanceMiles - 3;
+  const fee = extraMiles * 1.50;
+  return Math.min(Math.round(fee * 100) / 100, 25.00); // cap $25
 }
 
 function getMarkerColor(status) {
