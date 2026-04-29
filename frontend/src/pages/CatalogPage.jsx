@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useLocale } from "../context/LocaleContext";
 import {
   Package, Search, Plus, Trash2, Edit, PlusCircle,
-  Boxes, ChevronDown, Check, X, Tag, Settings,
+  Boxes, ChevronDown, Check, X, Tag, Settings, AlertTriangle, RefreshCw,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -29,6 +29,129 @@ const PALETTE = [
   { dot: "bg-rose-500",   bg: "bg-rose-50 border-rose-200",   badge: "bg-rose-100 text-rose-700",   pill: "bg-rose-600" },
 ];
 const palette = (i) => PALETTE[i % PALETTE.length];
+
+// ── Componente de Confirmación Modal ──────────────────────────────────
+const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message, confirmText = "Eliminar", cancelText = "Cancelar", variant = "danger" }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className={`p-2 rounded-full ${variant === 'danger' ? 'bg-red-100' : 'bg-amber-100'}`}>
+            <AlertTriangle className={`h-5 w-5 ${variant === 'danger' ? 'text-red-600' : 'text-amber-600'}`} />
+          </div>
+          <h2 className="text-xl font-bold text-slate-900">{title}</h2>
+        </div>
+        <p className="text-slate-600 mb-6">{message}</p>
+        <div className="flex gap-3">
+          <Button type="button" variant="outline" onClick={onClose} className="flex-1">
+            {cancelText}
+          </Button>
+          <Button 
+            type="button" 
+            onClick={onConfirm} 
+            className={`flex-1 ${variant === 'danger' ? 'bg-red-600 hover:bg-red-700' : 'bg-amber-600 hover:bg-amber-700'}`}
+          >
+            {confirmText}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Modal para reiniciar catálogo (doble confirmación) ────────────────
+const ResetCatalogModal = ({ isOpen, onClose, onConfirm }) => {
+  const [step, setStep] = useState(1);
+  const [confirmText, setConfirmText] = useState("");
+
+  if (!isOpen) return null;
+
+  const handleConfirm = () => {
+    if (step === 1) {
+      setStep(2);
+    } else if (step === 2 && confirmText === "REINICIAR CATÁLOGO") {
+      onConfirm();
+      onClose();
+      setStep(1);
+      setConfirmText("");
+    }
+  };
+
+  const handleClose = () => {
+    onClose();
+    setStep(1);
+    setConfirmText("");
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/50" onClick={handleClose} />
+      <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="p-2 rounded-full bg-red-100">
+            <RefreshCw className="h-5 w-5 text-red-600" />
+          </div>
+          <h2 className="text-xl font-bold text-slate-900">Reiniciar Catálogo</h2>
+        </div>
+
+        {step === 1 ? (
+          <>
+            <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <p className="text-amber-800 text-sm">
+                ⚠️ <strong>ADVERTENCIA:</strong> Esta acción eliminará TODOS los productos del catálogo. 
+                Esta operación NO se puede deshacer.
+              </p>
+            </div>
+            <ul className="text-sm text-slate-600 space-y-2 mb-6">
+              <li>• Todos los productos del catálogo serán eliminados</li>
+              <li>• Las categorías personalizadas se mantendrán</li>
+              <li>• El inventario no se verá afectado</li>
+              <li>• Se cargarán los productos por defecto</li>
+            </ul>
+            <div className="flex gap-3">
+              <Button type="button" variant="outline" onClick={handleClose} className="flex-1">
+                Cancelar
+              </Button>
+              <Button type="button" onClick={() => setStep(2)} className="flex-1 bg-red-600 hover:bg-red-700">
+                Continuar
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="text-slate-600 mb-3">
+              Para confirmar, escribe <strong className="text-red-600">"REINICIAR CATÁLOGO"</strong> en el campo de abajo:
+            </p>
+            <Input
+              type="text"
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              placeholder="REINICIAR CATÁLOGO"
+              className="mb-4"
+              autoFocus
+            />
+            <div className="flex gap-3">
+              <Button type="button" variant="outline" onClick={() => setStep(1)} className="flex-1">
+                Volver
+              </Button>
+              <Button 
+                type="button" 
+                onClick={handleConfirm} 
+                disabled={confirmText !== "REINICIAR CATÁLOGO"}
+                className="flex-1 bg-red-600 hover:bg-red-700 disabled:bg-slate-300"
+              >
+                Confirmar Reinicio
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
 
 // ── Combobox para categoría con opción "Crear nueva" ─────────────────
 function CategoryCombobox({ value, onChange, categories, onCategoryCreated }) {
@@ -265,7 +388,7 @@ export default function CatalogPage() {
   const { t } = useLocale();
 
   const [items, setItems]             = useState([]);
-  const [categories, setCategories]   = useState(DEFAULT_CATEGORIES); // dynamic!
+  const [categories, setCategories]   = useState(DEFAULT_CATEGORIES);
   const [stockMap, setStockMap]       = useState({});
   const [filter, setFilter]           = useState("");
   const [search, setSearch]           = useState("");
@@ -274,6 +397,7 @@ export default function CatalogPage() {
   const [addToStockItem, setAddToStockItem] = useState(null);
   const [editId, setEditId]           = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [resetCatalogConfirm, setResetCatalogConfirm] = useState({ isOpen: false });
   const [form, setForm] = useState({
     name: "", category: "detergent", brand: "", price: "", in_stock: true, default: false,
   });
@@ -290,11 +414,9 @@ export default function CatalogPage() {
       const data = await r.json().catch(() => []);
       setItems(Array.isArray(data) ? data : []);
 
-      // Build dynamic category list from what's actually in the catalog
       const seen = new Map();
       (Array.isArray(data) ? data : []).forEach(item => {
         if (item.category && !seen.has(item.category)) {
-          // Try to find existing label, otherwise capitalize
           const existing = categories.find(c => c.value === item.category);
           seen.set(item.category, existing?.label || item.category.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase()));
         }
@@ -321,7 +443,6 @@ export default function CatalogPage() {
 
   useEffect(() => { loadCatalog(); loadStock(); }, [filter]);
 
-  // ── Persist categories to localStorage so they survive refresh ─────
   useEffect(() => {
     try { localStorage.setItem("catalog_categories", JSON.stringify(categories)); } catch {}
   }, [categories]);
@@ -333,7 +454,6 @@ export default function CatalogPage() {
     } catch {}
   }, []);
 
-  // ── Category created inline from combobox ──────────────────────────
   const handleCategoryCreated = (newCat) => {
     setCategories(prev => {
       if (prev.some(c => c.value === newCat.value)) return prev;
@@ -342,7 +462,6 @@ export default function CatalogPage() {
     toast.success(`Categoría "${newCat.label}" creada`);
   };
 
-  // ── Save product ───────────────────────────────────────────────────
   const save = async () => {
     if (!form.name.trim()) { toast.error("Nombre requerido"); return; }
     if (!form.category) { toast.error("Selecciona una categoría"); return; }
@@ -376,7 +495,6 @@ export default function CatalogPage() {
     toast.success("Catálogo reiniciado con productos por defecto");
   };
 
-  // ── Derived ────────────────────────────────────────────────────────
   const filtered = search
     ? items.filter(i =>
         i.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -391,7 +509,6 @@ export default function CatalogPage() {
     grouped[key].push(i);
   });
 
-  // Sort groups by category order in our categories array
   const sortedGroupKeys = Object.keys(grouped).sort((a, b) => {
     const ia = categories.findIndex(c => c.value === a);
     const ib = categories.findIndex(c => c.value === b);
@@ -421,7 +538,13 @@ export default function CatalogPage() {
           >
             <Tag className="w-3.5 h-3.5 mr-1" /> Categorías
           </Button>
-          <Button variant="outline" size="sm" onClick={seed}>Reiniciar</Button>
+          <Button 
+            variant="outline" size="sm" 
+            onClick={() => setResetCatalogConfirm({ isOpen: true })}
+            className="border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400"
+          >
+            <RefreshCw className="w-3.5 h-3.5 mr-1" /> Reiniciar
+          </Button>
           <Button
             onClick={() => {
               setEditId(null);
@@ -429,6 +552,7 @@ export default function CatalogPage() {
               setModalOpen(true);
             }}
             data-testid="add-catalog-btn"
+            className="bg-sky-600 hover:bg-sky-700"
           >
             <Plus className="w-4 h-4 mr-1" /> Agregar Producto
           </Button>
@@ -445,7 +569,6 @@ export default function CatalogPage() {
             className="pl-9"
           />
         </div>
-        {/* Dynamic pills — one per category that has products */}
         <div className="flex gap-1.5 flex-wrap">
           <button
             onClick={() => setFilter("")}
@@ -503,7 +626,6 @@ export default function CatalogPage() {
                     className={`border rounded-xl p-3.5 transition-shadow hover:shadow-md flex flex-col gap-2 ${p.bg}`}
                     data-testid={`catalog-item-${item.id}`}
                   >
-                    {/* Title */}
                     <div className="flex items-start justify-between">
                       <div className="min-w-0">
                         <h3 className="font-semibold text-sm text-gray-900 truncate">{item.name}</h3>
@@ -522,7 +644,6 @@ export default function CatalogPage() {
                       </div>
                     </div>
 
-                    {/* Stock level */}
                     <div className="flex items-center justify-between text-xs">
                       {inStock ? (
                         <span className={`font-medium flex items-center gap-1 ${isLow ? "text-amber-600" : "text-green-700"}`}>
@@ -537,7 +658,6 @@ export default function CatalogPage() {
                       {item.price && <span className="font-semibold text-gray-700">${Number(item.price).toFixed(2)}</span>}
                     </div>
 
-                    {/* Add to inventory */}
                     <button
                       onClick={() => setAddToStockItem(item)}
                       className="mt-auto w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium bg-white/70 hover:bg-white border border-white/50 hover:border-gray-300 text-gray-700 transition-colors"
@@ -583,20 +703,24 @@ export default function CatalogPage() {
         />
       )}
 
-      {/* ── Delete confirm ── */}
-      <Dialog open={!!deleteConfirm} onOpenChange={() => setDeleteConfirm(null)}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Confirmar eliminación</DialogTitle></DialogHeader>
-          <div className="space-y-4">
-            <p className="text-gray-600">¿Eliminar <strong>"{deleteConfirm?.name}"</strong> del catálogo?</p>
-            <p className="text-sm text-red-600">Esta acción no se puede deshacer.</p>
-            <div className="flex gap-3">
-              <Button variant="outline" onClick={() => setDeleteConfirm(null)} className="flex-1">Cancelar</Button>
-              <Button onClick={del} className="flex-1 bg-red-600 hover:bg-red-700">Eliminar</Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* ── Delete confirm modal ── */}
+      <ConfirmationModal
+        isOpen={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={del}
+        title="Confirmar eliminación"
+        message={`¿Estás seguro de eliminar "${deleteConfirm?.name}" del catálogo? Esta acción no se puede deshacer.`}
+        confirmText="Eliminar"
+        cancelText="Cancelar"
+        variant="danger"
+      />
+
+      {/* ── Reset catalog modal (doble confirmación) ── */}
+      <ResetCatalogModal
+        isOpen={resetCatalogConfirm.isOpen}
+        onClose={() => setResetCatalogConfirm({ isOpen: false })}
+        onConfirm={seed}
+      />
 
       {/* ── Add / Edit product modal ── */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
@@ -616,7 +740,6 @@ export default function CatalogPage() {
               />
             </div>
 
-            {/* Category — dynamic combobox with "create" */}
             <div>
               <div className="flex items-center justify-between mb-1">
                 <Label>Categoría *</Label>
@@ -668,7 +791,7 @@ export default function CatalogPage() {
               </label>
             </div>
 
-            <Button onClick={save} className="w-full" data-testid="save-catalog-btn">
+            <Button onClick={save} className="w-full bg-sky-600 hover:bg-sky-700" data-testid="save-catalog-btn">
               {editId ? "Actualizar" : "Agregar"}
             </Button>
           </div>

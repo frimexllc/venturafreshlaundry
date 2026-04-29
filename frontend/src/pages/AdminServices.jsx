@@ -7,7 +7,7 @@ import { Textarea } from "../components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { toast } from "sonner";
-import { Plus, Edit2, Trash2, Search } from "lucide-react";
+import { Plus, Edit2, Trash2, Search, AlertTriangle } from "lucide-react";
 import { useLocale } from "../context/LocaleContext";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -29,6 +29,38 @@ const priceUnitLabels = {
   per_item: "Per item"
 };
 
+// Componente de Confirmación Modal
+const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message, confirmText = "Eliminar", cancelText = "Cancelar", variant = "danger" }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className={`p-2 rounded-full ${variant === 'danger' ? 'bg-red-100' : 'bg-amber-100'}`}>
+            <AlertTriangle className={`h-5 w-5 ${variant === 'danger' ? 'text-red-600' : 'text-amber-600'}`} />
+          </div>
+          <h2 className="text-xl font-bold text-slate-900">{title}</h2>
+        </div>
+        <p className="text-slate-600 mb-6">{message}</p>
+        <div className="flex gap-3">
+          <Button type="button" variant="outline" onClick={onClose} className="flex-1">
+            {cancelText}
+          </Button>
+          <Button 
+            type="button" 
+            onClick={onConfirm} 
+            className={`flex-1 ${variant === 'danger' ? 'bg-red-600 hover:bg-red-700' : 'bg-amber-600 hover:bg-amber-700'}`}
+          >
+            {confirmText}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export default function AdminServices() {
   const { t } = useLocale();
   const [services, setServices] = useState([]);
@@ -37,6 +69,9 @@ export default function AdminServices() {
   const [editingService, setEditingService] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [search, setSearch] = useState("");
+  
+  // Estado para el modal de confirmación de eliminación
+  const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, serviceId: null, serviceName: '' });
 
   useEffect(() => {
     fetchServices();
@@ -98,14 +133,16 @@ export default function AdminServices() {
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!confirm(t("Delete this service?", "¿Eliminar este servicio?"))) return;
+  const handleDelete = async () => {
+    const { serviceId } = deleteConfirm;
     try {
-      await axios.delete(`${API}/services/${id}`);
+      await axios.delete(`${API}/services/${serviceId}`);
       toast.success(t("Service deleted", "Servicio eliminado"));
       fetchServices(search);
     } catch (error) {
       toast.error(t("Error deleting service", "Error eliminando servicio"));
+    } finally {
+      setDeleteConfirm({ isOpen: false, serviceId: null, serviceName: '' });
     }
   };
 
@@ -124,7 +161,7 @@ export default function AdminServices() {
             {t("Manage services, pricing, and status", "Gestiona servicios, precios y estado")}
           </p>
         </div>
-        <Button onClick={() => openDialog()}>
+        <Button onClick={() => openDialog()} className="bg-sky-600 hover:bg-sky-700">
           <Plus className="h-4 w-4 mr-2" />
           {t("New Service", "Nuevo servicio")}
         </Button>
@@ -137,6 +174,7 @@ export default function AdminServices() {
           value={search}
           onChange={handleSearch}
           className="pl-10"
+          data-testid="services-search"
         />
       </div>
 
@@ -164,7 +202,7 @@ export default function AdminServices() {
                 </tr>
               ) : (
                 services.map((service) => (
-                  <tr key={service.id} className="hover:bg-slate-50">
+                  <tr key={service.id} className="hover:bg-slate-50" data-testid={`service-row-${service.id}`}>
                     <td className="px-4 py-3 text-sm font-medium text-slate-900">{service.name}</td>
                     <td className="px-4 py-3 text-sm text-slate-600">{service.category || "—"}</td>
                     <td className="px-4 py-3 text-sm text-slate-600">
@@ -178,11 +216,21 @@ export default function AdminServices() {
                     <td className="px-4 py-3 text-sm text-slate-600 text-right">{service.sort_order ?? 0}</td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
-                        <Button variant="ghost" size="sm" onClick={() => openDialog(service)}>
-                          <Edit2 className="h-4 w-4" />
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          onClick={() => openDialog(service)}
+                          data-testid={`edit-service-${service.id}`}
+                        >
+                          <Edit2 className="h-4 w-4 text-slate-500 hover:text-sky-600" />
                         </Button>
-                        <Button variant="ghost" size="sm" onClick={() => handleDelete(service.id)}>
-                          <Trash2 className="h-4 w-4 text-rose-500" />
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          onClick={() => setDeleteConfirm({ isOpen: true, serviceId: service.id, serviceName: service.name })}
+                          data-testid={`delete-service-${service.id}`}
+                        >
+                          <Trash2 className="h-4 w-4 text-rose-500 hover:text-rose-700" />
                         </Button>
                       </div>
                     </td>
@@ -194,6 +242,18 @@ export default function AdminServices() {
         </div>
       </div>
 
+      {/* Modal de confirmación para eliminar servicio */}
+      <ConfirmationModal
+        isOpen={deleteConfirm.isOpen}
+        onClose={() => setDeleteConfirm({ isOpen: false, serviceId: null, serviceName: '' })}
+        onConfirm={handleDelete}
+        title={t("Delete Service", "Eliminar Servicio")}
+        message={t(`Are you sure you want to delete "${deleteConfirm.serviceName}"? This action cannot be undone.`, `¿Estás seguro de eliminar "${deleteConfirm.serviceName}"? Esta acción no se puede deshacer.`)}
+        confirmText={t("Delete", "Eliminar")}
+        cancelText={t("Cancel", "Cancelar")}
+        variant="danger"
+      />
+
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
@@ -203,11 +263,20 @@ export default function AdminServices() {
             <div className="grid md:grid-cols-2 gap-4">
               <div>
                 <Label>{t("Name", "Nombre")}</Label>
-                <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+                <Input 
+                  value={form.name} 
+                  onChange={(e) => setForm({ ...form, name: e.target.value })} 
+                  required 
+                  data-testid="service-name-input"
+                />
               </div>
               <div>
                 <Label>{t("Category", "Categoría")}</Label>
-                <Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} />
+                <Input 
+                  value={form.category} 
+                  onChange={(e) => setForm({ ...form, category: e.target.value })} 
+                  data-testid="service-category-input"
+                />
               </div>
               <div>
                 <Label>{t("Price", "Precio")}</Label>
@@ -216,12 +285,13 @@ export default function AdminServices() {
                   step="0.01"
                   value={form.price}
                   onChange={(e) => setForm({ ...form, price: e.target.value })}
+                  data-testid="service-price-input"
                 />
               </div>
               <div>
                 <Label>{t("Price Unit", "Unidad de precio")}</Label>
                 <Select value={form.price_unit} onValueChange={(value) => setForm({ ...form, price_unit: value })}>
-                  <SelectTrigger>
+                  <SelectTrigger data-testid="service-price-unit">
                     <SelectValue placeholder={t("Select unit", "Selecciona unidad")} />
                   </SelectTrigger>
                   <SelectContent>
@@ -238,12 +308,13 @@ export default function AdminServices() {
                   type="number"
                   value={form.sort_order}
                   onChange={(e) => setForm({ ...form, sort_order: e.target.value })}
+                  data-testid="service-sort-order"
                 />
               </div>
               <div>
                 <Label>{t("Status", "Estado")}</Label>
                 <Select value={form.is_active ? "active" : "inactive"} onValueChange={(value) => setForm({ ...form, is_active: value === "active" })}>
-                  <SelectTrigger>
+                  <SelectTrigger data-testid="service-status">
                     <SelectValue placeholder={t("Select status", "Selecciona estado")} />
                   </SelectTrigger>
                   <SelectContent>
@@ -255,13 +326,18 @@ export default function AdminServices() {
             </div>
             <div>
               <Label>{t("Description", "Descripción")}</Label>
-              <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={4} />
+              <Textarea 
+                value={form.description} 
+                onChange={(e) => setForm({ ...form, description: e.target.value })} 
+                rows={4}
+                data-testid="service-description"
+              />
             </div>
             <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)} data-testid="service-cancel-btn">
                 {t("Cancel", "Cancelar")}
               </Button>
-              <Button type="submit">
+              <Button type="submit" className="bg-sky-600 hover:bg-sky-700" data-testid="service-submit-btn">
                 {editingService ? t("Save Changes", "Guardar cambios") : t("Create Service", "Crear servicio")}
               </Button>
             </div>

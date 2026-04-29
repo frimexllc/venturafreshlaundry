@@ -328,35 +328,79 @@ const OptionCards = ({ options, value, onChange }) => (
   </div>
 );
 
-// ─── Plan Selector ─────────────────────────────────────────────────────────────
-const PlanSelector = ({ value, onChange }) => {
+// ─── Pricing Tables ────────────────────────────────────────────────────────────
+const PRICING = {
+  pickup_delivery: {
+    standard: { member: 2.50, regular: 2.75, time: "36h" },
+    premium:  { member: 2.75, regular: 3.00, time: "24h" },
+    express:  { member: 3.00, regular: 3.25, time: "same_day" },
+  },
+  wash_fold: {
+    standard: { price: 2.25, time: "36h" },
+    premium:  { price: 2.50, time: "24h" },
+    express:  { price: 2.75, time: "same_day" },
+  },
+};
+
+// ─── Plan Selector with dynamic prices ──────────────────────────────────────
+const PlanSelector = ({ value, onChange, serviceType }) => {
   const { t } = useLocale();
+  const isPD = serviceType === "pickup_delivery" || serviceType === "airbnb_host" || serviceType === "commercial";
+  const pricing = isPD ? PRICING.pickup_delivery : PRICING.wash_fold;
   const plans = [
-    { val: "standard", icon: "🕒", label: t("Standard (36h)", "Estándar (36h)"), desc: t("Budget-friendly", "Económico") },
-    { val: "premium",  icon: "⭐", label: t("Premium (24h)",  "Premium (24h)"),  desc: t("Most popular", "Más popular") },
-    { val: "express",  icon: "⚡", label: t("Express (Same Day)", "Express (mismo día)"), desc: t("Fastest service", "Servicio más rápido") },
+    { val: "standard", icon: "🕒", label: t("Standard", "Estándar") },
+    { val: "premium",  icon: "⭐", label: "Premium" },
+    { val: "express",  icon: "⚡", label: "Express" },
   ];
+  
+  // Helper to translate time labels
+  const getTimeLabel = (time) => {
+    if (time === "same_day") return t("Same Day", "Mismo día");
+    return time;
+  };
+  
   return (
     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
-      {plans.map((p) => (
-        <button
-          key={p.val}
-          type="button"
-          onClick={() => onChange(p.val)}
-          style={{
-            flex: 1, padding: "10px 8px", borderRadius: 10, textAlign: "center",
-            border: `1.5px solid ${value === p.val ? "#0ea5e9" : "hsl(var(--border))"}`,
-            background: value === p.val ? "rgba(14,165,233,.1)" : "hsl(var(--secondary))",
-            cursor: "pointer", transition: "all .15s",
-            transform: value === p.val ? "scale(1.02)" : "scale(1)",
-            fontFamily: "inherit",
-          }}
-        >
-          <div style={{ fontSize: 20, marginBottom: 4 }}>{p.icon}</div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: value === p.val ? "#0ea5e9" : "hsl(var(--foreground))" }}>{p.label}</div>
-          <div style={{ fontSize: 9, color: "hsl(var(--muted-foreground))", marginTop: 2 }}>{p.desc}</div>
-        </button>
-      ))}
+      {plans.map((p) => {
+        const tier = pricing[p.val];
+        const active = value === p.val;
+        return (
+          <button
+            key={p.val}
+            type="button"
+            onClick={() => onChange(p.val)}
+            data-testid={`plan-${p.val}`}
+            style={{
+              flex: 1, padding: "12px 8px", borderRadius: 12, textAlign: "center",
+              border: `2px solid ${active ? "#0ea5e9" : "hsl(var(--border))"}`,
+              background: active ? "rgba(14,165,233,.08)" : "hsl(var(--secondary))",
+              cursor: "pointer", transition: "all .15s",
+              transform: active ? "scale(1.02)" : "scale(1)",
+              fontFamily: "inherit", position: "relative",
+            }}
+          >
+            <div style={{ fontSize: 22, marginBottom: 4 }}>{p.icon}</div>
+            <div style={{ fontSize: 11, fontWeight: 800, color: active ? "#0ea5e9" : "hsl(var(--foreground))", letterSpacing: "0.02em" }}>{p.label}</div>
+            <div style={{ fontSize: 10, color: "#64748b", marginTop: 2, fontWeight: 600 }}>{getTimeLabel(tier.time)}</div>
+            {isPD ? (
+              <div style={{ marginTop: 6 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#059669" }}>
+                  ${tier.member.toFixed(2)}/lb
+                  <span style={{ fontSize: 9, color: "#94a3b8", fontWeight: 500, marginLeft: 3 }}>{t("Member", "Miembro")}</span>
+                </div>
+                <div style={{ fontSize: 10, color: "#64748b", fontWeight: 600 }}>
+                  ${tier.regular.toFixed(2)}/lb
+                  <span style={{ fontSize: 9, color: "#94a3b8", fontWeight: 500, marginLeft: 3 }}>{t("Regular", "Regular")}</span>
+                </div>
+              </div>
+            ) : (
+              <div style={{ marginTop: 6, fontSize: 12, fontWeight: 700, color: "#059669" }}>
+                ${tier.price.toFixed(2)}/lb
+              </div>
+            )}
+          </button>
+        );
+      })}
     </div>
   );
 };
@@ -819,6 +863,11 @@ export default function SchedulePickup() {
     airbnb_host:     t("Airbnb Host",       "Anfitrión Airbnb"),
     commercial:      t("Commercial / B2B",  "Comercial / B2B"),
   };
+  const planMap = {
+    standard: t("Standard (36h)", "Estándar (36h)"),
+    premium:  t("Premium (24h)",  "Premium (24h)"),
+    express:  t("Express (Same Day)", "Express (mismo día)"),
+  };
   const tempMap = { cold: "Cold ≤30°C", warm: "Warm 40°C", hot: "Hot 60°C+", any: t("Any temperature", "Cualquier temperatura") };
   const dryMap  = {
     low:    t("Low heat",    "Calor bajo"),
@@ -828,11 +877,6 @@ export default function SchedulePickup() {
   };
   const timeMap = { "8am-12pm": "8:00 AM – 12:00 PM", "2pm-6pm": "2:00 PM – 6:00 PM" };
   const cmMap   = { phone: t("Phone call", "Llamada"), text: "Text/SMS", email: "Email" };
-  const planMap = {
-    standard: t("Standard (36h)", "Estándar (36h)"),
-    premium:  t("Premium (24h)",  "Premium (24h)"),
-    express:  t("Express (Same Day)", "Express (mismo día)"),
-  };
 
   return (
     <div className="min-h-screen" style={{ background: "hsl(var(--background))" }}>
@@ -1087,7 +1131,7 @@ export default function SchedulePickup() {
                         {form.service_type === "pickup_delivery" && (
                           <>
                             <FF label={t("Turnaround plan *", "Plan de tiempo *")}>
-                              <PlanSelector value={form.service_plan} onChange={(v) => setF("service_plan", v)} />
+                              <PlanSelector value={form.service_plan} onChange={(v) => setF("service_plan", v)} serviceType={form.service_type} />
                             </FF>
                             <PickupDeliveryInfoPanel t={t} />
                           </>

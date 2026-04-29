@@ -61,11 +61,38 @@ export function getNextStatus(currentStatus, serviceType) {
   return flow[idx + 1];
 }
 
+// ─── Pricing Tables (must match backend) ───────────────────────────────────
+const PRICING_PD = {
+  standard: { member: 2.50, regular: 2.75 },
+  premium:  { member: 2.75, regular: 3.00 },
+  express:  { member: 3.00, regular: 3.25 },
+};
+const PRICING_WF = {
+  standard: 2.25,
+  premium:  2.50,
+  express:  2.75,
+};
+
+export function getRate(order) {
+  // 1st priority: explicit price_per_lb on the order
+  if (order.price_per_lb && Number(order.price_per_lb) > 0) return Number(order.price_per_lb);
+  // 2nd: derive from service_plan + service_type
+  const plan = (order.service_plan || "standard").toLowerCase();
+  const st = (order.service_type || "").toLowerCase();
+  if (st === "wash_fold") return PRICING_WF[plan] || PRICING_WF.standard;
+  const tier = PRICING_PD[plan] || PRICING_PD.standard;
+  return order.has_membership ? tier.member : tier.regular;
+}
+
 export function calculateServiceCharge(order) {
   if (!order) return null;
-  const lbs = Number(order.actual_weight || order.weight || 0);
-  const rate = Number(order.price_per_lb || order.rate || 1.75);
-  if (lbs > 0) return lbs * rate;
+  const lbs = Number(order.actual_lbs || order.actual_weight || order.weight || 0);
+  const rate = getRate(order);
+  if (lbs > 0) {
+    const subtotal = lbs * rate;
+    const deliveryFee = Number(order.delivery_fee || 0);
+    return subtotal + deliveryFee;
+  }
   return order.total_amount || order.total || null;
 }
 

@@ -23,7 +23,7 @@ function getRegionLuminance(canvas, x, y, w, h) {
     let count = 0;
     for (let i = 0; i < data.length; i += 4) {
       const a = data[i + 3] / 255;
-      if (a < 0.1) continue; // ignora píxeles transparentes
+      if (a < 0.1) continue;
       const r = data[i] * a;
       const g = data[i + 1] * a;
       const b = data[i + 2] * a;
@@ -36,18 +36,15 @@ function getRegionLuminance(canvas, x, y, w, h) {
   }
 }
 
-// ─── Hook: detecta luminancia bajo el nav mediante screenshot de canvas ───────
+// ─── Hook: detecta luminancia bajo el nav ─────────────────────────────────────
 function useNavBackground() {
-  // Devuelve: { isDark: bool, luminance: 0-255 }
   const [state, setState] = useState({ isDark: true, luminance: 30 });
 
   useEffect(() => {
     let rafId = null;
-    let lastScrollY = -1;
     let ticking = false;
 
     const detect = () => {
-      // Método 1: data-nav-theme override en el elemento bajo el nav
       const x = Math.round(window.innerWidth / 2);
       const y = 90;
       const el = document.elementFromPoint(x, y);
@@ -62,7 +59,6 @@ function useNavBackground() {
         }
       }
 
-      // Método 2: recorre el árbol buscando primer bg sólido
       if (el) {
         let node = el;
         while (node && node !== document.body) {
@@ -86,9 +82,7 @@ function useNavBackground() {
         }
       }
 
-      // Método 3: fallback por scroll
       const scrollFraction = Math.min(window.scrollY / 300, 1);
-      const lum = scrollFraction * 200; // asume que al hacer scroll el fondo se aclara
       setState({ isDark: window.scrollY < 100, luminance: window.scrollY < 100 ? 30 : 200 });
     };
 
@@ -120,52 +114,30 @@ function useNavBackground() {
   return state;
 }
 
-// ─── Calcula el filtro CSS para el logo según luminancia del fondo ────────────
-// Estrategia:
-//   - Fondo muy oscuro  (lum < 60):  logo normal (colores originales azul/blanco)
-//   - Fondo medio-oscuro (60–128):   logo con ligero brillo blanco
-//   - Fondo medio-claro (128–190):   logo oscurecido + drop-shadow
-//   - Fondo muy claro   (>190):      logo con invert parcial o drop-shadow fuerte
+// ─── Filtro para el LOGO según luminancia (EFECTO ORIGINAL) ───────────────────
 function getLogoFilter(luminance, isDark) {
-  if (luminance < 60) {
-    // Fondo muy oscuro: logo azul original se ve perfecto, solo sombra leve
-    return "drop-shadow(0 2px 8px rgba(255, 255, 255, 0.6))";
+  if (luminance > 60) {
+    // Fondo muy oscuro: logo normal con sombra suave
+    return "drop-shadow(0 2px 8px rgb(255, 255, 255))";
   }
   if (luminance < 128) {
     // Fondo oscuro medio: refuerza el brillo
-    return "drop-shadow(0 2px 10px rgba(255, 255, 255, 0.7)) brightness(1.1)";
+    return "drop-shadow(0 2px 10px rgb(255, 255, 255)) brightness(1.1)";
   }
   if (luminance < 190) {
-    // Fondo gris/medio: el logo azul sigue siendo legible, oscurecemos ligeramente
+    // Fondo gris/medio: logo con ligero oscurecimiento
     return "drop-shadow(0 2px 6px rgba(255, 255, 255, 0.5)) saturate(1.2)";
   }
-  // Fondo muy claro/blanco: el logo blanco desaparece → aplicamos sombra fuerte + saturate
+  // Fondo muy claro: logo con invert parcial + sombra
   return "drop-shadow(0 3px 12px rgba(255, 255, 255, 0.85)) saturate(1.3) brightness(0.9)";
 }
 
-// ─── Calcula clases de los links según luminancia ────────────────────────────
-function getNavColors(luminance) {
-  if (luminance < 128) {
-    // Fondo oscuro → links blancos con sombra
-    return {
-      link:   "text-white hover:text-white drop-shadow-[0_1px_4px_rgba(0,0,0,0.9)]",
-      active: "!text-white underline underline-offset-4",
-      burger: "text-white drop-shadow-[0_1px_4px_rgba(0,0,0,0.9)]",
-    };
-  }
-  if (luminance < 190) {
-    // Fondo gris medio → links oscuros con sombra blanca para contraste
-    return {
-      link:   "text-slate-800 hover:text-slate-900 drop-shadow-[0_1px_3px_rgba(255,255,255,0.8)]",
-      active: "!text-sky-700 underline underline-offset-4",
-      burger: "text-slate-800 drop-shadow-[0_1px_3px_rgba(255,255,255,0.8)]",
-    };
-  }
-  // Fondo muy claro → links azul oscuro nítidos
+// ─── LINKS SIEMPRE BLANCOS (sin efecto de luminancia) ─────────────────────────
+function getNavColors() {
   return {
-    link:   "text-slate-900 hover:text-sky-700 drop-shadow-[0_1px_2px_rgba(255,255,255,0.6)]",
-    active: "!text-sky-600 underline underline-offset-4",
-    burger: "text-slate-900",
+    link:   "text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.3)]",
+    active: "!text-white underline underline-offset-4 drop-shadow-[0_1px_2px_rgba(0,0,0,0.3)]",
+    burger: "text-white",
   };
 }
 
@@ -175,13 +147,13 @@ export default function PublicNav({ dark: forceDark }) {
   const { t } = useLocale();
   const customerToken = localStorage.getItem("customer_token");
 
+  // Hook que detecta luminancia (SOLO para el logo)
   const { isDark: autoDark, luminance } = useNavBackground();
 
-  // Si se pasa prop dark → sobreescribe detección automática
+  // Luminancia efectiva solo para el logo
   const effectiveLuminance = forceDark !== undefined
     ? (forceDark ? 30 : 220)
     : luminance;
-  const isDark = forceDark !== undefined ? forceDark : autoDark;
 
   const navLabel = {
     services: t("Services", "Servicios"),
@@ -191,26 +163,29 @@ export default function PublicNav({ dark: forceDark }) {
     blog:     t("Blog",     "Blog"),
   };
 
-  const logoFilter  = getLogoFilter(effectiveLuminance, isDark);
-  const navColors   = getNavColors(effectiveLuminance);
+  // Filtro solo para el logo (mantiene efecto original)
+  const logoFilter  = getLogoFilter(effectiveLuminance, forceDark !== undefined ? forceDark : autoDark);
+  
+  // Links siempre blancos (sin efecto de luminancia)
+  const navColors   = getNavColors();
   const linkBase    = "font-medium transition-all duration-300 hover:scale-105";
 
   return (
     <nav className="absolute top-0 left-0 right-0 z-50 py-4 bg-transparent">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
 
-        {/* Logo con filtro adaptativo */}
+        {/* Logo CON efecto de luminancia (se mantiene original) */}
         <Link to="/" className="group">
           <img
             src={logoVFL}
             alt="Ventura Fresh Laundry"
-            className="h-28 md:h-36 lg:h-40 w-auto object-contain transition-all duration-500 ease-in-out group-hover:scale-105"
+            className="h-28 md:h-50 lg:h-40 w-auto  transition-all duration-250 ease-in-out group-hover:scale-110"
             style={{ filter: logoFilter }}
             onError={(e) => { e.currentTarget.style.display = "none"; }}
           />
         </Link>
 
-        {/* Desktop */}
+        {/* Desktop - Links SIEMPRE BLANCOS */}
         <div className="hidden md:flex items-center gap-6">
           {navLinks.map((link, idx) => (
             <NavLink
@@ -241,7 +216,7 @@ export default function PublicNav({ dark: forceDark }) {
           <LanguageToggle className="ml-2" />
         </div>
 
-        {/* Mobile burger */}
+        {/* Mobile burger - Siempre blanco */}
         <button
           onClick={() => setMobileMenuOpen(v => !v)}
           className={`md:hidden p-2 transition-colors duration-300 ${navColors.burger}`}
@@ -251,7 +226,7 @@ export default function PublicNav({ dark: forceDark }) {
         </button>
       </div>
 
-      {/* Mobile panel — siempre oscuro para legibilidad */}
+      {/* Mobile panel */}
       {mobileMenuOpen && (
         <div className="md:hidden mt-4 px-4">
           <div className="rounded-2xl p-4 bg-slate-900/90 border border-white/10 backdrop-blur-md">
@@ -263,7 +238,7 @@ export default function PublicNav({ dark: forceDark }) {
                   onClick={() => setMobileMenuOpen(false)}
                   className={({ isActive }) =>
                     `font-medium py-2 transition-colors duration-150 ${
-                      isActive ? "text-white" : "text-white/70 hover:text-white"
+                      isActive ? "text-white" : "text-white/80 hover:text-white"
                     }`
                   }
                 >
@@ -274,7 +249,7 @@ export default function PublicNav({ dark: forceDark }) {
               <Link
                 to={customerToken ? "/account" : "/account/login"}
                 onClick={() => setMobileMenuOpen(false)}
-                className="font-medium py-2 text-white/70 hover:text-white"
+                className="font-medium py-2 text-white/80 hover:text-white"
               >
                 {t("Account", "Cuenta")}
               </Link>

@@ -26,6 +26,30 @@ from notifications import (
 )
 from ai_assistant import get_groq_client
 
+# ─── Pricing Tables ─────────────────────────────────────────────────────────
+# Pickup & Delivery: member / regular prices per lb
+PRICING_PD = {
+    "standard": {"member": 2.50, "regular": 2.75},
+    "premium":  {"member": 2.75, "regular": 3.00},
+    "express":  {"member": 3.00, "regular": 3.25},
+}
+# Wash & Fold: flat price per lb (no member/regular distinction at drop-off)
+PRICING_WF = {
+    "standard": 2.25,
+    "premium":  2.50,
+    "express":  2.75,
+}
+
+def get_price_per_lb(service_type: str, plan: str, has_membership: bool = False) -> float:
+    """Return the price/lb based on service type, plan tier, and membership."""
+    plan = (plan or "standard").lower()
+    if service_type in ("pickup_delivery", "airbnb_host", "commercial"):
+        tier = PRICING_PD.get(plan, PRICING_PD["standard"])
+        return tier["member"] if has_membership else tier["regular"]
+    # wash_fold or any drop-off
+    return PRICING_WF.get(plan, PRICING_WF["standard"])
+
+
 
 class PublicPickupRequest(BaseModel):
     name: str
@@ -35,6 +59,7 @@ class PublicPickupRequest(BaseModel):
     pickup_date: Optional[str] = None
     pickup_time: Optional[str] = None
     service_type: Optional[str] = "pickup_delivery"
+    service_plan: Optional[str] = "standard"
     contact_method: Optional[str] = None
     sms_consent: Optional[bool] = False
     notes: Optional[str] = None
@@ -51,6 +76,7 @@ class PublicWashFoldRequest(BaseModel):
     notes: Optional[str] = None
     contact_method: Optional[str] = None
     sms_consent: Optional[bool] = False
+    plan: Optional[str] = "standard"
 
 
 class PublicContactRequest(BaseModel):
@@ -273,6 +299,11 @@ PERSONALITY GUIDELINES:
         if pref:
             preference_snapshot = {k: v for k, v in pref[0].items() if k not in ["_id", "customer_id"]}
 
+        # Determine pricing based on service plan and membership
+        has_membership = bool(customer.get("has_membership"))
+        service_plan = (data.service_plan or "standard").lower()
+        price_lb = get_price_per_lb(normalized_service_type, service_plan, has_membership)
+
         order_id = str(uuid.uuid4())
         order_number = await generate_order_number()
         order = {
@@ -280,7 +311,10 @@ PERSONALITY GUIDELINES:
             "order_number": order_number,
             "customer_id": customer["id"],
             "customer_name": customer["name"],
+            "customer_email": normalized_email,
             "service_type": normalized_service_type,
+            "service_plan": service_plan,
+            "price_per_lb": price_lb,
             "pickup_date": data.pickup_date,
             "pickup_time_window": data.pickup_time,
             "pickup_address": normalized_address,
@@ -381,6 +415,11 @@ PERSONALITY GUIDELINES:
         if pref:
             preference_snapshot = {k: v for k, v in pref[0].items() if k not in ["_id", "customer_id"]}
 
+        # Determine pricing based on plan tier
+        has_membership = bool(customer.get("has_membership"))
+        wf_plan = (data.plan or "standard").lower()
+        price_lb = get_price_per_lb("wash_fold", wf_plan, has_membership)
+
         order_id = str(uuid.uuid4())
         order_number = await generate_order_number()
         order = {
@@ -388,7 +427,10 @@ PERSONALITY GUIDELINES:
             "order_number": order_number,
             "customer_id": customer["id"],
             "customer_name": customer["name"],
+            "customer_email": normalized_email,
             "service_type": "wash_fold",
+            "service_plan": wf_plan,
+            "price_per_lb": price_lb,
             "preferred_contact": preferred_contact or customer.get("preferred_contact") or "email",
             "sms_consent": sms_consent,
             "sms_consent_at": now if sms_consent else None,

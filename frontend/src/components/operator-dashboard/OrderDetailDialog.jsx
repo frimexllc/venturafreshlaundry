@@ -661,7 +661,15 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
             </div>
 
             <div className="flex items-center justify-between py-2 bg-slate-50 rounded-lg px-3">
-              <span className="text-slate-500 font-medium">{t("Total", "Total")}</span>
+              <div>
+                <span className="text-slate-500 font-medium">{t("Total", "Total")}</span>
+                {localOrder.price_per_lb && (
+                  <span className="text-[10px] text-slate-400 ml-2">
+                    @ ${Number(localOrder.price_per_lb).toFixed(2)}/lb
+                    {localOrder.service_plan && ` · ${localOrder.service_plan.charAt(0).toUpperCase() + localOrder.service_plan.slice(1)}`}
+                  </span>
+                )}
+              </div>
               <span className="text-xl font-bold text-slate-900" data-testid="order-detail-total">
                 {totalAmount ? formatCurrency(totalAmount) : t("Pending lbs", "Pendiente lbs")}
               </span>

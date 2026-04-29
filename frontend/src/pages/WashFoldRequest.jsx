@@ -86,35 +86,42 @@ const DRY_OPTIONS = [
   { value: "air", icon: "🌿", label: "Air dry", sub: "No heat" },
 ];
 
-// ─── Plan Selector para Wash & Fold (sin precios visibles) ────────────────────
+// ─── Plan Selector para Wash & Fold (con precios) ──────────────────────────
 const PlanSelector = ({ value, onChange }) => {
   const { t } = useLocale();
   const plans = [
-    { val: "standard", icon: "🕒", label: t("Standard (36h)", "Estándar (36h)"), desc: t("Budget-friendly", "Económico") },
-    { val: "premium",  icon: "⭐", label: t("Premium (24h)",  "Premium (24h)"),  desc: t("Most popular", "Más popular") },
-    { val: "express",  icon: "⚡", label: t("Express (Same Day)", "Express (mismo día)"), desc: t("Fastest service", "Servicio más rápido") },
+    { val: "standard", icon: "🕒", label: t("Standard", "Estándar"), time: "36h", price: 2.25 },
+    { val: "premium",  icon: "⭐", label: "Premium",                 time: "24h", price: 2.50 },
+    { val: "express",  icon: "⚡", label: "Express",                 time: t("Same Day", "Mismo día"), price: 2.75 },
   ];
   return (
     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
-      {plans.map((p) => (
-        <button
-          key={p.val}
-          type="button"
-          onClick={() => onChange(p.val)}
-          style={{
-            flex: 1, padding: "10px 8px", borderRadius: 10, textAlign: "center",
-            border: `1.5px solid ${value === p.val ? "#0ea5e9" : "#e2e8f0"}`,
-            background: value === p.val ? "rgba(14,165,233,.1)" : "#f8fafc",
-            cursor: "pointer", transition: "all .15s",
-            transform: value === p.val ? "scale(1.02)" : "scale(1)",
-            fontFamily: "inherit",
-          }}
-        >
-          <div style={{ fontSize: 20, marginBottom: 4 }}>{p.icon}</div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: value === p.val ? "#0ea5e9" : "#0f172a" }}>{p.label}</div>
-          <div style={{ fontSize: 9, color: "#64748b", marginTop: 2 }}>{p.desc}</div>
-        </button>
-      ))}
+      {plans.map((p) => {
+        const active = value === p.val;
+        return (
+          <button
+            key={p.val}
+            type="button"
+            onClick={() => onChange(p.val)}
+            data-testid={`plan-${p.val}`}
+            style={{
+              flex: 1, padding: "12px 8px", borderRadius: 12, textAlign: "center",
+              border: `2px solid ${active ? "#0ea5e9" : "#e2e8f0"}`,
+              background: active ? "rgba(14,165,233,.08)" : "#f8fafc",
+              cursor: "pointer", transition: "all .15s",
+              transform: active ? "scale(1.02)" : "scale(1)",
+              fontFamily: "inherit",
+            }}
+          >
+            <div style={{ fontSize: 22, marginBottom: 4 }}>{p.icon}</div>
+            <div style={{ fontSize: 11, fontWeight: 800, color: active ? "#0ea5e9" : "#0f172a" }}>{p.label}</div>
+            <div style={{ fontSize: 10, color: "#64748b", marginTop: 2, fontWeight: 600 }}>{p.time}</div>
+            <div style={{ marginTop: 6, fontSize: 12, fontWeight: 700, color: "#059669" }}>
+              ${p.price.toFixed(2)}/lb
+            </div>
+          </button>
+        );
+      })}
     </div>
   );
 };

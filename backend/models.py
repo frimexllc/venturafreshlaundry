@@ -146,7 +146,10 @@ class OrderResponse(BaseModel):
     order_number: Optional[str] = None
     customer_id: Optional[str] = None
     customer_name: Optional[str] = None
+    customer_email: Optional[str] = None
     service_type: Optional[str] = "general"
+    service_plan: Optional[str] = None
+    price_per_lb: Optional[float] = None
     pickup_date: Optional[str] = None
     pickup_time_window: Optional[str] = None
     pickup_address: Optional[str] = None
@@ -165,6 +168,7 @@ class OrderResponse(BaseModel):
     change_due: Optional[float] = None
     paid_at: Optional[str] = None
     total_amount: Optional[float] = None
+    delivery_fee: Optional[float] = None
     created_at: Optional[str] = ""
     updated_at: Optional[str] = ""
 

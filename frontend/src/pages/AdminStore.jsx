@@ -2,22 +2,151 @@ import { useState, useEffect } from "react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
-import { Package, Plus, Edit2, Trash2, Search, DollarSign, Archive, X, Image as ImageIcon } from "lucide-react";
+import { Package, Plus, Edit2, Trash2, Search, DollarSign, Archive, X, Image as ImageIcon, AlertTriangle, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { useLocale } from "../context/LocaleContext";
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
 const DEFAULT_PRODUCT_IMAGE = "https://images.unsplash.com/photo-1582735689369-4fe89db7114c?w=400&h=300&fit=crop";
 
+// Componente de Confirmación Modal
+const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message, confirmText = "Eliminar", cancelText = "Cancelar", variant = "danger" }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className={`p-2 rounded-full ${variant === 'danger' ? 'bg-red-100' : 'bg-amber-100'}`}>
+            <AlertTriangle className={`h-5 w-5 ${variant === 'danger' ? 'text-red-600' : 'text-amber-600'}`} />
+          </div>
+          <h2 className="text-xl font-bold text-slate-900">{title}</h2>
+        </div>
+        <p className="text-slate-600 mb-6">{message}</p>
+        <div className="flex gap-3">
+          <Button type="button" variant="outline" onClick={onClose} className="flex-1">
+            {cancelText}
+          </Button>
+          <Button 
+            type="button" 
+            onClick={onConfirm} 
+            className={`flex-1 ${variant === 'danger' ? 'bg-red-600 hover:bg-red-700' : 'bg-amber-600 hover:bg-amber-700'}`}
+          >
+            {confirmText}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Componente de Reinicio de Catálogo Modal
+const ResetCatalogModal = ({ isOpen, onClose, onConfirm }) => {
+  const [step, setStep] = useState(1);
+  const [confirmText, setConfirmText] = useState("");
+
+  if (!isOpen) return null;
+
+  const handleConfirm = () => {
+    if (step === 1) {
+      setStep(2);
+    } else if (step === 2 && confirmText === "REINICIAR CATÁLOGO") {
+      onConfirm();
+      onClose();
+      setStep(1);
+      setConfirmText("");
+    }
+  };
+
+  const handleClose = () => {
+    onClose();
+    setStep(1);
+    setConfirmText("");
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/50" onClick={handleClose} />
+      <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="p-2 rounded-full bg-red-100">
+            <RefreshCw className="h-5 w-5 text-red-600" />
+          </div>
+          <h2 className="text-xl font-bold text-slate-900">Reiniciar Catálogo</h2>
+        </div>
+
+        {step === 1 ? (
+          <>
+            <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <p className="text-amber-800 text-sm">
+                ⚠️ <strong>ADVERTENCIA:</strong> Esta acción eliminará TODOS los productos y servicios del catálogo. 
+                Esta operación NO se puede deshacer.
+              </p>
+            </div>
+            <ul className="text-sm text-slate-600 space-y-2 mb-6">
+              <li>• Todos los productos de la tienda serán eliminados</li>
+              <li>• Todos los servicios serán eliminados</li>
+              <li>• El catálogo quedará completamente vacío</li>
+              <li>• Las órdenes existentes no se verán afectadas</li>
+            </ul>
+            <div className="flex gap-3">
+              <Button type="button" variant="outline" onClick={handleClose} className="flex-1">
+                Cancelar
+              </Button>
+              <Button type="button" onClick={() => setStep(2)} className="flex-1 bg-red-600 hover:bg-red-700">
+                Continuar
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="text-slate-600 mb-3">
+              Para confirmar, escribe <strong className="text-red-600">"REINICIAR CATÁLOGO"</strong> en el campo de abajo:
+            </p>
+            <Input
+              type="text"
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              placeholder="REINICIAR CATÁLOGO"
+              className="mb-4"
+              autoFocus
+            />
+            <div className="flex gap-3">
+              <Button type="button" variant="outline" onClick={() => setStep(1)} className="flex-1">
+                Volver
+              </Button>
+              <Button 
+                type="button" 
+                onClick={handleConfirm} 
+                disabled={confirmText !== "REINICIAR CATÁLOGO"}
+                className="flex-1 bg-red-600 hover:bg-red-700 disabled:bg-slate-300"
+              >
+                Confirmar Reinicio
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
 export default function AdminStore() {
   const { t } = useLocale();
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('products');
   const [showModal, setShowModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Estados para modales de confirmación
+  const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, productId: null, productName: '' });
+  const [deleteServiceConfirm, setDeleteServiceConfirm] = useState({ isOpen: false, serviceId: null, serviceName: '' });
+  const [resetCatalogConfirm, setResetCatalogConfirm] = useState({ isOpen: false });
   
   // Estados para el formulario (incluyendo imagen)
   const [formData, setFormData] = useState({
@@ -39,20 +168,24 @@ export default function AdminStore() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [productsRes, ordersRes] = await Promise.all([
+      const [productsRes, ordersRes, servicesRes] = await Promise.all([
         fetch(`${API_URL}/api/store/products?active_only=false`),
-        fetch(`${API_URL}/api/store/orders`)
+        fetch(`${API_URL}/api/store/orders`),
+        fetch(`${API_URL}/api/services`)
       ]);
       const productsData = await productsRes.json();
       const ordersData = await ordersRes.json();
-      // Aseguramos que productsData sea un array
+      const servicesData = await servicesRes.json();
+      
       setProducts(Array.isArray(productsData) ? productsData : []);
       setOrders(Array.isArray(ordersData) ? ordersData : []);
+      setServices(Array.isArray(servicesData) ? servicesData : []);
     } catch (error) {
       console.error('Error loading data:', error);
       toast.error(t('Error loading data', 'Error al cargar datos'));
       setProducts([]);
       setOrders([]);
+      setServices([]);
     } finally {
       setLoading(false);
     }
@@ -88,7 +221,6 @@ export default function AdminStore() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    // Crear FormData para enviar archivo
     const formDataToSend = new FormData();
     formDataToSend.append('name', formData.name);
     formDataToSend.append('description', formData.description || '');
@@ -98,7 +230,6 @@ export default function AdminStore() {
     formDataToSend.append('is_active', formData.is_active ? 'true' : 'false');
     formDataToSend.append('image_url', formData.image_url || '');
     
-    // Si hay una nueva imagen, la añadimos
     if (imageFile) {
       formDataToSend.append('image', imageFile);
     }
@@ -128,10 +259,10 @@ export default function AdminStore() {
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!confirm(t('Delete this product?', '¿Eliminar este producto?'))) return;
+  const handleDeleteProduct = async () => {
+    const { productId } = deleteConfirm;
     try {
-      const res = await fetch(`${API_URL}/api/store/products/${id}`, { method: 'DELETE' });
+      const res = await fetch(`${API_URL}/api/store/products/${productId}`, { method: 'DELETE' });
       if (res.ok) {
         toast.success(t('Product deleted', 'Producto eliminado'));
         loadData();
@@ -141,6 +272,46 @@ export default function AdminStore() {
     } catch (error) {
       console.error('Error deleting product:', error);
       toast.error(t('Error deleting', 'Error al eliminar'));
+    } finally {
+      setDeleteConfirm({ isOpen: false, productId: null, productName: '' });
+    }
+  };
+
+  const handleDeleteService = async () => {
+    const { serviceId } = deleteServiceConfirm;
+    try {
+      const res = await fetch(`${API_URL}/api/services/${serviceId}`, { method: 'DELETE' });
+      if (res.ok) {
+        toast.success(t('Service deleted', 'Servicio eliminado'));
+        loadData();
+      } else {
+        toast.error(t('Error deleting service', 'Error al eliminar servicio'));
+      }
+    } catch (error) {
+      console.error('Error deleting service:', error);
+      toast.error(t('Error deleting service', 'Error al eliminar servicio'));
+    } finally {
+      setDeleteServiceConfirm({ isOpen: false, serviceId: null, serviceName: '' });
+    }
+  };
+
+  const handleResetCatalog = async () => {
+    try {
+      // Eliminar todos los productos
+      for (const product of products) {
+        await fetch(`${API_URL}/api/store/products/${product.id}`, { method: 'DELETE' });
+      }
+      // Eliminar todos los servicios
+      for (const service of services) {
+        await fetch(`${API_URL}/api/services/${service.id}`, { method: 'DELETE' });
+      }
+      toast.success(t('Catalog reset successfully', 'Catálogo reiniciado exitosamente'));
+      loadData();
+    } catch (error) {
+      console.error('Error resetting catalog:', error);
+      toast.error(t('Error resetting catalog', 'Error al reiniciar catálogo'));
+    } finally {
+      setResetCatalogConfirm({ isOpen: false });
     }
   };
 
@@ -187,7 +358,6 @@ export default function AdminStore() {
       image_url: product.image_url || '',
       is_active: product.is_active
     });
-    // Si el producto tiene imagen, mostramos preview
     if (product.image_url) {
       setImagePreview(product.image_url);
       setImageFile(null);
@@ -215,16 +385,27 @@ export default function AdminStore() {
 
   return (
     <div className="space-y-6">
+      {/* Botones de acción superiores */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">{t('Store Management', 'Gestión de Tienda')}</h1>
           <p className="text-slate-600">{t('Manage products and store orders', 'Administra productos y órdenes de la tienda')}</p>
         </div>
-        {activeTab === 'products' && (
-          <Button onClick={() => { resetForm(); setShowModal(true); }} className="bg-sky-600 hover:bg-sky-700" data-testid="add-product-btn">
-            <Plus className="h-4 w-4 mr-2" /> {t('Add Product', 'Agregar Producto')}
+        <div className="flex gap-2">
+          {activeTab === 'products' && (
+            <Button onClick={() => { resetForm(); setShowModal(true); }} className="bg-sky-600 hover:bg-sky-700" data-testid="add-product-btn">
+              <Plus className="h-4 w-4 mr-2" /> {t('Add Product', 'Agregar Producto')}
+            </Button>
+          )}
+          <Button 
+            onClick={() => setResetCatalogConfirm({ isOpen: true })} 
+            variant="outline" 
+            className="border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400"
+            data-testid="reset-catalog-btn"
+          >
+            <RefreshCw className="h-4 w-4 mr-2" /> {t('Reset Catalog', 'Reiniciar Catálogo')}
           </Button>
-        )}
+        </div>
       </div>
 
       {/* Tabs */}
@@ -237,6 +418,15 @@ export default function AdminStore() {
         >
           <Package className="h-4 w-4 inline mr-2" />
           {t('Products', 'Productos')} ({Array.isArray(products) ? products.length : 0})
+        </button>
+        <button
+          onClick={() => setActiveTab('services')}
+          className={`px-4 py-2 font-medium border-b-2 transition-colors ${
+            activeTab === 'services' ? 'border-sky-600 text-sky-600' : 'border-transparent text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <Package className="h-4 w-4 inline mr-2" />
+          {t('Services', 'Servicios')} ({Array.isArray(services) ? services.length : 0})
         </button>
         <button
           onClick={() => setActiveTab('orders')}
@@ -266,7 +456,7 @@ export default function AdminStore() {
             />
           </div>
 
-          {/* Products Grid - Solo muestra productos existentes en la BD */}
+          {/* Products Grid */}
           {filteredProducts.length === 0 ? (
             <div className="text-center py-12 bg-slate-50 rounded-xl border border-slate-200">
               <Package className="h-12 w-12 mx-auto text-slate-300 mb-3" />
@@ -279,34 +469,32 @@ export default function AdminStore() {
           ) : (
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {filteredProducts.map((product) => (
-                <div key={product.id} className="bg-white rounded-xl border border-slate-200 p-4" data-testid={`admin-product-${product.id}`}>
-                  {/* Imagen del producto */}
+                <div key={product.id} className="bg-white rounded-xl border border-slate-200 p-4 relative group" data-testid={`admin-product-${product.id}`}>
                   <div className="aspect-square w-full bg-slate-100 rounded-lg mb-3 overflow-hidden flex items-center justify-center">
-                    {product.image_url ? (
-                      <img
-                        src={product.image_url}
-                        alt={product.name}
-                        className="w-full h-full object-cover"
-                        onError={(e) => { e.currentTarget.src = DEFAULT_PRODUCT_IMAGE; }}
-                      />
-                    ) : (
-                      <img src={DEFAULT_PRODUCT_IMAGE} alt={product.name} className="w-full h-full object-cover" />
-                    )}
+                    <img
+                      src={product.image_url || DEFAULT_PRODUCT_IMAGE}
+                      alt={product.name}
+                      className="w-full h-full object-cover"
+                      onError={(e) => { e.currentTarget.src = DEFAULT_PRODUCT_IMAGE; }}
+                    />
                   </div>
                   <div className="flex items-start justify-between mb-2">
                     <span className={`px-2 py-1 text-xs font-medium rounded-full ${product.is_active ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-600'}`}>
                       {product.is_active ? t('Active', 'Activo') : t('Inactive', 'Inactivo')}
                     </span>
                     <div className="flex gap-1">
-                      <button onClick={() => openEdit(product)} className="p-1 text-slate-400 hover:text-sky-600">
+                      <button onClick={() => openEdit(product)} className="p-1 text-slate-400 hover:text-sky-600 transition-colors">
                         <Edit2 className="h-4 w-4" />
                       </button>
-                      <button onClick={() => handleDelete(product.id)} className="p-1 text-slate-400 hover:text-red-600">
+                      <button 
+                        onClick={() => setDeleteConfirm({ isOpen: true, productId: product.id, productName: product.name })} 
+                        className="p-1 text-slate-400 hover:text-red-600 transition-colors"
+                      >
                         <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
                   </div>
-                  <h3 className="font-semibold text-slate-900 mb-1">{product.name}</h3>
+                  <h3 className="font-semibold text-slate-900 mb-1 line-clamp-1">{product.name}</h3>
                   <p className="text-sm text-slate-600 mb-2 line-clamp-2">{product.description}</p>
                   <div className="flex items-center justify-between">
                     <span className="text-lg font-bold text-sky-600">${parseFloat(product.price).toFixed(2)}</span>
@@ -320,6 +508,54 @@ export default function AdminStore() {
             </div>
           )}
         </>
+      ) : activeTab === 'services' ? (
+        /* Services Tab */
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-100 bg-slate-50">
+            <h3 className="font-semibold text-slate-900">{t('Services Catalog', 'Catálogo de Servicios')}</h3>
+            <p className="text-sm text-slate-500">{t('Manage laundry services offered', 'Administra los servicios de lavandería ofrecidos')}</p>
+          </div>
+          {services.length === 0 ? (
+            <div className="text-center py-12">
+              <Package className="h-12 w-12 mx-auto text-slate-300 mb-3" />
+              <h3 className="text-lg font-medium text-slate-700 mb-1">{t('No services yet', 'Aún no hay servicios')}</h3>
+              <p className="text-slate-500">{t('Services will appear here', 'Los servicios aparecerán aquí')}</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t('Name', 'Nombre')}</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t('Description', 'Descripción')}</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t('Price', 'Precio')}</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t('Duration', 'Duración')}</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">{t('Actions', 'Acciones')}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {services.map((service) => (
+                    <tr key={service.id} data-testid={`admin-service-${service.id}`}>
+                      <td className="px-4 py-3 font-medium">{service.name}</td>
+                      <td className="px-4 py-3 text-sm text-slate-600">{service.description}</td>
+                      <td className="px-4 py-3 font-medium text-sky-600">${parseFloat(service.price).toFixed(2)}</td>
+                      <td className="px-4 py-3 text-sm">{service.duration || '-'}</td>
+                      <td className="px-4 py-3">
+                        <button 
+                          onClick={() => setDeleteServiceConfirm({ isOpen: true, serviceId: service.id, serviceName: service.name })} 
+                          className="p-1 text-slate-400 hover:text-red-600 transition-colors"
+                          data-testid={`delete-service-${service.id}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       ) : (
         /* Orders Table */
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
@@ -371,6 +607,7 @@ export default function AdminStore() {
                           value={order.status || 'pending'}
                           onChange={(e) => updateOrderStatus(order.id, e.target.value)}
                           className="text-sm border border-slate-200 rounded px-2 py-1"
+                          data-testid={`order-status-${order.id}`}
                         >
                           <option value="pending">{t('Pending', 'Pendiente')}</option>
                           <option value="confirmed">{t('Confirmed', 'Confirmado')}</option>
@@ -389,7 +626,7 @@ export default function AdminStore() {
         </div>
       )}
 
-      {/* Modal */}
+      {/* Modal de Producto */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/50" onClick={() => setShowModal(false)} />
@@ -401,129 +638,65 @@ export default function AdminStore() {
               </button>
             </div>
             <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Campo de imagen */}
               <div>
                 <Label htmlFor="image">{t('Product Image', 'Imagen del producto')}</Label>
                 <div className="mt-1 flex items-center gap-4">
                   {imagePreview && (
                     <div className="relative w-20 h-20 rounded-lg overflow-hidden border border-slate-200">
-                      <img
-                        src={imagePreview}
-                        alt="Preview"
-                        className="w-full h-full object-cover"
-                        onError={(e) => { e.currentTarget.src = DEFAULT_PRODUCT_IMAGE; }}
-                        data-testid="admin-store-image-preview"
-                      />
+                      <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.src = DEFAULT_PRODUCT_IMAGE; }} />
                     </div>
                   )}
-                  <input
-                    type="file"
-                    id="image"
-                    accept="image/*"
-                    onChange={handleImageChange}
-                    className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-sky-50 file:text-sky-700 hover:file:bg-sky-100"
-                    data-testid="admin-store-image-upload-input"
-                  />
+                  <input type="file" id="image" accept="image/*" onChange={handleImageChange} className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-sky-50 file:text-sky-700 hover:file:bg-sky-100" />
                 </div>
                 <div className="mt-3">
                   <Label htmlFor="image_url">{t('Or image URL (Blog style)', 'O URL de imagen (estilo Blog)')}</Label>
-                  <Input
-                    id="image_url"
-                    value={formData.image_url}
-                    onChange={(e) => handleImageUrlChange(e.target.value)}
-                    placeholder={t('https://example.com/image.jpg', 'https://ejemplo.com/imagen.jpg')}
-                    data-testid="admin-store-image-url-input"
-                  />
+                  <Input id="image_url" value={formData.image_url} onChange={(e) => handleImageUrlChange(e.target.value)} placeholder={t('https://example.com/image.jpg', 'https://ejemplo.com/imagen.jpg')} />
                 </div>
-                {!imagePreview && !editingProduct && (
-                  <p className="text-xs text-slate-400 mt-1" data-testid="admin-store-image-help">
-                    {t('Optional: upload a file or paste an image URL', 'Opcional: sube una imagen o pega una URL')}
-                  </p>
-                )}
               </div>
-
-              <div>
-                <Label htmlFor="name">{t('Name', 'Nombre')}</Label>
-                <Input
-                  id="name"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  required
-                  data-testid="admin-store-product-name"
-                />
-              </div>
-              <div>
-                <Label htmlFor="description">{t('Description', 'Descripción')}</Label>
-                <textarea
-                  id="description"
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-md"
-                  rows={3}
-                />
-              </div>
+              <div><Label htmlFor="name">{t('Name', 'Nombre')}</Label><Input id="name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} required /></div>
+              <div><Label htmlFor="description">{t('Description', 'Descripción')}</Label><textarea id="description" value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} className="w-full px-3 py-2 border border-slate-200 rounded-md" rows={3} /></div>
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="price">{t('Price ($)', 'Precio ($)')}</Label>
-                  <Input
-                    id="price"
-                    type="number"
-                    step="0.01"
-                    value={formData.price}
-                    onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                    required
-                    data-testid="admin-store-product-price"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="stock">{t('Stock', 'Stock')}</Label>
-                  <Input
-                    id="stock"
-                    type="number"
-                    value={formData.stock}
-                    onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
-                    required
-                    data-testid="admin-store-product-stock"
-                  />
-                </div>
+                <div><Label htmlFor="price">{t('Price ($)', 'Precio ($)')}</Label><Input id="price" type="number" step="0.01" value={formData.price} onChange={(e) => setFormData({ ...formData, price: e.target.value })} required /></div>
+                <div><Label htmlFor="stock">{t('Stock', 'Stock')}</Label><Input id="stock" type="number" value={formData.stock} onChange={(e) => setFormData({ ...formData, stock: e.target.value })} required /></div>
               </div>
-              <div>
-                <Label htmlFor="category">{t('Category', 'Categoría')}</Label>
-                <select
-                  id="category"
-                  value={formData.category}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-md"
-                >
-                  <option value="accesorios">{t('Accessories', 'Accesorios')}</option>
-                  <option value="detergentes">{t('Detergents', 'Detergentes')}</option>
-                  <option value="suavizantes">{t('Fabric Softeners', 'Suavizantes')}</option>
-                  <option value="quitamanchas">{t('Stain Removers', 'Quitamanchas')}</option>
-                  <option value="packs">{t('Packs', 'Packs')}</option>
-                </select>
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="is_active"
-                  checked={formData.is_active}
-                  onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-                  className="rounded border-slate-300"
-                />
-                <Label htmlFor="is_active" className="cursor-pointer">{t('Active product', 'Producto activo')}</Label>
-              </div>
-              <div className="flex gap-2 pt-4">
-                <Button type="button" variant="outline" onClick={() => setShowModal(false)} className="flex-1">
-                  {t('Cancel', 'Cancelar')}
-                </Button>
-                <Button type="submit" className="flex-1 bg-sky-600 hover:bg-sky-700">
-                  {editingProduct ? t('Update', 'Actualizar') : t('Create', 'Crear')}
-                </Button>
-              </div>
+              <div><Label htmlFor="category">{t('Category', 'Categoría')}</Label><select id="category" value={formData.category} onChange={(e) => setFormData({ ...formData, category: e.target.value })} className="w-full px-3 py-2 border border-slate-200 rounded-md"><option value="accesorios">{t('Accessories', 'Accesorios')}</option><option value="detergentes">{t('Detergents', 'Detergentes')}</option><option value="suavizantes">{t('Fabric Softeners', 'Suavizantes')}</option><option value="quitamanchas">{t('Stain Removers', 'Quitamanchas')}</option><option value="packs">{t('Packs', 'Packs')}</option></select></div>
+              <div className="flex items-center gap-2"><input type="checkbox" id="is_active" checked={formData.is_active} onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })} className="rounded border-slate-300" /><Label htmlFor="is_active" className="cursor-pointer">{t('Active product', 'Producto activo')}</Label></div>
+              <div className="flex gap-2 pt-4"><Button type="button" variant="outline" onClick={() => setShowModal(false)} className="flex-1">{t('Cancel', 'Cancelar')}</Button><Button type="submit" className="flex-1 bg-sky-600 hover:bg-sky-700">{editingProduct ? t('Update', 'Actualizar') : t('Create', 'Crear')}</Button></div>
             </form>
           </div>
         </div>
       )}
+
+      {/* Modal de confirmación para eliminar producto */}
+      <ConfirmationModal
+        isOpen={deleteConfirm.isOpen}
+        onClose={() => setDeleteConfirm({ isOpen: false, productId: null, productName: '' })}
+        onConfirm={handleDeleteProduct}
+        title={t('Delete Product', 'Eliminar Producto')}
+        message={t(`Are you sure you want to delete "${deleteConfirm.productName}"? This action cannot be undone.`, `¿Estás seguro de eliminar "${deleteConfirm.productName}"? Esta acción no se puede deshacer.`)}
+        confirmText={t('Delete', 'Eliminar')}
+        cancelText={t('Cancel', 'Cancelar')}
+        variant="danger"
+      />
+
+      {/* Modal de confirmación para eliminar servicio */}
+      <ConfirmationModal
+        isOpen={deleteServiceConfirm.isOpen}
+        onClose={() => setDeleteServiceConfirm({ isOpen: false, serviceId: null, serviceName: '' })}
+        onConfirm={handleDeleteService}
+        title={t('Delete Service', 'Eliminar Servicio')}
+        message={t(`Are you sure you want to delete "${deleteServiceConfirm.serviceName}"? This action cannot be undone.`, `¿Estás seguro de eliminar "${deleteServiceConfirm.serviceName}"? Esta acción no se puede deshacer.`)}
+        confirmText={t('Delete', 'Eliminar')}
+        cancelText={t('Cancel', 'Cancelar')}
+        variant="danger"
+      />
+
+      {/* Modal de confirmación para reiniciar catálogo */}
+      <ResetCatalogModal
+        isOpen={resetCatalogConfirm.isOpen}
+        onClose={() => setResetCatalogConfirm({ isOpen: false })}
+        onConfirm={handleResetCatalog}
+      />
     </div>
   );
 }

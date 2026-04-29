@@ -69,7 +69,7 @@
     body {
         @apply bg-slate-50/50 text-slate-900 antialiased;
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-        /* Subtle grain texture */
+        /* Subtle grain texture - optimizado */
         background-image:
             radial-gradient(ellipse 80% 60% at 50% -10%, rgba(14,165,233,0.06) 0%, transparent 60%),
             url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E");
@@ -242,23 +242,26 @@
 }
 
 /* ===========================
-   UTILITIES & ANIMATIONS
+   UTILITIES & ANIMATIONS - OPTIMIZADAS
 =========================== */
 @layer utilities {
 
-    /* Entry animations */
-    .animate-fade-in {
-        animation: fadeIn 0.35s var(--ease-smooth) both;
-    }
-    .animate-slide-up {
-        animation: slideUp 0.4s var(--ease-smooth) both;
-    }
-    .animate-slide-in-right {
-        animation: slideInRight 0.35s var(--ease-smooth) both;
-    }
+    /* GPU Acceleration para todas las animaciones */
+    .animate-fade-in,
+    .animate-slide-up,
+    .animate-slide-in-right,
     .animate-scale-in {
-        animation: scaleIn 0.3s var(--ease-spring) both;
+        animation-duration: 0.15s;
+        animation-fill-mode: both;
+        transform: translateZ(0);
+        will-change: transform, opacity;
+        backface-visibility: hidden;
     }
+    
+    .animate-fade-in { animation-name: fadeIn; animation-timing-function: var(--ease-smooth); }
+    .animate-slide-up { animation-name: slideUp; animation-timing-function: var(--ease-smooth); }
+    .animate-slide-in-right { animation-name: slideInRight; animation-timing-function: var(--ease-smooth); }
+    .animate-scale-in { animation-name: scaleIn; animation-timing-function: var(--ease-spring); }
 
     /* Stagger helpers */
     .delay-75  { animation-delay: 75ms; }
@@ -272,7 +275,7 @@
     .glow-sky  { box-shadow: var(--shadow-sky); }
     .glow-text { text-shadow: 0 0 20px rgba(14,165,233,0.4); }
 
-    /* Shimmer text */
+    /* Shimmer text - optimizado */
     .text-shimmer {
         background: linear-gradient(
             90deg,
@@ -285,6 +288,7 @@
         background-clip: text;
         -webkit-text-fill-color: transparent;
         animation: shimmer 3.5s linear infinite;
+        transform: translateZ(0);
     }
 
     @keyframes fadeIn {
@@ -319,7 +323,7 @@
 }
 
 /* ===========================
-   WAVE DIVIDER
+   WAVE DIVIDER - OPTIMIZADO
 =========================== */
 .wave-divider {
     position: absolute;
@@ -329,6 +333,7 @@
     overflow: hidden;
     line-height: 0;
     pointer-events: none;
+    transform: translateZ(0);
 }
 
 .wave-divider svg {
@@ -336,15 +341,14 @@
     display: block;
     width: calc(100% + 1.3px);
     height: 80px;
-    /* Subtle float on the wave itself */
     animation: wave-drift 8s ease-in-out infinite;
+    transform: translateZ(0);
 }
 
 .wave-divider .shape-fill {
     fill: #FFFFFF;
 }
 
-/* Second wave layer (add a second svg with this class for layered effect) */
 .wave-divider .shape-fill-muted {
     fill: rgba(241, 245, 249, 0.6);
 }
@@ -355,7 +359,7 @@
 }
 
 /* ===========================
-   PWA SPLASH SCREEN
+   PWA SPLASH SCREEN - OPTIMIZADO Y MÁS RÁPIDO
 =========================== */
 .pwa-splash-root {
     position: fixed;
@@ -365,10 +369,9 @@
     place-items: center;
     background: radial-gradient(120% 120% at 20% 0%, rgba(14, 165, 233, 0.2) 0%, rgba(15, 23, 42, 0.95) 45%, rgba(2, 6, 23, 1) 100%);
     overflow: hidden;
-}
-
-.pwa-splash-auto-hide {
-    animation: pwa-splash-root-exit 3.5s ease forwards;
+    transform: translateZ(0);
+    will-change: opacity, transform;
+    backface-visibility: hidden;
 }
 
 .pwa-splash-orb {
@@ -376,6 +379,8 @@
     border-radius: 9999px;
     filter: blur(28px);
     opacity: 0.45;
+    transform: translateZ(0);
+    will-change: transform;
 }
 
 .pwa-splash-orb-a {
@@ -397,11 +402,13 @@
 .pwa-splash-grid {
     position: absolute;
     inset: 0;
-    opacity: 0.2;
+    opacity: 0.15;
     background-image:
         linear-gradient(rgba(148, 163, 184, 0.1) 1px, transparent 1px),
         linear-gradient(90deg, rgba(148, 163, 184, 0.1) 1px, transparent 1px);
     background-size: 22px 22px;
+    animation: none;
+    pointer-events: none;
 }
 
 .pwa-splash-content {
@@ -411,6 +418,7 @@
     flex-direction: column;
     align-items: center;
     gap: 16px;
+    transform: translateZ(0);
 }
 
 .pwa-splash-a,
@@ -427,7 +435,9 @@
     width: 160px;
     height: 160px;
     object-fit: contain;
-    animation: pwa-splash-fade-zoom 1.35s ease-out forwards;
+    animation: pwa-splash-fade-zoom 0.2s ease-out forwards;
+    transform: translateZ(0);
+    will-change: transform, opacity;
 }
 
 .pwa-splash-rings {
@@ -441,25 +451,31 @@
     position: absolute;
     border-radius: 9999px;
     border: 2px solid rgba(125, 211, 252, 0.72);
-    animation: pwa-splash-ring-pulse 2.2s ease-out infinite;
+    animation: pwa-splash-ring-pulse 0.25s ease-out infinite;
+    transform: translateZ(0);
+    will-change: transform, opacity;
 }
 
 .pwa-splash-ring-1 { width: 90px; height: 90px; animation-delay: 0s; }
-.pwa-splash-ring-2 { width: 110px; height: 110px; animation-delay: 0.45s; }
-.pwa-splash-ring-3 { width: 130px; height: 130px; animation-delay: 0.9s; }
+.pwa-splash-ring-2 { width: 110px; height: 110px; animation-delay: 0.08s; }
+/* Ring 3 eliminado por performance */
 
 .pwa-splash-logo-b {
     width: 120px;
     height: 120px;
     object-fit: contain;
-    animation: pwa-splash-logo-pulse 1.8s ease-in-out infinite;
+    animation: pwa-splash-logo-pulse 0.5s ease-in-out infinite;
+    transform: translateZ(0);
+    will-change: transform;
 }
 
 .pwa-splash-logo-c {
     width: 124px;
     height: 124px;
     object-fit: contain;
-    animation: pwa-splash-float 2.3s ease-in-out infinite;
+    animation: pwa-splash-float 0.4s ease-in-out infinite;
+    transform: translateZ(0);
+    will-change: transform;
 }
 
 .pwa-splash-bubble {
@@ -467,7 +483,8 @@
     bottom: 14px;
     border-radius: 9999px;
     background: rgba(186, 230, 253, 0.8);
-    animation: pwa-splash-bubble-rise 2.1s ease-in infinite;
+    animation: pwa-splash-bubble-rise 0.5s ease-in infinite;
+    transform: translateZ(0);
 }
 
 .pwa-splash-bubble-1 { width: 10px; height: 10px; left: 40px; animation-delay: 0s; }
@@ -477,7 +494,8 @@
 .pwa-splash-text-wrap {
     text-align: center;
     color: #e2e8f0;
-    animation: pwa-splash-fade-in-up 0.85s ease-out 0.15s both;
+    animation: pwa-splash-fade-in-up 0.2s ease-out 0.05s both;
+    transform: translateZ(0);
 }
 
 .pwa-splash-brand {
@@ -500,6 +518,7 @@
     border-radius: 9999px;
     background: rgba(148, 163, 184, 0.3);
     overflow: hidden;
+    transform: translateZ(0);
 }
 
 .pwa-splash-progress-bar {
@@ -508,28 +527,30 @@
     height: 100%;
     transform-origin: left;
     background: linear-gradient(90deg, rgba(56, 189, 248, 0.9), rgba(186, 230, 253, 0.9));
-    animation: pwa-splash-progress 3.5s linear forwards;
+    animation: pwa-splash-progress 1.2s linear forwards;
+    transform: translateZ(0);
 }
 
+/* Animaciones optimizadas y más rápidas */
 @keyframes pwa-splash-fade-zoom {
-    from { opacity: 0; transform: scale(0.78); }
+    from { opacity: 0; transform: scale(0.85); }
     to { opacity: 1; transform: scale(1); }
 }
 
 @keyframes pwa-splash-ring-pulse {
     0% { opacity: 0; transform: scale(0.7); }
     25% { opacity: 0.75; }
-    100% { opacity: 0; transform: scale(1.25); }
+    100% { opacity: 0; transform: scale(1.2); }
 }
 
 @keyframes pwa-splash-logo-pulse {
     0%, 100% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(56, 189, 248, 0)); }
-    50% { transform: scale(1.05); filter: drop-shadow(0 0 18px rgba(56, 189, 248, 0.45)); }
+    50% { transform: scale(1.04); filter: drop-shadow(0 0 12px rgba(56, 189, 248, 0.4)); }
 }
 
 @keyframes pwa-splash-float {
     0%, 100% { transform: translateY(0px); }
-    50% { transform: translateY(-8px); }
+    50% { transform: translateY(-6px); }
 }
 
 @keyframes pwa-splash-bubble-rise {
@@ -539,7 +560,7 @@
 }
 
 @keyframes pwa-splash-fade-in-up {
-    from { opacity: 0; transform: translateY(10px); }
+    from { opacity: 0; transform: translateY(8px); }
     to { opacity: 1; transform: translateY(0); }
 }
 
@@ -548,23 +569,30 @@
     to { transform: scaleX(1); }
 }
 
-@keyframes pwa-splash-root-exit {
-    0%, 86% {
-        opacity: 1;
-        visibility: visible;
-    }
-    100% {
-        opacity: 0;
-        visibility: hidden;
-        pointer-events: none;
-    }
-}
-
 /* ===========================
    DEBUG WRAPPER
 =========================== */
 [data-debug-wrapper="true"] {
     display: contents !important;
+}
+
+/* ===========================
+   PERFORMANCE - GPU ACCELERATION
+=========================== */
+img, video, canvas, iframe {
+    content-visibility: auto;
+}
+
+.transform-gpu {
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    perspective: 1000px;
+}
+
+/* Optimizar hover states */
+.hover\:scale-105:hover {
+    will-change: transform;
+    transform: translateZ(0);
 }
 
 /* ===========================
@@ -576,17 +604,22 @@
         animation-iteration-count: 1 !important;
         transition-duration: 0.01ms !important;
     }
+    
+    .pwa-splash-ring,
+    .pwa-splash-logo-b,
+    .pwa-splash-logo-c,
+    .pwa-splash-bubble {
+        animation: none !important;
+    }
 }
-
 
 /* ===========================
    LEAFLET Z-INDEX FIX
-   Contain Leaflet within its stacking context
-   so Dialog modals (z-50) render above maps
 =========================== */
 .leaflet-container {
     z-index: 0 !important;
     position: relative;
+    transform: translateZ(0);
 }
 
 .leaflet-pane,

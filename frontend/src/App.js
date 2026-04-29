@@ -60,6 +60,22 @@ import NotificationMetricsPage from "./pages/NotificationMetricsPage";
 import PaymentSuccessPage from "./pages/PaymentSuccessPage";
 import CustomerPaymentPage from "./pages/CustomerPaymentPage";
 
+// Pre-carga de rutas críticas
+const preloadCriticalRoutes = () => {
+  // Usar requestIdleCallback para no bloquear el render inicial
+  if ('requestIdleCallback' in window) {
+    requestIdleCallback(() => {
+      import("./pages/LandingPage");
+      import("./pages/ServicesPage");
+    });
+  } else {
+    setTimeout(() => {
+      import("./pages/LandingPage");
+      import("./pages/ServicesPage");
+    }, 100);
+  }
+};
+
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
 
@@ -207,7 +223,11 @@ function App() {
     const params = new URLSearchParams(window.location.search);
     const isPreviewMode = params.get("pwa_splash") === "1";
 
-    if (!isStandalone && !isPreviewMode) return;
+    if (!isStandalone && !isPreviewMode) {
+      // Si no hay splash, precargar rutas críticas inmediatamente
+      preloadCriticalRoutes();
+      return;
+    }
 
     splashInitializedRef.current = true;
 
@@ -219,9 +239,12 @@ function App() {
     setShowPwaSplash(true);
     localStorage.setItem(storageKey, String((safeVariant + 1) % 3));
 
+    // ✅ REDUCIDO DE 3500ms A 1500ms - MÁS RÁPIDO
     const timer = window.setTimeout(() => {
       setShowPwaSplash(false);
-    }, 3500);
+      // Precargar rutas después del splash
+      preloadCriticalRoutes();
+    }, 1500);
 
     return () => window.clearTimeout(timer);
   }, []);
@@ -229,11 +252,15 @@ function App() {
   return (
     <LocaleProvider>
       <AuthProvider>
-        {showPwaSplash && <PwaSplashScreen variant={splashVariant} />}
+        {showPwaSplash && (
+          <PwaSplashScreen 
+            variant={splashVariant} 
+            duration={1500}
+            onComplete={() => setShowPwaSplash(false)}
+          />
+        )}
         <BrowserRouter>
-          {/* ✅ Esto arregla que siempre abra arriba */}
           <ScrollToTop />
-
           <AppRoutes />
           <PublicVoiceAssistant />
           <Toaster position="top-right" richColors />

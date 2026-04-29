@@ -163,6 +163,7 @@ def is_active_member(order: dict, customer: Optional[dict]) -> bool:
 
 
 def calculate_service_amount(order: dict, customer: Optional[dict]) -> Optional[float]:
+    """Calculate total amount based on actual_lbs, service_plan, and price_per_lb."""
     service_type = normalize_status(order.get("service_type") or "pickup_delivery")
     lbs_value = order.get("actual_lbs")
     if lbs_value is None:
@@ -173,12 +174,40 @@ def calculate_service_amount(order: dict, customer: Optional[dict]) -> Optional[
         return None
     if lbs_value <= 0:
         return None
+
+    # Pricing tables (must match frontend and public_forms.py)
+    PRICING_PD = {
+        "standard": {"member": 2.50, "regular": 2.75},
+        "premium":  {"member": 2.75, "regular": 3.00},
+        "express":  {"member": 3.00, "regular": 3.25},
+    }
+    PRICING_WF = {
+        "standard": 2.25,
+        "premium":  2.50,
+        "express":  2.75,
+    }
+
+    plan = (order.get("service_plan") or "standard").lower()
+    stored_rate = order.get("price_per_lb")
+
+    if stored_rate and float(stored_rate) > 0:
+        rate = float(stored_rate)
+    elif service_type == "wash_fold":
+        rate = PRICING_WF.get(plan, PRICING_WF["standard"])
+    else:
+        tier = PRICING_PD.get(plan, PRICING_PD["standard"])
+        rate = tier["member"] if is_active_member(order, customer) else tier["regular"]
+
     if service_type == "wash_fold":
         billable_lbs = max(lbs_value, 10)
-        amount = billable_lbs * 2.25
+        amount = billable_lbs * rate
     else:
-        rate = 2.50 if is_active_member(order, customer) else 2.75
         amount = max(lbs_value * rate, 40)
+
+    # Add delivery fee if present
+    delivery_fee = float(order.get("delivery_fee") or 0)
+    amount += delivery_fee
+
     return round(float(amount), 2)
 
 
