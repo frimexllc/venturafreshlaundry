@@ -112,66 +112,66 @@ export const MapView = forwardRef(function MapView(
       return iw;
     };
 
-    // 1. Route polyline — use real driving route via Directions API
+    // 1. Route polyline — use real driving route via Directions API (chunked for >25 stops)
     if (routeOrders.length > 0 && !navigationActive) {
       const directionsService = new window.google.maps.DirectionsService();
-      const waypoints = routeOrders.slice(0, -1).map(o => ({
-        location: { lat: o.location.lat, lng: o.location.lng },
-        stopover: true,
-      }));
-      const origin = { lat: hqLocation.lat, lng: hqLocation.lng };
-      const destination = routeOrders.length > 0
-        ? { lat: routeOrders[routeOrders.length - 1].location.lat, lng: routeOrders[routeOrders.length - 1].location.lng }
-        : origin;
+      const allStops = routeOrders.map(o => ({ lat: o.location.lat, lng: o.location.lng }));
+      const hqPos = { lat: hqLocation.lat, lng: hqLocation.lng };
 
-      if (waypoints.length <= 23) { // Google limits 25 waypoints
+      // Split into chunks of max 23 waypoints (Google limit = 25 total including origin/dest)
+      const chunkSize = 20;
+      const chunks = [];
+      for (let i = 0; i < allStops.length; i += chunkSize) {
+        chunks.push(allStops.slice(i, i + chunkSize));
+      }
+
+      const routeColor = '#2563eb';
+      const routeShadow = '#1e3a5f';
+
+      chunks.forEach((chunk, idx) => {
+        const origin = idx === 0 ? hqPos : chunks[idx - 1][chunks[idx - 1].length - 1];
+        const destination = chunk[chunk.length - 1];
+        const waypoints = chunk.slice(0, -1).map(pos => ({ location: pos, stopover: true }));
+
         directionsService.route({
           origin,
           destination,
-          waypoints: waypoints.slice(0, 23),
+          waypoints,
           travelMode: window.google.maps.TravelMode.DRIVING,
           optimizeWaypoints: false,
         }, (result, status) => {
           if (status === 'OK' && result.routes[0]) {
             const routePath = result.routes[0].overview_path;
+            // Shadow line
             manager.addPolyline({
-              path: routePath,
-              geodesic: true,
-              strokeColor: '#2563eb',
-              strokeOpacity: 0.85,
-              strokeWeight: 5,
-              map: manager.map,
+              path: routePath, geodesic: true,
+              strokeColor: routeShadow, strokeOpacity: 0.25,
+              strokeWeight: 10, map: manager.map,
             });
-            // Add route outline for visibility
+            // Main route line
             manager.addPolyline({
-              path: routePath,
-              geodesic: true,
-              strokeColor: '#1e40af',
-              strokeOpacity: 0.3,
-              strokeWeight: 9,
-              map: manager.map,
-            });
-          } else {
-            // Fallback: straight lines
-            const path = [
-              { lat: hqLocation.lat, lng: hqLocation.lng },
-              ...routeOrders.map(o => ({ lat: o.location.lat, lng: o.location.lng })),
-            ];
-            manager.addPolyline({
-              path, geodesic: true, strokeColor: '#3b82f6',
-              strokeOpacity: 0.9, strokeWeight: 5, map: manager.map,
+              path: routePath, geodesic: true,
+              strokeColor: routeColor, strokeOpacity: 0.9,
+              strokeWeight: 5, map: manager.map,
             });
           }
         });
-      } else {
-        // Too many waypoints — fallback to straight lines
-        const path = [
-          { lat: hqLocation.lat, lng: hqLocation.lng },
-          ...routeOrders.map(o => ({ lat: o.location.lat, lng: o.location.lng })),
-        ];
-        manager.addPolyline({
-          path, geodesic: true, strokeColor: '#3b82f6',
-          strokeOpacity: 0.9, strokeWeight: 5, map: manager.map,
+      });
+
+      // Return leg: last stop → HQ
+      if (allStops.length > 0) {
+        directionsService.route({
+          origin: allStops[allStops.length - 1],
+          destination: hqPos,
+          travelMode: window.google.maps.TravelMode.DRIVING,
+        }, (result, status) => {
+          if (status === 'OK' && result.routes[0]) {
+            manager.addPolyline({
+              path: result.routes[0].overview_path, geodesic: true,
+              strokeColor: '#64748b', strokeOpacity: 0.5,
+              strokeWeight: 3, strokeDashArray: [8, 4], map: manager.map,
+            });
+          }
         });
       }
     }
@@ -213,23 +213,26 @@ export const MapView = forwardRef(function MapView(
     const hqIw = createInfoWindow(`<div><b>Ventura Fresh Laundry HQ</b><br/>5722 Telephone Rd, Ventura</div>`, hqM.getPosition());
     hqM.addListener('click', () => hqIw.open(mapRef.current));
 
-    // 4. Gas stations
+    // 4. Gas stations with price labels
     gasStations.forEach(station => {
       const isCheapest = cheapestIds.has(station.id);
+      const priceStr = station.price ? station.price.toFixed(2) : '';
+      const bgColor = isCheapest ? '%2310b981' : '%23f59e0b';
+      const size = 34;
       const gIcon = {
-        url: isCheapest
-          ? `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'%3E%3Ccircle cx='14' cy='14' r='13' fill='%2310b981' stroke='white' stroke-width='2'/%3E%3Ctext x='14' y='20' text-anchor='middle' font-size='14' fill='white' font-weight='bold'%3E%E2%9B%BD%3C/text%3E%3C/svg%3E`
-          : `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'%3E%3Ccircle cx='14' cy='14' r='13' fill='%23f59e0b' stroke='white' stroke-width='2'/%3E%3Ctext x='14' y='20' text-anchor='middle' font-size='14' fill='white'%3E%E2%9B%BD%3C/text%3E%3C/svg%3E`,
-        scaledSize: new window.google.maps.Size(28, 28),
+        url: `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='${size}' height='${size+12}' viewBox='0 0 ${size} ${size+12}'%3E%3Ccircle cx='${size/2}' cy='${size/2}' r='${size/2-1}' fill='${bgColor}' stroke='white' stroke-width='2'/%3E%3Ctext x='${size/2}' y='${size/2+5}' text-anchor='middle' font-size='14' fill='white' font-weight='bold'%3E%E2%9B%BD%3C/text%3E%3Crect x='2' y='${size}' width='${size-4}' height='12' rx='3' fill='white' stroke='${bgColor}' stroke-width='1'/%3E%3Ctext x='${size/2}' y='${size+10}' text-anchor='middle' font-size='9' fill='%23333' font-weight='bold'%3E%24${priceStr}%3C/text%3E%3C/svg%3E`,
+        scaledSize: new window.google.maps.Size(size, size + 12),
       };
-      const gm = manager.addMarker({ position: { lat: station.lat, lng: station.lng }, icon: gIcon, map: manager.map });
+      const gm = manager.addMarker({ position: { lat: station.lat, lng: station.lng }, icon: gIcon, map: manager.map, zIndex: 50 });
       const savingsHtml = station.savings !== undefined ? `<div style="color:${Number(station.savings) >= 0 ? '#10b981' : '#ef4444'}">Ahorro neto: $${station.savings}</div>` : '';
-      const btnHtml = onSelectGasStation ? `<button id="gas-btn-${station.id}" style="margin-top:8px;background:#2563eb;color:white;border:none;border-radius:6px;padding:4px 8px;font-size:12px;cursor:pointer;width:100%">⛽ Usar esta gasolinera</button>` : '';
+      const btnHtml = onSelectGasStation ? `<button id="gas-btn-${station.id}" style="margin-top:8px;background:#2563eb;color:white;border:none;border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer;width:100%;font-weight:700">Usar esta gasolinera</button>` : '';
       const giw = createInfoWindow(`
-        <div style="min-width:200px">
-          <div style="font-weight:bold">⛽ ${station.name}</div>
-          <div style="font-size:12px;margin-top:4px">Precio: <strong>$${station.price.toFixed(2)}/gal</strong></div>
-          <div>Desvío: ${station.distanceToRouteKm.toFixed(1)} km</div>
+        <div style="min-width:200px;font-family:system-ui,sans-serif">
+          <div style="font-weight:bold;font-size:14px">${station.name}</div>
+          ${station.brand ? `<div style="font-size:11px;color:#6b7280">${station.brand}</div>` : ''}
+          <div style="font-size:16px;font-weight:800;color:${isCheapest ? '#10b981' : '#f59e0b'};margin-top:6px">$${station.price.toFixed(2)}/gal</div>
+          <div style="font-size:12px;margin-top:4px;color:#64748b">${station.distanceToRouteKm ? station.distanceToRouteKm.toFixed(1) + ' km de desvío' : station.distance_miles ? station.distance_miles.toFixed(1) + ' mi' : ''}</div>
+          ${isCheapest ? '<div style="color:#10b981;font-size:11px;font-weight:700;margin-top:4px">Mejor precio</div>' : ''}
           ${savingsHtml}
           ${btnHtml}
         </div>`, gm.getPosition());
@@ -260,7 +263,7 @@ export const MapView = forwardRef(function MapView(
       wm.addListener('click', () => wiw.open(mapRef.current));
     });
 
-    // 6. Order markers (numbered diamonds)
+    // 6. Order markers (compact, numbered when in route)
     const sequenceMap = new Map();
     routeOrders.forEach((o, i) => sequenceMap.set(o.id, i + 1));
     orders.forEach(order => {
@@ -271,16 +274,18 @@ export const MapView = forwardRef(function MapView(
       const seq = sequenceMap.get(order.id);
       const inRoute = seq != null;
       const done = completedStops.has(order.id);
-      const color = done ? '#10b981' : role === 'pickup' ? '#f97316' : role === 'delivery' ? '#22c55e' : '#94a3b8';
-      const size = 32;
+      const color = done ? '#10b981' : role === 'pickup' ? '#f97316' : role === 'delivery' ? '#2563eb' : '#94a3b8';
+      const size = inRoute ? 28 : 22;
       const label = done ? '✓' : seq ? String(seq) : role === 'pickup' ? 'P' : 'D';
-      const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${size}' height='${size}' viewBox='0 0 ${size} ${size}'><path d='M${size/2},0 L${size},${size/2} L${size/2},${size} L0,${size/2} Z' fill='${color}' stroke='white' stroke-width='2'/><text x='${size/2}' y='${size/2+4}' text-anchor='middle' font-size='${size*0.4}' fill='white' font-weight='bold'>${label}</text></svg>`;
+      const svg = inRoute
+        ? `<svg xmlns='http://www.w3.org/2000/svg' width='${size}' height='${size}' viewBox='0 0 ${size} ${size}'><circle cx='${size/2}' cy='${size/2}' r='${size/2-2}' fill='${color}' stroke='white' stroke-width='2'/><text x='${size/2}' y='${size/2+4}' text-anchor='middle' font-size='${size*0.4}' fill='white' font-weight='bold'>${label}</text></svg>`
+        : `<svg xmlns='http://www.w3.org/2000/svg' width='${size}' height='${size}' viewBox='0 0 ${size} ${size}'><circle cx='${size/2}' cy='${size/2}' r='${size/2-1}' fill='${color}' fill-opacity='0.7' stroke='white' stroke-width='1.5'/><text x='${size/2}' y='${size/2+3}' text-anchor='middle' font-size='${size*0.38}' fill='white' font-weight='600'>${label}</text></svg>`;
       const oIcon = { url: `data:image/svg+xml,${encodeURIComponent(svg)}`, scaledSize: new window.google.maps.Size(size, size) };
-      const om = manager.addMarker({ position: { lat: order.location.lat, lng: order.location.lng }, icon: oIcon, map: manager.map });
+      const om = manager.addMarker({ position: { lat: order.location.lat, lng: order.location.lng }, icon: oIcon, map: manager.map, zIndex: inRoute ? 100 + (seq || 0) : 10 });
       const oiw = createInfoWindow(`
-        <div style="min-width:180px">
-          ${inRoute ? `<span style="background:${color};color:white;border-radius:4px;padding:1px 6px;font-size:11px;font-weight:700">#${seq} ${role === 'pickup' ? 'Recogida' : 'Entrega'}</span>` : `<span style="background:#94a3b8;color:white;border-radius:4px;padding:1px 6px;font-size:11px;font-weight:700">${ORDER_STATUS_LABELS[order.status] || order.status}</span>`}
-          <div style="font-weight:700;font-size:14px;margin-top:4px">${order.customer?.name}</div>
+        <div style="min-width:180px;font-family:system-ui,sans-serif">
+          ${inRoute ? `<span style="background:${color};color:white;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700">#${seq} ${role === 'pickup' ? 'Recogida' : 'Entrega'}</span>` : `<span style="background:#94a3b8;color:white;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700">${ORDER_STATUS_LABELS[order.status] || order.status}</span>`}
+          <div style="font-weight:700;font-size:14px;margin-top:6px">${order.customer?.name}</div>
           <div style="font-size:12px;color:#6b7280">${ORDER_TYPE_LABELS[order.type]}</div>
           <div style="font-size:12px;color:#374151;margin-top:4px">${order.location.address}</div>
           ${order.schedule?.pickupTime ? `<div style="font-size:11px;color:#f97316;margin-top:4px;font-weight:600">Pickup: ${order.schedule.pickupTime}</div>` : ''}

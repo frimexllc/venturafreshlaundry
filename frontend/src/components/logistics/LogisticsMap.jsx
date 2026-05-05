@@ -189,7 +189,7 @@ export function LogisticsMap() {
   const [loadingSettings, setLoadingSettings] = useState(true);
 
   // ========== GASOLINERAS ==========
-  const [showGasStations, setShowGasStations] = useState(false);
+  const [showGasStations, setShowGasStations] = useState(true);
   const [navigationMode, setNavigationMode] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
 
