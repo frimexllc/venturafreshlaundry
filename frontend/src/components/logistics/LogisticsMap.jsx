@@ -1,3 +1,7 @@
+// ═══════════════════════════════════════════════════════════════════════
+// LogisticsMap.jsx — with gas stations selection + internal navigation (optimized)
+// ═══════════════════════════════════════════════════════════════════════
+
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -7,11 +11,13 @@ import { MapView } from './MapView';
 import { TimAssistant } from './TimAssistant';
 import { QuickSaleModal } from './QuickSaleModal';
 import MapFilters from '../MapFilters';
+import { InternalNavigation } from './InternalNavigation';   // ← nuevo
 import {
   Navigation, Package, Loader2, Clock, TrendingDown, AlertTriangle,
   ChevronDown, ChevronUp, ExternalLink, PlayCircle, RefreshCw,
   ArrowDownToLine, ArrowUpFromLine, MapPin, Bell, BellRing, Zap, Radio,
   Menu, X, CheckCircle2, Search, Moon, Sun, BarChart2, History, ShoppingBag,
+  Fuel,
 } from 'lucide-react';
 import {
   MOCK_ORDERS, ORDER_TYPE_LABELS, ORDER_STATUS_LABELS,
@@ -21,6 +27,7 @@ import { getCurrentTrafficEvents, totalTrafficDelay, SEVERITY_COLORS, SEVERITY_L
 import { requestNotificationPermission } from '../../utils/notifications';
 import { saveRouteRecord, loadRouteHistory } from '../../utils/routeHistory';
 import { toast } from 'sonner';
+import { useGasStations, GasStationsSidebar, analyzeBestFuelStop } from './GasStations';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
 const NEARBY_THRESHOLD_KM = 1.2;
@@ -125,10 +132,11 @@ function buildGoogleMapsUrl(stops) {
   return `https://www.google.com/maps/dir/?api=1&${params.toString()}`;
 }
 
-function optimizeOrders(allOrders) {
+// ========== OPTIMIZACIÓN CON PARÁMETROS REALES ==========
+function optimizeOrders(allOrders, vehicleMpg, fuelPrice) {
   const routeOrders = allOrders.filter((o) => (o.status === 'pending' || o.status === 'ready') && o.type !== 'wash-fold');
   if (routeOrders.length === 0) return null;
-  return optimizeRouteAdvanced(routeOrders, HQ);
+  return optimizeRouteAdvanced(routeOrders, HQ, vehicleMpg, fuelPrice);
 }
 
 function useIsMobile() {
@@ -173,6 +181,47 @@ export function LogisticsMap() {
   const [productSearch, setProductSearch] = useState('');
   const [productsList, setProductsList] = useState([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
+  const googleMapRef = useRef(null);   // ← nueva referencia para el mapa
+
+  // ========== LOGÍSTICA REAL: MPG y precio combustible ==========
+  const [vehicleMpg, setVehicleMpg] = useState(12);
+  const [fuelPrice, setFuelPrice] = useState(4.89);
+  const [loadingSettings, setLoadingSettings] = useState(true);
+
+  // ========== GASOLINERAS ==========
+  const [showGasStations, setShowGasStations] = useState(false);
+  const [navigationMode, setNavigationMode] = useState(false);
+  const [currentStep, setCurrentStep] = useState(0);
+
+  // Waypoints de la ruta (para tráfico y gasolineras)
+  const routeWaypoints = useMemo(() => {
+    const routeOrdersList = routeResult?.stops.map(s => s.order) ?? [];
+    return [HQ, ...routeOrdersList.map(o => ({ lat: o.location.lat, lng: o.location.lng }))];
+  }, [routeResult]);
+
+  // Obtener MPG y precio desde el backend
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      setLoadingSettings(false);
+      return;
+    }
+    fetch(`${API_URL}/api/logistics/settings`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.vehicle_mpg) setVehicleMpg(data.vehicle_mpg);
+        if (data.fuel_price_per_gallon) setFuelPrice(data.fuel_price_per_gallon);
+      })
+      .catch(console.error)
+      .finally(() => setLoadingSettings(false));
+  }, []);
+
+  // Hook de gasolineras con valores reales
+  const { stations: gasStations, loading: gasLoading, error: gasError, basePrice, cheapestIds, fuelAnalysis } = useGasStations(
+    HQ, routeWaypoints, showGasStations, vehicleMpg, fuelPrice
+  );
 
   // Dark mode
   useEffect(() => {
@@ -194,10 +243,10 @@ export function LogisticsMap() {
       .finally(() => setLoadingProducts(false));
   }, [showProducts, productsList.length]);
 
-  // Notifications permission (solo pedir permiso, no mostrar notificaciones automáticas)
+  // Notifications permission
   useEffect(() => { requestNotificationPermission(); }, []);
 
-  // Reemplazar sendNotification por toast.warning para tráfico pesado (evita error de constructor)
+  // Toast para tráfico pesado
   useEffect(() => {
     const heavyNow = new Set(trafficEvents.filter(e => e.severity === 'heavy').map(e => e.id));
     const newHeavy = trafficEvents.filter(e => e.severity === 'heavy' && !prevHeavyRef.current.has(e.id));
@@ -239,7 +288,7 @@ export function LogisticsMap() {
 
   useEffect(() => { loadOrders(); }, [loadOrders]);
 
-  // Traffic refresh
+  // Traffic refresh (con waypoints reales)
   useEffect(() => {
     const token = localStorage.getItem('token');
     const refresh = async () => {
@@ -270,10 +319,9 @@ export function LogisticsMap() {
     return () => clearInterval(interval);
   }, []);
 
-  // ========== NUEVA LÓGICA DE FILTRADO POR FECHA Y HORARIO ==========
+  // Filtrado por fecha/horario
   const filteredByDateAndTime = useMemo(() => {
     let result = orders;
-    
     if (mapFilters.date) {
       result = result.filter(order => {
         const pickupDate = order.schedule?.pickupDate || order.pickup_date || order.pickupDate;
@@ -282,13 +330,11 @@ export function LogisticsMap() {
       });
       console.log(`📅 Filtro fecha: ${mapFilters.date} → ${result.length} órdenes restantes`);
     }
-    
     if (mapFilters.time_window) {
       const antes = result.length;
       result = filterOrdersByTimeWindow(result, mapFilters.time_window);
       console.log(`⏰ Filtro horario local (post-fecha): ${antes} → ${result.length} (time_window=${mapFilters.time_window})`);
     }
-    
     return result;
   }, [orders, mapFilters]);
 
@@ -296,41 +342,146 @@ export function LogisticsMap() {
     ? filteredByDateAndTime 
     : filteredByDateAndTime.filter((o) => o.type === filterType);
 
-  console.log(`🗺️ Órdenes mostradas en mapa: ${displayedOrders.length} (total original: ${orders.length}, fecha/hora: ${filteredByDateAndTime.length}, tipo: ${filterType})`);
+  console.log(`🗺️ Órdenes mostradas en mapa: ${displayedOrders.length}`);
 
   const pickupCount = displayedOrders.filter((o) => o.status === 'pending' && o.type !== 'wash-fold').length;
   const deliveryCount = displayedOrders.filter((o) => o.status === 'ready' && o.type !== 'wash-fold').length;
-  const trafficDelay = totalTrafficDelay(trafficEvents);
+  
+  // Cálculo de retraso por tráfico SÓLO incidentes cerca de la ruta
+  const trafficDelay = totalTrafficDelay(trafficEvents, routeWaypoints, 3.0);
   const filteredProducts = productSearch.trim() ? productsList.filter(p => p.name?.toLowerCase().includes(productSearch.toLowerCase())) : productsList;
   const productsCount = productsList.length;
 
-  // Re-optimizar ruta cuando cambian las órdenes filtradas
+  // Re-optimizar ruta cuando cambian órdenes o configuración real
   useEffect(() => {
-    if (!loadingBackend) {
-      const result = optimizeOrders(displayedOrders);
+    if (!loadingBackend && !loadingSettings) {
+      const result = optimizeOrders(displayedOrders, vehicleMpg, fuelPrice);
       setRouteResult(result);
     }
-  }, [loadingBackend, displayedOrders]);
+  }, [loadingBackend, loadingSettings, displayedOrders, vehicleMpg, fuelPrice]);
 
-  // Forzar redimensionamiento del mapa cuando cambia el sidebar (móvil) o la altura de la hoja inferior
+  // Forzar resize del mapa
   useEffect(() => {
-    // Pequeño timeout para que el DOM se actualice
-    const timer = setTimeout(() => {
-      window.dispatchEvent(new Event('resize'));
-    }, 100);
+    const timer = setTimeout(() => window.dispatchEvent(new Event('resize')), 100);
     return () => clearTimeout(timer);
   }, [sidebarOpen, sheetHeight, displayedOrders]);
 
+  // ========== SELECCIÓN DE GASOLINERA DESDE EL MAPA ==========
+  function findBestInsertIndex(station, stops, hq) {
+    let bestIdx = stops.length;
+    let minExtraDist = Infinity;
+    const stationLatLng = { lat: station.lat, lng: station.lng };
+    for (let i = 0; i <= stops.length; i++) {
+      const prev = i === 0 ? hq : stops[i-1].order.location;
+      const next = i === stops.length ? null : stops[i].order.location;
+      let extra = 0;
+      if (prev && next) {
+        const origDist = haversineDistance(prev.lat, prev.lng, next.lat, next.lng);
+        const viaDist = haversineDistance(prev.lat, prev.lng, stationLatLng.lat, stationLatLng.lng) +
+                        haversineDistance(stationLatLng.lat, stationLatLng.lng, next.lat, next.lng);
+        extra = viaDist - origDist;
+      } else if (prev && !next) {
+        extra = haversineDistance(prev.lat, prev.lng, stationLatLng.lat, stationLatLng.lng);
+      }
+      if (extra < minExtraDist) {
+        minExtraDist = extra;
+        bestIdx = i;
+      }
+    }
+    return bestIdx;
+  }
+
+  const handleSelectGasStation = (station) => {
+    if (!routeResult) return;
+    // Crear una orden ficticia para la gasolinera (tipo especial)
+    const fuelOrder = {
+      id: `fuel-${station.id}`,
+      orderNumber: `GAS-${station.name.slice(0,6).toUpperCase()}`,
+      type: 'fuel-stop',
+      status: 'ready', // se comporta como una entrega más
+      customer: { name: station.name, phone: '', email: '' },
+      location: { lat: station.lat, lng: station.lng, address: station.name, zipCode: '' },
+      schedule: { pickupTime: '', deliveryTime: '' },
+      specialInstructions: `Gasolinera - Precio $${station.price}/gal`,
+      pricing: { subtotal: 0, tax: 0, total: 0 },
+    };
+    const currentStops = [...routeResult.stops];
+    const insertIndex = findBestInsertIndex(station, currentStops, HQ);
+    // Insertar la nueva parada
+    const newStop = {
+      order: fuelOrder,
+      stopNumber: insertIndex + 1,
+      distanceFromPrev: station.distanceToRouteKm,
+      cumulativeDistance: 0,
+      estimatedArrival: '',
+      urgencyLevel: 'normal',
+      timeWindowStart: 0,
+      timeWindowEnd: 0,
+      onTime: true,
+      priorityScore: 5,
+    };
+    currentStops.splice(insertIndex, 0, newStop);
+    // Recalcular toda la ruta con el nuevo conjunto de órdenes (incluye la gasolinera)
+    const allOrdersForRoute = currentStops.map(s => s.order);
+    const newRoute = optimizeRouteAdvanced(allOrdersForRoute, HQ, vehicleMpg, fuelPrice);
+    if (newRoute) {
+      setRouteResult(newRoute);
+      toast.success(`Gasolinera ${station.name} añadida a la ruta. Ahorro estimado: $${station.savings || '?'}`);
+      // Salir del modo navegación si estaba activo
+      setNavigationMode(false);
+      setCurrentStep(0);
+    } else {
+      toast.error('No se pudo recalcular la ruta con la gasolinera');
+    }
+  };
+
+  // ========== NAVEGACIÓN INTERNA (simplificada) ==========
+  function startInternalNavigation() {
+    if (routeResult && routeResult.stops.length) {
+      setNavigationMode(true);
+      setCurrentStep(0);
+      // El panel InternalNavigation se encarga de todo
+    } else {
+      toast.info('No hay ruta activa para navegar');
+    }
+  }
+
+  function nextStep() {
+    if (!routeResult) return;
+    if (currentStep + 1 < routeResult.stops.length) {
+      setCurrentStep(currentStep + 1);
+      toast.success(`Siguiente parada: ${routeResult.stops[currentStep+1].order.customer?.name || 'Gasolinera'}`);
+    } else {
+      setNavigationMode(false);
+      toast.success('Ruta completada. ¡Buen trabajo!');
+      if (routeResult) {
+        // Registrar ruta completada
+        saveRouteRecord({
+          date: new Date().toLocaleDateString('es-MX'),
+          totalStops: routeResult.stops.length,
+          completedStops: routeResult.stops.length,
+          totalDistance: routeResult.totalDistance,
+          estimatedDuration: routeResult.estimatedDuration,
+          fuelCost: routeResult.estimatedFuelCost,
+          savedMiles: routeResult.savedMiles,
+          trafficDelay,
+        });
+        setRouteHistory(loadRouteHistory());
+      }
+    }
+  }
+
+  // ========== HANDLERS EXISTENTES ==========
   function handleReoptimize() {
     setOptimizing(true);
     setTimeout(() => {
-      const result = optimizeOrders(displayedOrders);
+      const result = optimizeOrders(displayedOrders, vehicleMpg, fuelPrice);
       setRouteResult(result);
       setOptimizing(false);
       if (result) {
         const saved = result.savedMiles > 0 ? ` - ${result.savedMiles.toFixed(1)} mi ahorradas` : '';
         toast.success(`Ruta re-optimizada: ${result.stops.length} paradas - ${result.totalDistance} mi${saved}`);
-        timRef.current?.sendProactive(`RUTA RE-OPTIMIZADA — ${result.stops.length} paradas, ${result.totalDistance} mi, ETA ${Math.floor(result.estimatedDuration / 60)}h ${result.estimatedDuration % 60}m. Comenta brevemente.`);
+        timRef.current?.sendProactive(`RUTA RE-OPTIMIZADA — ${result.stops.length} paradas, ${result.totalDistance} mi, ETA ${Math.floor(result.estimatedDuration / 60)}h ${result.estimatedDuration % 60}m.`);
       } else { toast.info('No hay paradas activas para optimizar'); }
     }, 600);
   }
@@ -362,7 +513,6 @@ export function LogisticsMap() {
       return next;
     });
     toast.success(`${isPickup ? 'Recogido' : 'Entregado'}: ${order.customer.name}`);
-    // Forzar resize del mapa para actualizar marcadores
     setTimeout(() => window.dispatchEvent(new Event('resize')), 50);
   }
 
@@ -384,7 +534,7 @@ export function LogisticsMap() {
       }).catch(() => {});
     }
     setTimeout(() => {
-      setOrders((current) => { const result = optimizeOrders(current); setRouteResult(result); return current; });
+      setOrders((current) => { const result = optimizeOrders(current, vehicleMpg, fuelPrice); setRouteResult(result); return current; });
     }, 0);
     const label = ORDER_STATUS_LABELS[newStatus] ?? newStatus;
     toast.success(`Estado actualizado -> ${label}`);
@@ -393,7 +543,6 @@ export function LogisticsMap() {
   function handleOrderClick(order) { setSelectedOrder(order); setModalOpen(true); }
 
   const routeOrders = routeResult?.stops.map((s) => s.order) ?? [];
-  const routeWaypoints = [HQ, ...routeOrders.map((o) => ({ lat: o.location.lat, lng: o.location.lng }))];
 
   const nearbyWashFold = displayedOrders.filter((o) => {
     if (o.type !== 'wash-fold') return false;
@@ -420,6 +569,7 @@ export function LogisticsMap() {
 
   const progressPct = routeResult ? Math.round((completedStops.size / routeResult.stops.length) * 100) : 0;
 
+  // ========== SIDEBAR CONTENT (versión simplificada, sin navegación interna) ==========
   const SidebarContent = (
     <div className="h-full overflow-y-auto dark:bg-gray-900">
       <div className="px-3 pt-3 pb-2 border-b dark:border-gray-700">
@@ -453,6 +603,16 @@ export function LogisticsMap() {
           )}
         </div>
       )}
+      {/* Gas stations sidebar */}
+      {showGasStations && (
+        <GasStationsSidebar
+          stations={gasStations}
+          loading={gasLoading}
+          error={gasError}
+          basePrice={basePrice}
+        />
+      )}
+      {/* Tráfico */}
       {trafficEvents.length > 0 && (
         <div className="px-3 pt-3 pb-3 border-b bg-red-50" data-testid="traffic-alerts">
           <button onClick={() => setShowTraffic((v) => !v)} className="w-full flex items-center gap-1.5 text-xs font-semibold text-red-800 mb-2">
@@ -480,6 +640,7 @@ export function LogisticsMap() {
           <p className="text-[9px] text-red-400 mt-2">Se actualiza cada 5 min - Impacto total: +{trafficDelay} min</p>
         </div>
       )}
+      {/* Oportunidades cercanas */}
       {nearbyWashFold.length > 0 && (
         <div className="px-3 pt-3 pb-3 border-b bg-violet-50" data-testid="nearby-opportunities">
           <div className="flex items-center gap-1.5 text-xs font-semibold text-violet-800 mb-2">
@@ -503,6 +664,7 @@ export function LogisticsMap() {
           </div>
         </div>
       )}
+      {/* Lista de paradas */}
       <div>
         {routeResult ? (
           <div className="px-3 pt-3 pb-2">
@@ -518,21 +680,23 @@ export function LogisticsMap() {
                 </div>
                 {filteredStops.map((stop) => {
                   const isPickup = stop.order.status === 'pending';
+                  const isFuel = stop.order.type === 'fuel-stop';
                   const done = completedStops.has(stop.order.id);
                   const globalIdx = routeResult.stops.findIndex(s => s.order.id === stop.order.id);
-                  const isTimeValid = isWithinTimeWindow(stop.order, isPickup ? 'pickup' : 'delivery');
+                  const isTimeValid = isPickup ? isWithinTimeWindow(stop.order, 'pickup') : true;
+                  const primaryName = isFuel ? stop.order.customer.name : stop.order.customer.name.split(' ')[0];
                   return (
-                    <div key={stop.order.id} data-testid={`stop-${globalIdx}`} className={`rounded-lg border p-2.5 transition-all ${done ? 'border-green-300 bg-green-50 dark:bg-green-950 opacity-70' : stop.onTime ? (isPickup ? 'border-orange-200 bg-orange-50/50 dark:bg-orange-950/30' : 'border-green-200 bg-green-50/50 dark:bg-green-950/30') : 'border-amber-300 bg-amber-50 dark:bg-amber-950'}`}>
+                    <div key={stop.order.id} data-testid={`stop-${globalIdx}`} className={`rounded-lg border p-2.5 transition-all ${done ? 'border-green-300 bg-green-50 dark:bg-green-950 opacity-70' : isFuel ? 'border-amber-300 bg-amber-50' : stop.onTime ? (isPickup ? 'border-orange-200 bg-orange-50/50' : 'border-green-200 bg-green-50/50') : 'border-amber-300 bg-amber-50'}`}>
                       <div className="flex items-center justify-between gap-1 mb-1">
                         <div className="flex items-center gap-1.5 flex-1 cursor-pointer" onClick={() => handleOrderClick(stop.order)}>
                           <span className="text-[10px] text-gray-400 font-mono w-4">{globalIdx + 1}.</span>
                           <div className={`w-2 h-2 rounded-full shrink-0 ${urgencyDot(stop.urgencyLevel)}`} />
-                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${done ? 'bg-green-600 text-white' : isPickup ? 'bg-orange-500 text-white' : 'bg-green-500 text-white'}`}>{done ? '\u2713' : isPickup ? 'P' : 'D'}</span>
-                          <span className={`text-xs font-semibold truncate max-w-[70px] ${done ? 'text-green-700 dark:text-green-400 line-through' : 'text-gray-800 dark:text-gray-100'}`}>{stop.order.customer.name.split(' ')[0]}</span>
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${done ? 'bg-green-600 text-white' : isFuel ? 'bg-amber-500 text-white' : isPickup ? 'bg-orange-500 text-white' : 'bg-green-500 text-white'}`}>{done ? '\u2713' : isFuel ? '⛽' : isPickup ? 'P' : 'D'}</span>
+                          <span className={`text-xs font-semibold truncate max-w-[70px] ${done ? 'text-green-700 dark:text-green-400 line-through' : 'text-gray-800 dark:text-gray-100'}`}>{primaryName}</span>
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
                           <span className="text-gray-400 text-[10px] flex items-center gap-0.5"><Clock className="w-2.5 h-2.5" />{stop.estimatedArrival}</span>
-                          {!done && (
+                          {!done && !isFuel && (
                             <button
                               onClick={(e) => { e.stopPropagation(); handleCompleteStop(stop.order.id); }}
                               disabled={!isTimeValid}
@@ -561,6 +725,7 @@ export function LogisticsMap() {
           <div className="flex flex-col items-center justify-center h-32 text-gray-400 text-sm px-4 text-center"><Package className="w-8 h-8 mb-2 opacity-30" /> No hay paradas activas</div>
         )}
       </div>
+      {/* Botones inferiores */}
       <div className="sticky bottom-0 p-3 border-t bg-white dark:bg-gray-900 dark:border-gray-700 space-y-2">
         <button onClick={() => setShowProducts(!showProducts)} data-testid="toggle-products-btn" className="w-full flex items-center justify-between text-xs font-semibold px-2 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 transition-colors">
           <span className="flex items-center gap-1.5"><ShoppingBag className="w-3.5 h-3.5" /> Productos / Inventario</span>
@@ -596,17 +761,25 @@ export function LogisticsMap() {
             </div>
           </div>
         )}
-        {routeResult && routeResult.stops.length > 0 && (
-          <a href={buildGoogleMapsUrl(routeResult.stops)} target="_blank" rel="noopener noreferrer" data-testid="google-maps-link" className="flex items-center justify-center gap-2 w-full rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-sm font-semibold py-3 px-4 transition-colors shadow-sm">
-            <PlayCircle className="w-4 h-4 shrink-0" /> Iniciar Recorrido en Google Maps <ExternalLink className="w-3.5 h-3.5 shrink-0 opacity-70" />
-          </a>
+        {/* Botón de navegación interna simplificado (solo cuando NO está activo) */}
+        {routeResult && routeResult.stops.length > 0 && !navigationMode && (
+          <button
+            onClick={startInternalNavigation}
+            className="flex items-center justify-center gap-2 w-full rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-sm font-semibold py-3 px-4 transition-colors shadow-sm"
+          >
+            <Navigation className="w-4 h-4" /> Navegación Interna
+          </button>
         )}
+        <a href={routeResult && buildGoogleMapsUrl(routeResult.stops)} target="_blank" rel="noopener noreferrer" data-testid="google-maps-link" className="flex items-center justify-center gap-2 w-full rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold py-3 px-4 transition-colors shadow-sm">
+          <PlayCircle className="w-4 h-4 shrink-0" /> Iniciar Recorrido en Google Maps <ExternalLink className="w-3.5 h-3.5 shrink-0 opacity-70" />
+        </a>
         <Button variant="outline" size="sm" onClick={handleReoptimize} disabled={optimizing} data-testid="reoptimize-btn" className="w-full text-xs">
           {optimizing ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5 mr-1.5" />} Re-optimizar Ruta
         </Button>
         <div className="flex flex-wrap items-center justify-center gap-3 text-[10px] text-gray-500 pt-1">
           <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-orange-500 inline-block" />Recogida</span>
           <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" />Entrega</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block" />Gasolinera</span>
           <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-violet-500 inline-block" />Oportunidad</span>
           <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block" />Trafico</span>
           <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-slate-700 inline-block" />HQ</span>
@@ -615,6 +788,7 @@ export function LogisticsMap() {
     </div>
   );
 
+  // ========== RENDER PRINCIPAL ==========
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-gray-950" style={{ fontFamily: 'system-ui, sans-serif' }} data-testid="logistics-map-page">
       <div className="bg-white dark:bg-gray-900 dark:border-gray-700 border-b px-4 py-2.5 flex items-center justify-between shadow-sm">
@@ -629,6 +803,9 @@ export function LogisticsMap() {
           {trafficEvents.length > 0 && <div className="flex items-center gap-1 text-[10px] text-red-600 bg-red-50 border border-red-200 rounded-lg px-2 py-1"><Radio className="w-3 h-3 animate-pulse" /><span className="font-bold hidden sm:inline">Trafico</span><span className="font-bold">+{trafficDelay}m</span></div>}
           <div className="flex items-center gap-1 text-xs text-orange-600 bg-orange-50 border border-orange-200 rounded-lg px-2.5 py-1.5"><ArrowUpFromLine className="w-3.5 h-3.5" /><span className="font-semibold">{pickupCount}</span><span className="text-orange-500 hidden sm:inline">recogidas</span></div>
           <div className="flex items-center gap-1 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-2.5 py-1.5"><ArrowDownToLine className="w-3.5 h-3.5" /><span className="font-semibold">{deliveryCount}</span><span className="text-green-600 hidden sm:inline">entregas</span></div>
+          <button onClick={() => setShowGasStations(v => !v)} className={`flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg border transition-colors ${showGasStations ? 'bg-amber-500 text-white border-amber-500' : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-amber-50 hover:border-amber-300 hover:text-amber-700'}`}>
+            <Fuel className="w-3.5 h-3.5" /><span className="hidden sm:inline">⛽ Gas</span>
+          </button>
           <button onClick={() => setQuickSaleOpen(true)} data-testid="quick-sale-btn" title="Venta en Tienda (POS)" className="flex items-center gap-1.5 text-xs text-white bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 rounded-lg px-3 py-1.5 font-semibold transition-colors shadow-sm"><ShoppingBag className="w-3.5 h-3.5" /><span className="hidden sm:inline">Venta POS</span></button>
           <button onClick={() => setShowHistory((v) => !v)} data-testid="history-btn" title="Historial de rutas" className={`p-1.5 rounded-lg border transition-colors ${showHistory ? 'bg-blue-50 border-blue-200 text-blue-600' : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-100'}`}><History className="w-4 h-4" /></button>
           <button onClick={() => setDarkMode((v) => !v)} data-testid="dark-mode-btn" title={darkMode ? 'Modo dia' : 'Modo noche'} className="p-1.5 rounded-lg border bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">{darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}</button>
@@ -650,6 +827,7 @@ export function LogisticsMap() {
         <div className="flex-1 relative" style={{ isolation: 'isolate' }}>
           <MapView
             key={`map-${displayedOrders.length}-${routeOrders.length}-${sidebarOpen}`}
+            ref={googleMapRef}                         // ← nueva prop
             orders={displayedOrders}
             hqLocation={HQ}
             routeOrders={routeOrders}
@@ -657,6 +835,10 @@ export function LogisticsMap() {
             trafficEvents={trafficEvents}
             completedStops={completedStops}
             onOrderClick={handleOrderClick}
+            gasStations={showGasStations ? gasStations : []}
+            cheapestIds={cheapestIds}
+            onSelectGasStation={handleSelectGasStation}
+            navigationActive={navigationMode}          // ← nueva prop (oculta polyline)
           />
           {!isMobile && (
             <div className="absolute top-3 right-3 z-[1000] bg-white/95 backdrop-blur-sm rounded-xl shadow-lg border px-3 py-2">
@@ -719,10 +901,26 @@ export function LogisticsMap() {
           </div>
         </div>
       )}
-      <TimAssistant routeResult={routeResult} trafficEvents={trafficEvents} nearbyOpportunities={nearbyWashFold} totalTrafficDelay={trafficDelay} timRef={timRef} orders={displayedOrders}
+      <TimAssistant fuelAnalysis={fuelAnalysis} routeResult={routeResult} trafficEvents={trafficEvents} nearbyOpportunities={nearbyWashFold} totalTrafficDelay={trafficDelay} timRef={timRef} orders={displayedOrders}
         onCompleteStop={(stopIndex) => { const stop = routeResult?.stops[stopIndex]; if (stop) handleCompleteStop(stop.order.id); }}
         onUpdateOrderStatus={updateOrderStatus}
       />
+      {/* Componente flotante de navegación interna */}
+      {navigationMode && routeResult && (
+        <InternalNavigation
+          stops={routeResult.stops}
+          hqLocation={HQ}
+          mapRef={googleMapRef}
+          onClose={() => {
+            setNavigationMode(false);
+            setCurrentStep(0);
+          }}
+          onStepComplete={(stopIndex) => {
+            const stop = routeResult.stops[stopIndex];
+            if (stop) handleCompleteStop(stop.order.id);
+          }}
+        />
+      )}
       <EndOfDayModal open={showEndOfDay} onClose={() => setShowEndOfDay(false)} routeResult={routeResult} completedCount={completedStops.size} trafficDelay={trafficDelay} startTime={routeStartTime} />
       <QuickSaleModal open={quickSaleOpen} onClose={() => { setQuickSaleOpen(false); setQuickSaleProduct(null); }} initialProduct={quickSaleProduct} />
       {selectedOrder && (

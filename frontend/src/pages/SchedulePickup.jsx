@@ -131,7 +131,7 @@ const PhoneInput = ({ value, dialCode, dialIso, onValueChange, onDialCodeChange 
   );
 };
 
-// ─── Tiny Washing Machine SVG (rides the track) ────────────────────────────────
+// ─── Washing Machine SVGs (unchanged) ─────────────────────────────────────────
 const RiderMachine = ({ step }) => {
   const holes = [0, 45, 90, 135, 180, 225, 270, 315];
   const spinDurs = ["2.5s", "2s", "1.2s", "0.7s", "0.5s"];
@@ -196,7 +196,6 @@ const RiderMachine = ({ step }) => {
   );
 };
 
-// ─── Wash Cycle Machine (full-size) ───────────────────────────────────────────
 const WashMachine = ({ phase, done }) => {
   const holes = [0, 45, 90, 135, 180, 225, 270, 315];
   return (
@@ -342,7 +341,6 @@ const PRICING = {
   },
 };
 
-// ─── Plan Selector with dynamic prices ──────────────────────────────────────
 const PlanSelector = ({ value, onChange, serviceType }) => {
   const { t } = useLocale();
   const isPD = serviceType === "pickup_delivery" || serviceType === "airbnb_host" || serviceType === "commercial";
@@ -352,13 +350,10 @@ const PlanSelector = ({ value, onChange, serviceType }) => {
     { val: "premium",  icon: "⭐", label: "Premium" },
     { val: "express",  icon: "⚡", label: "Express" },
   ];
-  
-  // Helper to translate time labels
   const getTimeLabel = (time) => {
     if (time === "same_day") return t("Same Day", "Mismo día");
     return time;
   };
-  
   return (
     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
       {plans.map((p) => {
@@ -405,16 +400,14 @@ const PlanSelector = ({ value, onChange, serviceType }) => {
   );
 };
 
-// ─── Service Info Panels ──────────────────────────────────────────────────────
+// ─── Service Info Panels (unchanged) ──────────────────────────────────────────
 const PickupDeliveryInfoPanel = ({ t }) => (
   <div style={{ padding: "13px 15px", borderRadius: 11, marginTop: 8,
     background: "linear-gradient(135deg,rgba(14,165,233,.06),rgba(56,189,248,.04))",
     border: "1px solid rgba(14,165,233,.25)", animation: "tl_panel .25s ease both" }}>
     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 9 }}>
       <span style={{ fontSize: 17 }}>🚚</span>
-      <span style={{ fontSize: 12, fontWeight: 700, color: "#0ea5e9" }}>
-        {t("Pickup & Delivery Service", "Servicio de Recogida y Entrega")}
-      </span>
+      <span style={{ fontSize: 12, fontWeight: 700, color: "#0ea5e9" }}>{t("Pickup & Delivery Service", "Servicio de Recogida y Entrega")}</span>
     </div>
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "5px 12px", marginBottom: 9 }}>
       {[
@@ -424,19 +417,14 @@ const PickupDeliveryInfoPanel = ({ t }) => (
         { icon: "📦", en: "Folding & packaging",    es: "Doblado y empaquetado" },
         { icon: "✅", en: "Satisfaction guaranteed", es: "Garantía de satisfacción" },
       ].map((f) => (
-        <div key={f.icon} style={{ display: "flex", alignItems: "center", gap: 5,
-          fontSize: 11, color: "hsl(var(--foreground))" }}>
-          <span style={{ fontSize: 13 }}>{f.icon}</span>
-          <span>{t(f.en, f.es)}</span>
+        <div key={f.icon} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "hsl(var(--foreground))" }}>
+          <span style={{ fontSize: 13 }}>{f.icon}</span><span>{t(f.en, f.es)}</span>
         </div>
       ))}
     </div>
-    <div style={{ padding: "7px 10px", borderRadius: 8, background: "rgba(14,165,233,.07)",
-      fontSize: 10, color: "#0369a1", lineHeight: 1.55 }}>
-      {t(
-        "💡 We'll pick up your laundry at your convenience, wash with care, and deliver back fresh & folded.",
-        "💡 Recogemos tu ropa cuando prefieras, la lavamos con cuidado y te la devolvemos fresca y doblada."
-      )}
+    <div style={{ padding: "7px 10px", borderRadius: 8, background: "rgba(14,165,233,.07)", fontSize: 10, color: "#0369a1", lineHeight: 1.55 }}>
+      {t("💡 We'll pick up your laundry at your convenience, wash with care, and deliver back fresh & folded.",
+         "💡 Recogemos tu ropa cuando prefieras, la lavamos con cuidado y te la devolvemos fresca y doblada.")}
     </div>
   </div>
 );
@@ -447,9 +435,7 @@ const AirbnbInfoPanel = ({ t }) => (
     border: "1px solid rgba(255,92,37,.25)", animation: "tl_panel .25s ease both" }}>
     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 9 }}>
       <span style={{ fontSize: 17 }}>🏠</span>
-      <span style={{ fontSize: 12, fontWeight: 700, color: "#ff5c25" }}>
-        {t("Airbnb Host Service", "Servicio para Anfitriones Airbnb")}
-      </span>
+      <span style={{ fontSize: 12, fontWeight: 700, color: "#ff5c25" }}>{t("Airbnb Host Service", "Servicio para Anfitriones Airbnb")}</span>
     </div>
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "5px 12px", marginBottom: 9 }}>
       {[
@@ -460,19 +446,14 @@ const AirbnbInfoPanel = ({ t }) => (
         { icon: "🔄",  en: "Recurring weekly plan",  es: "Plan semanal recurrente" },
         { icon: "💼",  en: "Volume discount",        es: "Descuento por volumen"   },
       ].map((f) => (
-        <div key={f.icon} style={{ display: "flex", alignItems: "center", gap: 5,
-          fontSize: 11, color: "hsl(var(--foreground))" }}>
-          <span style={{ fontSize: 13 }}>{f.icon}</span>
-          <span>{t(f.en, f.es)}</span>
+        <div key={f.icon} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "hsl(var(--foreground))" }}>
+          <span style={{ fontSize: 13 }}>{f.icon}</span><span>{t(f.en, f.es)}</span>
         </div>
       ))}
     </div>
-    <div style={{ padding: "7px 10px", borderRadius: 8, background: "rgba(255,92,37,.07)",
-      fontSize: 10, color: "#c2440a", lineHeight: 1.55 }}>
-      {t(
-        "💡 We'll coordinate with your guest checkout schedule and set up recurring pickups.",
-        "💡 Coordinamos con tus salidas de huéspedes y configuramos recogidas recurrentes."
-      )}
+    <div style={{ padding: "7px 10px", borderRadius: 8, background: "rgba(255,92,37,.07)", fontSize: 10, color: "#c2440a", lineHeight: 1.55 }}>
+      {t("💡 We'll coordinate with your guest checkout schedule and set up recurring pickups.",
+         "💡 Coordinamos con tus salidas de huéspedes y configuramos recogidas recurrentes.")}
     </div>
   </div>
 );
@@ -483,9 +464,7 @@ const CommercialInfoPanel = ({ t }) => (
     border: "1px solid rgba(99,102,241,.25)", animation: "tl_panel .25s ease both" }}>
     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 9 }}>
       <span style={{ fontSize: 17 }}>🏢</span>
-      <span style={{ fontSize: 12, fontWeight: 700, color: "#4f46e5" }}>
-        {t("Commercial / B2B Service", "Servicio Comercial / B2B")}
-      </span>
+      <span style={{ fontSize: 12, fontWeight: 700, color: "#4f46e5" }}>{t("Commercial / B2B Service", "Servicio Comercial / B2B")}</span>
     </div>
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "5px 12px", marginBottom: 9 }}>
       {[
@@ -496,23 +475,136 @@ const CommercialInfoPanel = ({ t }) => (
         { icon: "👤", en: "Dedicated account manager", es: "Gestor de cuenta dedicado" },
         { icon: "⚙️", en: "Customizable service",    es: "Servicio personalizable" },
       ].map((f) => (
-        <div key={f.icon} style={{ display: "flex", alignItems: "center", gap: 5,
-          fontSize: 11, color: "hsl(var(--foreground))" }}>
-          <span style={{ fontSize: 13 }}>{f.icon}</span>
-          <span>{t(f.en, f.es)}</span>
+        <div key={f.icon} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "hsl(var(--foreground))" }}>
+          <span style={{ fontSize: 13 }}>{f.icon}</span><span>{t(f.en, f.es)}</span>
         </div>
       ))}
     </div>
-    <div style={{ padding: "7px 10px", borderRadius: 8, background: "rgba(99,102,241,.07)",
-      fontSize: 10, color: "#3730a3", lineHeight: 1.55 }}>
-      {t(
-        "💡 Ideal for hotels, restaurants, gyms, and offices. We adapt to your volume and schedule.",
-        "💡 Ideal para hoteles, restaurantes, gimnasios y oficinas. Nos adaptamos a tu volumen y horario."
-      )}
+    <div style={{ padding: "7px 10px", borderRadius: 8, background: "rgba(99,102,241,.07)", fontSize: 10, color: "#3730a3", lineHeight: 1.55 }}>
+      {t("💡 Ideal for hotels, restaurants, gyms, and offices. We adapt to your volume and schedule.",
+         "💡 Ideal para hoteles, restaurantes, gimnasios y oficinas. Nos adaptamos a tu volumen y horario.")}
     </div>
   </div>
 );
 
+// ─── ADD-ON SERVICES SECTION (dynamic from admin) ────────────────────────────
+const PRICE_UNIT_LABELS = {
+  per_lb:    { en: "/ lb",    es: "/ lb"    },
+  per_order: { en: "/ order", es: "/ orden" },
+  per_month: { en: "/ month", es: "/ mes"   },
+  per_item:  { en: "/ item",  es: "/ pieza" },
+};
+
+const SERVICE_CATEGORY_ICONS = {
+  "wash & fold": "🧺", "pickup": "🚚", "delivery": "🚚",
+  "dry cleaning": "👔", "shoe": "👟", "ironing": "🔄",
+  "bedding": "🛏️", "membership": "⭐", "express": "⚡",
+  "commercial": "🏢", "airbnb": "🏠",
+};
+
+function getServiceIcon(name = "", category = "") {
+  const search = `${name} ${category}`.toLowerCase();
+  for (const [key, icon] of Object.entries(SERVICE_CATEGORY_ICONS)) {
+    if (search.includes(key)) return icon;
+  }
+  return "✨";
+}
+
+const AddonServicesSection = ({ services, selectedIds, onToggle, t, locale }) => {
+  if (!services || services.length === 0) return null;
+
+  return (
+    <div style={{ animation: "tl_panel .3s ease both" }}>
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8, marginBottom: 10,
+        paddingBottom: 8, borderBottom: "1px solid hsl(var(--border))",
+      }}>
+        <div style={{ width: 28, height: 28, borderRadius: 8, background: "rgba(14,165,233,.1)", display: "flex",
+          alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>✨</div>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 800, color: "hsl(var(--foreground))", letterSpacing: ".02em" }}>
+            {t("Add-on Services", "Servicios Adicionales")}
+          </div>
+          <div style={{ fontSize: 10, color: "hsl(var(--muted-foreground))", marginTop: 1 }}>
+            {t("Optional — select any extras for your order", "Opcional — selecciona extras para tu pedido")}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+        {services.map((svc) => {
+          const active = selectedIds.has(svc.id);
+          const icon = getServiceIcon(svc.name, svc.category || "");
+          const unitLabel = PRICE_UNIT_LABELS[svc.price_unit] || { en: "", es: "" };
+          const unit = locale === "es" ? unitLabel.es : unitLabel.en;
+
+          return (
+            <button
+              key={svc.id}
+              type="button"
+              onClick={() => onToggle(svc)}
+              style={{
+                display: "flex", alignItems: "center", gap: 11, padding: "10px 12px",
+                borderRadius: 10, textAlign: "left", width: "100%",
+                border: `1.5px solid ${active ? "#0ea5e9" : "hsl(var(--border))"}`,
+                background: active ? "rgba(14,165,233,.06)" : "hsl(var(--secondary))",
+                cursor: "pointer", transition: "all .15s", fontFamily: "inherit",
+                transform: active ? "scale(1.005)" : "scale(1)",
+                boxShadow: active ? "0 0 0 3px rgba(14,165,233,.1)" : "none",
+              }}
+            >
+              <div style={{
+                width: 18, height: 18, borderRadius: 5, flexShrink: 0,
+                border: `2px solid ${active ? "#0ea5e9" : "hsl(var(--border))"}`,
+                background: active ? "#0ea5e9" : "transparent",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                transition: "all .15s",
+              }}>
+                {active && <svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>}
+              </div>
+              <div style={{
+                width: 32, height: 32, borderRadius: 8, flexShrink: 0,
+                background: active ? "rgba(14,165,233,.12)" : "hsl(var(--background))",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 16, transition: "all .15s",
+              }}>{icon}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, lineHeight: 1.3, color: active ? "#0ea5e9" : "hsl(var(--foreground))", transition: "color .15s" }}>
+                  {svc.name}
+                </div>
+                {svc.description && (
+                  <div style={{ fontSize: 10, color: "hsl(var(--muted-foreground))", lineHeight: 1.4, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{svc.description}</div>
+                )}
+              </div>
+              {svc.price != null && (
+                <div style={{ flexShrink: 0, textAlign: "right" }}>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: active ? "#0ea5e9" : "#059669" }}>${svc.price}</div>
+                  {unit && <div style={{ fontSize: 9, color: "hsl(var(--muted-foreground))", fontWeight: 500 }}>{unit}</div>}
+                </div>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {selectedIds.size > 0 && (
+        <div style={{
+          marginTop: 9, padding: "7px 11px", borderRadius: 8,
+          background: "rgba(14,165,233,.08)", border: "1px solid rgba(14,165,233,.2)",
+          display: "flex", alignItems: "center", gap: 7, animation: "tl_panel .2s ease both",
+        }}>
+          <span style={{ fontSize: 13 }}>✅</span>
+          <span style={{ fontSize: 11, fontWeight: 600, color: "#0ea5e9" }}>
+            {selectedIds.size} {t(selectedIds.size === 1 ? "add-on selected" : "add-ons selected",
+                                 selectedIds.size === 1 ? "servicio adicional seleccionado" : "servicios adicionales seleccionados")}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── Other form components ────────────────────────────────────────────────────
 const TempRow = ({ value, onChange, options }) => (
   <div style={{ display: "flex", gap: 6 }}>
     {options.map((o) => (
@@ -596,8 +688,7 @@ const ConveyorTrack = ({ cur, locale, onStageClick }) => {
       borderRadius: 16, padding: "20px 0 14px", position: "relative", overflow: "hidden",
     }}>
       <div style={{ position: "absolute", inset: 0, backgroundImage: "linear-gradient(rgba(255,255,255,.022) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)", backgroundSize: "32px 32px", pointerEvents: "none" }} />
-      <div style={{ overflowX: "auto", overflowY: "visible", padding: "0 16px", WebkitOverflowScrolling: "touch" }}
-        className="scrollbar-hide">
+      <div style={{ overflowX: "auto", overflowY: "visible", padding: "0 16px", WebkitOverflowScrolling: "touch" }} className="scrollbar-hide">
         <div ref={trackRef} style={{ display: "flex", alignItems: "flex-start", minWidth: "max-content", padding: "10px 8px 4px", position: "relative" }}>
           <div style={{ position: "absolute", top: 38, left: 0, right: 0, height: 4,
             background: "repeating-linear-gradient(90deg,#1e3558 0,#1e3558 18px,#0b1929 18px,#0b1929 24px)",
@@ -606,16 +697,12 @@ const ConveyorTrack = ({ cur, locale, onStageClick }) => {
             position: "absolute", top: 10, left: riderLeft,
             transition: "left .6s cubic-bezier(.34,1.56,.64,1)", zIndex: 3, pointerEvents: "none",
             animation: "tl_float 4s ease-in-out infinite",
-          }}>
-            <RiderMachine step={cur} />
-          </div>
+          }}><RiderMachine step={cur} /></div>
           {STAGES.map((s, i) => (
             <React.Fragment key={`stage-group-${i}`}>
               {i > 0 && (
-                <div key={`conn-${i}`} style={{
-                  width: 28, height: 4, marginTop: 26, flexShrink: 0, zIndex: 0, position: "relative",
-                  background: i <= cur ? "#0ea5e9" : "#1e3558", transition: "background .3s",
-                }}>
+                <div key={`conn-${i}`} style={{ width: 28, height: 4, marginTop: 26, flexShrink: 0, zIndex: 0, position: "relative",
+                  background: i <= cur ? "#0ea5e9" : "#1e3558", transition: "background .3s" }}>
                   <div style={{ position: "absolute", top: -3, right: -5, width: 0, height: 0,
                     borderTop: "5px solid transparent", borderBottom: "5px solid transparent",
                     borderLeft: `5px solid ${i <= cur ? "#0ea5e9" : "#1e3558"}`, transition: "border-left-color .3s" }} />
@@ -636,15 +723,10 @@ const ConveyorTrack = ({ cur, locale, onStageClick }) => {
                   transition: "all .25s cubic-bezier(.34,1.56,.64,1)",
                 }}>
                   {s.icon}
-                  {i === cur && (
-                    <div style={{ position: "absolute", inset: -8, borderRadius: "50%",
-                      border: "2px solid rgba(14,165,233,.35)", animation: "tl_pulse 1.6s ease-out infinite" }} />
-                  )}
-                  {i < cur && (
-                    <div style={{ position: "absolute", bottom: -2, right: -2, width: 16, height: 16,
-                      borderRadius: "50%", background: "#0ea5e9", color: "white", fontSize: 9,
-                      display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>✓</div>
-                  )}
+                  {i === cur && <div style={{ position: "absolute", inset: -8, borderRadius: "50%", border: "2px solid rgba(14,165,233,.35)", animation: "tl_pulse 1.6s ease-out infinite" }} />}
+                  {i < cur && <div style={{ position: "absolute", bottom: -2, right: -2, width: 16, height: 16,
+                    borderRadius: "50%", background: "#0ea5e9", color: "white", fontSize: 9,
+                    display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>✓</div>}
                 </div>
                 <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".1em",
                   color: i === cur ? "#38bdf8" : i < cur ? "rgba(255,255,255,.6)" : "rgba(255,255,255,.25)",
@@ -675,9 +757,9 @@ const EMPTY = {
   service_type: "", service_plan: "",
   wash_temp: "", dry_temp: "", notes: "",
   pickup_date: "", pickup_time: "", terms: false,
+  distance_miles: null,
 };
 
-// ─── Helper: load form from localStorage, merging with EMPTY for safety ────────
 const loadSavedForm = () => {
   try {
     const saved = localStorage.getItem(LS_FORM_KEY);
@@ -685,11 +767,10 @@ const loadSavedForm = () => {
       const parsed = JSON.parse(saved);
       return { ...EMPTY, ...parsed };
     }
-  } catch { /* silent */ }
+  } catch {}
   return { ...EMPTY };
 };
 
-// ─── Helper: load saved step ───────────────────────────────────────────────────
 const loadSavedStep = () => {
   try {
     const saved = localStorage.getItem(LS_STEP_KEY);
@@ -697,115 +778,188 @@ const loadSavedStep = () => {
       const n = parseInt(saved, 10);
       if (!isNaN(n) && n >= 0 && n <= 4) return n;
     }
-  } catch { /* silent */ }
+  } catch {}
   return 0;
 };
 
-// ─── Main ──────────────────────────────────────────────────────────────────────
+// ─── Main Component ───────────────────────────────────────────────────────────
 export default function SchedulePickup() {
   const { t, locale } = useLocale();
-  const topRef  = useRef(null);
+  const topRef = useRef(null);
   const formRef = useRef(null);
 
-  // ── Initialize form & step from localStorage ────────────────────────────────
-  const [cur,        setCur]        = useState(() => loadSavedStep());
-  const [formKey,    setFormKey]    = useState(0);
-  const [form,       setForm]       = useState(() => loadSavedForm());
+  const [cur, setCur] = useState(() => loadSavedStep());
+  const [formKey, setFormKey] = useState(0);
+  const [form, setForm] = useState(() => loadSavedForm());
   const [submitting, setSubmitting] = useState(false);
-  const [washPhase,  setWashPhase]  = useState(-1);
-  const [washDone,   setWashDone]   = useState(false);
-  // Controls the "resume session" banner visibility
+  const [washPhase, setWashPhase] = useState(-1);
+  const [washDone, setWashDone] = useState(false);
+
+  // Add‑ons
+  const [addonServices, setAddonServices] = useState([]);
+  const [selectedAddons, setSelectedAddons] = useState(new Map());
   const [showResumeBanner, setShowResumeBanner] = useState(() => {
     try {
       const saved = localStorage.getItem(LS_FORM_KEY);
       if (!saved) return false;
       const parsed = JSON.parse(saved);
-      // Show banner only if there's meaningful saved data
       return !!(parsed.first_name || parsed.email || parsed.address_line1);
     } catch { return false; }
   });
 
-  // ── Persist form to localStorage on every change ────────────────────────────
-  useEffect(() => {
-    try {
-      localStorage.setItem(LS_FORM_KEY, JSON.stringify(form));
-    } catch { /* silent */ }
-  }, [form]);
+  // Distancia
+  const [distanceError, setDistanceError] = useState("");
+  const [distanceValid, setDistanceValid] = useState(false);
+  const checkDistanceDebounce = useRef(null);
 
-  // ── Persist current step to localStorage ────────────────────────────────────
-  useEffect(() => {
+  const setF = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+  // Función para validar distancia mediante backend
+  const checkDistance = useCallback(async (zipCode) => {
+    if (!zipCode || zipCode.trim().length < 5) {
+      setDistanceError("");
+      setDistanceValid(false);
+      return false;
+    }
     try {
-      localStorage.setItem(LS_STEP_KEY, String(cur));
-    } catch { /* silent */ }
+      const res = await axios.post(`${API}/delivery-rules/calculate-fee`, {
+        zip_code: zipCode,
+        distance_miles: null,
+      });
+      if (res.data && res.data.eligible === false) {
+        setDistanceError(res.data.reason || t("Address outside delivery area (max 10 miles)", "Dirección fuera del área de entrega (máx 10 millas)"));
+        setDistanceValid(false);
+        return false;
+      } else {
+        setDistanceError("");
+        setDistanceValid(true);
+        if (res.data.distance_miles) setF("distance_miles", res.data.distance_miles);
+        return true;
+      }
+    } catch (err) {
+      const msg = err.response?.data?.detail || t("Could not verify address distance", "No se pudo verificar la distancia");
+      setDistanceError(msg);
+      setDistanceValid(false);
+      return false;
+    }
+  }, [t, setF]);
+
+  // Efecto para validar automáticamente cuando cambia el código postal (debounce)
+  useEffect(() => {
+    if (checkDistanceDebounce.current) clearTimeout(checkDistanceDebounce.current);
+    checkDistanceDebounce.current = setTimeout(() => {
+      if (form.zip_code && form.zip_code.trim().length >= 5) {
+        checkDistance(form.zip_code);
+      } else {
+        setDistanceError("");
+        setDistanceValid(false);
+      }
+    }, 500);
+    return () => clearTimeout(checkDistanceDebounce.current);
+  }, [form.zip_code, checkDistance]);
+
+  // Fetch add‑ons
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await fetch(`${API}/public/services?active_only=true`);
+        if (res.ok) setAddonServices(await res.json());
+      } catch {}
+    };
+    load();
+  }, []);
+
+  const toggleAddon = (svc) => {
+    setSelectedAddons(prev => {
+      const next = new Map(prev);
+      if (next.has(svc.id)) next.delete(svc.id);
+      else next.set(svc.id, svc);
+      return next;
+    });
+  };
+
+  // Persist to localStorage
+  useEffect(() => {
+    try { localStorage.setItem(LS_FORM_KEY, JSON.stringify(form)); } catch {}
+  }, [form]);
+  useEffect(() => {
+    try { localStorage.setItem(LS_STEP_KEY, String(cur)); } catch {}
   }, [cur]);
 
-  // ── Pre-fill from customer_data if localStorage form is empty ───────────────
+  // Pre‑fill from customer_data
   useEffect(() => {
     try {
       const cd = localStorage.getItem("customer_data");
       if (cd) {
         const c = JSON.parse(cd);
         const nameParts = (c.name || "").split(" ");
-        // Parse address parts from customer data
         const addrParts = (c.address || "").split(",").map(s => s.trim());
-        setForm((p) => ({
+        setForm(p => ({
           ...p,
-          first_name:    p.first_name    || nameParts[0] || "",
-          last_name:     p.last_name     || nameParts.slice(1).join(" ") || "",
-          email:         p.email         || c.email || "",
-          phone:         p.phone         || (c.phone || "").replace(/^\+\d+\s?/, "") || "",
+          first_name: p.first_name || nameParts[0] || "",
+          last_name: p.last_name || nameParts.slice(1).join(" ") || "",
+          email: p.email || c.email || "",
+          phone: p.phone || (c.phone || "").replace(/^\+\d+\s?/, "") || "",
           address_line1: p.address_line1 || c.address_line1 || addrParts[0] || "",
-          city:          p.city          || c.city || addrParts[1] || "",
-          state:         p.state         || c.state || addrParts[2] || "",
-          zip_code:      p.zip_code      || c.zip_code || addrParts[3] || "",
+          city: p.city || c.city || addrParts[1] || "",
+          state: p.state || c.state || addrParts[2] || "",
+          zip_code: p.zip_code || c.zip_code || addrParts[3] || "",
         }));
       }
-    } catch { /* silent */ }
+    } catch {}
   }, []);
 
-  const setF = useCallback((k, v) => setForm((p) => ({ ...p, [k]: v })), []);
-
   const scrollToForm = () => formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-
-  const goTo = (n) => { setCur(n); setFormKey((k) => k + 1); scrollToForm(); };
-
-  // ── Clear localStorage helpers ───────────────────────────────────────────────
+  const goTo = (n) => { setCur(n); setFormKey(k => k + 1); scrollToForm(); };
   const clearSavedSession = () => {
     try {
       localStorage.removeItem(LS_FORM_KEY);
       localStorage.removeItem(LS_STEP_KEY);
-    } catch { /* silent */ }
+    } catch {}
   };
 
   const validate = () => {
     const err = (msg) => { toast.error(msg); return false; };
     if (cur === 0) {
-      if (!form.first_name.trim())      return err(t("Enter your first name",    "Ingresa tu nombre"));
-      if (!form.last_name.trim())       return err(t("Enter your last name",     "Ingresa tu apellido"));
-      if (!form.email.includes("@"))    return err(t("Enter a valid email",      "Correo inválido"));
-      if (!form.phone.trim())           return err(t("Enter your phone",         "Ingresa tu teléfono"));
-      if (!form.contact_method)         return err(t("Select a contact method",  "Selecciona método de contacto"));
-      if (form.contact_method === "text" && !form.sms_consent)
-        return err(t("Accept SMS consent", "Acepta el consentimiento SMS"));
+      if (!form.first_name.trim()) return err(t("Enter your first name", "Ingresa tu nombre"));
+      if (!form.last_name.trim()) return err(t("Enter your last name", "Ingresa tu apellido"));
+      if (!form.email.includes("@")) return err(t("Enter a valid email", "Correo inválido"));
+      if (!form.phone.trim()) return err(t("Enter your phone", "Ingresa tu teléfono"));
+      if (!form.contact_method) return err(t("Select a contact method", "Selecciona método de contacto"));
+      if (form.contact_method === "text" && !form.sms_consent) return err(t("Accept SMS consent", "Acepta el consentimiento SMS"));
     }
     if (cur === 1) {
       if (!form.address_line1.trim()) return err(t("Enter your address", "Ingresa tu dirección"));
-      if (!form.city.trim())          return err(t("Enter your city",    "Ingresa tu ciudad"));
-      if (!form.state.trim())         return err(t("Enter your state",   "Ingresa tu estado"));
-      if (!form.zip_code.trim())      return err(t("Enter your ZIP",     "Ingresa tu código postal"));
+      if (!form.city.trim()) return err(t("Enter your city", "Ingresa tu ciudad"));
+      if (!form.state.trim()) return err(t("Enter your state", "Ingresa tu estado"));
+      if (!form.zip_code.trim()) return err(t("Enter your ZIP", "Ingresa tu código postal"));
+      if (distanceError) {
+        toast.error(distanceError);
+        return false;
+      }
+      if (!distanceValid && form.zip_code && form.zip_code.trim().length >= 5) {
+        toast.error(t("Please check your address, it may be outside delivery area", "Verifica tu dirección, podría estar fuera del área de entrega"));
+        return false;
+      }
     }
     if (cur === 2) {
       if (!form.service_type) return err(t("Select a service", "Selecciona un servicio"));
-      if (form.service_type === "pickup_delivery" && !form.service_plan)
-        return err(t("Select a turnaround plan", "Selecciona un plan de tiempo"));
+      if (form.service_type === "pickup_delivery" && !form.service_plan) return err(t("Select a turnaround plan", "Selecciona un plan de tiempo"));
     }
-    if (cur === 3 && !form.pickup_time)  return err(t("Select a time window", "Selecciona un horario"));
-    if (cur === 4 && !form.terms)        return err(t("Accept terms to continue", "Acepta los términos"));
+    if (cur === 3 && !form.pickup_time) return err(t("Select a time window", "Selecciona un horario"));
+    if (cur === 4 && !form.terms) return err(t("Accept terms to continue", "Acepta los términos"));
     return true;
   };
 
   const handleNext = async () => {
     if (!validate()) return;
+
+    if (cur === 1) {
+      // Validación adicional por si acaso
+      const isOk = await checkDistance(form.zip_code);
+      if (!isOk) return;
+    }
+
     if (cur < 4) { goTo(cur + 1); return; }
 
     setWashPhase(0); setWashDone(false);
@@ -815,16 +969,22 @@ export default function SchedulePickup() {
 
     setSubmitting(true);
     try {
-      const fullPhone   = `${form.dialCode} ${form.phone}`.trim();
+      const fullPhone = `${form.dialCode} ${form.phone}`.trim();
       const fullAddress = [form.address_line1, form.address_line2, form.city, form.state, form.zip_code].filter(Boolean).join(", ");
+      const addonList = Array.from(selectedAddons.values());
+      const addonNote = addonList.length > 0
+        ? `\nAdd-on services: ${addonList.map(s => `${s.name}${s.price != null ? ` ($${s.price}${s.price_unit ? "/" + s.price_unit.replace("per_", "") : ""})` : ""}`).join(", ")}`
+        : "";
       const notes = [
         form.wash_temp ? `Wash temp: ${form.wash_temp}` : "",
-        form.dry_temp  ? `Dry temp: ${form.dry_temp}`   : "",
+        form.dry_temp ? `Dry temp: ${form.dry_temp}` : "",
         form.notes?.trim(),
         form.addr_notes ? `Pickup note: ${form.addr_notes}` : "",
         `Contact via: ${form.contact_method}`,
         form.service_plan ? `Service plan: ${form.service_plan}` : "",
+        addonNote,
       ].filter(Boolean).join("\n");
+
       await axios.post(`${API}/public/pickup-request`, {
         name: `${form.first_name} ${form.last_name}`.trim(),
         email: form.email.trim(), phone: fullPhone,
@@ -832,6 +992,7 @@ export default function SchedulePickup() {
         pickup_time: form.pickup_time, service_type: form.service_type,
         service_plan: form.service_plan,
         contact_method: form.contact_method, sms_consent: form.sms_consent, notes,
+        addon_services: addonList.map(s => ({ id: s.id, name: s.name, price: s.price, price_unit: s.price_unit, category: s.category })),
       });
     } catch (e) { toast.error(getErr(e)); }
     finally { setSubmitting(false); }
@@ -839,18 +1000,21 @@ export default function SchedulePickup() {
     setTimeout(() => {
       setWashPhase(5);
       setWashDone(true);
-      clearSavedSession(); // ← limpiar localStorage tras envío exitoso
+      clearSavedSession();
     }, cum + 400);
   };
 
   const handleReset = () => {
     setForm({ ...EMPTY });
     setCur(0);
-    setFormKey((k) => k + 1);
+    setFormKey(k => k + 1);
     setWashPhase(-1);
     setWashDone(false);
     setShowResumeBanner(false);
-    clearSavedSession(); // ← limpiar localStorage al resetear
+    setSelectedAddons(new Map());
+    setDistanceError("");
+    setDistanceValid(false);
+    clearSavedSession();
     scrollToForm();
   };
 
@@ -878,6 +1042,9 @@ export default function SchedulePickup() {
   const timeMap = { "8am-12pm": "8:00 AM – 12:00 PM", "2pm-6pm": "2:00 PM – 6:00 PM" };
   const cmMap   = { phone: t("Phone call", "Llamada"), text: "Text/SMS", email: "Email" };
 
+  const selectedAddonsList = Array.from(selectedAddons.values());
+  const selectedAddonIds   = new Set(selectedAddons.keys());
+
   return (
     <div className="min-h-screen" style={{ background: "hsl(var(--background))" }}>
       <PublicNav />
@@ -902,16 +1069,12 @@ export default function SchedulePickup() {
       }}>
         <div style={{ position: "absolute", inset: 0, backgroundImage: "linear-gradient(rgba(255,255,255,.022) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)", backgroundSize: "44px 44px", pointerEvents: "none" }} />
         <div style={{ position: "absolute", top: -80, left: -60, width: 340, height: 340, borderRadius: "50%", background: "radial-gradient(circle,rgba(14,165,233,.14) 0%,transparent 65%)", filter: "blur(40px)", pointerEvents: "none" }} />
-
-        {/* Banner image */}
         <div style={{ width: "100%", maxHeight: 280, overflow: "hidden", position: "relative" }}>
           <img src={heroBanner} alt="Ventura Fresh Laundry"
             style={{ width: "100%", height: 280, objectFit: "cover", objectPosition: "center", display: "block", opacity: 0.75 }} />
           <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 120, background: "linear-gradient(to bottom, transparent, #081320)", pointerEvents: "none" }} />
           <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 60, background: "linear-gradient(to bottom, #0b1929, transparent)", pointerEvents: "none" }} />
         </div>
-
-        {/* Text */}
         <div style={{ maxWidth: 900, margin: "0 auto", padding: "20px 24px 40px", position: "relative", zIndex: 2 }}>
           <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 20, padding: "4px 12px", marginBottom: 14 }}>
             <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#34d399", boxShadow: "0 0 6px rgba(52,211,153,.9)", display: "inline-block" }} />
@@ -937,7 +1100,7 @@ export default function SchedulePickup() {
             <ConveyorTrack cur={washPhase >= 0 ? 4 : cur} locale={locale} onStageClick={(i) => { if (washPhase < 0) goTo(i); }} />
           </div>
 
-          {/* ── Resume session banner ─────────────────────────────────────────── */}
+          {/* Resume session banner */}
           {showResumeBanner && washPhase < 0 && (
             <div style={{
               marginTop: 12, padding: "11px 16px", borderRadius: 12,
@@ -948,28 +1111,18 @@ export default function SchedulePickup() {
             }}>
               <span style={{ fontSize: 18, flexShrink: 0 }}>💾</span>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "#0ea5e9" }}>
-                  {t("You have a saved session", "Tienes una sesión guardada")}
-                </div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#0ea5e9" }}>{t("You have a saved session", "Tienes una sesión guardada")}</div>
                 <div style={{ fontSize: 11, color: "hsl(var(--muted-foreground))", marginTop: 2 }}>
-                  {t(
-                    `Resuming from step ${cur + 1} · ${form.first_name ? `Hi, ${form.first_name}!` : ""}`,
-                    `Retomando desde el paso ${cur + 1}${form.first_name ? ` · ¡Hola, ${form.first_name}!` : ""}`
-                  )}
+                  {t(`Resuming from step ${cur + 1} · ${form.first_name ? `Hi, ${form.first_name}!` : ""}`,
+                     `Retomando desde el paso ${cur + 1}${form.first_name ? ` · ¡Hola, ${form.first_name}!` : ""}`)}
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => { setShowResumeBanner(false); }}
-                style={{ fontSize: 11, fontWeight: 700, color: "#0ea5e9", background: "none", border: "none", cursor: "pointer", padding: "4px 8px", fontFamily: "inherit" }}
-              >
+              <button type="button" onClick={() => { setShowResumeBanner(false); }}
+                style={{ fontSize: 11, fontWeight: 700, color: "#0ea5e9", background: "none", border: "none", cursor: "pointer", padding: "4px 8px", fontFamily: "inherit" }}>
                 {t("Continue →", "Continuar →")}
               </button>
-              <button
-                type="button"
-                onClick={() => { handleReset(); }}
-                style={{ fontSize: 11, color: "hsl(var(--muted-foreground))", background: "none", border: "none", cursor: "pointer", padding: "4px 8px", fontFamily: "inherit" }}
-              >
+              <button type="button" onClick={() => { handleReset(); }}
+                style={{ fontSize: 11, color: "hsl(var(--muted-foreground))", background: "none", border: "none", cursor: "pointer", padding: "4px 8px", fontFamily: "inherit" }}>
                 {t("Start over", "Empezar de nuevo")}
               </button>
             </div>
@@ -980,9 +1133,7 @@ export default function SchedulePickup() {
             <div style={{ background: "#07111d", borderRadius: 16, marginTop: 16, border: "0.5px solid rgba(14,165,233,.2)", padding: "32px 24px", textAlign: "center", animation: "tl_wash .4s ease both" }}>
               {!washDone ? (
                 <>
-                  <div style={{ width: 180, margin: "0 auto", animation: "tl_float 3s ease-in-out infinite" }}>
-                    <WashMachine phase={washPhase} done={false} />
-                  </div>
+                  <div style={{ width: 180, margin: "0 auto", animation: "tl_float 3s ease-in-out infinite" }}><WashMachine phase={washPhase} done={false} /></div>
                   <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'Manrope',sans-serif", color: "white", marginTop: 14 }}>
                     {[t("Pre-rinsing…","Pre-enjuague…"), t("Washing…","Lavando…"), t("Rinsing…","Enjuagando…"), t("Spinning…","Centrifugando…"), t("Done!","¡Listo!")][Math.min(washPhase, 4)]}
                   </div>
@@ -1000,17 +1151,26 @@ export default function SchedulePickup() {
                 </>
               ) : (
                 <div style={{ animation: "tl_panel .5s ease both" }}>
-                  <div style={{ width: 180, margin: "0 auto", animation: "tl_float 4s ease-in-out infinite" }}>
-                    <WashMachine phase={5} done={true} />
-                  </div>
+                  <div style={{ width: 180, margin: "0 auto", animation: "tl_float 4s ease-in-out infinite" }}><WashMachine phase={5} done={true} /></div>
                   <div style={{ width: 60, height: 60, borderRadius: "50%", background: "rgba(52,211,153,.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, margin: "12px auto 10px" }}>🎉</div>
-                  <div style={{ fontSize: 20, fontWeight: 800, fontFamily: "'Manrope',sans-serif", color: "white", marginBottom: 6 }}>
-                    {t("Request submitted!", "¡Solicitud enviada!")}
-                  </div>
+                  <div style={{ fontSize: 20, fontWeight: 800, fontFamily: "'Manrope',sans-serif", color: "white", marginBottom: 6 }}>{t("Request submitted!", "¡Solicitud enviada!")}</div>
                   <p style={{ fontSize: 13, color: "rgba(255,255,255,.45)", maxWidth: 280, lineHeight: 1.65, margin: "0 auto 20px" }}>
                     {t("Our team will confirm your pickup via", "Nuestro equipo confirmará por")}{" "}
                     <strong style={{ color: "#38bdf8" }}>{cmMap[form.contact_method] || t("your preferred method", "tu método preferido")}</strong>.
                   </p>
+                  {selectedAddonsList.length > 0 && (
+                    <div style={{ margin: "0 auto 20px", maxWidth: 280, padding: "10px 14px", borderRadius: 10, background: "rgba(14,165,233,.1)", border: "1px solid rgba(14,165,233,.2)", textAlign: "left" }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: "#38bdf8", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 6 }}>
+                        {t("Add-ons requested", "Servicios adicionales solicitados")}
+                      </div>
+                      {selectedAddonsList.map((s) => (
+                        <div key={s.id} style={{ fontSize: 11, color: "rgba(255,255,255,.6)", display: "flex", justifyContent: "space-between", padding: "2px 0" }}>
+                          <span>✓ {s.name}</span>
+                          {s.price != null && <span style={{ color: "#38bdf8", fontWeight: 600 }}>${s.price}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   <button onClick={handleReset} style={{ padding: "11px 24px", borderRadius: 10, border: "none", background: "linear-gradient(135deg,#0ea5e9,#2563eb)", color: "white", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", boxShadow: "var(--shadow-sky)" }}>
                     🔄 {t("Schedule another", "Programar otra")}
                   </button>
@@ -1024,9 +1184,7 @@ export default function SchedulePickup() {
             <div key={formKey} style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 16, boxShadow: "var(--shadow-lg)", overflow: "hidden", marginTop: 16, animation: "tl_panel .3s ease both" }}>
               <div style={{ height: 3, background: "linear-gradient(90deg,#38bdf8,#0ea5e9,#2563eb)" }} />
               <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "13px 20px", borderBottom: "1px solid hsl(var(--border))", background: "hsl(var(--secondary))" }}>
-                <div style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(14,165,233,.1)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>
-                  {STAGES[cur].icon}
-                </div>
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(14,165,233,.1)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>{STAGES[cur].icon}</div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Manrope',sans-serif", color: "hsl(var(--foreground))" }}>
                     {locale === "es" ? STAGES[cur].subES : STAGES[cur].subEN}
@@ -1083,7 +1241,7 @@ export default function SchedulePickup() {
                             setF("address_line1", addr.street);
                             if (addr.city) setF("city", addr.city);
                             if (addr.state) setF("state", addr.state.length > 2 ? addr.state.substring(0, 2).toUpperCase() : addr.state.toUpperCase());
-                            if (addr.zip) setF("zip_code", addr.zip);
+                            if (addr.zip) setF("zip_code", addr.zip); // Esto disparará la validación automática
                           }}
                           placeholder={t("123 Main St", "Calle Principal 123")}
                           renderInput={(props) => <FInput {...props} data-testid="pickup-address-autocomplete" />}
@@ -1093,9 +1251,21 @@ export default function SchedulePickup() {
                       <div style={g3}>
                         <FF label={t("City *", "Ciudad *")}><FInput value={form.city} onChange={(e) => setF("city", e.target.value)} placeholder="Los Angeles" autoComplete="address-level2" /></FF>
                         <FF label={t("State *", "Estado *")}><FInput value={form.state} onChange={(e) => setF("state", e.target.value.toUpperCase())} placeholder="CA" maxLength={2} /></FF>
-                        <FF label={t("ZIP *", "CP *")}><FInput value={form.zip_code} onChange={(e) => setF("zip_code", e.target.value)} placeholder="90001" maxLength={10} /></FF>
+                        <FF label={t("ZIP *", "CP *")}>
+                          <FInput
+                            value={form.zip_code}
+                            onChange={(e) => setF("zip_code", e.target.value)}
+                            placeholder="90001"
+                            maxLength={10}
+                          />
+                          {distanceError && (
+                            <div style={{ color: "#dc2626", fontSize: 11, marginTop: 4, paddingLeft: 4 }}>{distanceError}</div>
+                          )}
+                        </FF>
                       </div>
-                      <FF label={t("Access notes (optional)", "Notas de acceso (opcional)")}><FTextarea value={form.addr_notes} onChange={(e) => setF("addr_notes", e.target.value)} placeholder={t("Gate code, building entrance…", "Código de puerta, entrada del edificio…")} rows={2} /></FF>
+                      <FF label={t("Access notes (optional)", "Notas de acceso (opcional)")}>
+                        <FTextarea value={form.addr_notes} onChange={(e) => setF("addr_notes", e.target.value)} placeholder={t("Gate code, building entrance…", "Código de puerta, entrada del edificio…")} rows={2} />
+                      </FF>
                     </>
                   )}
 
@@ -1105,28 +1275,9 @@ export default function SchedulePickup() {
                       <FF label={t("Service type *", "Tipo de servicio *")}>
                         <OptionCards value={form.service_type} onChange={(v) => setF("service_type", v)}
                           options={[
-                            {
-                              val: "pickup_delivery", icon: "🚚",
-                              title: t("Pickup & Delivery", "Recogida y Entrega"),
-                              desc:  t("We wash, fold & return", "Lavamos, doblamos y entregamos"),
-                            },
-                            {
-                              val: "airbnb_host", icon: "🏠",
-                              title: t("Airbnb Host", "Anfitrión Airbnb"),
-                              desc:  t("Linens, towels & priority", "Sábanas, toallas y prioridad"),
-                              badge: t("NEW", "NUEVO"),
-                              badgeBg:     "rgba(255,92,37,.12)",
-                              badgeColor:  "#ff5c25",
-                              badgeBorder: "rgba(255,92,37,.3)",
-                              accentColor: "#ff5c25",
-                              accentBg:    "rgba(255,92,37,.07)",
-                              accentGlow:  "rgba(255,92,37,.18)",
-                            },
-                            {
-                              val: "commercial", icon: "🏢",
-                              title: t("Commercial / B2B",  "Comercial / B2B"),
-                              desc:  t("Bulk & business laundry", "Lavado masivo y empresas"),
-                            },
+                            { val: "pickup_delivery", icon: "🚚", title: t("Pickup & Delivery", "Recogida y Entrega"), desc: t("We wash, fold & return", "Lavamos, doblamos y entregamos") },
+                            { val: "airbnb_host", icon: "🏠", title: t("Airbnb Host", "Anfitrión Airbnb"), desc: t("Linens, towels & priority", "Sábanas, toallas y prioridad"), badge: t("NEW", "NUEVO"), badgeBg: "rgba(255,92,37,.12)", badgeColor: "#ff5c25", badgeBorder: "rgba(255,92,37,.3)", accentColor: "#ff5c25", accentBg: "rgba(255,92,37,.07)", accentGlow: "rgba(255,92,37,.18)" },
+                            { val: "commercial", icon: "🏢", title: t("Commercial / B2B", "Comercial / B2B"), desc: t("Bulk & business laundry", "Lavado masivo y empresas") },
                           ]} />
                         {form.service_type === "pickup_delivery" && (
                           <>
@@ -1151,23 +1302,41 @@ export default function SchedulePickup() {
                       <FF label={t("Dry temperature", "Temperatura de secado")}>
                         <TempRow value={form.dry_temp} onChange={(v) => setF("dry_temp", v)} options={DRY_TEMP_OPTIONS} />
                         <p style={{ fontSize: 10, color: "hsl(var(--muted-foreground))", marginTop: 5, lineHeight: 1.5 }}>
-                          {t(
-                            "Choose low or air dry for delicates, knits and activewear.",
-                            "Elige baja o secado al aire para prendas delicadas, tejidos y ropa deportiva."
-                          )}
+                          {t("Choose low or air dry for delicates, knits and activewear.",
+                             "Elige baja o secado al aire para prendas delicadas, tejidos y ropa deportiva.")}
                         </p>
                       </FF>
 
                       <FF label={t("Special instructions (optional)", "Instrucciones especiales (opcional)")}>
                         <FTextarea value={form.notes} onChange={(e) => setF("notes", e.target.value)} placeholder={t("Detergent type, hang-dry items, folding style…", "Tipo de detergente, prendas a secar, estilo de doblado…")} />
                       </FF>
+
+                      {addonServices.length > 0 && (
+                        <FF label={t("Add-on services (optional)", "Servicios adicionales (opcional)")}>
+                          <AddonServicesSection services={addonServices} selectedIds={selectedAddonIds} onToggle={toggleAddon} t={t} locale={locale} />
+                        </FF>
+                      )}
                     </>
                   )}
 
                   {/* Step 3 — Schedule */}
                   {cur === 3 && (
                     <>
-                      <FF label={t("Preferred pickup date", "Fecha preferida")}><FInput type="date" value={form.pickup_date} onChange={(e) => setF("pickup_date", e.target.value)} min={new Date().toISOString().split("T")[0]} style={{ cursor: "pointer" }} /></FF>
+                      <FF label={t("Preferred pickup date", "Fecha preferida")}>
+                        <FInput 
+                          type="date" 
+                          value={form.pickup_date} 
+                          onChange={(e) => setF("pickup_date", e.target.value)} 
+                          min={new Date().toISOString().split("T")[0]} 
+                          style={{ cursor: "pointer" }} 
+                        />
+                        {/* Mensaje para plan Express: se permite el mismo día */}
+                        {form.service_plan === "express" && (
+                          <div style={{ fontSize: 11, color: "#0ea5e9", marginTop: 4, paddingLeft: 4 }}>
+                            ✨ Express plan allows same‑day pickup. You can choose today!
+                          </div>
+                        )}
+                      </FF>
                       <FF label={t("Preferred time window *", "Horario preferido *")}>
                         <TimeSlots value={form.pickup_time} onChange={(v) => setF("pickup_time", v)} locale={locale} />
                         <p style={{ fontSize: 10, color: "hsl(var(--muted-foreground))", marginTop: 5 }}>
@@ -1181,24 +1350,48 @@ export default function SchedulePickup() {
                   {cur === 4 && (
                     <>
                       <SumBlock title={`👤 ${t("Contact", "Contacto")}`} rows={[
-                        [t("Name","Nombre"),     `${form.first_name} ${form.last_name}`.trim()],
-                        [t("Email","Correo"),    form.email],
+                        [t("Name","Nombre"), `${form.first_name} ${form.last_name}`.trim()],
+                        [t("Email","Correo"), form.email],
                         [t("Phone","Teléfono"), `${form.dialCode} ${form.phone}`.trim()],
                         [t("Contact via","Via"), cmMap[form.contact_method]],
                       ]} />
                       <SumBlock title={`📍 ${t("Address", "Dirección")}`} rows={[
-                        [t("Street","Calle"),               form.address_line1],
-                        [t("City / State / ZIP","Ciudad / Estado / CP"), [form.city,form.state,form.zip_code].filter(Boolean).join(", ")],
+                        [t("Street","Calle"), form.address_line1],
+                        [t("City / State / ZIP","Ciudad / Estado / CP"), [form.city, form.state, form.zip_code].filter(Boolean).join(", ")],
                       ]} />
                       <SumBlock title={`🧺 ${t("Service", "Servicio")}`} rows={[
                         [t("Type","Tipo"), svcMap[form.service_type]],
                         ...(form.service_type === "pickup_delivery" && form.service_plan ? [[t("Plan","Plan"), planMap[form.service_plan]]] : []),
-                        [t("Wash temp","Temp lavado"),  tempMap[form.wash_temp]],
-                        [t("Dry temp","Temp secado"),   dryMap[form.dry_temp]],
+                        [t("Wash temp","Temp lavado"), tempMap[form.wash_temp]],
+                        [t("Dry temp","Temp secado"), dryMap[form.dry_temp]],
                         ...(form.notes ? [[t("Notes","Notas"), form.notes.slice(0,70)]] : []),
                       ]} />
+
+                      {selectedAddonsList.length > 0 && (
+                        <div style={{ padding: "10px 12px", borderRadius: 9, background: "rgba(14,165,233,.05)", border: "1px solid rgba(14,165,233,.2)" }}>
+                          <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".12em", color: "#0ea5e9", marginBottom: 8 }}>
+                            ✨ {t("Add-on Services", "Servicios Adicionales")}
+                          </div>
+                          {selectedAddonsList.map((s) => (
+                            <div key={s.id} style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "3px 0", fontSize: 11 }}>
+                              <span style={{ color: "hsl(var(--foreground))" }}>{getServiceIcon(s.name, s.category || "")} {s.name}</span>
+                              {s.price != null && (
+                                <span style={{ fontWeight: 700, color: "#0ea5e9", flexShrink: 0 }}>
+                                  ${s.price}
+                                  {s.price_unit && (
+                                    <span style={{ fontSize: 9, fontWeight: 500, color: "hsl(var(--muted-foreground))", marginLeft: 2 }}>
+                                      {(PRICE_UNIT_LABELS[s.price_unit] || {}).en || ""}
+                                    </span>
+                                  )}
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
                       <SumBlock title={`📅 ${t("Schedule", "Horario")}`} rows={[
-                        [t("Date","Fecha"),    form.pickup_date || t("Flexible","Flexible")],
+                        [t("Date","Fecha"), form.pickup_date || t("Flexible","Flexible")],
                         [t("Window","Ventana"), timeMap[form.pickup_time]],
                       ]} />
                       <div style={{ display: "flex", alignItems: "flex-start", gap: 9, padding: "10px 12px", background: "hsl(var(--secondary))", borderRadius: 9, border: "0.5px solid hsl(var(--border))" }}>
@@ -1212,18 +1405,17 @@ export default function SchedulePickup() {
                       </div>
                     </>
                   )}
-
                 </div>
 
-                {/* Nav */}
+                {/* Navigation */}
                 <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
                   {cur > 0 && (
                     <button type="button" onClick={() => goTo(cur - 1)} style={{ padding: "10px 16px", borderRadius: 9, border: "1px solid hsl(var(--border))", background: "hsl(var(--secondary))", color: "hsl(var(--muted-foreground))", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", transition: "all .15s" }}>
                       ← {t("Back", "Atrás")}
                     </button>
                   )}
-                  <button type="button" onClick={handleNext} disabled={submitting || (cur === 4 && !form.terms)}
-                    style={{ flex: 1, padding: "11px 16px", borderRadius: 9, border: "none", background: "linear-gradient(135deg,#0ea5e9,#2563eb)", color: "white", fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".1em", cursor: (submitting || (cur === 4 && !form.terms)) ? "not-allowed" : "pointer", opacity: (submitting || (cur === 4 && !form.terms)) ? 0.5 : 1, fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, boxShadow: "var(--shadow-sky)", transition: "all .15s", position: "relative", overflow: "hidden" }}>
+                  <button type="button" onClick={handleNext} disabled={submitting || (cur === 4 && !form.terms) || (cur === 1 && distanceError)}
+                    style={{ flex: 1, padding: "11px 16px", borderRadius: 9, border: "none", background: "linear-gradient(135deg,#0ea5e9,#2563eb)", color: "white", fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".1em", cursor: (submitting || (cur === 4 && !form.terms) || (cur === 1 && distanceError)) ? "not-allowed" : "pointer", opacity: (submitting || (cur === 4 && !form.terms) || (cur === 1 && distanceError)) ? 0.5 : 1, fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, boxShadow: "var(--shadow-sky)", transition: "all .15s", position: "relative", overflow: "hidden" }}>
                     {submitting ? (
                       <>
                         <div style={{ width: 13, height: 13, border: "2px solid rgba(255,255,255,.4)", borderTopColor: "white", borderRadius: "50%", animation: "tl_spin .7s linear infinite" }} />
@@ -1240,7 +1432,6 @@ export default function SchedulePickup() {
               </div>
             </div>
           )}
-
         </div>
       </section>
 

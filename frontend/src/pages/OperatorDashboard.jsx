@@ -78,13 +78,28 @@ const API_URL = process.env.REACT_APP_BACKEND_URL;
 const STORE_COORDINATES = { lat: 34.283, lng: -119.293 };
 
 const cpCoordinates = {
-  "93001": { lat: 34.283, lng: -119.293 },
-  "93003": { lat: 34.254, lng: -119.215 },
-  "93004": { lat: 34.302, lng: -119.186 },
-  "93030": { lat: 34.187, lng: -119.179 },
-  "93036": { lat: 34.237, lng: -119.181 },
-  "93035": { lat: 34.174, lng: -119.222 },
-  "93010": { lat: 34.225, lng: -119.082 },
+  93001: { lat: 34.283, lng: -119.293 },
+  93003: { lat: 34.254, lng: -119.215 },
+  93004: { lat: 34.302, lng: -119.186 },
+  93030: { lat: 34.187, lng: -119.179 },
+  93036: { lat: 34.237, lng: -119.181 },
+  93035: { lat: 34.174, lng: -119.222 },
+  93010: { lat: 34.225, lng: -119.082 },
+};
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+
+const INITIAL_CHECKOUT_FORM = {
+  name: "",
+  email: "",
+  phone: "",
+  address: "",
+  apt: "",
+  instructions: "",
+  notes: "",
+  preferred_contact: "sms",
+  payment_method: "card",
+  fulfillment_type: "pickup",
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -107,9 +122,7 @@ function getDistanceInMiles(lat1, lng1, lat2, lng2) {
   const dLng = ((lng2 - lng1) * Math.PI) / 180;
   const a =
     Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLng / 2) ** 2;
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
 }
@@ -118,8 +131,8 @@ function calculateDeliveryFee(distanceMiles) {
   // 3 miles free, $1.50/mile after (matches backend delivery_rules.py)
   if (distanceMiles <= 3) return 0;
   const extraMiles = distanceMiles - 3;
-  const fee = extraMiles * 1.50;
-  return Math.min(Math.round(fee * 100) / 100, 25.00); // cap $25
+  const fee = extraMiles * 1.5;
+  return Math.min(Math.round(fee * 100) / 100, 25.0); // cap $25
 }
 
 function getMarkerColor(status) {
@@ -143,6 +156,7 @@ function getMarkerColor(status) {
 }
 
 const isValidEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
+const getToken = () => localStorage.getItem("token") || sessionStorage.getItem("token");
 const isValidPhone = (v) => /^\+?[\d\s\-().]{7,}$/.test(v.trim());
 
 // ─── Hook: detect mobile ──────────────────────────────────────────────────────
@@ -247,21 +261,25 @@ const OrderRow = ({
         <p className="text-sm text-slate-700 font-medium truncate">
           {safeString(order.customer_name, t("Customer", "Cliente"))}
         </p>
-        <p className="text-xs text-slate-400 mt-0.5 truncate">
-          {order.pickup_time_window
-            ? safeString(order.pickup_time_window)
-            : order.pickup_date
-            ? formatShortDatePT(order.pickup_date)
-            : t("No time", "Sin hora")}
-          {(order.pickup_address || order.delivery_address) && (
-            <> · {safeString(order.pickup_address || order.delivery_address)}</>
-          )}
-          {extractCP(order.pickup_address || order.delivery_address) && (
-            <span className="ml-1 px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-xs font-mono">
-              CP {extractCP(order.pickup_address || order.delivery_address)}
-            </span>
-          )}
-        </p>
+        {(() => {
+          const addr = order.pickup_address || order.delivery_address;
+          const cp = extractCP(addr);
+          return (
+            <p className="text-xs text-slate-400 mt-0.5 truncate">
+              {order.pickup_time_window
+                ? safeString(order.pickup_time_window)
+                : order.pickup_date
+                  ? formatShortDatePT(order.pickup_date)
+                  : t("No time", "Sin hora")}
+              {addr && <> · {safeString(addr)}</>}
+              {cp && (
+                <span className="ml-1 px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-xs font-mono">
+                  CP {cp}
+                </span>
+              )}
+            </p>
+          );
+        })()}
       </div>
       <div className="flex flex-col gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
         {nextStatus && (
@@ -389,19 +407,12 @@ export default function OperatorDashboard() {
   const [storeCartLoading, setStoreCartLoading] = useState(false);
   const [storeProducts, setStoreProducts] = useState([]);
   const [storeSearch, setStoreSearch] = useState("");
-  const [storeCheckoutForm, setStoreCheckoutForm] = useState({
-    name: "",
-    email: "",
-    phone: "",
-    address: "",
-    apt: "",
-    instructions: "",
-    notes: "",
-    preferred_contact: "sms",
-    payment_method: "card",
-    fulfillment_type: "pickup",
+  const [storeCheckoutForm, setStoreCheckoutForm] = useState(INITIAL_CHECKOUT_FORM);
+  const [storeShippingQuote, setStoreShippingQuote] = useState({
+    distance_km: null,
+    fee: 0,
+    zone_name: null,
   });
-  const [storeShippingQuote, setStoreShippingQuote] = useState({ distance_km: null, fee: 0, zone_name: null });
   const [storeShippingError, setStoreShippingError] = useState("");
   const [storeCheckoutLoading, setStoreCheckoutLoading] = useState(false);
   const [storeLinkMode, setStoreLinkMode] = useState(null);
@@ -600,35 +611,34 @@ export default function OperatorDashboard() {
 
   const pollStoreCheckoutStatus = useCallback(
     async (sessionId, attempt = 0) => {
+      const retry = () => setTimeout(() => pollStoreCheckoutStatus(sessionId, attempt + 1), 2000);
+      const finish = async (notify) => {
+        notify();
+        try {
+          await loadStoreOrders();
+        } catch {}
+      };
       try {
         const res = await fetch(`${API_URL}/api/store/checkout/status/${sessionId}`);
         if (!res.ok) throw new Error("fetch_failed");
         const data = await res.json();
         const ps = (data?.payment_status || "").toLowerCase();
         const cs = (data?.status || "").toLowerCase();
-        if (ps === "paid") {
-          toast.success(t("Store payment confirmed", "Pago de tienda confirmado"));
-          try { await loadStoreOrders(); } catch {}
-          return;
-        }
-        if (cs === "expired") {
-          toast.error(t("Store payment expired", "Pago de tienda expirado"));
-          try { await loadStoreOrders(); } catch {}
-          return;
-        }
-        if (attempt >= 8) {
-          toast.info(t("Store payment pending", "Pago de tienda pendiente"));
-          try { await loadStoreOrders(); } catch {}
-          return;
-        }
-        setTimeout(() => pollStoreCheckoutStatus(sessionId, attempt + 1), 2000);
+        if (ps === "paid")
+          return finish(() =>
+            toast.success(t("Store payment confirmed", "Pago de tienda confirmado"))
+          );
+        if (cs === "expired")
+          return finish(() => toast.error(t("Store payment expired", "Pago de tienda expirado")));
+        if (attempt >= 8)
+          return finish(() => toast.info(t("Store payment pending", "Pago de tienda pendiente")));
+        retry();
       } catch {
-        if (attempt >= 8) {
-          toast.error(t("Unable to verify payment", "No se pudo verificar pago"));
-          try { await loadStoreOrders(); } catch {}
-          return;
-        }
-        setTimeout(() => pollStoreCheckoutStatus(sessionId, attempt + 1), 2000);
+        if (attempt >= 8)
+          return finish(() =>
+            toast.error(t("Unable to verify payment", "No se pudo verificar pago"))
+          );
+        retry();
       }
     },
     [loadStoreOrders, t]
@@ -654,7 +664,7 @@ export default function OperatorDashboard() {
     }
     (async () => {
       try {
-        const tkn = localStorage.getItem("token") || sessionStorage.getItem("token");
+        const tkn = getToken();
         const res = await fetch(`${API_URL}/api/stripe/confirm-payment`, {
           method: "POST",
           headers: {
@@ -708,12 +718,11 @@ export default function OperatorDashboard() {
     const statusLower = newStatus.toLowerCase();
 
     if (statusLower === "picked_up" || statusLower === "delivered") {
-      const order =
-        allPickupOrders.find((o) => o.order_id === orderId) ||
-        allPickupDeliveries.find((o) => o.order_id === orderId) ||
-        allWashFoldDropoffs.find((o) => o.order_id === orderId) ||
-        allWashFoldReady.find((o) => o.order_id === orderId) ||
-        { order_id: orderId, order_number: orderId, customer_name: "" };
+      const order = allServiceOrdersById.get(orderId) || {
+        order_id: orderId,
+        order_number: orderId,
+        customer_name: "",
+      };
       setPickupImageModal({ order, pendingStatus: newStatus });
       return;
     }
@@ -799,12 +808,18 @@ export default function OperatorDashboard() {
   const handlePrintTicket = async (order) => {
     if (!order) return;
     const id = order.id || order.order_id;
-    if (!id) { toast.error(t("Invalid order", "Orden inválida")); return; }
+    if (!id) {
+      toast.error(t("Invalid order", "Orden inválida"));
+      return;
+    }
     try {
       const res = await axios.get(`${API_URL}/api/orders/${id}/qr.svg`, { responseType: "blob" });
       const url = window.URL.createObjectURL(res.data);
       const pw = window.open("");
-      if (!pw) { toast.error(t("Allow pop-ups to print", "Permite ventanas emergentes para imprimir")); return; }
+      if (!pw) {
+        toast.error(t("Allow pop-ups to print", "Permite ventanas emergentes para imprimir"));
+        return;
+      }
       pw.document.write(
         `<html><body style="margin:0;display:flex;align-items:center;justify-content:center;"><img src="${url}" style="max-width:100%;" onload="window.print();window.onafterprint=function(){window.close();};" /></body></html>`
       );
@@ -817,9 +832,12 @@ export default function OperatorDashboard() {
   const handleDownloadPDF = async (order) => {
     if (!order) return;
     const id = order.id || order.order_id;
-    if (!id) { toast.error(t("Invalid order", "Orden invalida")); return; }
+    if (!id) {
+      toast.error(t("Invalid order", "Orden invalida"));
+      return;
+    }
     try {
-      const tkn = localStorage.getItem("token") || sessionStorage.getItem("token");
+      const tkn = getToken();
       const res = await fetch(`${API_URL}/api/orders/${id}/ticket`, {
         headers: tkn ? { Authorization: `Bearer ${tkn}` } : {},
       });
@@ -827,7 +845,7 @@ export default function OperatorDashboard() {
       const htmlContent = await res.text();
       const container = document.createElement("div");
       container.innerHTML = htmlContent;
-      container.style.width = "380px";
+      container.style.width = "300px";
       document.body.appendChild(container);
       await html2pdf()
         .set({
@@ -848,36 +866,39 @@ export default function OperatorDashboard() {
   const handlePrintStoreOrder = (order) => {
     if (!order) return;
     const pw = window.open("");
-    if (!pw) { toast.error(t("Allow pop-ups to print", "Permite ventanas emergentes para imprimir")); return; }
+    if (!pw) {
+      toast.error(t("Allow pop-ups to print", "Permite ventanas emergentes para imprimir"));
+      return;
+    }
     const rows = (order.items || [])
       .map(
         (i) => `<tr>
-          <td style="padding:6px 8px;border-bottom:1px solid #eee;">${safeString(i.name || i.product_name || "Item")}</td>
-          <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center;">${safeString(i.quantity)}</td>
-          <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">$${(Number(i.price) || 0).toFixed(2)}</td>
-        </tr>`
+<td style="padding:6px 8px;border-bottom:1px solid #eee;">${safeString(i.name || i.product_name || "Item")}</td>
+<td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center;">${safeString(i.quantity)}</td>
+<td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">$${(Number(i.price) || 0).toFixed(2)}</td>
+</tr>`
       )
       .join("");
     pw.document.write(`
-      <html><body style="font-family:Arial,sans-serif;padding:24px;">
-        <h2>Store Order ${safeString(order.order_number)}</h2>
-        <p>${safeString(order.customer_name)} &mdash; ${safeString(order.customer_email)}</p>
-        <table style="width:100%;border-collapse:collapse;margin-top:16px;">
-          <thead><tr style="background:#f5f5f5;">
-            <th style="padding:8px;text-align:left;border-bottom:2px solid #ddd;">Item</th>
-            <th style="padding:8px;text-align:center;border-bottom:2px solid #ddd;">Qty</th>
-            <th style="padding:8px;text-align:right;border-bottom:2px solid #ddd;">Price</th>
-          </tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-        <div style="margin-top:16px;text-align:right;">
-          <p>Subtotal: $${(Number(order.subtotal) || 0).toFixed(2)}</p>
-          <p>Shipping: $${(Number(order.shipping_fee) || 0).toFixed(2)}</p>
-          <p style="font-size:18px;font-weight:bold;">Total: $${(Number(order.total) || 0).toFixed(2)}</p>
-        </div>
-        <script>window.print();window.onafterprint=function(){window.close();};<\/script>
-      </body></html>
-    `);
+<html><body style="font-family:Arial,sans-serif;padding:24px;">
+<h2>Store Order ${safeString(order.order_number)}</h2>
+<p>${safeString(order.customer_name)} &mdash; ${safeString(order.customer_email)}</p>
+<table style="width:100%;border-collapse:collapse;margin-top:16px;">
+<thead><tr style="background:#f5f5f5;">
+<th style="padding:8px;text-align:left;border-bottom:2px solid #ddd;">Item</th>
+<th style="padding:8px;text-align:center;border-bottom:2px solid #ddd;">Qty</th>
+<th style="padding:8px;text-align:right;border-bottom:2px solid #ddd;">Price</th>
+</tr></thead>
+<tbody>${rows}</tbody>
+</table>
+<div style="margin-top:16px;text-align:right;">
+<p>Subtotal: $${(Number(order.subtotal) || 0).toFixed(2)}</p>
+<p>Shipping: $${(Number(order.shipping_fee) || 0).toFixed(2)}</p>
+<p style="font-size:18px;font-weight:bold;">Total: $${(Number(order.total) || 0).toFixed(2)}</p>
+</div>
+<script>window.print();window.onafterprint=function(){window.close();};<\/script>
+</body></html>
+`);
     pw.document.close();
   };
 
@@ -887,7 +908,10 @@ export default function OperatorDashboard() {
     if (!aiPrompt.trim()) return;
     setAiLoading(true);
     try {
-      const res = await axios.post(`${API_URL}/api/ai/operations`, { message: aiPrompt, execute: true });
+      const res = await axios.post(`${API_URL}/api/ai/operations`, {
+        message: aiPrompt,
+        execute: true,
+      });
       setAiReply(res.data?.reply || "");
       setAiResults(res.data?.results || []);
       (res.data?.results || []).forEach((r) => {
@@ -930,11 +954,7 @@ export default function OperatorDashboard() {
     setStoreCart(null);
     setStoreProducts([]);
     setStoreSearch("");
-    setStoreCheckoutForm({
-      name: "", email: "", phone: "", address: "", apt: "",
-      instructions: "", notes: "", preferred_contact: "sms",
-      payment_method: "card", fulfillment_type: "pickup",
-    });
+    setStoreCheckoutForm(INITIAL_CHECKOUT_FORM);
     setStoreShippingQuote({ distance_km: null, fee: 0, zone_name: null });
     setStoreLinkMode(null);
     setStoreLinkContact("");
@@ -967,7 +987,9 @@ export default function OperatorDashboard() {
         setStoreCart(d);
       } else if (res) {
         const e = await res.json().catch(() => ({}));
-        toast.error(formatApiError(e.detail, t("Unable to update cart", "No se pudo actualizar el carrito")));
+        toast.error(
+          formatApiError(e.detail, t("Unable to update cart", "No se pudo actualizar el carrito"))
+        );
       }
     } catch {
       toast.error(t("Connection error", "Error de conexión"));
@@ -975,23 +997,46 @@ export default function OperatorDashboard() {
   };
 
   const handleQuickCheckout = async (method) => {
-    if (!storeCart?.items?.length) { toast.error(t("Cart is empty", "El carrito esta vacio")); return; }
+    if (!storeCart?.items?.length) {
+      toast.error(t("Cart is empty", "El carrito esta vacio"));
+      return;
+    }
     setStoreCheckoutLoading(true);
     try {
-      const payload = { cart_id: storeCart.id, origin_url: window.location.origin, fulfillment_type: "pickup" };
+      const payload = {
+        cart_id: storeCart.id,
+        origin_url: window.location.origin,
+        fulfillment_type: "pickup",
+      };
       if (method === "card") {
         const res = await fetch(`${API_URL}/api/store/checkout`, {
-          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
         });
-        if (res.ok) { const d = await res.json(); window.location.href = d.checkout_url; }
-        else { const e = await res.json(); toast.error(formatApiError(e.detail, t("Payment failed", "Pago fallido"))); }
+        if (res.ok) {
+          const d = await res.json();
+          window.location.href = d.checkout_url;
+        } else {
+          const e = await res.json();
+          toast.error(formatApiError(e.detail, t("Payment failed", "Pago fallido")));
+        }
       } else {
         const res = await fetch(`${API_URL}/api/store/checkout/manual`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ...payload, payment_method: method }),
         });
-        if (res.ok) { toast.success(t("Order confirmed - paid with cash", "Orden confirmada - pagado en efectivo")); resetStorePos(); await loadStoreOrders(); }
-        else { const e = await res.json(); toast.error(formatApiError(e.detail, t("Payment failed", "Pago fallido"))); }
+        if (res.ok) {
+          toast.success(
+            t("Order confirmed - paid with cash", "Orden confirmada - pagado en efectivo")
+          );
+          resetStorePos();
+          await loadStoreOrders();
+        } else {
+          const e = await res.json();
+          toast.error(formatApiError(e.detail, t("Payment failed", "Pago fallido")));
+        }
       }
     } catch {
       toast.error(t("Connection error", "Error de conexion"));
@@ -1001,26 +1046,43 @@ export default function OperatorDashboard() {
   };
 
   const handleSendPaymentLink = async (channel) => {
-    if (!storeCart?.items?.length) { toast.error(t("Cart is empty", "El carrito esta vacio")); return; }
-    const contact = storeLinkContact.trim();
-    if (!contact) {
-      toast.error(channel === "sms" ? t("Enter phone number", "Ingresa numero de telefono") : t("Enter email", "Ingresa correo electronico"));
+    if (!storeCart?.items?.length) {
+      toast.error(t("Cart is empty", "El carrito esta vacio"));
       return;
     }
-    if (channel === "sms" && !isValidPhone(contact)) { toast.error(t("Invalid phone number", "Número de teléfono inválido")); return; }
-    if (channel === "email" && !isValidEmail(contact)) { toast.error(t("Invalid email address", "Correo electrónico inválido")); return; }
+    const contact = storeLinkContact.trim();
+    if (!contact) {
+      toast.error(
+        channel === "sms"
+          ? t("Enter phone number", "Ingresa numero de telefono")
+          : t("Enter email", "Ingresa correo electronico")
+      );
+      return;
+    }
+    if (channel === "sms" && !isValidPhone(contact)) {
+      toast.error(t("Invalid phone number", "Número de teléfono inválido"));
+      return;
+    }
+    if (channel === "email" && !isValidEmail(contact)) {
+      toast.error(t("Invalid email address", "Correo electrónico inválido"));
+      return;
+    }
 
     setStoreCheckoutLoading(true);
     try {
       const payload = {
-        cart_id: storeCart.id, origin_url: window.location.origin,
-        fulfillment_type: "pickup", payment_method: "cash",
+        cart_id: storeCart.id,
+        origin_url: window.location.origin,
+        fulfillment_type: "pickup",
+        payment_method: "cash",
       };
       if (channel === "sms") payload.customer_phone = contact;
       if (channel === "email") payload.customer_email = contact;
 
       const orderRes = await fetch(`${API_URL}/api/store/checkout/manual`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
       });
       if (!orderRes.ok) {
         const e = await orderRes.json();
@@ -1029,19 +1091,37 @@ export default function OperatorDashboard() {
       }
       const orderData = await orderRes.json();
       const orderId = orderData.order_id || orderData.id;
-      if (!orderId) { toast.error(t("Could not obtain order ID", "No se pudo obtener el ID de la orden")); return; }
+      if (!orderId) {
+        toast.error(t("Could not obtain order ID", "No se pudo obtener el ID de la orden"));
+        return;
+      }
 
       const linkRes = await fetch(`${API_URL}/api/store/orders/${orderId}/send-payment-link`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ channel, phone: channel === "sms" ? contact : null, email: channel === "email" ? contact : null }),
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          channel,
+          phone: channel === "sms" ? contact : null,
+          email: channel === "email" ? contact : null,
+        }),
       });
       if (linkRes.ok) {
-        toast.success(t(`Payment link sent via ${channel.toUpperCase()}`, `Link de pago enviado por ${channel.toUpperCase()}`));
+        toast.success(
+          t(
+            `Payment link sent via ${channel.toUpperCase()}`,
+            `Link de pago enviado por ${channel.toUpperCase()}`
+          )
+        );
         resetStorePos();
         await loadStoreOrders();
       } else {
         const e = await linkRes.json();
-        toast.error(formatApiError(e.detail || e.message, t("Could not send link", "No se pudo enviar el link")));
+        toast.error(
+          formatApiError(
+            e.detail || e.message,
+            t("Could not send link", "No se pudo enviar el link")
+          )
+        );
       }
     } catch {
       toast.error(t("Connection error", "Error de conexion"));
@@ -1053,20 +1133,29 @@ export default function OperatorDashboard() {
   const handleStorePayment = async () => {
     if (!storePaymentOrder) return;
     const orderId = storePaymentOrder.id || storePaymentOrder.order_id;
-    if (!orderId) { toast.error(t("Invalid order ID", "ID de orden inválido")); return; }
+    if (!orderId) {
+      toast.error(t("Invalid order ID", "ID de orden inválido"));
+      return;
+    }
     setStoreProcessingPayment(true);
     try {
       if (storePaymentForm.method === "card") {
         const res = await fetch(`${API_URL}/api/store/orders/${orderId}/stripe-checkout`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ origin_url: window.location.origin }),
         });
-        if (res.ok) { const d = await res.json(); window.location.href = d.checkout_url; return; }
+        if (res.ok) {
+          const d = await res.json();
+          window.location.href = d.checkout_url;
+          return;
+        }
         const e = await res.json();
         toast.error(formatApiError(e.detail, t("Stripe checkout failed", "Falló Stripe")));
       } else {
         const res = await fetch(`${API_URL}/api/store/orders/${orderId}/payment`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ payment_method: storePaymentForm.method }),
         });
         if (res.ok) {
@@ -1102,14 +1191,19 @@ export default function OperatorDashboard() {
     const timer = setTimeout(async () => {
       try {
         const res = await fetch(`${API_URL}/api/store/shipping/quote`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ address: storeCheckoutForm.address }),
         });
-        if (res.ok) { setStoreShippingQuote(await res.json()); setStoreShippingError(""); }
-        else {
+        if (res.ok) {
+          setStoreShippingQuote(await res.json());
+          setStoreShippingError("");
+        } else {
           const e = await res.json();
           setStoreShippingQuote({ distance_km: null, fee: 0, zone_name: null });
-          setStoreShippingError(formatApiError(e.detail, t("Unable to calculate shipping", "No se pudo calcular envío")));
+          setStoreShippingError(
+            formatApiError(e.detail, t("Unable to calculate shipping", "No se pudo calcular envío"))
+          );
         }
       } catch {
         setStoreShippingQuote({ distance_km: null, fee: 0, zone_name: null });
@@ -1118,6 +1212,19 @@ export default function OperatorDashboard() {
     }, 600);
     return () => clearTimeout(timer);
   }, [storeCheckoutForm.address, storeCheckoutForm.fulfillment_type, storePosOpen, t]);
+
+  // ─── O(1) order lookup map ───────────────────────────────────────────────────
+
+  const allServiceOrdersById = useMemo(() => {
+    const map = new Map();
+    [
+      ...(dashboard?.todays_pickups || []),
+      ...(dashboard?.ready_for_delivery || []),
+      ...(dashboard?.wash_fold_dropoffs || []),
+      ...(dashboard?.wash_fold_ready || []),
+    ].forEach((o) => map.set(o.order_id, o));
+    return map;
+  }, [dashboard]);
 
   // ─── Derived data ────────────────────────────────────────────────────────────
 
@@ -1138,20 +1245,30 @@ export default function OperatorDashboard() {
       .filter((o) => !o.service_type || o.service_type === "pickup_delivery")
       .map((o) => ({ ...o, pickup_time_window: o.pickup_time_window || o.pickup_time || "" }));
 
-    const wfDropoffs = dedupeOrders(dashboard?.wash_fold_dropoffs || [])
-      .map((o) => ({ ...o, pickup_time_window: o.pickup_time_window || o.pickup_time || "" }));
+    const wfDropoffs = dedupeOrders(dashboard?.wash_fold_dropoffs || []).map((o) => ({
+      ...o,
+      pickup_time_window: o.pickup_time_window || o.pickup_time || "",
+    }));
 
-    const wfReady = dedupeOrders(dashboard?.wash_fold_ready || [])
-      .map((o) => ({ ...o, pickup_time_window: o.pickup_time_window || o.pickup_time || "" }));
+    const wfReady = dedupeOrders(dashboard?.wash_fold_ready || []).map((o) => ({
+      ...o,
+      pickup_time_window: o.pickup_time_window || o.pickup_time || "",
+    }));
 
-    const pickupPaymentQueue = dedupeOrders([...pickupOrders, ...pickupDeliveries])
-      .filter((o) => (o.payment_status || "pending") !== "paid");
+    const pickupPaymentQueue = dedupeOrders([...pickupOrders, ...pickupDeliveries]).filter(
+      (o) => (o.payment_status || "pending") !== "paid"
+    );
 
-    const wfPaymentQueue = dedupeOrders([...wfDropoffs, ...wfReady])
-      .filter((o) => (o.payment_status || "pending") !== "paid");
+    const wfPaymentQueue = dedupeOrders([...wfDropoffs, ...wfReady]).filter(
+      (o) => (o.payment_status || "pending") !== "paid"
+    );
 
-    const allOrders = dedupeOrders([...pickupOrders, ...pickupDeliveries, ...wfDropoffs, ...wfReady])
-      .filter((o) => o.status?.toUpperCase() !== "COMPLETED");
+    const allOrders = dedupeOrders([
+      ...pickupOrders,
+      ...pickupDeliveries,
+      ...wfDropoffs,
+      ...wfReady,
+    ]).filter((o) => o.status?.toUpperCase() !== "COMPLETED");
 
     const withCoords = allOrders
       .map((order) => {
@@ -1196,7 +1313,9 @@ export default function OperatorDashboard() {
       let result = orders;
       if (orderFilters.date) result = result.filter((o) => o.pickup_date === orderFilters.date);
       if (orderFilters.time_window)
-        result = result.filter((o) => isWithinTimeWindow(o.pickup_time_window, orderFilters.time_window));
+        result = result.filter((o) =>
+          isWithinTimeWindow(o.pickup_time_window, orderFilters.time_window)
+        );
       if (searchTerm.trim()) {
         const term = searchTerm.toLowerCase();
         result = result.filter((order) => {
@@ -1217,26 +1336,45 @@ export default function OperatorDashboard() {
     [orderFilters, searchTerm, isWithinTimeWindow]
   );
 
-  const filteredPickupOrders = useMemo(() => filterOrders(allPickupOrders), [filterOrders, allPickupOrders]);
-  const filteredPickupDeliveries = useMemo(() => filterOrders(allPickupDeliveries), [filterOrders, allPickupDeliveries]);
-  const filteredWashFoldDropoffs = useMemo(() => filterOrders(allWashFoldDropoffs), [filterOrders, allWashFoldDropoffs]);
-  const filteredWashFoldReady = useMemo(() => filterOrders(allWashFoldReady), [filterOrders, allWashFoldReady]);
-  const filteredPickupPaymentQueue = useMemo(() => filterOrders(allPickupPaymentQueue), [filterOrders, allPickupPaymentQueue]);
-  const filteredWashFoldPaymentQueue = useMemo(() => filterOrders(allWashFoldPaymentQueue), [filterOrders, allWashFoldPaymentQueue]);
+  const filteredPickupOrders = useMemo(
+    () => filterOrders(allPickupOrders),
+    [filterOrders, allPickupOrders]
+  );
+  const filteredPickupDeliveries = useMemo(
+    () => filterOrders(allPickupDeliveries),
+    [filterOrders, allPickupDeliveries]
+  );
+  const filteredWashFoldDropoffs = useMemo(
+    () => filterOrders(allWashFoldDropoffs),
+    [filterOrders, allWashFoldDropoffs]
+  );
+  const filteredWashFoldReady = useMemo(
+    () => filterOrders(allWashFoldReady),
+    [filterOrders, allWashFoldReady]
+  );
+  const filteredPickupPaymentQueue = useMemo(
+    () => filterOrders(allPickupPaymentQueue),
+    [filterOrders, allPickupPaymentQueue]
+  );
+  const filteredWashFoldPaymentQueue = useMemo(
+    () => filterOrders(allWashFoldPaymentQueue),
+    [filterOrders, allWashFoldPaymentQueue]
+  );
 
-  const filteredStoreOrders = useMemo(() =>
-    storeOrders.filter((order) => {
-      if (storePaymentFilter === "unpaid" && order.payment_status === "paid") return false;
-      if (storePaymentFilter === "paid" && order.payment_status !== "paid") return false;
-      if (storeOrderSearch.trim()) {
-        const term = storeOrderSearch.toLowerCase();
-        const num = (order.order_number || "").toLowerCase();
-        const name = (order.customer_name || "").toLowerCase();
-        const email = (order.customer_email || "").toLowerCase();
-        if (!num.includes(term) && !name.includes(term) && !email.includes(term)) return false;
-      }
-      return true;
-    }),
+  const filteredStoreOrders = useMemo(
+    () =>
+      storeOrders.filter((order) => {
+        if (storePaymentFilter === "unpaid" && order.payment_status === "paid") return false;
+        if (storePaymentFilter === "paid" && order.payment_status !== "paid") return false;
+        if (storeOrderSearch.trim()) {
+          const term = storeOrderSearch.toLowerCase();
+          const num = (order.order_number || "").toLowerCase();
+          const name = (order.customer_name || "").toLowerCase();
+          const email = (order.customer_email || "").toLowerCase();
+          if (!num.includes(term) && !name.includes(term) && !email.includes(term)) return false;
+        }
+        return true;
+      }),
     [storeOrders, storePaymentFilter, storeOrderSearch]
   );
 
@@ -1246,13 +1384,20 @@ export default function OperatorDashboard() {
   );
 
   const unpaidStoreOrders = useMemo(
-    () => storeOrders.filter((o) => { const s = (o.payment_status || "pending").toLowerCase(); return s !== "paid" && s !== "refunded"; }),
+    () =>
+      storeOrders.filter((o) => {
+        const s = (o.payment_status || "pending").toLowerCase();
+        return s !== "paid" && s !== "refunded";
+      }),
     [storeOrders]
   );
 
-  const storeCartSubtotal = storeCart?.total || 0;
-  const storeShippingFee = storeCheckoutForm.fulfillment_type === "delivery" ? storeShippingQuote.fee || 0 : 0;
-  const storeOrderTotal = storeCartSubtotal + storeShippingFee;
+  const storeOrderTotal = useMemo(() => {
+    const subtotal = storeCart?.total || 0;
+    const shipping =
+      storeCheckoutForm.fulfillment_type === "delivery" ? storeShippingQuote.fee || 0 : 0;
+    return subtotal + shipping;
+  }, [storeCart?.total, storeCheckoutForm.fulfillment_type, storeShippingQuote.fee]);
 
   const pickupOrdersCount = allPickupOrders.length;
   const ordersInProcessingCount = dashboard?.stats?.orders_in_processing || 0;
@@ -1263,14 +1408,14 @@ export default function OperatorDashboard() {
     realtimeStatus === "connected"
       ? t("Realtime: connected", "Tiempo real: conectado")
       : realtimeStatus === "disabled"
-      ? t("Realtime: not configured", "Tiempo real: sin configurar")
-      : t("Realtime: disconnected", "Tiempo real: desconectado");
+        ? t("Realtime: not configured", "Tiempo real: sin configurar")
+        : t("Realtime: disconnected", "Tiempo real: desconectado");
   const rtClass =
     realtimeStatus === "connected"
       ? "bg-emerald-100 text-emerald-700"
       : realtimeStatus === "disabled"
-      ? "bg-slate-100 text-slate-500"
-      : "bg-orange-100 text-orange-700";
+        ? "bg-slate-100 text-slate-500"
+        : "bg-orange-100 text-orange-700";
   const RtIcon = realtimeStatus === "connected" ? Wifi : WifiOff;
 
   // ─── Loading screen ──────────────────────────────────────────────────────────
@@ -1279,7 +1424,9 @@ export default function OperatorDashboard() {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] gap-3">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sky-600" />
-        <p className="text-sm text-slate-400 animate-pulse">{t("Loading dashboard…", "Cargando panel…")}</p>
+        <p className="text-sm text-slate-400 animate-pulse">
+          {t("Loading dashboard…", "Cargando panel…")}
+        </p>
       </div>
     );
   }
@@ -1288,7 +1435,6 @@ export default function OperatorDashboard() {
 
   return (
     <div className="space-y-4 sm:space-y-6 px-2 sm:px-0 pb-20 md:pb-0">
-
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -1297,7 +1443,10 @@ export default function OperatorDashboard() {
             {t("Operator Dashboard", "Panel del Operador")}
           </h1>
           <p className="text-sm text-slate-500 mt-0.5">
-            {t("Update order status — the system does the rest", "Actualiza el estado — el sistema hace el resto")}
+            {t(
+              "Update order status — the system does the rest",
+              "Actualiza el estado — el sistema hace el resto"
+            )}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -1312,17 +1461,30 @@ export default function OperatorDashboard() {
               data-testid="order-search-input"
             />
           </div>
-          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${rtClass}`} data-testid="operator-realtime-status">
+          <span
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${rtClass}`}
+            data-testid="operator-realtime-status"
+          >
             <RtIcon className="h-3 w-3" />
             {rtLabel}
           </span>
           <span className="text-xs text-slate-400 hidden sm:inline">
             {t("Updated:", "Actualizado:")} {formatTimePT(lastRefresh)}
           </span>
-          <Button onClick={() => setAutoRefresh((a) => !a)} variant="outline" size="sm" data-testid="toggle-auto-refresh">
+          <Button
+            onClick={() => setAutoRefresh((a) => !a)}
+            variant="outline"
+            size="sm"
+            data-testid="toggle-auto-refresh"
+          >
             {autoRefresh ? t("Pause", "Pausar") : t("Resume", "Reanudar")}
           </Button>
-          <Button onClick={loadDashboard} variant="outline" size="sm" data-testid="refresh-dashboard">
+          <Button
+            onClick={loadDashboard}
+            variant="outline"
+            size="sm"
+            data-testid="refresh-dashboard"
+          >
             <RefreshCw className="h-4 w-4 sm:mr-1.5" />
             <span className="hidden sm:inline">{t("Refresh", "Actualizar")}</span>
           </Button>
@@ -1331,17 +1493,44 @@ export default function OperatorDashboard() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <StatCard icon={<Truck className="h-5 w-5 text-sky-600" />} bg="bg-sky-100" count={pickupOrdersCount} label={t("Pickups Today", "Pickups Hoy")} testId="pickups" />
-        <StatCard icon={<Package className="h-5 w-5 text-amber-600" />} bg="bg-amber-100" count={ordersInProcessingCount} label={t("In Process", "En Proceso")} testId="processing" />
-        <StatCard icon={<CheckCircle className="h-5 w-5 text-green-600" />} bg="bg-green-100" count={deliveriesCount} label={t("Deliveries Ongoing", "Entregas en curso")} testId="deliveries" />
-        <StatCard icon={<AlertTriangle className="h-5 w-5 text-red-600" />} bg="bg-red-100" count={urgentCount} label={t("Urgent Tickets", "Tickets Urgentes")} testId="urgent" highlight={urgentCount > 0} />
+        <StatCard
+          icon={<Truck className="h-5 w-5 text-sky-600" />}
+          bg="bg-sky-100"
+          count={pickupOrdersCount}
+          label={t("Pickups Today", "Pickups Hoy")}
+          testId="pickups"
+        />
+        <StatCard
+          icon={<Package className="h-5 w-5 text-amber-600" />}
+          bg="bg-amber-100"
+          count={ordersInProcessingCount}
+          label={t("In Process", "En Proceso")}
+          testId="processing"
+        />
+        <StatCard
+          icon={<CheckCircle className="h-5 w-5 text-green-600" />}
+          bg="bg-green-100"
+          count={deliveriesCount}
+          label={t("Deliveries Ongoing", "Entregas en curso")}
+          testId="deliveries"
+        />
+        <StatCard
+          icon={<AlertTriangle className="h-5 w-5 text-red-600" />}
+          bg="bg-red-100"
+          count={urgentCount}
+          label={t("Urgent Tickets", "Tickets Urgentes")}
+          testId="urgent"
+          highlight={urgentCount > 0}
+        />
       </div>
 
       {/* AI Assistant */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="px-4 sm:px-6 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
           <Bot className="h-4 w-4 text-sky-600 shrink-0" />
-          <h2 className="font-semibold text-slate-900 text-sm">{t("AI Operations Assistant", "Asistente Operativo IA")}</h2>
+          <h2 className="font-semibold text-slate-900 text-sm">
+            {t("AI Operations Assistant", "Asistente Operativo IA")}
+          </h2>
         </div>
         <div className="p-4 sm:p-5 grid gap-4 lg:grid-cols-[2fr_1fr]">
           <div>
@@ -1349,28 +1538,56 @@ export default function OperatorDashboard() {
               value={aiPrompt}
               onChange={(e) => setAiPrompt(e.target.value)}
               rows={3}
-              placeholder={t("Example: Mark order VFL-… as paid in cash $50 and generate ticket", "Ej: Marca la orden VFL-… como pagada en efectivo $50 y genera ticket")}
+              placeholder={t(
+                "Example: Mark order VFL-… as paid in cash $50 and generate ticket",
+                "Ej: Marca la orden VFL-… como pagada en efectivo $50 y genera ticket"
+              )}
               className="text-sm resize-none"
               data-testid="operator-ai-input"
             />
             <div className="flex gap-2 mt-2.5">
-              <Button onClick={handleAiRequest} disabled={aiLoading || !aiPrompt.trim()} size="sm" data-testid="operator-ai-submit">
+              <Button
+                onClick={handleAiRequest}
+                disabled={aiLoading || !aiPrompt.trim()}
+                size="sm"
+                data-testid="operator-ai-submit"
+              >
                 {aiLoading ? t("Processing…", "Procesando…") : t("Send to AI", "Enviar a IA")}
               </Button>
-              <Button variant="outline" size="sm" onClick={() => { setAiPrompt(""); setAiReply(""); setAiResults([]); }} data-testid="operator-ai-clear">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setAiPrompt("");
+                  setAiReply("");
+                  setAiResults([]);
+                }}
+                data-testid="operator-ai-clear"
+              >
                 {t("Clear", "Limpiar")}
               </Button>
             </div>
           </div>
           <div className="bg-slate-50 rounded-xl p-3.5">
             <p className="text-xs text-slate-400 mb-1">{t("Response", "Respuesta")}</p>
-            <p className="font-medium text-slate-800 text-sm leading-relaxed" data-testid="operator-ai-reply">
-              {aiReply || <span className="text-slate-400 font-normal">{t("No reply yet", "Aún no hay respuesta")}</span>}
+            <p
+              className="font-medium text-slate-800 text-sm leading-relaxed"
+              data-testid="operator-ai-reply"
+            >
+              {aiReply || (
+                <span className="text-slate-400 font-normal">
+                  {t("No reply yet", "Aún no hay respuesta")}
+                </span>
+              )}
             </p>
             {aiResults.length > 0 && (
               <ul className="mt-2.5 space-y-1 border-t border-slate-200 pt-2.5">
                 {aiResults.map((r, i) => (
-                  <li key={i} className={`text-xs font-medium ${r.ok ? "text-emerald-600" : "text-red-500"}`} data-testid={`operator-ai-result-${i}`}>
+                  <li
+                    key={i}
+                    className={`text-xs font-medium ${r.ok ? "text-emerald-600" : "text-red-500"}`}
+                    data-testid={`operator-ai-result-${i}`}
+                  >
                     {r.ok ? "✓" : "✗"} {r.type}
                   </li>
                 ))}
@@ -1381,9 +1598,18 @@ export default function OperatorDashboard() {
       </div>
 
       {/* ═══ TABS ═══ */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full" data-testid="operator-tabs">
+      <Tabs
+        value={activeTab}
+        onValueChange={setActiveTab}
+        className="w-full"
+        data-testid="operator-tabs"
+      >
         <TabsList className="w-full grid grid-cols-3 mb-4 h-11">
-          <TabsTrigger value="orders" className="text-xs sm:text-sm gap-1.5" data-testid="tab-orders">
+          <TabsTrigger
+            value="orders"
+            className="text-xs sm:text-sm gap-1.5"
+            data-testid="tab-orders"
+          >
             <ClipboardList className="h-4 w-4" />
             <span className="hidden sm:inline">{t("Service Orders", "Ordenes de Servicio")}</span>
             <span className="sm:hidden">{t("Orders", "Ordenes")}</span>
@@ -1441,19 +1667,29 @@ export default function OperatorDashboard() {
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
                 <CardHeader
                   icon={<Truck className="h-4 w-4 text-sky-500" />}
-                  title={t("Pickup & Delivery — Created / Confirmed", "Pickup & Delivery — Creadas / Confirmadas")}
+                  title={t(
+                    "Pickup & Delivery — Created / Confirmed",
+                    "Pickup & Delivery — Creadas / Confirmadas"
+                  )}
                   count={filteredPickupOrders.length}
                   testId="pos-pickup-today-count"
                 />
                 <div className="divide-y divide-slate-100">
                   {filteredPickupOrders.length === 0 ? (
-                    <EmptyState icon={<Truck className="h-8 w-8" />} text={t("No created or confirmed orders", "No hay ordenes creadas o confirmadas")} testId="pos-pickup-today-empty" />
+                    <EmptyState
+                      icon={<Truck className="h-8 w-8" />}
+                      text={t(
+                        "No created or confirmed orders",
+                        "No hay ordenes creadas o confirmadas"
+                      )}
+                      testId="pos-pickup-today-empty"
+                    />
                   ) : (
                     filteredPickupOrders.map((order) => {
                       const ns = getNextStatus(order.status, order.service_type);
                       return (
                         <OrderRow
-                          key={order.order_id || Math.random()}
+                          key={order.order_id ?? order.order_number}
                           order={order}
                           statusInfo={getStatusInfo(order.status, order.service_type)}
                           nextStatus={ns}
@@ -1477,19 +1713,26 @@ export default function OperatorDashboard() {
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
                 <CardHeader
                   icon={<DollarSign className="h-4 w-4 text-emerald-500" />}
-                  title={t("Pickup & Delivery — Request Payment", "Pickup & Delivery — Solicitar pago")}
+                  title={t(
+                    "Pickup & Delivery — Request Payment",
+                    "Pickup & Delivery — Solicitar pago"
+                  )}
                   count={filteredPickupPaymentQueue.length}
                   testId="pos-pickup-payment-count"
                 />
                 <div className="divide-y divide-slate-100">
                   {filteredPickupPaymentQueue.length === 0 ? (
-                    <EmptyState icon={<DollarSign className="h-8 w-8" />} text={t("No pickup payments pending", "Sin pagos pendientes")} testId="pos-pickup-payment-empty" />
+                    <EmptyState
+                      icon={<DollarSign className="h-8 w-8" />}
+                      text={t("No pickup payments pending", "Sin pagos pendientes")}
+                      testId="pos-pickup-payment-empty"
+                    />
                   ) : (
                     filteredPickupPaymentQueue.map((order) => {
                       const amount = calculateServiceCharge(order);
                       return (
                         <div
-                          key={order.order_id || Math.random()}
+                          key={order.order_id ?? order.order_number}
                           className="p-3 sm:p-4 hover:bg-slate-50/70 transition-colors cursor-pointer"
                           role="button"
                           onClick={() => setSelectedOrder(order)}
@@ -1498,29 +1741,64 @@ export default function OperatorDashboard() {
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0 flex-1">
                               <div className="flex flex-wrap items-center gap-1.5 mb-1">
-                                <span className="font-mono font-semibold text-xs sm:text-sm text-slate-900">{formatOrderNumber(order)}</span>
-                                <span className={`px-1.5 py-0.5 text-xs font-medium rounded-full ${getStatusInfo(order.status, order.service_type).color}`}>
-                                  {getStatusInfo(order.status, order.service_type).label}
+                                <span className="font-mono font-semibold text-xs sm:text-sm text-slate-900">
+                                  {formatOrderNumber(order)}
                                 </span>
+                                {(() => {
+                                  const si = getStatusInfo(order.status, order.service_type);
+                                  return (
+                                    <span
+                                      className={`px-1.5 py-0.5 text-xs font-medium rounded-full ${si.color}`}
+                                    >
+                                      {si.label}
+                                    </span>
+                                  );
+                                })()}
                               </div>
-                              <p className="text-sm text-slate-700 font-medium truncate">{safeString(order.customer_name, t("Customer", "Cliente"))}</p>
+                              <p className="text-sm text-slate-700 font-medium truncate">
+                                {safeString(order.customer_name, t("Customer", "Cliente"))}
+                              </p>
                               <p className="text-xs text-slate-400 mt-0.5">
                                 {t("Charge", "Cobro")}:{" "}
                                 <span className="font-semibold text-slate-600">
-                                  {amount ? formatCurrency(amount) : t("Set actual lbs", "Ingresa lbs reales")}
+                                  {amount
+                                    ? formatCurrency(amount)
+                                    : t("Set actual lbs", "Ingresa lbs reales")}
                                 </span>
                               </p>
                             </div>
-                            <div className="flex flex-col gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-                              <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-xs h-7" onClick={() => setSelectedOrder(order)} data-testid={`pos-pickup-collect-${order.order_id}`}>
+                            <div
+                              className="flex flex-col gap-1.5 shrink-0"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Button
+                                size="sm"
+                                className="bg-emerald-600 hover:bg-emerald-700 text-xs h-7"
+                                onClick={() => setSelectedOrder(order)}
+                                data-testid={`pos-pickup-collect-${order.order_id}`}
+                              >
                                 {t("Collect", "Cobrar")}
                               </Button>
                               <div className="flex gap-1">
-                                <Button variant="outline" size="sm" className="text-xs h-7 px-2 gap-1 hover:border-sky-300 hover:text-sky-600" onClick={() => handlePrintTicket(order)} data-testid={`pos-pickup-payment-print-${order.order_id}`}>
-                                  <Printer className="h-3 w-3" /><span className="hidden sm:inline">{t("Print", "Imprimir")}</span>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-xs h-7 px-2 gap-1 hover:border-sky-300 hover:text-sky-600"
+                                  onClick={() => handlePrintTicket(order)}
+                                  data-testid={`pos-pickup-payment-print-${order.order_id}`}
+                                >
+                                  <Printer className="h-3 w-3" />
+                                  <span className="hidden sm:inline">{t("Print", "Imprimir")}</span>
                                 </Button>
-                                <Button variant="outline" size="sm" className="text-xs h-7 px-2 gap-1 hover:border-emerald-300 hover:text-emerald-600" onClick={() => handleDownloadPDF(order)} data-testid={`pos-pickup-payment-pdf-${order.order_id}`}>
-                                  <FileDown className="h-3 w-3" /><span className="hidden sm:inline">PDF</span>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-xs h-7 px-2 gap-1 hover:border-emerald-300 hover:text-emerald-600"
+                                  onClick={() => handleDownloadPDF(order)}
+                                  data-testid={`pos-pickup-payment-pdf-${order.order_id}`}
+                                >
+                                  <FileDown className="h-3 w-3" />
+                                  <span className="hidden sm:inline">PDF</span>
                                 </Button>
                               </div>
                             </div>
@@ -1536,20 +1814,30 @@ export default function OperatorDashboard() {
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
                 <CardHeader
                   icon={<CheckCircle className="h-4 w-4 text-emerald-500" />}
-                  title={t("Pickup & Delivery — In Process / Ready / Out for Delivery", "Pickup & Delivery — En proceso / Lista / En camino")}
+                  title={t(
+                    "Pickup & Delivery — In Process / Ready / Out for Delivery",
+                    "Pickup & Delivery — En proceso / Lista / En camino"
+                  )}
                   count={filteredPickupDeliveries.length}
                   bgClass="bg-emerald-50"
                   testId="pos-pickup-delivery-count"
                 />
                 <div className="divide-y divide-slate-100">
                   {filteredPickupDeliveries.length === 0 ? (
-                    <EmptyState icon={<Package className="h-8 w-8" />} text={t("No active process or delivery orders", "No hay ordenes activas en proceso o entrega")} testId="operator-delivery-empty" />
+                    <EmptyState
+                      icon={<Package className="h-8 w-8" />}
+                      text={t(
+                        "No active process or delivery orders",
+                        "No hay ordenes activas en proceso o entrega"
+                      )}
+                      testId="operator-delivery-empty"
+                    />
                   ) : (
                     filteredPickupDeliveries.map((order) => {
                       const ns = getNextStatus(order.status, order.service_type);
                       return (
                         <OrderRow
-                          key={order.order_id || Math.random()}
+                          key={order.order_id ?? order.order_number}
                           order={order}
                           statusInfo={getStatusInfo(order.status, order.service_type)}
                           nextStatus={ns}
@@ -1575,19 +1863,29 @@ export default function OperatorDashboard() {
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
                 <CardHeader
                   icon={<Package className="h-4 w-4 text-purple-500" />}
-                  title={t("Wash & Fold — Created / Confirmed", "Wash & Fold — Creadas / Confirmadas")}
+                  title={t(
+                    "Wash & Fold — Created / Confirmed",
+                    "Wash & Fold — Creadas / Confirmadas"
+                  )}
                   count={filteredWashFoldDropoffs.length}
                   testId="pos-washfold-dropoff-count"
                 />
                 <div className="divide-y divide-slate-100">
                   {filteredWashFoldDropoffs.length === 0 ? (
-                    <EmptyState icon={<Package className="h-8 w-8" />} text={t("No created or confirmed orders", "Sin ordenes creadas o confirmadas")} testId="pos-washfold-dropoff-empty" />
+                    <EmptyState
+                      icon={<Package className="h-8 w-8" />}
+                      text={t(
+                        "No created or confirmed orders",
+                        "Sin ordenes creadas o confirmadas"
+                      )}
+                      testId="pos-washfold-dropoff-empty"
+                    />
                   ) : (
                     filteredWashFoldDropoffs.map((order) => {
                       const ns = getNextStatus(order.status, order.service_type);
                       return (
                         <OrderRow
-                          key={order.order_id || Math.random()}
+                          key={order.order_id ?? order.order_number}
                           order={order}
                           statusInfo={getStatusInfo(order.status, order.service_type)}
                           nextStatus={ns}
@@ -1617,13 +1915,17 @@ export default function OperatorDashboard() {
                 />
                 <div className="divide-y divide-slate-100">
                   {filteredWashFoldPaymentQueue.length === 0 ? (
-                    <EmptyState icon={<DollarSign className="h-8 w-8" />} text={t("No wash & fold payments pending", "Sin pagos pendientes")} testId="pos-washfold-payment-empty" />
+                    <EmptyState
+                      icon={<DollarSign className="h-8 w-8" />}
+                      text={t("No wash & fold payments pending", "Sin pagos pendientes")}
+                      testId="pos-washfold-payment-empty"
+                    />
                   ) : (
                     filteredWashFoldPaymentQueue.map((order) => {
                       const amount = calculateServiceCharge(order);
                       return (
                         <div
-                          key={order.order_id || Math.random()}
+                          key={order.order_id ?? order.order_number}
                           className="p-3 sm:p-4 hover:bg-slate-50/70 cursor-pointer transition-colors"
                           role="button"
                           onClick={() => setSelectedOrder(order)}
@@ -1632,29 +1934,64 @@ export default function OperatorDashboard() {
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0 flex-1">
                               <div className="flex flex-wrap items-center gap-1.5 mb-1">
-                                <span className="font-mono font-semibold text-xs sm:text-sm text-slate-900">{formatOrderNumber(order)}</span>
-                                <span className={`px-1.5 py-0.5 text-xs font-medium rounded-full ${getStatusInfo(order.status, order.service_type).color}`}>
-                                  {getStatusInfo(order.status, order.service_type).label}
+                                <span className="font-mono font-semibold text-xs sm:text-sm text-slate-900">
+                                  {formatOrderNumber(order)}
                                 </span>
+                                {(() => {
+                                  const si = getStatusInfo(order.status, order.service_type);
+                                  return (
+                                    <span
+                                      className={`px-1.5 py-0.5 text-xs font-medium rounded-full ${si.color}`}
+                                    >
+                                      {si.label}
+                                    </span>
+                                  );
+                                })()}
                               </div>
-                              <p className="text-sm text-slate-700 font-medium truncate">{safeString(order.customer_name, t("Customer", "Cliente"))}</p>
+                              <p className="text-sm text-slate-700 font-medium truncate">
+                                {safeString(order.customer_name, t("Customer", "Cliente"))}
+                              </p>
                               <p className="text-xs text-slate-400 mt-0.5">
                                 {t("Charge", "Cobro")}:{" "}
                                 <span className="font-semibold text-slate-600">
-                                  {amount ? formatCurrency(amount) : t("Set actual lbs", "Ingresa lbs reales")}
+                                  {amount
+                                    ? formatCurrency(amount)
+                                    : t("Set actual lbs", "Ingresa lbs reales")}
                                 </span>
                               </p>
                             </div>
-                            <div className="flex flex-col gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-                              <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-xs h-7" onClick={() => setSelectedOrder(order)} data-testid={`pos-washfold-collect-${order.order_id}`}>
+                            <div
+                              className="flex flex-col gap-1.5 shrink-0"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Button
+                                size="sm"
+                                className="bg-emerald-600 hover:bg-emerald-700 text-xs h-7"
+                                onClick={() => setSelectedOrder(order)}
+                                data-testid={`pos-washfold-collect-${order.order_id}`}
+                              >
                                 {t("Collect", "Cobrar")}
                               </Button>
                               <div className="flex gap-1">
-                                <Button variant="outline" size="sm" className="text-xs h-7 px-2 gap-1 hover:border-sky-300 hover:text-sky-600" onClick={() => handlePrintTicket(order)} data-testid={`pos-washfold-print-payment-${order.order_id}`}>
-                                  <Printer className="h-3 w-3" /><span className="hidden sm:inline">{t("Print", "Imprimir")}</span>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-xs h-7 px-2 gap-1 hover:border-sky-300 hover:text-sky-600"
+                                  onClick={() => handlePrintTicket(order)}
+                                  data-testid={`pos-washfold-print-payment-${order.order_id}`}
+                                >
+                                  <Printer className="h-3 w-3" />
+                                  <span className="hidden sm:inline">{t("Print", "Imprimir")}</span>
                                 </Button>
-                                <Button variant="outline" size="sm" className="text-xs h-7 px-2 gap-1 hover:border-emerald-300 hover:text-emerald-600" onClick={() => handleDownloadPDF(order)} data-testid={`pos-washfold-pdf-payment-${order.order_id}`}>
-                                  <FileDown className="h-3 w-3" /><span className="hidden sm:inline">PDF</span>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-xs h-7 px-2 gap-1 hover:border-emerald-300 hover:text-emerald-600"
+                                  onClick={() => handleDownloadPDF(order)}
+                                  data-testid={`pos-washfold-pdf-payment-${order.order_id}`}
+                                >
+                                  <FileDown className="h-3 w-3" />
+                                  <span className="hidden sm:inline">PDF</span>
                                 </Button>
                               </div>
                             </div>
@@ -1670,20 +2007,27 @@ export default function OperatorDashboard() {
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
                 <CardHeader
                   icon={<CheckCircle className="h-4 w-4 text-emerald-500" />}
-                  title={t("Wash & Fold — Processing / Ready for pickup", "Wash & Fold — Procesando / Lista para recoger")}
+                  title={t(
+                    "Wash & Fold — Processing / Ready for pickup",
+                    "Wash & Fold — Procesando / Lista para recoger"
+                  )}
                   count={filteredWashFoldReady.length}
                   bgClass="bg-emerald-50"
                   testId="pos-washfold-ready-count"
                 />
                 <div className="divide-y divide-slate-100">
                   {filteredWashFoldReady.length === 0 ? (
-                    <EmptyState icon={<CheckCircle className="h-8 w-8" />} text={t("No orders in process or ready", "Sin ordenes en proceso o listas")} testId="pos-washfold-ready-empty" />
+                    <EmptyState
+                      icon={<CheckCircle className="h-8 w-8" />}
+                      text={t("No orders in process or ready", "Sin ordenes en proceso o listas")}
+                      testId="pos-washfold-ready-empty"
+                    />
                   ) : (
                     filteredWashFoldReady.map((order) => {
                       const ns = getNextStatus(order.status, order.service_type);
                       return (
                         <OrderRow
-                          key={order.order_id || Math.random()}
+                          key={order.order_id ?? order.order_number}
                           order={order}
                           statusInfo={getStatusInfo(order.status, order.service_type)}
                           nextStatus={ns}
@@ -1709,18 +2053,33 @@ export default function OperatorDashboard() {
         {/* ── Tab 2: Store Orders ───────────────────────────────────────────── */}
         <TabsContent value="store">
           <div className="space-y-4">
-            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm" data-testid="store-orders-panel">
+            <div
+              className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm"
+              data-testid="store-orders-panel"
+            >
               <div className="px-4 sm:px-6 py-4 border-b border-slate-100 bg-slate-50">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                   <div>
-                    <h3 className="font-semibold text-slate-900 text-sm sm:text-base">{t("Store Orders", "Ordenes tienda")}</h3>
-                    <p className="text-xs text-slate-400 mt-0.5">{t("Process product purchases", "Procesa compras de productos")}</p>
+                    <h3 className="font-semibold text-slate-900 text-sm sm:text-base">
+                      {t("Store Orders", "Ordenes tienda")}
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      {t("Process product purchases", "Procesa compras de productos")}
+                    </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <Button size="sm" className="bg-sky-600 hover:bg-sky-700 text-xs sm:text-sm" onClick={openStorePos} data-testid="store-pos-open">
+                    <Button
+                      size="sm"
+                      className="bg-sky-600 hover:bg-sky-700 text-xs sm:text-sm"
+                      onClick={openStorePos}
+                      data-testid="store-pos-open"
+                    >
                       {t("New Store Sale", "Nueva venta")}
                     </Button>
-                    <span className="text-xs font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full" data-testid="store-orders-count">
+                    <span
+                      className="text-xs font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full"
+                      data-testid="store-orders-count"
+                    >
                       {storeOrders.length}
                     </span>
                   </div>
@@ -1728,7 +2087,10 @@ export default function OperatorDashboard() {
               </div>
 
               {/* Filters bar */}
-              <div className="px-4 sm:px-6 py-2.5 bg-white border-b border-slate-100 flex flex-wrap items-center gap-2" data-testid="store-orders-filters">
+              <div
+                className="px-4 sm:px-6 py-2.5 bg-white border-b border-slate-100 flex flex-wrap items-center gap-2"
+                data-testid="store-orders-filters"
+              >
                 <Search className="h-3.5 w-3.5 text-slate-400 shrink-0" />
                 <Input
                   placeholder={t("Search by order, customer...", "Buscar por orden, cliente...")}
@@ -1747,9 +2109,14 @@ export default function OperatorDashboard() {
                       onClick={() => setStorePaymentFilter(f)}
                       data-testid={`store-filter-${f}`}
                     >
-                      {t(f === "all" ? "All" : f === "unpaid" ? "Unpaid" : "Paid", f === "all" ? "Todos" : f === "unpaid" ? "Sin pagar" : "Pagados")}
+                      {t(
+                        f === "all" ? "All" : f === "unpaid" ? "Unpaid" : "Paid",
+                        f === "all" ? "Todos" : f === "unpaid" ? "Sin pagar" : "Pagados"
+                      )}
                       {f === "unpaid" && unpaidStoreOrders.length > 0 && (
-                        <span className="ml-1 text-[10px] font-bold">{unpaidStoreOrders.length}</span>
+                        <span className="ml-1 text-[10px] font-bold">
+                          {unpaidStoreOrders.length}
+                        </span>
                       )}
                     </Button>
                   ))}
@@ -1758,7 +2125,9 @@ export default function OperatorDashboard() {
 
               {/* Orders table */}
               {storeOrdersLoading ? (
-                <div className="p-8 text-center text-slate-400 text-sm">{t("Loading store orders...", "Cargando ordenes...")}</div>
+                <div className="p-8 text-center text-slate-400 text-sm">
+                  {t("Loading store orders...", "Cargando ordenes...")}
+                </div>
               ) : filteredStoreOrders.length === 0 ? (
                 <div className="p-8 text-center text-slate-400 text-sm">
                   {storeOrderSearch || storePaymentFilter !== "all"
@@ -1772,8 +2141,20 @@ export default function OperatorDashboard() {
                     <table className="min-w-full text-sm">
                       <thead className="bg-slate-50 text-slate-400 text-xs uppercase tracking-wide">
                         <tr>
-                          {[t("Order", "Orden"), t("Customer", "Cliente"), t("Status", "Estado"), t("Payment", "Pago"), t("Total", "Total"), t("Actions", "Acciones")].map((h, i) => (
-                            <th key={i} className={`px-4 py-3 font-semibold ${i === 5 ? "text-right" : "text-left"}`}>{h}</th>
+                          {[
+                            t("Order", "Orden"),
+                            t("Customer", "Cliente"),
+                            t("Status", "Estado"),
+                            t("Payment", "Pago"),
+                            t("Total", "Total"),
+                            t("Actions", "Acciones"),
+                          ].map((h, i) => (
+                            <th
+                              key={i}
+                              className={`px-4 py-3 font-semibold ${i === 5 ? "text-right" : "text-left"}`}
+                            >
+                              {h}
+                            </th>
                           ))}
                         </tr>
                       </thead>
@@ -1781,43 +2162,95 @@ export default function OperatorDashboard() {
                         {filteredStoreOrders.map((order) => {
                           const ns = getNextStoreStatus(order.status);
                           return (
-                            <tr key={order.id || Math.random()} className="hover:bg-slate-50/50 transition-colors" data-testid={`store-order-row-${order.id || "unknown"}`}>
-                              <td className="px-4 py-3 font-mono text-slate-800 text-xs">{safeString(order.order_number)}</td>
-                              <td className="px-4 py-3">
-                                <p className="text-slate-800 text-sm font-medium">{safeString(order.customer_name, t("Customer", "Cliente"))}</p>
-                                <p className="text-xs text-slate-400">{safeString(order.customer_email)}</p>
+                            <tr
+                              key={order.id ?? order.order_number}
+                              className="hover:bg-slate-50/50 transition-colors"
+                              data-testid={`store-order-row-${order.id || "unknown"}`}
+                            >
+                              <td className="px-4 py-3 font-mono text-slate-800 text-xs">
+                                {safeString(order.order_number)}
                               </td>
                               <td className="px-4 py-3">
-                                <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-xs font-medium" data-testid={`store-order-status-${order.id}`}>
+                                <p className="text-slate-800 text-sm font-medium">
+                                  {safeString(order.customer_name, t("Customer", "Cliente"))}
+                                </p>
+                                <p className="text-xs text-slate-400">
+                                  {safeString(order.customer_email)}
+                                </p>
+                              </td>
+                              <td className="px-4 py-3">
+                                <span
+                                  className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-xs font-medium"
+                                  data-testid={`store-order-status-${order.id}`}
+                                >
                                   {getStoreStatusDisplay(order.status)}
                                 </span>
                               </td>
                               <td className="px-4 py-3">
-                                <p className={`text-sm font-semibold ${order.payment_status === "paid" ? "text-emerald-600" : "text-amber-600"}`} data-testid={`store-order-payment-${order.id}`}>
+                                <p
+                                  className={`text-sm font-semibold ${order.payment_status === "paid" ? "text-emerald-600" : "text-amber-600"}`}
+                                  data-testid={`store-order-payment-${order.id}`}
+                                >
                                   {getPaymentStatusLabel(order.payment_status)}
                                 </p>
-                                <p className="text-xs text-slate-400">{safeString(order.payment_method, "-")}</p>
+                                <p className="text-xs text-slate-400">
+                                  {safeString(order.payment_method, "-")}
+                                </p>
                               </td>
-                              <td className="px-4 py-3 font-bold text-slate-800" data-testid={`store-order-total-${order.id}`}>
+                              <td
+                                className="px-4 py-3 font-bold text-slate-800"
+                                data-testid={`store-order-total-${order.id}`}
+                              >
                                 {formatCurrency(order.total)}
                               </td>
                               <td className="px-4 py-3 text-right">
                                 <div className="flex flex-wrap justify-end gap-1.5">
-                                  {(order.payment_status || "pending") !== "paid" && (order.payment_status || "").toLowerCase() !== "refunded" && (
-                                    <Button variant="outline" size="sm" className="text-xs" onClick={() => { setStorePaymentOrder(order); setStorePaymentForm({ method: "card" }); }} data-testid={`store-order-request-payment-${order.id}`}>
-                                      {t("Request payment", "Solicitar pago")}
-                                    </Button>
-                                  )}
+                                  {(order.payment_status || "pending") !== "paid" &&
+                                    (order.payment_status || "").toLowerCase() !== "refunded" && (
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="text-xs"
+                                        onClick={() => {
+                                          setStorePaymentOrder(order);
+                                          setStorePaymentForm({ method: "card" });
+                                        }}
+                                        data-testid={`store-order-request-payment-${order.id}`}
+                                      >
+                                        {t("Request payment", "Solicitar pago")}
+                                      </Button>
+                                    )}
                                   {ns && (
-                                    <Button size="sm" className="text-xs" onClick={() => updateStoreOrderStatus(order.id, ns)} disabled={storeUpdating[order.id]} data-testid={`store-order-next-${order.id}`}>
-                                      {storeUpdating[order.id] ? "…" : `→ ${getStoreStatusDisplay(ns)}`}
+                                    <Button
+                                      size="sm"
+                                      className="text-xs"
+                                      onClick={() => updateStoreOrderStatus(order.id, ns)}
+                                      disabled={storeUpdating[order.id]}
+                                      data-testid={`store-order-next-${order.id}`}
+                                    >
+                                      {storeUpdating[order.id]
+                                        ? "…"
+                                        : `→ ${getStoreStatusDisplay(ns)}`}
                                     </Button>
                                   )}
-                                  <Button variant="outline" size="sm" className="text-xs" onClick={() => handlePrintStoreOrder(order)} data-testid={`store-order-print-${order.id}`}>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="text-xs"
+                                    onClick={() => handlePrintStoreOrder(order)}
+                                    data-testid={`store-order-print-${order.id}`}
+                                  >
                                     {t("Print", "Imprimir")}
                                   </Button>
                                   {order.payment_status === "paid" && (
-                                    <Button variant="destructive" size="sm" className="text-xs" onClick={() => refundStoreOrder(order.id)} disabled={storeUpdating[order.id]} data-testid={`store-order-refund-${order.id}`}>
+                                    <Button
+                                      variant="destructive"
+                                      size="sm"
+                                      className="text-xs"
+                                      onClick={() => refundStoreOrder(order.id)}
+                                      disabled={storeUpdating[order.id]}
+                                      data-testid={`store-order-refund-${order.id}`}
+                                    >
                                       {storeUpdating[order.id] ? "…" : t("Refund", "Reembolsar")}
                                     </Button>
                                   )}
@@ -1835,37 +2268,84 @@ export default function OperatorDashboard() {
                     {filteredStoreOrders.map((order) => {
                       const ns = getNextStoreStatus(order.status);
                       return (
-                        <div key={order.id || Math.random()} className="p-4 space-y-2.5" data-testid={`store-order-row-${order.id || "unknown"}`}>
+                        <div
+                          key={order.id ?? order.order_number}
+                          className="p-4 space-y-2.5"
+                          data-testid={`store-order-row-${order.id || "unknown"}`}
+                        >
                           <div className="flex items-start justify-between gap-2">
                             <div>
-                              <p className="font-mono text-xs font-semibold text-slate-700">{safeString(order.order_number)}</p>
-                              <p className="text-sm font-medium text-slate-800 mt-0.5">{safeString(order.customer_name, t("Customer", "Cliente"))}</p>
-                              <p className="text-xs text-slate-400">{safeString(order.customer_email)}</p>
+                              <p className="font-mono text-xs font-semibold text-slate-700">
+                                {safeString(order.order_number)}
+                              </p>
+                              <p className="text-sm font-medium text-slate-800 mt-0.5">
+                                {safeString(order.customer_name, t("Customer", "Cliente"))}
+                              </p>
+                              <p className="text-xs text-slate-400">
+                                {safeString(order.customer_email)}
+                              </p>
                             </div>
                             <div className="text-right shrink-0">
-                              <p className="font-bold text-sm text-slate-800">{formatCurrency(order.total)}</p>
-                              <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-xs inline-block mt-1">{getStoreStatusDisplay(order.status)}</span>
+                              <p className="font-bold text-sm text-slate-800">
+                                {formatCurrency(order.total)}
+                              </p>
+                              <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-xs inline-block mt-1">
+                                {getStoreStatusDisplay(order.status)}
+                              </span>
                             </div>
                           </div>
                           <div className="flex items-center gap-1.5 text-xs">
-                            <span className={`font-semibold ${order.payment_status === "paid" ? "text-emerald-600" : "text-amber-600"}`}>{getPaymentStatusLabel(order.payment_status)}</span>
+                            <span
+                              className={`font-semibold ${order.payment_status === "paid" ? "text-emerald-600" : "text-amber-600"}`}
+                            >
+                              {getPaymentStatusLabel(order.payment_status)}
+                            </span>
                             <span className="text-slate-300">·</span>
-                            <span className="text-slate-400">{safeString(order.payment_method, "-")}</span>
+                            <span className="text-slate-400">
+                              {safeString(order.payment_method, "-")}
+                            </span>
                           </div>
                           <div className="flex flex-wrap gap-1.5">
-                            {(order.payment_status || "pending") !== "paid" && (order.payment_status || "").toLowerCase() !== "refunded" && (
-                              <Button variant="outline" size="sm" className="text-xs flex-1" onClick={() => { setStorePaymentOrder(order); setStorePaymentForm({ method: "card" }); }}>
-                                {t("Request payment", "Solicitar pago")}
-                              </Button>
-                            )}
+                            {(order.payment_status || "pending") !== "paid" &&
+                              (order.payment_status || "").toLowerCase() !== "refunded" && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-xs flex-1"
+                                  onClick={() => {
+                                    setStorePaymentOrder(order);
+                                    setStorePaymentForm({ method: "card" });
+                                  }}
+                                >
+                                  {t("Request payment", "Solicitar pago")}
+                                </Button>
+                              )}
                             {ns && (
-                              <Button size="sm" className="text-xs flex-1" onClick={() => updateStoreOrderStatus(order.id, ns)} disabled={storeUpdating[order.id]}>
+                              <Button
+                                size="sm"
+                                className="text-xs flex-1"
+                                onClick={() => updateStoreOrderStatus(order.id, ns)}
+                                disabled={storeUpdating[order.id]}
+                              >
                                 {storeUpdating[order.id] ? "…" : `→ ${getStoreStatusDisplay(ns)}`}
                               </Button>
                             )}
-                            <Button variant="outline" size="sm" className="text-xs" onClick={() => handlePrintStoreOrder(order)}>{t("Print", "Imprimir")}</Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-xs"
+                              onClick={() => handlePrintStoreOrder(order)}
+                            >
+                              {t("Print", "Imprimir")}
+                            </Button>
                             {order.payment_status === "paid" && (
-                              <Button variant="destructive" size="sm" className="text-xs" onClick={() => refundStoreOrder(order.id)} disabled={storeUpdating[order.id]}>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                className="text-xs"
+                                onClick={() => refundStoreOrder(order.id)}
+                                disabled={storeUpdating[order.id]}
+                              >
                                 {storeUpdating[order.id] ? "…" : t("Refund", "Reembolsar")}
                               </Button>
                             )}
@@ -1883,21 +2363,38 @@ export default function OperatorDashboard() {
 
         {/* ── Tab 3: Logistics Map ──────────────────────────────────────────── */}
         <TabsContent value="map">
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden" style={{ position: "relative", zIndex: 1 }}>
+          <div
+            className="bg-white rounded-xl border border-slate-200 overflow-hidden"
+            style={{ position: "relative", zIndex: 1 }}
+          >
             <div className="px-4 sm:px-6 py-4 border-b border-slate-100 bg-slate-50">
               <h3 className="font-semibold text-slate-900 text-sm sm:text-base flex items-center gap-2">
                 <MapPin className="h-4 w-4 text-sky-600" />
                 {t("Order Locations", "Ubicaciones de ordenes")}
               </h3>
-              <p className="text-xs text-slate-500 mt-0.5">{t("Click on a marker to view order details", "Haz clic en un marcador para ver los detalles de la orden")}</p>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {t(
+                  "Click on a marker to view order details",
+                  "Haz clic en un marcador para ver los detalles de la orden"
+                )}
+              </p>
             </div>
             <MapFilters onFilterChange={loadFilteredMapOrders} activeFilters={mapFilters} />
             {(mapFilters.date || mapFilters.time_window) && (
               <div className="px-4 py-1.5 bg-sky-50 border-b border-sky-100 text-xs text-sky-700">
                 {t("Showing filtered results", "Mostrando resultados filtrados")}
-                {mapFilters.date && <span className="ml-1 font-semibold">{formatShortDatePT(mapFilters.date)}</span>}
-                {mapFilters.time_window && <span className="ml-1 font-semibold"> · {mapFilters.time_window === "morning" ? "8-12" : "14-18"}</span>}
-                <span className="ml-2">({(filteredMapOrders || ordersWithCoordinates).length} {t("orders", "ordenes")})</span>
+                {mapFilters.date && (
+                  <span className="ml-1 font-semibold">{formatShortDatePT(mapFilters.date)}</span>
+                )}
+                {mapFilters.time_window && (
+                  <span className="ml-1 font-semibold">
+                    {" "}
+                    · {mapFilters.time_window === "morning" ? "8-12" : "14-18"}
+                  </span>
+                )}
+                <span className="ml-2">
+                  ({(filteredMapOrders || ordersWithCoordinates).length} {t("orders", "ordenes")})
+                </span>
               </div>
             )}
             <div className="h-[450px] w-full" style={{ position: "relative", zIndex: 0 }}>
@@ -1927,8 +2424,14 @@ export default function OperatorDashboard() {
                     : ordersWithCoordinates;
 
                   return mapOrders.map((order) => {
-                    const isDelivery = !order.service_type || order.service_type === "pickup_delivery";
-                    const distance = getDistanceInMiles(STORE_COORDINATES.lat, STORE_COORDINATES.lng, order.coords.lat, order.coords.lng);
+                    const isDelivery =
+                      !order.service_type || order.service_type === "pickup_delivery";
+                    const distance = getDistanceInMiles(
+                      STORE_COORDINATES.lat,
+                      STORE_COORDINATES.lng,
+                      order.coords.lat,
+                      order.coords.lng
+                    );
                     const deliveryFee = calculateDeliveryFee(distance);
                     const exceedsLimit = distance > 9;
                     const statusInfo = getStatusInfo(order.status, order.service_type);
@@ -1940,26 +2443,53 @@ export default function OperatorDashboard() {
                       popupAnchor: [0, -12],
                     });
                     return (
-                      <Marker key={order.id || order.order_id} position={[order.coords.lat, order.coords.lng]} icon={icon}>
+                      <Marker
+                        key={order.id || order.order_id}
+                        position={[order.coords.lat, order.coords.lng]}
+                        icon={icon}
+                      >
                         <Popup minWidth={280} maxWidth={320}>
                           <div className="space-y-2 text-sm">
                             <div className="font-bold text-base">{formatOrderNumber(order)}</div>
                             <div className="text-slate-700">{order.customer_name}</div>
-                            <div className="text-xs text-slate-500 break-words">{order.pickup_address || order.delivery_address}</div>
+                            <div className="text-xs text-slate-500 break-words">
+                              {order.pickup_address || order.delivery_address}
+                            </div>
                             {isDelivery && (
                               <div className="text-xs">
-                                {t("Distance", "Distancia")}: <strong>{distance.toFixed(1)} mi</strong>
+                                {t("Distance", "Distancia")}:{" "}
+                                <strong>{distance.toFixed(1)} mi</strong>
                                 <br />
-                                {t("Shipping", "Envío")}: {deliveryFee > 0 ? formatCurrency(deliveryFee) : t("Free", "Gratis")}
-                                {exceedsLimit && <span className="ml-2 text-red-500 font-semibold">({t("Exceeds 9 miles", "Excede 9 millas")})</span>}
+                                {t("Shipping", "Envío")}:{" "}
+                                {deliveryFee > 0
+                                  ? formatCurrency(deliveryFee)
+                                  : t("Free", "Gratis")}
+                                {exceedsLimit && (
+                                  <span className="ml-2 text-red-500 font-semibold">
+                                    ({t("Exceeds 9 miles", "Excede 9 millas")})
+                                  </span>
+                                )}
                               </div>
                             )}
                             <div className="flex items-center gap-1 flex-wrap">
-                              <span className={`px-1.5 py-0.5 rounded-full text-xs ${statusInfo.color}`}>{statusInfo.label}</span>
-                              {order.payment_status !== "paid" && <span className="text-xs text-amber-600">{t("Pending", "Pendiente")}</span>}
+                              <span
+                                className={`px-1.5 py-0.5 rounded-full text-xs ${statusInfo.color}`}
+                              >
+                                {statusInfo.label}
+                              </span>
+                              {order.payment_status !== "paid" && (
+                                <span className="text-xs text-amber-600">
+                                  {t("Pending", "Pendiente")}
+                                </span>
+                              )}
                             </div>
                             <div className="pt-2">
-                              <Button size="sm" variant="default" className="w-full" onClick={() => setSelectedOrder(order)}>
+                              <Button
+                                size="sm"
+                                variant="default"
+                                className="w-full"
+                                onClick={() => setSelectedOrder(order)}
+                              >
                                 {t("View details", "Ver detalles")}
                               </Button>
                             </div>
@@ -1976,7 +2506,11 @@ export default function OperatorDashboard() {
       </Tabs>
 
       {/* ── Modals ────────────────────────────────────────────────────────────── */}
-      <OrderDetailDialog order={selectedOrder} onClose={() => setSelectedOrder(null)} onRefresh={loadDashboard} />
+      <OrderDetailDialog
+        order={selectedOrder}
+        onClose={() => setSelectedOrder(null)}
+        onRefresh={loadDashboard}
+      />
       <PickupImageModal
         open={!!pickupImageModal}
         order={pickupImageModal?.order}
@@ -1995,37 +2529,98 @@ export default function OperatorDashboard() {
       />
 
       {/* Store POS Modal */}
-      <Dialog open={storePosOpen} onOpenChange={(open) => (!open ? resetStorePos() : setStorePosOpen(true))}>
+      <Dialog
+        open={storePosOpen}
+        onOpenChange={(open) => (!open ? resetStorePos() : setStorePosOpen(true))}
+      >
         <DialogContent className="w-[95vw] max-w-5xl bg-white max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-base sm:text-lg">{t("New Store Sale", "Nueva venta en tienda")}</DialogTitle>
-            <DialogDescription className="text-xs sm:text-sm">{t("Select products and collect payment quickly.", "Selecciona productos y cobra rapido.")}</DialogDescription>
+            <DialogTitle className="text-base sm:text-lg">
+              {t("New Store Sale", "Nueva venta en tienda")}
+            </DialogTitle>
+            <DialogDescription className="text-xs sm:text-sm">
+              {t(
+                "Select products and collect payment quickly.",
+                "Selecciona productos y cobra rapido."
+              )}
+            </DialogDescription>
           </DialogHeader>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6" data-testid="store-pos-modal">
+          <div
+            className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6"
+            data-testid="store-pos-modal"
+          >
             {/* Product list */}
             <div className="space-y-3">
-              <Input placeholder={t("Search products", "Buscar productos")} value={storeSearch} onChange={(e) => setStoreSearch(e.target.value)} className="text-sm" data-testid="store-pos-search" />
+              <Input
+                placeholder={t("Search products", "Buscar productos")}
+                value={storeSearch}
+                onChange={(e) => setStoreSearch(e.target.value)}
+                className="text-sm"
+                data-testid="store-pos-search"
+              />
               <div className="border border-slate-200 rounded-xl overflow-hidden">
-                <div className="max-h-[300px] sm:max-h-[380px] overflow-y-auto divide-y divide-slate-100" data-testid="store-pos-products">
+                <div
+                  className="max-h-[300px] sm:max-h-[380px] overflow-y-auto divide-y divide-slate-100"
+                  data-testid="store-pos-products"
+                >
                   {storeCartLoading ? (
-                    <div className="p-6 text-center text-slate-400 text-sm">{t("Loading products…", "Cargando productos…")}</div>
+                    <div className="p-6 text-center text-slate-400 text-sm">
+                      {t("Loading products…", "Cargando productos…")}
+                    </div>
                   ) : filteredStoreProducts.length === 0 ? (
-                    <div className="p-6 text-center text-slate-400 text-sm">{t("No products found", "No hay productos")}</div>
+                    <div className="p-6 text-center text-slate-400 text-sm">
+                      {t("No products found", "No hay productos")}
+                    </div>
                   ) : (
                     filteredStoreProducts.map((product) => {
                       const qty = getCartItemQuantity(product.id);
                       const disabled = product.stock <= 0 || !product.is_active;
                       return (
-                        <div key={product.id || Math.random()} className="p-3 sm:p-4 flex items-center justify-between gap-3" data-testid={`store-pos-product-${product.id}`}>
+                        <div
+                          key={product.id}
+                          className="p-3 sm:p-4 flex items-center justify-between gap-3"
+                          data-testid={`store-pos-product-${product.id}`}
+                        >
                           <div className="min-w-0 flex-1">
-                            <p className="font-semibold text-slate-800 text-sm truncate">{safeString(product.name)}</p>
-                            <p className="text-xs text-slate-400">${Number(product.price).toFixed(2)} · {t("Stock", "Stock")}: {product.stock}</p>
-                            {disabled && <p className="text-xs text-red-400 font-medium">{t("Unavailable", "No disponible")}</p>}
+                            <p className="font-semibold text-slate-800 text-sm truncate">
+                              {safeString(product.name)}
+                            </p>
+                            <p className="text-xs text-slate-400">
+                              ${Number(product.price).toFixed(2)} · {t("Stock", "Stock")}:{" "}
+                              {product.stock}
+                            </p>
+                            {disabled && (
+                              <p className="text-xs text-red-400 font-medium">
+                                {t("Unavailable", "No disponible")}
+                              </p>
+                            )}
                           </div>
                           <div className="flex items-center gap-1.5 shrink-0">
-                            <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={() => updateStoreCartItem(product, qty - 1)} disabled={qty === 0} data-testid={`store-pos-minus-${product.id}`}>-</Button>
-                            <span className="w-5 text-center text-sm font-bold text-slate-700" data-testid={`store-pos-qty-${product.id}`}>{qty}</span>
-                            <Button size="sm" className="h-7 w-7 p-0" onClick={() => updateStoreCartItem(product, qty + 1)} disabled={disabled} data-testid={`store-pos-plus-${product.id}`}>+</Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 w-7 p-0"
+                              onClick={() => updateStoreCartItem(product, qty - 1)}
+                              disabled={qty === 0}
+                              data-testid={`store-pos-minus-${product.id}`}
+                            >
+                              -
+                            </Button>
+                            <span
+                              className="w-5 text-center text-sm font-bold text-slate-700"
+                              data-testid={`store-pos-qty-${product.id}`}
+                            >
+                              {qty}
+                            </span>
+                            <Button
+                              size="sm"
+                              className="h-7 w-7 p-0"
+                              onClick={() => updateStoreCartItem(product, qty + 1)}
+                              disabled={disabled}
+                              data-testid={`store-pos-plus-${product.id}`}
+                            >
+                              +
+                            </Button>
                           </div>
                         </div>
                       );
@@ -2037,14 +2632,26 @@ export default function OperatorDashboard() {
 
             {/* Cart + Payment */}
             <div className="space-y-3">
-              <div className="border border-slate-200 rounded-xl p-3 sm:p-4" data-testid="store-pos-cart">
-                <h4 className="font-semibold text-slate-800 mb-2 text-sm">{t("Cart", "Carrito")}</h4>
+              <div
+                className="border border-slate-200 rounded-xl p-3 sm:p-4"
+                data-testid="store-pos-cart"
+              >
+                <h4 className="font-semibold text-slate-800 mb-2 text-sm">
+                  {t("Cart", "Carrito")}
+                </h4>
                 {storeCart?.items?.length ? (
                   <div className="space-y-1.5">
                     {storeCart.items.map((item) => (
-                      <div key={item.product_id || Math.random()} className="flex items-center justify-between text-xs sm:text-sm">
-                        <span className="truncate mr-2 text-slate-700">{safeString(item.name || item.product_name)}</span>
-                        <span className="shrink-0 text-slate-500">{item.quantity} × ${Number(item.price || 0).toFixed(2)}</span>
+                      <div
+                        key={item.product_id ?? item.name}
+                        className="flex items-center justify-between text-xs sm:text-sm"
+                      >
+                        <span className="truncate mr-2 text-slate-700">
+                          {safeString(item.name || item.product_name)}
+                        </span>
+                        <span className="shrink-0 text-slate-500">
+                          {item.quantity} × ${Number(item.price || 0).toFixed(2)}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -2053,33 +2660,72 @@ export default function OperatorDashboard() {
                 )}
               </div>
 
-              <div className="border border-slate-200 rounded-xl p-3 sm:p-4 space-y-2" data-testid="store-pos-summary">
+              <div
+                className="border border-slate-200 rounded-xl p-3 sm:p-4 space-y-2"
+                data-testid="store-pos-summary"
+              >
                 <div className="flex justify-between font-bold text-base sm:text-lg pt-1 border-b border-slate-100 pb-2">
                   <span>{t("Total", "Total")}</span>
                   <span data-testid="store-pos-total">${storeOrderTotal.toFixed(2)}</span>
                 </div>
-                <p className="text-xs text-slate-400 text-center">{t("Select a payment method", "Selecciona metodo de pago")}</p>
+                <p className="text-xs text-slate-400 text-center">
+                  {t("Select a payment method", "Selecciona metodo de pago")}
+                </p>
                 <div className="grid grid-cols-2 gap-2">
-                  <Button className="w-full bg-sky-600 hover:bg-sky-700 text-xs sm:text-sm h-11" onClick={() => handleQuickCheckout("card")} disabled={storeCheckoutLoading || !storeCart?.items?.length} data-testid="store-pos-pay-card">
-                    <CreditCard className="h-4 w-4 mr-1.5" />{t("Tap / Card", "Tap / Tarjeta")}
+                  <Button
+                    className="w-full bg-sky-600 hover:bg-sky-700 text-xs sm:text-sm h-11"
+                    onClick={() => handleQuickCheckout("card")}
+                    disabled={storeCheckoutLoading || !storeCart?.items?.length}
+                    data-testid="store-pos-pay-card"
+                  >
+                    <CreditCard className="h-4 w-4 mr-1.5" />
+                    {t("Tap / Card", "Tap / Tarjeta")}
                   </Button>
-                  <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-xs sm:text-sm h-11" onClick={() => handleQuickCheckout("cash")} disabled={storeCheckoutLoading || !storeCart?.items?.length} data-testid="store-pos-pay-cash">
-                    <DollarSign className="h-4 w-4 mr-1.5" />{t("Cash", "Efectivo")}
+                  <Button
+                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-xs sm:text-sm h-11"
+                    onClick={() => handleQuickCheckout("cash")}
+                    disabled={storeCheckoutLoading || !storeCart?.items?.length}
+                    data-testid="store-pos-pay-cash"
+                  >
+                    <DollarSign className="h-4 w-4 mr-1.5" />
+                    {t("Cash", "Efectivo")}
                   </Button>
-                  <Button variant="outline" className="w-full text-xs sm:text-sm h-11 border-purple-200 text-purple-700 hover:bg-purple-50" onClick={() => setStoreLinkMode("sms")} disabled={storeCheckoutLoading || !storeCart?.items?.length} data-testid="store-pos-link-sms">
-                    <Phone className="h-4 w-4 mr-1.5" />{t("Link via SMS", "Link por SMS")}
+                  <Button
+                    variant="outline"
+                    className="w-full text-xs sm:text-sm h-11 border-purple-200 text-purple-700 hover:bg-purple-50"
+                    onClick={() => setStoreLinkMode("sms")}
+                    disabled={storeCheckoutLoading || !storeCart?.items?.length}
+                    data-testid="store-pos-link-sms"
+                  >
+                    <Phone className="h-4 w-4 mr-1.5" />
+                    {t("Link via SMS", "Link por SMS")}
                   </Button>
-                  <Button variant="outline" className="w-full text-xs sm:text-sm h-11 border-indigo-200 text-indigo-700 hover:bg-indigo-50" onClick={() => setStoreLinkMode("email")} disabled={storeCheckoutLoading || !storeCart?.items?.length} data-testid="store-pos-link-email">
-                    <Mail className="h-4 w-4 mr-1.5" />{t("Link via Email", "Link por Email")}
+                  <Button
+                    variant="outline"
+                    className="w-full text-xs sm:text-sm h-11 border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+                    onClick={() => setStoreLinkMode("email")}
+                    disabled={storeCheckoutLoading || !storeCart?.items?.length}
+                    data-testid="store-pos-link-email"
+                  >
+                    <Mail className="h-4 w-4 mr-1.5" />
+                    {t("Link via Email", "Link por Email")}
                   </Button>
                 </div>
                 {storeLinkMode && (
-                  <div className="mt-2 p-3 bg-slate-50 rounded-lg space-y-2 border border-slate-200" data-testid="store-pos-link-form">
+                  <div
+                    className="mt-2 p-3 bg-slate-50 rounded-lg space-y-2 border border-slate-200"
+                    data-testid="store-pos-link-form"
+                  >
                     <div className="flex items-center justify-between">
                       <Label className="text-xs font-semibold">
-                        {storeLinkMode === "sms" ? t("Phone number", "Numero de telefono") : t("Email address", "Correo electronico")}
+                        {storeLinkMode === "sms"
+                          ? t("Phone number", "Numero de telefono")
+                          : t("Email address", "Correo electronico")}
                       </Label>
-                      <button className="text-slate-400 hover:text-slate-600" onClick={() => setStoreLinkMode(null)}>
+                      <button
+                        className="text-slate-400 hover:text-slate-600"
+                        onClick={() => setStoreLinkMode(null)}
+                      >
                         <X className="h-3.5 w-3.5" />
                       </button>
                     </div>
@@ -2087,12 +2733,19 @@ export default function OperatorDashboard() {
                       <Input
                         value={storeLinkContact}
                         onChange={(e) => setStoreLinkContact(e.target.value)}
-                        placeholder={storeLinkMode === "sms" ? "(805) 555-0000" : "email@cliente.com"}
+                        placeholder={
+                          storeLinkMode === "sms" ? "(805) 555-0000" : "email@cliente.com"
+                        }
                         type={storeLinkMode === "email" ? "email" : "tel"}
                         className="text-sm h-9 flex-1"
                         data-testid="store-pos-link-input"
                       />
-                      <Button className="bg-purple-600 hover:bg-purple-700 text-xs h-9 px-4" onClick={() => handleSendPaymentLink(storeLinkMode)} disabled={storeCheckoutLoading || !storeLinkContact.trim()} data-testid="store-pos-link-send">
+                      <Button
+                        className="bg-purple-600 hover:bg-purple-700 text-xs h-9 px-4"
+                        onClick={() => handleSendPaymentLink(storeLinkMode)}
+                        disabled={storeCheckoutLoading || !storeLinkContact.trim()}
+                        data-testid="store-pos-link-send"
+                      >
                         {storeCheckoutLoading ? "…" : t("Send", "Enviar")}
                       </Button>
                     </div>
@@ -2105,20 +2758,31 @@ export default function OperatorDashboard() {
       </Dialog>
 
       {/* Store Payment Modal */}
-      <Dialog open={!!storePaymentOrder} onOpenChange={(open) => !open && setStorePaymentOrder(null)}>
+      <Dialog
+        open={!!storePaymentOrder}
+        onOpenChange={(open) => !open && setStorePaymentOrder(null)}
+      >
         <DialogContent className="w-[95vw] max-w-lg bg-white">
           <DialogHeader>
-            <DialogTitle className="text-base sm:text-lg">{t("Request payment", "Solicitar pago")}</DialogTitle>
-            <DialogDescription className="text-xs sm:text-sm">{safeString(storePaymentOrder?.order_number)}</DialogDescription>
+            <DialogTitle className="text-base sm:text-lg">
+              {t("Request payment", "Solicitar pago")}
+            </DialogTitle>
+            <DialogDescription className="text-xs sm:text-sm">
+              {safeString(storePaymentOrder?.order_number)}
+            </DialogDescription>
           </DialogHeader>
           {storePaymentOrder && (
             <div className="space-y-4" data-testid="store-payment-modal">
               <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
                 <span className="text-sm text-slate-500">{t("Total", "Total")}</span>
-                <span className="text-xl font-bold text-slate-900">{formatCurrency(storePaymentOrder.total)}</span>
+                <span className="text-xl font-bold text-slate-900">
+                  {formatCurrency(storePaymentOrder.total)}
+                </span>
               </div>
               <div>
-                <Label className="text-xs sm:text-sm">{t("Payment method", "Metodo de pago")}</Label>
+                <Label className="text-xs sm:text-sm">
+                  {t("Payment method", "Metodo de pago")}
+                </Label>
                 <select
                   className="w-full mt-1 border border-slate-200 rounded-lg px-3 py-2 text-sm"
                   value={storePaymentForm.method}
@@ -2133,15 +2797,23 @@ export default function OperatorDashboard() {
               </div>
               {storePaymentForm.method === "card" && (
                 <p className="text-xs text-slate-400 bg-sky-50 border border-sky-100 rounded-lg p-2.5">
-                  {t("Stripe Checkout will open in a new page", "Stripe Checkout se abrira en otra pagina")}
+                  {t(
+                    "Stripe Checkout will open in a new page",
+                    "Stripe Checkout se abrira en otra pagina"
+                  )}
                 </p>
               )}
-              <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-sm" onClick={handleStorePayment} disabled={storeProcessingPayment} data-testid="store-payment-submit">
+              <Button
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-sm"
+                onClick={handleStorePayment}
+                disabled={storeProcessingPayment}
+                data-testid="store-payment-submit"
+              >
                 {storeProcessingPayment
                   ? t("Processing…", "Procesando…")
                   : storePaymentForm.method === "card"
-                  ? t("Pay with Stripe", "Pagar con Stripe")
-                  : t("Register payment", "Registrar pago")}
+                    ? t("Pay with Stripe", "Pagar con Stripe")
+                    : t("Register payment", "Registrar pago")}
               </Button>
             </div>
           )}
@@ -2155,21 +2827,37 @@ export default function OperatorDashboard() {
             <AlertTriangle className="h-4 w-4 text-red-500 shrink-0" />
             <h2 className="font-semibold text-red-800 text-sm sm:text-base">
               {t("Urgent Tickets", "Tickets Urgentes")}{" "}
-              <span className="ml-1 bg-red-100 text-red-700 text-xs font-bold px-2 py-0.5 rounded-full">{dashboard.urgent_tickets.length}</span>
+              <span className="ml-1 bg-red-100 text-red-700 text-xs font-bold px-2 py-0.5 rounded-full">
+                {dashboard.urgent_tickets.length}
+              </span>
             </h2>
           </div>
           <div className="divide-y divide-red-100">
             {dashboard.urgent_tickets.map((ticket) => (
-              <div key={ticket.ticket_id || Math.random()} className="p-3 sm:p-4" data-testid={`ticket-${ticket.ticket_id}`}>
+              <div
+                key={ticket.ticket_id}
+                className="p-3 sm:p-4"
+                data-testid={`ticket-${ticket.ticket_id}`}
+              >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-1.5 mb-1">
-                      <span className="font-mono font-semibold text-slate-800 text-xs sm:text-sm">{safeString(ticket.ticket_id)}</span>
-                      <span className="px-1.5 py-0.5 text-xs font-bold rounded-full bg-red-100 text-red-700">{t("URGENT", "URGENTE")}</span>
+                      <span className="font-mono font-semibold text-slate-800 text-xs sm:text-sm">
+                        {safeString(ticket.ticket_id)}
+                      </span>
+                      <span className="px-1.5 py-0.5 text-xs font-bold rounded-full bg-red-100 text-red-700">
+                        {t("URGENT", "URGENTE")}
+                      </span>
                     </div>
-                    <p className="font-semibold text-slate-800 text-sm">{safeString(ticket.subject)}</p>
-                    <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{safeString(ticket.description)}</p>
-                    <p className="text-xs text-red-500 mt-1.5 font-medium">{t("SLA:", "SLA:")} {formatDatePT(ticket.sla_deadline)}</p>
+                    <p className="font-semibold text-slate-800 text-sm">
+                      {safeString(ticket.subject)}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">
+                      {safeString(ticket.description)}
+                    </p>
+                    <p className="text-xs text-red-500 mt-1.5 font-medium">
+                      {t("SLA:", "SLA:")} {formatDatePT(ticket.sla_deadline)}
+                    </p>
                   </div>
                   {ticket.customer_phone && (
                     <a

@@ -6,7 +6,7 @@ import uuid
 import os
 import asyncio
 
-from utils import normalize_email, normalize_phone, normalize_spaces, normalize_address, normalize_preference_dict
+from utils import normalize_email, normalize_phone, normalize_spaces, normalize_address, normalize_preference_dict, calculate_delivery_fee
 
 def normalize_name(value):
     if not value or not isinstance(value, str): return value
@@ -19,7 +19,6 @@ def normalize_yes_no(value):
     if v in ("no", "0", "false"): return "no"
     return value.strip()
 
-# Importar todas las funciones de notificaciones, incluyendo send_voice_call
 from notifications import (
     notify_order_created, send_sms, send_email, send_whatsapp, send_voice_call,
     normalize_preferred_contact, build_premium_message, detect_language
@@ -27,13 +26,11 @@ from notifications import (
 from ai_assistant import get_groq_client
 
 # ─── Pricing Tables ─────────────────────────────────────────────────────────
-# Pickup & Delivery: member / regular prices per lb
 PRICING_PD = {
     "standard": {"member": 2.50, "regular": 2.75},
     "premium":  {"member": 2.75, "regular": 3.00},
     "express":  {"member": 3.00, "regular": 3.25},
 }
-# Wash & Fold: flat price per lb (no member/regular distinction at drop-off)
 PRICING_WF = {
     "standard": 2.25,
     "premium":  2.50,
@@ -41,41 +38,130 @@ PRICING_WF = {
 }
 
 def get_price_per_lb(service_type: str, plan: str, has_membership: bool = False) -> float:
-    """Return the price/lb based on service type, plan tier, and membership."""
     plan = (plan or "standard").lower()
     if service_type in ("pickup_delivery", "airbnb_host", "commercial"):
         tier = PRICING_PD.get(plan, PRICING_PD["standard"])
         return tier["member"] if has_membership else tier["regular"]
-    # wash_fold or any drop-off
     return PRICING_WF.get(plan, PRICING_WF["standard"])
 
 
 async def calculate_auto_delivery_fee(address: str) -> dict:
-    """Geocode address, calculate distance from store, return delivery fee info."""
+    """
+    Geocode address, compute distance from store, return delivery info.
+ 
+    Returns:
+        distance_miles  – float | None
+        delivery_fee    – float  (0 when ≤3 miles or distance unknown)
+        coords          – dict | None
+        rejected        – True only when distance > 10 miles
+    """
     if not address or len(address.strip()) < 5:
         return {"distance_miles": None, "delivery_fee": 0, "coords": None}
+ 
     try:
         from routes.logistics import geocode_address
         from routes.delivery_rules import haversine_miles, STORE_COORDS
+ 
         coords = await geocode_address(address)
         if not coords.get("lat") or not coords.get("lng"):
+            # Geocoding failed → don't charge, don't reject
             return {"distance_miles": None, "delivery_fee": 0, "coords": None}
-        distance = haversine_miles(STORE_COORDS[0], STORE_COORDS[1], coords["lat"], coords["lng"])
-        # 3 miles free, $1.50/mile after, cap $25
-        if distance <= 3:
-            fee = 0.0
-        else:
-            fee = round(min((distance - 3) * 1.50, 25.0), 2)
+ 
+        distance = haversine_miles(
+            STORE_COORDS[0], STORE_COORDS[1],
+            coords["lat"], coords["lng"]
+        )
+ 
+        # Hard reject beyond 10 miles — raises 400 in the endpoint
+        if distance > 10:
+            return {
+                "distance_miles": round(distance, 2),
+                "delivery_fee": 0,
+                "coords": coords,
+                "rejected": True,
+            }
+ 
+        # Use canonical fee function — FREE ≤3 miles, scaled 3–10 miles
+        fee = calculate_delivery_fee(distance)
+ 
         return {
             "distance_miles": round(distance, 2),
-            "delivery_fee": fee,
+            "delivery_fee": fee,        # 0.00 when ≤3 miles
             "coords": coords,
         }
+ 
     except Exception as e:
         import logging
-        logging.getLogger(__name__).warning(f"Auto delivery fee calculation failed: {e}")
+        logging.getLogger(__name__).warning(
+            f"Auto delivery fee calculation failed: {e}"
+        )
+        # On any geocoding/routing error → 0 fee, don't reject
         return {"distance_miles": None, "delivery_fee": 0, "coords": None}
 
+
+# ─── Helper: calcular addon_amount desde la lista de addons ────────────────────
+def calculate_addon_amount(addon_services: Optional[List[Dict[str, Any]]]) -> float:
+    """
+    Suma los precios de todos los add-ons seleccionados.
+    Solo suma si el addon tiene un campo 'price' numérico válido.
+    """
+    if not addon_services:
+        return 0.0
+    total = 0.0
+    for svc in addon_services:
+        price = svc.get("price")
+        if price is not None:
+            try:
+                total += float(price)
+            except (TypeError, ValueError):
+                pass
+    return round(total, 2)
+
+
+# ─── Helper: construir texto legible de addons para las notas ──────────────────
+def build_addon_notes(addon_services: Optional[List[Dict[str, Any]]]) -> str:
+    """
+    Genera un texto legible para incluir en el campo notes del ticket.
+    Ejemplo:
+        Add-on services:
+        • Dry Cleaning ($15.00 / order)
+        • Shoe Cleaning ($12.00 / item)
+        Add-on subtotal: $27.00
+    """
+    if not addon_services:
+        return ""
+
+    UNIT_LABELS = {
+        "per_lb":    "/ lb",
+        "per_order": "/ order",
+        "per_month": "/ month",
+        "per_item":  "/ item",
+    }
+
+    lines = ["Add-on services:"]
+    total = 0.0
+    for svc in addon_services:
+        name = svc.get("name", "Unknown")
+        price = svc.get("price")
+        price_unit = svc.get("price_unit", "")
+        unit_label = UNIT_LABELS.get(price_unit, "")
+        if price is not None:
+            try:
+                price_f = float(price)
+                total += price_f
+                price_str = f"${price_f:.2f}"
+                if unit_label:
+                    price_str += f" {unit_label}"
+                lines.append(f"  • {name} ({price_str})")
+            except (TypeError, ValueError):
+                lines.append(f"  • {name}")
+        else:
+            lines.append(f"  • {name}")
+
+    if total > 0:
+        lines.append(f"Add-on subtotal: ${total:.2f}")
+
+    return "\n".join(lines)
 
 
 class PublicPickupRequest(BaseModel):
@@ -91,6 +177,8 @@ class PublicPickupRequest(BaseModel):
     sms_consent: Optional[bool] = False
     notes: Optional[str] = None
     gate_code: Optional[str] = None
+    # ── ADD-ONS: lista de servicios adicionales seleccionados por el cliente ──
+    addon_services: Optional[List[Dict[str, Any]]] = []
 
 
 class PublicWashFoldRequest(BaseModel):
@@ -232,7 +320,7 @@ PERSONALITY GUIDELINES:
                 "membresías o servicios para Airbnb y negocios. ¿Qué servicio te interesa hoy?"
             )
         return (
-            "Hi! I’m Ventura, your laundry concierge. I can help with pickup and delivery, wash and fold, memberships, "
+            "Hi! I'm Ventura, your laundry concierge. I can help with pickup and delivery, wash and fold, memberships, "
             "or Airbnb and business service. What would you like to set up today?"
         )
 
@@ -278,6 +366,32 @@ PERSONALITY GUIDELINES:
         preferred_contact = normalize_preferred_contact(normalized_contact_raw) if normalized_contact_raw else None
         validate_sms_consent(preferred_contact, data.sms_consent)
         sms_consent = bool(data.sms_consent)
+
+        # ── Normalizar addon_services ────────────────────────────────────────
+        addon_services = data.addon_services or []
+        clean_addons = []
+        for svc in addon_services:
+            if not isinstance(svc, dict):
+                continue
+            clean_addons.append({
+                "id":          str(svc.get("id", "")),
+                "name":        str(svc.get("name", "Unknown"))[:120],
+                "price":       float(svc["price"]) if svc.get("price") is not None else None,
+                "price_unit":  str(svc.get("price_unit", "")) if svc.get("price_unit") else None,
+                "category":    str(svc.get("category", "")) if svc.get("category") else None,
+            })
+
+        # ── Calcular monto de add-ons ────────────────────────────────────────
+        addon_amount = calculate_addon_amount(clean_addons)
+        addon_notes_text = build_addon_notes(clean_addons)
+
+        # ── Construir notes final (notas del cliente + desglose de addons) ───
+        notes_parts = []
+        if normalized_notes:
+            notes_parts.append(normalized_notes)
+        if addon_notes_text:
+            notes_parts.append(addon_notes_text)
+        final_notes = "\n\n".join(notes_parts) if notes_parts else None
 
         customer = await db.customers.find_one({"email": normalized_email}, {"_id": 0})
         if not customer:
@@ -326,19 +440,26 @@ PERSONALITY GUIDELINES:
         if pref:
             preference_snapshot = {k: v for k, v in pref[0].items() if k not in ["_id", "customer_id"]}
 
-        # Determine pricing based on service plan and membership
+        # ── Pricing base (sin addons; addons se suman aparte) ────────────────
         has_membership = bool(customer.get("has_membership"))
         service_plan = (data.service_plan or "standard").lower()
         price_lb = get_price_per_lb(normalized_service_type, service_plan, has_membership)
 
-        # Auto-calculate delivery fee based on distance from store
+        # ── Auto-calculate delivery fee ──────────────────────────────────────
         delivery_info = await calculate_auto_delivery_fee(normalized_address)
+        if delivery_info.get("rejected"):
+            dist = delivery_info.get("distance_miles", 0)
+            raise HTTPException(
+                status_code=400,
+                detail=f"Lo sentimos, solo atendemos direcciones dentro de 10 millas. Tu dirección está a {dist:.1f} millas de distancia."
+            )
         delivery_fee = delivery_info.get("delivery_fee", 0)
         distance_miles = delivery_info.get("distance_miles")
         coords = delivery_info.get("coords")
 
         order_id = str(uuid.uuid4())
         order_number = await generate_order_number()
+
         order = {
             "id": order_id,
             "order_number": order_number,
@@ -357,7 +478,7 @@ PERSONALITY GUIDELINES:
             "delivery_address": normalized_address,
             "estimated_lbs": None,
             "actual_lbs": None,
-            "notes": normalized_notes,
+            "notes": final_notes,
             "gate_code": normalized_gate_code,
             "preferred_contact": preferred_contact,
             "sms_consent": sms_consent,
@@ -368,10 +489,13 @@ PERSONALITY GUIDELINES:
             "estado_actual": "new",
             "payment_status": "unpaid",
             "total_amount": None,
+            "addon_services": clean_addons,
+            "addon_amount": addon_amount,
             "origen": "pickup_request",
             "created_at": now,
             "updated_at": now
         }
+
         await db.orders.insert_one(order)
         await db.customers.update_one({"id": customer["id"]}, {"$inc": {"total_orders": 1}})
         await create_audit_log("ORDER_CREATED", "order", order_id, None, {"source": "public_form"})
@@ -391,7 +515,11 @@ PERSONALITY GUIDELINES:
         return {
             "success": True,
             "order_number": order_number,
-            "message": "¡Gracias! Tu solicitud de pickup ha sido recibida. Te contactaremos pronto."
+            "message": "¡Gracias! Tu solicitud de pickup ha sido recibida. Te contactaremos pronto.",
+            "addons": {
+                "selected": clean_addons,
+                "total": addon_amount
+            } if clean_addons else None
         }
 
     @router.post("/public/wash-fold-request")
@@ -451,7 +579,6 @@ PERSONALITY GUIDELINES:
         if pref:
             preference_snapshot = {k: v for k, v in pref[0].items() if k not in ["_id", "customer_id"]}
 
-        # Determine pricing based on plan tier
         has_membership = bool(customer.get("has_membership"))
         wf_plan = (data.plan or "standard").lower()
         price_lb = get_price_per_lb("wash_fold", wf_plan, has_membership)
@@ -553,7 +680,6 @@ PERSONALITY GUIDELINES:
         await db.tickets.insert_one(ticket)
         await create_audit_log("TICKET_CREATED", "ticket", ticket_id, None, {"source": "public_form"})
 
-        # Send confirmation notification based on user's preferred contact
         try:
             contact_pref = preferred_contact or "email"
             is_es = any(c in (normalized_message or "").lower() for c in ["hola", "gracias", "solicitud"])
@@ -719,9 +845,6 @@ PERSONALITY GUIDELINES:
             "message": "¡Gracias! Tu solicitud de membresía fue recibida. Te contactaremos para confirmar tu plan."
         }
 
-    # ================================================================
-    # B2B QUOTE ENDPOINT - CON NOTIFICACIONES AL CLIENTE
-    # ================================================================
     @router.post("/public/b2b-quote")
     async def create_b2b_quote(data: B2BQuoteRequest):
         now = datetime.now(timezone.utc).isoformat()
@@ -791,18 +914,13 @@ PERSONALITY GUIDELINES:
         await db.quotes.insert_one(quote_doc)
         await create_audit_log("B2B_QUOTE_CREATED", "quote", quote_id, "public", {"company": data.company_legal_name, "business_type": data.business_type})
 
-        # ──────────────────────────────────────────────────────────────────────────
-        # NOTIFICACIONES (Cliente + Admin)
-        # ──────────────────────────────────────────────────────────────────────────
         if notifications_enabled:
-            # 1. NOTIFICACIÓN AL CLIENTE
             try:
                 contact_pref = preferred_contact or "email"
                 sms_ok = bool(data.sms_consent)
                 customer_name = f"{normalized_first or data.first_name} {normalized_last or data.last_name}".strip()
                 biz_name = os.environ.get("BUSINESS_NAME", "Ventura Fresh Laundry")
-                
-                # Detectar idioma
+
                 is_es = False
                 if normalized_phone:
                     try:
@@ -810,8 +928,7 @@ PERSONALITY GUIDELINES:
                         is_es = detect_country(normalized_phone) == "mx"
                     except:
                         pass
-                
-                # Mensajes según idioma
+
                 if is_es:
                     client_msg = f"Hola {customer_name}, recibimos tu solicitud de cotización comercial {quote_number}. Nuestro equipo te contactará en 24-48 horas. ¡Gracias por tu interés en {biz_name}!"
                     client_subject = f"Cotización Recibida - {quote_number}"
@@ -820,42 +937,32 @@ PERSONALITY GUIDELINES:
                     client_msg = f"Hi {customer_name}, we received your commercial quote request {quote_number}. Our team will contact you within 24-48 hours. Thank you for your interest in {biz_name}!"
                     client_subject = f"Quote Request Received - {quote_number}"
                     voice_msg = f"Hi {customer_name}, we confirm your quote request {quote_number}. We'll be in touch soon."
-                
+
                 sent = False
-                
-                # Enviar según preferencia
                 if contact_pref == "email" and normalized_email:
                     sent = await send_email(normalized_email, client_subject, client_msg)
-                    logger.info(f"B2B quote {quote_number}: Email sent to {normalized_email}")
                 elif contact_pref in ("whatsapp",) and normalized_phone and sms_ok:
                     sent = await send_whatsapp(normalized_phone, client_msg)
-                    logger.info(f"B2B quote {quote_number}: WhatsApp sent to {normalized_phone}")
                 elif contact_pref in ("sms", "text") and normalized_phone and sms_ok:
                     sent = await send_sms(normalized_phone, client_msg)
-                    logger.info(f"B2B quote {quote_number}: SMS sent to {normalized_phone}")
                 elif contact_pref == "call" and normalized_phone:
                     voice_lang = "es-MX" if is_es else "en-US"
                     sent = await send_voice_call(normalized_phone, voice_msg, voice_lang)
-                    logger.info(f"B2B quote {quote_number}: Voice call to {normalized_phone}")
                 elif normalized_email:
                     sent = await send_email(normalized_email, client_subject, client_msg)
-                    logger.info(f"B2B quote {quote_number}: Email sent as fallback to {normalized_email}")
                 elif normalized_phone:
                     sent = await send_sms(normalized_phone, client_msg)
-                    logger.info(f"B2B quote {quote_number}: SMS sent as fallback to {normalized_phone}")
-                
+
                 if not sent:
                     logger.warning(f"B2B quote {quote_number}: No notification sent to client")
-                    
+
             except Exception as e:
                 logger.error(f"B2B quote client notification failed: {e}")
-            
-            # 2. NOTIFICACIÓN AL ADMIN
+
             if not skip_server_notifications:
                 try:
                     admin_phone = os.environ.get("ADMIN_PHONE", "+18055154030")
                     company_label = data.company_legal_name or data.dba_name or f"{data.first_name} {data.last_name}"
-                    
                     admin_msg = (
                         f"📋 NUEVA COTIZACIÓN B2B\n"
                         f"📄 #{quote_number}\n"
@@ -865,10 +972,7 @@ PERSONALITY GUIDELINES:
                         f"📧 {normalized_email}\n"
                         f"📞 {normalized_phone or 'N/A'}"
                     )
-                    
                     await send_sms(admin_phone, admin_msg)
-                    logger.info(f"B2B quote {quote_number}: Admin SMS sent")
-                    
                 except Exception as e:
                     logger.error(f"B2B quote admin notification failed: {e}")
 
@@ -881,11 +985,7 @@ PERSONALITY GUIDELINES:
     async def get_voice_assistant_session(session_id: str):
         session = await db.voice_assistant_sessions.find_one({"session_id": session_id}, {"_id": 0})
         if not session:
-            return {
-                "session_id": session_id,
-                "locale": "en",
-                "messages": []
-            }
+            return {"session_id": session_id, "locale": "en", "messages": []}
         messages = session.get("messages", [])[-30:]
         return {
             "session_id": session.get("session_id"),
@@ -898,7 +998,6 @@ PERSONALITY GUIDELINES:
         message = normalize_spaces(data.message)
         if not message:
             raise HTTPException(status_code=400, detail="Message is required")
-
         if len(message) > 1200:
             raise HTTPException(status_code=400, detail="Message too long")
 
@@ -908,11 +1007,7 @@ PERSONALITY GUIDELINES:
         now = datetime.now(timezone.utc).isoformat()
 
         stored_messages = session.get("messages", [])
-        stored_messages.append({
-            "role": "user",
-            "content": message,
-            "created_at": now
-        })
+        stored_messages.append({"role": "user", "content": message, "created_at": now})
 
         convo_messages = []
         for item in stored_messages[-14:]:
@@ -947,7 +1042,6 @@ PERSONALITY GUIDELINES:
             "content": reply,
             "created_at": datetime.now(timezone.utc).isoformat()
         })
-
         stored_messages = stored_messages[-40:]
 
         await db.voice_assistant_sessions.update_one(

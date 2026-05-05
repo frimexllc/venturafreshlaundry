@@ -124,7 +124,6 @@ const PreferencesSkeleton = () => (
 );
 
 // ─── Order Image Block ─────────────────────────────────────────────────────
-// Carga la imagen con fetch+token y la convierte a blob URL para evitar problemas de auth
 function OrderImageBlock({ orderId, type, token, t }) {
   const [blobUrl, setBlobUrl] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -176,7 +175,6 @@ function OrderImageBlock({ orderId, type, token, t }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderId, type, token]);
 
-  // Abrir la imagen en pestaña nueva (re-fetch con token → blob URL temporal)
   const openFullSize = async () => {
     try {
       const res = await fetch(endpoint, {
@@ -379,7 +377,6 @@ export default function CustomerAccount() {
   const [paymentInfo, setPaymentInfo] = useState(null);
   const [customerToken, setCustomerToken] = useState(null);
 
-  // Profile editing state
   const [editingProfile, setEditingProfile] = useState(false);
   const [profileForm, setProfileForm] = useState({ name: "", phone: "", address: "", city: "", state: "", zip_code: "" });
   const [savingProfile, setSavingProfile] = useState(false);
@@ -393,7 +390,6 @@ export default function CustomerAccount() {
   const [preferencesMeta, setPreferencesMeta] = useState({ updated_at: null, version: null });
   const [preferencesLoading, setPreferencesLoading] = useState(false);
 
-  // Expandable order detail tracking
   const [viewingOrderDetails, setViewingOrderDetails] = useState(null);
 
   const statusLabel = (s) => { const c = statusConfig[s]; return c ? (locale === "es" ? c.label.es : c.label.en) : s; };
@@ -412,7 +408,6 @@ export default function CustomerAccount() {
 
   const isPendingVerification = (s) => s === "pending_verification" || s === "pending";
 
-  // ─── Funciones de datos ───────────────────────────────────────────────────
   const fetchOrders = async (token) => {
     try {
       const r = await axios.get(`${API}/customer/orders`, { headers: { Authorization: `Bearer ${token}` } });
@@ -465,7 +460,6 @@ export default function CustomerAccount() {
     navigate("/account/login");
   };
 
-  // ─── Efectos ───────────────────────────────────────────────────────────────
   useEffect(() => {
     let ticking = false;
     const fn = () => { if (!ticking) { requestAnimationFrame(() => { setScrollY(window.pageYOffset); ticking = false; }); ticking = true; } };
@@ -514,7 +508,6 @@ export default function CustomerAccount() {
       .catch(() => {});
   }, [navigate]);
 
-  // ─── Handlers ──────────────────────────────────────────────────────────────
   const handleSavePreferences = async () => {
     const token = localStorage.getItem("customer_token"); if (!token) return;
     try {
@@ -632,9 +625,7 @@ export default function CustomerAccount() {
     return new Date(ds).toLocaleDateString(locale === "es" ? "es-ES" : "en-US", { year: "numeric", month: "long", day: "numeric" });
   };
 
-  // Qué estados muestran foto de pickup
   const PICKUP_STATUSES   = ['picked_up', 'processing', 'ready', 'out_for_delivery', 'delivered', 'completed'];
-  // Qué estados muestran foto de entrega
   const DELIVERY_STATUSES = ['delivered', 'completed'];
 
   if (loading) return (

@@ -84,13 +84,25 @@ export function getRate(order) {
   return order.has_membership ? tier.member : tier.regular;
 }
 
+// ─── CANONICAL DELIVERY FEE (igual al backend utils.py) ───────────────────
+export function calcDeliveryFee(distanceMiles) {
+  if (distanceMiles == null || isNaN(Number(distanceMiles))) return 0;
+  const d = Number(distanceMiles);
+  if (d <= 3) return 0;
+  if (d > 10) return 5.99; // defensivo
+  const raw = (d - 3) * 1.5; // $1.50 por milla adicional
+  return Math.round(Math.max(2.99, Math.min(raw, 5.99)) * 100) / 100;
+}
+
+// ─── AHORA calculateServiceCharge usa la distancia, no el delivery_fee almacenado ───
 export function calculateServiceCharge(order) {
   if (!order) return null;
   const lbs = Number(order.actual_lbs || order.actual_weight || order.weight || 0);
   const rate = getRate(order);
   if (lbs > 0) {
     const subtotal = lbs * rate;
-    const deliveryFee = Number(order.delivery_fee || 0);
+    // ✅ Recalcula desde distance_miles (nunca confíes en order.delivery_fee)
+    const deliveryFee = calcDeliveryFee(order.distance_miles);
     return subtotal + deliveryFee;
   }
   return order.total_amount || order.total || null;

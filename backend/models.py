@@ -451,3 +451,48 @@ class DashboardStats(BaseModel):
     new_leads: int
     orders_today: int
     revenue_this_month: float
+
+
+# ============================================================
+# NEW MODELS FOR LOGISTICS & FUEL REAL DATA
+# ============================================================
+
+class LogisticsSettingsResponse(BaseModel):
+    """
+    Response model for /api/logistics/settings endpoint.
+    Contains vehicle efficiency and fuel price used for cost estimation.
+    """
+    vehicle_mpg: float = Field(..., description="Vehicle fuel efficiency in miles per gallon (real, per driver/vehicle)")
+    fuel_price_per_gallon: float = Field(..., description="Current regional fuel price in USD per gallon")
+    last_updated: Optional[str] = Field(None, description="ISO timestamp of last price update")
+
+
+class FuelPriceRequest(BaseModel):
+    """
+    Request model for fetching real-time fuel price at a specific station location.
+    Used by the frontend to query a station's price.
+    """
+    lat: float = Field(..., ge=-90, le=90)
+    lng: float = Field(..., ge=-180, le=180)
+    radius_km: Optional[float] = Field(3.0, ge=0.5, le=20, description="Search radius in kilometers")
+
+
+class FuelPriceResponse(BaseModel):
+    """
+    Response model for /api/fuel-prices endpoint.
+    Returns price at the nearest station to the given coordinates.
+    """
+    price: float = Field(..., description="Price in USD per gallon")
+    station_name: Optional[str] = Field(None, description="Name of the station (if available)")
+    station_id: Optional[str] = Field(None, description="External station identifier")
+    source: str = Field(..., description="Data source (e.g., gasbuddy, fuelapi, cache)")
+    cached_at: Optional[str] = Field(None, description="Timestamp when this price was cached")
+
+
+class DriverProfileUpdate(BaseModel):
+    """
+    Model to update driver-specific logistics parameters (MPG, etc.)
+    Associates vehicle efficiency with a driver account.
+    """
+    vehicle_mpg: Optional[float] = Field(None, gt=0, le=50, description="Real MPG for the driver's vehicle")
+    default_fuel_price: Optional[float] = Field(None, gt=0, le=10, description="Personal regional fuel price override")

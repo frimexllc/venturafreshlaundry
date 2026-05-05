@@ -30,6 +30,7 @@ from utils import (
     build_order_times,
     build_qr_payload,
     build_ticket_svg,
+    calculate_delivery_fee,
     calculate_service_amount,
     create_audit_log,
     generate_order_number,
@@ -112,7 +113,6 @@ async def create_order(
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
 
-    # ── Validaciones obligatorias ─────────────────────────────────
     if not data.pickup_date:
         raise HTTPException(status_code=400, detail="pickup_date es obligatorio")
 
@@ -224,11 +224,7 @@ async def create_order(
         "order_number": order_number,
     })
 
-    if (
-        notify
-        and NOTIFICATIONS_ENABLED
-        and not SKIP_SERVER_NOTIFICATIONS
-    ):
+    if notify and NOTIFICATIONS_ENABLED and not SKIP_SERVER_NOTIFICATIONS:
         try:
             await notify_order_created(customer, order)
         except Exception as e:
@@ -494,7 +490,7 @@ async def update_order(
     """Update an order."""
     data["updated_at"] = datetime.now(timezone.utc).isoformat()
 
-    if "actual_lbs" in data:
+    if "actual_lbs" in data or "addon_services" in data:
         order_snapshot = await db.orders.find_one({"id": order_id}, {"_id": 0})
         if order_snapshot:
             customer_snapshot = None
@@ -554,7 +550,6 @@ async def update_order_status(
         order.get("service_type") or "pickup_delivery"
     ).lower().replace(" ", "_")
 
-    # Validate status transition
     if normalized_status == "completed":
         if service_type in ["wash_fold", "wash_fold_dropoff", "self_service"]:
             if current_status not in ["ready", "completed"]:
@@ -568,7 +563,6 @@ async def update_order_status(
                 detail="Order must be delivered before it can be completed"
             )
 
-    # Prevent cancelling completed or delivered orders
     if normalized_status == "cancelled" and current_status in ["completed", "delivered"]:
         raise HTTPException(
             status_code=400,
@@ -604,7 +598,6 @@ async def update_order_status(
         "created_at": now,
     })
 
-    # Send notification with deduplication
     should_send_notification = (
         notify
         and NOTIFICATIONS_ENABLED
@@ -644,7 +637,6 @@ async def update_order_status(
                 f"orden {order_id} → {normalized_status}"
             )
 
-    # Emit realtime event
     await emit_realtime("notification", {
         "type": "order_status_changed",
         "order_id": order_id,
@@ -722,7 +714,6 @@ async def capture_order_payment(
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    # Prevent double payment
     if order.get("payment_status") == "paid":
         raise HTTPException(
             status_code=400,
@@ -761,7 +752,6 @@ async def capture_order_payment(
     if method == "cash" and total_amount is not None and amount_received is not None:
         change_due = round(amount_received - total_amount, 2)
 
-    # Processing fee: 3% for card/stripe payments
     processing_fee = 0.0
     if method in ("card", "stripe") and total_amount is not None:
         processing_fee = round(float(total_amount) * 0.03, 2)
@@ -789,7 +779,6 @@ async def capture_order_payment(
         update_data
     )
 
-    # Create finance ledger entry
     finance_entry = {
         "id": str(uuid.uuid4()),
         "type": "income",
@@ -828,27 +817,21 @@ async def delete_order(
     order_id: str,
     current_user: dict = Depends(require_role([ROLE_OPERATOR])),
 ) -> dict:
-    """
-    Delete an order permanently.
-    Requires operator role. This action cannot be undone.
-    """
+    """Delete an order permanently. Requires operator role."""
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    # Prevent deletion of completed orders (optional business rule)
     if order.get("status") == "completed":
         raise HTTPException(
             status_code=400,
             detail="Cannot delete completed orders. Please archive instead."
         )
 
-    # Delete the order
     result = await db.orders.delete_one({"id": order_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    # Create audit log
     await create_audit_log(
         "ORDER_DELETED",
         "order",
@@ -862,7 +845,6 @@ async def delete_order(
         }
     )
 
-    # Emit realtime event
     await emit_realtime("notification", {
         "type": "order_deleted",
         "order_id": order_id,
@@ -881,14 +863,10 @@ async def batch_delete_orders(
     order_ids: List[str],
     current_user: dict = Depends(require_role([ROLE_OPERATOR])),
 ) -> dict:
-    """
-    Delete multiple orders permanently.
-    Requires operator role. This action cannot be undone.
-    """
+    """Delete multiple orders permanently. Requires operator role."""
     if not order_ids:
         raise HTTPException(status_code=400, detail="No order IDs provided")
 
-    # Find all orders to delete
     orders = await db.orders.find(
         {"id": {"$in": order_ids}},
         {"_id": 0}
@@ -897,7 +875,6 @@ async def batch_delete_orders(
     if not orders:
         raise HTTPException(status_code=404, detail="No orders found")
 
-    # Filter out completed orders (optional)
     completed_orders = [o for o in orders if o.get("status") == "completed"]
     if completed_orders:
         completed_ids = [o.get("order_number") for o in completed_orders[:5]]
@@ -906,10 +883,8 @@ async def batch_delete_orders(
             detail=f"Cannot delete completed orders. Found {len(completed_orders)} completed orders: {', '.join(completed_ids)}"
         )
 
-    # Perform deletion
     result = await db.orders.delete_many({"id": {"$in": order_ids}})
 
-    # Create audit log
     await create_audit_log(
         "ORDERS_BATCH_DELETED",
         "orders",
@@ -917,11 +892,10 @@ async def batch_delete_orders(
         current_user["id"],
         {
             "count": result.deleted_count,
-            "order_ids": order_ids[:50],  # Limit to 50 IDs in log
+            "order_ids": order_ids[:50],
         }
     )
 
-    # Emit realtime event
     await emit_realtime("notification", {
         "type": "orders_batch_deleted",
         "count": result.deleted_count,
@@ -958,7 +932,6 @@ async def create_order_stripe_checkout(
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    # Prevent duplicate checkout sessions
     if order.get("payment_status") == "paid":
         raise HTTPException(
             status_code=400,
@@ -1114,7 +1087,6 @@ async def get_order_stripe_status(
                 },
             )
 
-            # Create finance ledger entry for Stripe payment
             order_doc = await db.orders.find_one({"id": order_id}, {"_id": 0})
             finance_entry = {
                 "id": str(uuid.uuid4()),
@@ -1194,7 +1166,7 @@ async def notify_last_completed_order(
 
 
 class NotifyCustomerRequest(BaseModel):
-    channel: str = "sms"  # sms | email | whatsapp
+    channel: str = "sms"
     message: Optional[str] = None
 
 
@@ -1204,19 +1176,14 @@ async def _shorten_url(url: str) -> str:
 
 
 async def _generate_payment_url(order: dict, request: Request) -> str:
-    """
-    Devuelve la URL de la cuenta del cliente (/account) para que el cliente
-    vea y procese su pago desde ahí. Sin acortadores externos.
-    """
+    """Devuelve la URL de la cuenta del cliente para que pague desde ahí."""
     total = float(order.get("total_amount") or order.get("total") or 0)
     pay_status = (order.get("payment_status") or "pending").lower()
 
     if pay_status == "paid" or total < 0.50:
         return ""
 
-    # URL directa a la cuenta — el cliente ve todas sus órdenes y puede pagar
     origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
-
     return f"{origin}/account"
 
 
@@ -1230,15 +1197,14 @@ async def get_order_ticket(
     order_id: str,
     current_user: dict = Depends(get_current_user),
 ) -> HTMLResponse:
-    """Generate a printable HTML ticket/receipt for the order."""
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    order_num = order.get("order_number", order_id[:8])
-    name = order.get("customer_name") or "Cliente"
-    phone = order.get("customer_phone") or ""
-    pickup_addr = order.get("pickup_address") or order.get("address") or ""
+    order_num     = order.get("order_number", order_id[:8])
+    name          = order.get("customer_name") or "Cliente"
+    phone         = order.get("customer_phone") or ""
+    pickup_addr   = order.get("pickup_address") or order.get("address") or ""
     delivery_addr = order.get("delivery_address") or ""
 
     created_raw = order.get("created_at", "")
@@ -1248,54 +1214,67 @@ async def get_order_ticket(
     except Exception:
         created = created_raw[:10] if created_raw else ""
 
-    service = order.get("service_type") or "wash_fold"
-
-    lbs = float(order.get("actual_lbs") or order.get("estimated_lbs") or 0)
-    rate = float(order.get("price_per_lb") or order.get("rate") or 2.75)
+    service  = order.get("service_type") or "wash_fold"
+    lbs      = float(order.get("actual_lbs") or order.get("estimated_lbs") or 0)
+    rate     = float(order.get("price_per_lb") or order.get("rate") or 2.75)
     subtotal = round(lbs * rate, 2) if lbs > 0 else float(order.get("total_amount") or 0)
-    delivery_fee = float(order.get("delivery_fee") or 0)
+
+    distance_miles = order.get("distance_miles")
+    delivery_fee   = calculate_delivery_fee(distance_miles)
+
     payment_method = (order.get("payment_method") or "").lower()
+    addon_services = order.get("addon_services", [])
+    addon_total    = float(order.get("addon_amount") or 0)
+
+    subtotal_with_addons = subtotal + delivery_fee + addon_total
     processing_fee = (
-        round((subtotal + delivery_fee) * 0.03, 2)
-        if payment_method in ("card", "stripe", "tarjeta")
-        else 0
+        round(subtotal_with_addons * 0.03, 2)
+        if payment_method in ("card", "stripe", "tarjeta") else 0
     )
-    total = order.get("total_amount") or (subtotal + delivery_fee + processing_fee)
+    total = order.get("total_amount") or (subtotal_with_addons + processing_fee)
     total = float(total)
 
     pay_status = (order.get("payment_status") or "pending").lower()
-    pay_label = "PAGADO" if pay_status == "paid" else "PENDIENTE"
+    pay_label  = "PAGADO" if pay_status == "paid" else "PENDIENTE"
     method_label = {
-        "cash": "Efectivo",
-        "card": "Tarjeta",
-        "stripe": "Tarjeta",
-        "zelle": "Zelle",
+        "cash":     "Efectivo",
+        "card":     "Tarjeta",
+        "stripe":   "Tarjeta",
+        "zelle":    "Zelle",
         "transfer": "Transferencia",
     }.get(payment_method, payment_method.capitalize() or "-")
 
-    # Build rows
+    # ── FIX 1: <tr><td> correcto (antes era <td><td>) ────────────────
     items_html = ""
     if lbs > 0:
         items_html += (
             f'<tr><td>Peso</td><td class="r">{lbs} lbs</td></tr>'
-            f'</table><td>Rate</td><td class="r">${rate:.2f}/lb</td></tr>'
-            f'<tr><td>Subtotal</td><td class="r">${subtotal:.2f}</td></tr>'
+            f'<tr><td>Rate</td><td class="r">${rate:.2f}/lb</td></tr>'
+            f'<tr><td>Subtotal (peso)</td><td class="r">${subtotal:.2f}</td></tr>'
         )
     if delivery_fee > 0:
         items_html += f'<tr><td>Delivery Fee</td><td class="r">${delivery_fee:.2f}</td></tr>'
+
+    for addon in addon_services:
+        addon_name  = addon.get("name", "Add-on")
+        addon_price = float(addon.get("price") or 0)
+        if addon_price > 0:
+            items_html += f'<tr><td>{addon_name}</td><td class="r">${addon_price:.2f}</td></tr>'
+
     if processing_fee > 0:
         items_html += f'<tr><td>Processing Fee (3%)</td><td class="r">${processing_fee:.2f}</td></tr>'
 
+    # ── FIX 2: sin [:50] — dirección completa, sin corte forzado ─────
     addr_html = ""
     if pickup_addr:
         addr_html += (
-            f'<tr><td>Pickup</td><td class="r" style="font-size:10px;">'
-            f'{pickup_addr[:50]}</td></tr>'
+            f'<tr><td>Pickup</td>'
+            f'<td class="r addr">{pickup_addr}</td></tr>'
         )
     if delivery_addr and delivery_addr != pickup_addr:
         addr_html += (
-            f'<tr><td>Entrega</td><td class="r" style="font-size:10px;">'
-            f'{delivery_addr[:50]}</td></tr>'
+            f'<tr><td>Entrega</td>'
+            f'<td class="r addr">{delivery_addr}</td></tr>'
         )
 
     phone_html = f'<tr><td>Tel</td><td class="r">{phone}</td></tr>' if phone else ""
@@ -1303,16 +1282,44 @@ async def get_order_ticket(
     html = f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>Ticket {order_num}</title>
 <style>
+/* ── Reset ── */
 *{{margin:0;padding:0;box-sizing:border-box}}
-body{{font-family:'Courier New',monospace;width:80mm;margin:0 auto;padding:4mm;font-size:12px;color:#111}}
+
+/* ── FIX 3: word-break en .r para evitar que texto largo desborde ── */
+body{{
+  font-family:'Courier New',monospace;
+  width:80mm;
+  margin:0 auto;
+  padding:4mm;
+  font-size:12px;
+  color:#111;
+}}
 .center{{text-align:center}}
 h1{{font-size:15px;font-weight:700}}
 .sub{{font-size:9px;color:#666;margin-top:2px}}
 .order-num{{font-size:16px;font-weight:900;text-align:center;margin:8px 0;letter-spacing:1px}}
 hr{{border:none;border-top:1px dashed #999;margin:6px 0}}
-table{{width:100%;border-collapse:collapse}}
-td{{padding:3px 0;font-size:11px;vertical-align:top}}
-.r{{text-align:right;font-weight:600}}
+table{{width:100%;border-collapse:collapse;table-layout:fixed}}
+td{{
+  padding:3px 0;
+  font-size:11px;
+  vertical-align:top;
+}}
+/* columna izquierda: no se parte */
+td:first-child{{
+  white-space:nowrap;
+  width:28mm;
+  padding-right:4px;
+}}
+/* columna derecha: se adapta y parte palabras largas */
+.r{{
+  text-align:right;
+  font-weight:600;
+  word-break:break-word;
+  overflow-wrap:anywhere;
+}}
+/* direcciones: font más pequeño para que quepan */
+.addr{{font-size:10px;font-weight:500}}
 .total-row td{{font-size:14px;font-weight:900;padding:6px 0;border-top:2px solid #111}}
 .badge{{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700}}
 .badge-paid{{background:#dcfce7;color:#166534}}
@@ -1332,7 +1339,7 @@ td{{padding:3px 0;font-size:11px;vertical-align:top}}
   <tr><td>Fecha</td><td class="r">{created}</td></tr>
   <tr><td>Cliente</td><td class="r">{name}</td></tr>
   {phone_html}
-  <tr><td>Servicio</td><td class="r">{"Wash & Fold" if "wash" in service.lower() else "Pickup & Delivery"}</td></tr>
+  <tr><td>Servicio</td><td class="r">{"Wash &amp; Fold" if "wash" in service.lower() else "Pickup &amp; Delivery"}</td></tr>
   {addr_html}
 </table>
 <hr>
@@ -1342,7 +1349,12 @@ td{{padding:3px 0;font-size:11px;vertical-align:top}}
 </table>
 <hr>
 <table>
-  <tr><td>Pago</td><td class="r"><span class="badge {'badge-paid' if pay_status=='paid' else 'badge-pending'}">{pay_label}</span></td></tr>
+  <tr>
+    <td>Pago</td>
+    <td class="r">
+      <span class="badge {'badge-paid' if pay_status == 'paid' else 'badge-pending'}">{pay_label}</span>
+    </td>
+  </tr>
   <tr><td>Metodo</td><td class="r">{method_label}</td></tr>
 </table>
 <hr>
@@ -1357,9 +1369,8 @@ td{{padding:3px 0;font-size:11px;vertical-align:top}}
 
 
 # ══════════════════════════════════════════════════════════════════════
-# NOTIFICACIÓN AL CLIENTE (con mensajes profesionales)
+# NOTIFICACIÓN AL CLIENTE
 # ══════════════════════════════════════════════════════════════════════
-
 
 @router.post("/orders/{order_id}/notify-customer")
 async def notify_customer_direct(
@@ -1379,33 +1390,33 @@ async def notify_customer_direct(
         if customer_id
         else None
     )
-    # Fallback: if customer not found by ID, try by email
     if not customer and order.get("customer_email"):
         customer = await db.customers.find_one(
             {"email": {"$regex": f'^{order["customer_email"]}$', "$options": "i"}},
             {"_id": 0},
         )
 
-    phone = (customer or {}).get("phone") or order.get("customer_phone") or ""
+    phone      = (customer or {}).get("phone") or order.get("customer_phone") or ""
     email_addr = (customer or {}).get("email") or order.get("customer_email") or ""
-    name = (customer or {}).get("name") or order.get("customer_name") or "Cliente"
+    name       = (customer or {}).get("name") or order.get("customer_name") or "Cliente"
 
-    order_num = order.get("order_number", order_id)
-    total = float(order.get("total_amount") or order.get("total") or 0)
-    pay_status = (order.get("payment_status") or "pending").lower()
-    actual_lbs = order.get("actual_lbs")
-    estimated_lbs = order.get("estimated_lbs")
-    rate = float(order.get("price_per_lb") or order.get("rate") or 2.75)
-    delivery_fee = float(order.get("delivery_fee") or 0)
-    lbs = float(actual_lbs or estimated_lbs or 0)
-    subtotal = round(lbs * rate, 2) if lbs > 0 else total
+    order_num      = order.get("order_number", order_id)
+    total          = float(order.get("total_amount") or order.get("total") or 0)
+    pay_status     = (order.get("payment_status") or "pending").lower()
+    actual_lbs     = order.get("actual_lbs")
+    estimated_lbs  = order.get("estimated_lbs")
+    rate           = float(order.get("price_per_lb") or order.get("rate") or 2.75)
+    lbs            = float(actual_lbs or estimated_lbs or 0)
+    subtotal       = round(lbs * rate, 2) if lbs > 0 else total
+
+    distance_miles = order.get("distance_miles")
+    delivery_fee   = calculate_delivery_fee(distance_miles)
+
     total_text = f"${total:.2f}" if total else ""
 
-    # Generate payment link (no shortener)
     payment_url = await _generate_payment_url(order, request)
-    short_url = payment_url  # Direct URL, no shortening
+    short_url   = payment_url
 
-    # Build message based on payment status
     if pay_status == "paid":
         method_name = (order.get("payment_method") or "").capitalize() or "Tarjeta"
         msg = (
@@ -1445,7 +1456,6 @@ async def notify_customer_direct(
             f"Thank you for choosing Ventura Fresh Laundry 🧼✨"
         )
 
-    # Build HTML email
     if pay_status == "paid":
         email_html = _build_paid_email_html(
             name, order_num, total_text, order.get("payment_method")
@@ -1466,8 +1476,8 @@ async def notify_customer_direct(
 
     from notifications import send_email, send_sms, send_whatsapp, send_voice_call
 
-    channel = payload.channel.lower()
-    sent = False
+    channel      = payload.channel.lower()
+    sent         = False
     error_detail = ""
 
     try:
@@ -1539,27 +1549,33 @@ def _build_paid_email_html(
   <tr><td style="background:linear-gradient(135deg,#059669,#10b981);padding:28px 30px;text-align:center;">
     <h1 style="margin:0;color:#fff;font-size:20px;">Ventura Fresh Laundry</h1>
     <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Payment Confirmed</p>
-    </td></tr>
+  </td></tr>
   <tr><td style="padding:30px;text-align:center;">
     <div style="width:64px;height:64px;background:#dcfce7;border-radius:50%;margin:0 auto 16px;line-height:64px;font-size:32px;">✓</div>
     <p style="margin:0;font-size:15px;color:#334155;">Hello <strong>{name}</strong>,</p>
     <p style="margin:10px 0 0;font-size:14px;color:#64748b;">We confirm payment for your order.</p>
     <table style="margin:20px auto;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;" cellpadding="12" cellspacing="0">
-      <tr><td style="font-size:13px;color:#64748b;border-bottom:1px solid #e2e8f0;">Order</td>
-       <td style="font-weight:700;color:#0f172a;border-bottom:1px solid #e2e8f0;">{order_num}</td></tr>
-      <tr><td style="font-size:13px;color:#64748b;border-bottom:1px solid #e2e8f0;">Total</td>
-       <td style="font-weight:800;font-size:18px;color:#059669;border-bottom:1px solid #e2e8f0;">{total_text}</td></tr>
-      <tr><td style="font-size:13px;color:#64748b;">Method</td>
-       <td style="font-weight:600;color:#0f172a;">{method_name}</td></tr>
-    <table>
+      <tr>
+        <td style="font-size:13px;color:#64748b;border-bottom:1px solid #e2e8f0;">Order</td>
+        <td style="font-weight:700;color:#0f172a;border-bottom:1px solid #e2e8f0;">{order_num}</td>
+      </tr>
+      <tr>
+        <td style="font-size:13px;color:#64748b;border-bottom:1px solid #e2e8f0;">Total</td>
+        <td style="font-weight:800;font-size:18px;color:#059669;border-bottom:1px solid #e2e8f0;">{total_text}</td>
+      </tr>
+      <tr>
+        <td style="font-size:13px;color:#64748b;">Method</td>
+        <td style="font-weight:600;color:#0f172a;">{method_name}</td>
+      </tr>
+    </table>
     <p style="margin:20px 0 0;font-size:13px;color:#64748b;">Thank you for trusting us!</p>
-    </td></tr>
+  </td></tr>
   <tr><td style="padding:0 30px 28px;">
     <hr style="border:none;border-top:1px solid #e2e8f0;margin:0 0 16px;">
     <p style="margin:0;font-size:11px;color:#94a3b8;text-align:center;">Ventura Fresh Laundry · 5722 Telephone Rd Suite 5, Ventura CA 93003 · (805) 515-4030</p>
-    </td></tr>
+  </td></tr>
 </table>
-    </td></tr>
+  </td></tr>
 </table>
 </body></html>"""
 
@@ -1579,14 +1595,20 @@ def _build_unpaid_email_html(
     breakdown_rows = ""
     if lbs > 0:
         breakdown_rows = f"""
-      <tr><td style="font-size:13px;color:#64748b;padding:10px 16px;border-bottom:1px solid #e2e8f0;">Weight</td>
-       <td style="font-weight:600;color:#0f172a;padding:10px 16px;border-bottom:1px solid #e2e8f0;text-align:right;">{lbs} lbs × ${rate:.2f}/lb</td></tr>
-      <tr><td style="font-size:13px;color:#64748b;padding:10px 16px;border-bottom:1px solid #e2e8f0;">Subtotal</td>
-       <td style="font-weight:600;color:#0f172a;padding:10px 16px;border-bottom:1px solid #e2e8f0;text-align:right;">${subtotal:.2f}</td></tr>"""
+      <tr>
+        <td style="font-size:13px;color:#64748b;padding:10px 16px;border-bottom:1px solid #e2e8f0;">Weight</td>
+        <td style="font-weight:600;color:#0f172a;padding:10px 16px;border-bottom:1px solid #e2e8f0;text-align:right;">{lbs} lbs × ${rate:.2f}/lb</td>
+      </tr>
+      <tr>
+        <td style="font-size:13px;color:#64748b;padding:10px 16px;border-bottom:1px solid #e2e8f0;">Subtotal</td>
+        <td style="font-weight:600;color:#0f172a;padding:10px 16px;border-bottom:1px solid #e2e8f0;text-align:right;">${subtotal:.2f}</td>
+      </tr>"""
         if delivery_fee > 0:
             breakdown_rows += f"""
-      <tr><td style="font-size:13px;color:#64748b;padding:10px 16px;border-bottom:1px solid #e2e8f0;">Delivery</td>
-       <td style="font-weight:600;color:#0f172a;padding:10px 16px;border-bottom:1px solid #e2e8f0;text-align:right;">${delivery_fee:.2f}</td></tr>"""
+      <tr>
+        <td style="font-size:13px;color:#64748b;padding:10px 16px;border-bottom:1px solid #e2e8f0;">Delivery</td>
+        <td style="font-weight:600;color:#0f172a;padding:10px 16px;border-bottom:1px solid #e2e8f0;text-align:right;">${delivery_fee:.2f}</td>
+      </tr>"""
 
     pay_btn = ""
     if payment_url:
@@ -1594,7 +1616,7 @@ def _build_unpaid_email_html(
   <tr><td style="padding:24px 30px 0;text-align:center;">
     <a href="{payment_url}" style="display:inline-block;padding:16px 48px;background:#0891b2;color:#fff;text-decoration:none;font-weight:700;font-size:16px;border-radius:12px;">Pay {total_text} Now</a>
     <p style="margin:10px 0 0;font-size:11px;color:#94a3b8;">Secure link · Card, Apple Pay, Google Pay</p>
-    </td></tr>"""
+  </td></tr>"""
 
     return f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
@@ -1605,21 +1627,21 @@ def _build_unpaid_email_html(
   <tr><td style="background:linear-gradient(135deg,#0e7490,#0891b2);padding:28px 30px;">
     <h1 style="margin:0;color:#fff;font-size:20px;">Ventura Fresh Laundry</h1>
     <p style="margin:4px 0 0;color:rgba(255,255,255,.8);font-size:13px;">Your order is ready for payment</p>
-    </td></tr>
+  </td></tr>
   <tr><td style="padding:28px 30px 0;">
     <p style="margin:0;font-size:15px;color:#334155;">Hello <strong>{name}</strong>,</p>
     <p style="margin:8px 0 0;font-size:14px;color:#64748b;">Your order <strong>#{order_num}</strong> is ready. Here are your payment options:</p>
-    </td></tr>
-  <!-- Breakdown -->
+  </td></tr>
   <tr><td style="padding:20px 30px 0;">
     <table width="100%" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;" cellpadding="0" cellspacing="0">
       {breakdown_rows}
-      <tr><td style="font-size:14px;font-weight:700;color:#0f172a;padding:14px 16px;background:#f0f9ff;">TOTAL</td>
-       <td style="font-size:20px;font-weight:800;color:#0891b2;padding:14px 16px;background:#f0f9ff;text-align:right;">{total_text}</td></tr>
+      <tr>
+        <td style="font-size:14px;font-weight:700;color:#0f172a;padding:14px 16px;background:#f0f9ff;">TOTAL</td>
+        <td style="font-size:20px;font-weight:800;color:#0891b2;padding:14px 16px;background:#f0f9ff;text-align:right;">{total_text}</td>
+      </tr>
     </table>
-    </td></tr>
+  </td></tr>
   {pay_btn}
-  <!-- Other payment methods -->
   <tr><td style="padding:20px 30px 0;">
     <table width="100%" style="border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;" cellpadding="0" cellspacing="0">
       <tr><td style="padding:14px 16px;border-bottom:1px solid #e2e8f0;background:#fefce8;">
@@ -1628,20 +1650,20 @@ def _build_unpaid_email_html(
         <p style="margin:2px 0 0;font-size:12px;color:#713f12;">Venmo: <strong>@VFLaundry</strong></p>
         <p style="margin:2px 0 0;font-size:12px;color:#713f12;">Cash App: <strong>$@VFLaundry</strong></p>
         <p style="margin:4px 0 0;font-size:11px;color:#a16207;">Note: Please include your order number {order_num}</p>
-        </td></tr>
+      </td></tr>
       <tr><td style="padding:14px 16px;background:#f0fdf4;">
         <p style="margin:0;font-size:13px;font-weight:700;color:#166534;">Cash</p>
         <p style="margin:4px 0 0;font-size:12px;color:#15803d;">Pay upon pickup or delivery</p>
-        </td></tr>
+      </td></tr>
     </table>
-    </td></tr>
+  </td></tr>
   <tr><td style="padding:24px 30px;">
     <p style="margin:0;font-size:13px;color:#64748b;">Once payment is completed, your order will continue processing.</p>
     <p style="margin:6px 0 0;font-size:13px;color:#64748b;">Thank you for trusting Ventura Fresh Laundry!</p>
     <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0;">
     <p style="margin:0;font-size:11px;color:#94a3b8;text-align:center;">Ventura Fresh Laundry · 5722 Telephone Rd Suite 5, Ventura CA 93003 · (805) 515-4030</p>
-    </td></tr>
+  </td></tr>
 </table>
-    </td></tr>
+  </td></tr>
 </table>
 </body></html>"""

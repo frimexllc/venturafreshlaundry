@@ -117,6 +117,7 @@ None.
 - Mocked: Stripe Sync is scaffolded/mocked endpoints only.
 
 **3rd Party Integrations**
+
 - Groq (LLM) — uses Emergent LLM Key.
 - Stripe (Payments) — requires User API Key.
 - Twilio (SMS & Voice) — requires User API Key.

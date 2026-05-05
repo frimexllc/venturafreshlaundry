@@ -3,12 +3,18 @@ Delivery Rules & Business Logic
 - Authorized ZIP codes for Ventura Fresh Laundry service area
 - Pricing: First 3 miles free, dynamic rate after
 - Payment validation: Card/Zelle/Cash only, no delivery without payment
+- Max service distance: 10 miles from store
 """
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime, timezone
 import math
+import logging
+
+# ── Configuración de logging silenciosa (solo errores) ────────────────
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.ERROR)
 
 delivery_rules_router = APIRouter()
 
@@ -27,6 +33,7 @@ AUTHORIZED_ZIPS = {
 RATE_PER_MILE_AFTER_FREE = 1.50   # USD per mile after free miles
 MIN_DELIVERY_FEE = 0.00            # Minimum fee (0 because first 3 miles are free)
 MAX_DELIVERY_FEE = 25.00           # Cap
+MAX_DELIVERY_MILES = 10.0          # Límite máximo de distancia para servicio de recogida y entrega
 STORE_COORDS = (34.2805, -119.2945)  # Ventura Fresh Laundry approx
 
 # ── Allowed Payment Methods ──────────────────────────────────────────
@@ -63,6 +70,16 @@ def calculate_delivery_fee(distance_miles: float, zip_code: str) -> dict:
     zip_info = AUTHORIZED_ZIPS.get(zip_code)
     if not zip_info:
         return {"eligible": False, "fee": 0, "reason": f"ZIP {zip_code} is outside our service area"}
+
+    # ── Nuevo: validar distancia máxima ──────────────────────────────────────
+    if distance_miles > MAX_DELIVERY_MILES:
+        return {
+            "eligible": False,
+            "fee": 0,
+            "distance_miles": round(distance_miles, 2),
+            "max_miles": MAX_DELIVERY_MILES,
+            "reason": f"Distance {distance_miles:.1f} miles exceeds maximum service range of {MAX_DELIVERY_MILES} miles"
+        }
 
     free_miles = zip_info["base_miles_free"]
     if distance_miles <= free_miles:
@@ -101,12 +118,14 @@ async def get_delivery_zones():
             "free_miles": info["base_miles_free"],
             "rate_after_free": RATE_PER_MILE_AFTER_FREE,
             "max_fee": MAX_DELIVERY_FEE,
+            "max_miles": MAX_DELIVERY_MILES,
         })
     return {
         "store_location": {"lat": STORE_COORDS[0], "lng": STORE_COORDS[1]},
         "zones": zones,
         "allowed_payment_methods": ALLOWED_PAYMENT_METHODS,
         "rate_per_mile": RATE_PER_MILE_AFTER_FREE,
+        "max_delivery_miles": MAX_DELIVERY_MILES,
     }
 
 
@@ -126,6 +145,7 @@ async def validate_zip(req: ZipValidationRequest):
         "city": info["city"],
         "zone": info["zone"],
         "free_miles": info["base_miles_free"],
+        "max_miles": MAX_DELIVERY_MILES,
     }
 
 
@@ -142,7 +162,10 @@ async def calculate_fee(req: DeliveryFeeRequest):
     else:
         dist = 2.0  # default estimate within core zone
 
-    return calculate_delivery_fee(dist, zc)
+    result = calculate_delivery_fee(dist, zc)
+    if not result["eligible"]:
+        raise HTTPException(status_code=400, detail=result["reason"])
+    return result
 
 
 @delivery_rules_router.post("/validate-payment")

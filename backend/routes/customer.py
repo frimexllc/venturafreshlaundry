@@ -277,6 +277,24 @@ async def get_membership_status(current_customer: dict = Depends(get_current_cus
     }
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# PAYMENT INFO (público)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/payment-info")
+async def get_payment_info():
+    """
+    Devuelve la información de pago (Zelle, Venmo, CashApp) para mostrar en el modal.
+    Esto evita el error 404 en el frontend.
+    """
+    return {
+        "zelle_phone": "(805) 626-2524",
+        "zelle_handle": "VFLaundry",
+        "venmo_handle": "@VFLaundry",
+        "cashapp_tag": "$VFLaundry",
+    }
+
+
 # ── Helper para verificar membresía activa ────────────────────────────────────
 async def _require_membership(customer_id: str):
     now = datetime.now(timezone.utc).isoformat()
@@ -844,4 +862,4 @@ async def get_customer_delivery_image(
             "Content-Disposition": f'inline; filename="{filename}"',
             "Cache-Control": "private, max-age=86400",
         }
-    )    
+    )

@@ -7,6 +7,7 @@ import {
   Layers, Star, Bot, Shield, DollarSign, BarChart3, ShieldCheck,
   MapPin, Package, Warehouse, Boxes, ShoppingCart, Building2,
   ScanLine, Bell, ArrowLeftRight, Search,
+  PanelLeftClose, PanelLeftOpen,
   // Tool icons
   Calculator, StickyNote, Timer, CheckSquare,
 } from "lucide-react";
@@ -118,7 +119,6 @@ const navigationGroups = [
 // ── Label maps ────────────────────────────────────────────────────────
 const navLabels = {};
 
-// Tool labels
 const toolLabelMap = {
   tool_calculator: ["Calculator",   "Calculadora"],
   tool_notes:      ["Quick Notes",  "Notas Rápidas"],
@@ -338,20 +338,21 @@ function GlobalSearch({ onNavigate }) {
   );
 }
 
-// ── Tool button (sidebar item that opens a modal) ─────────────────────
-function ToolNavItem({ item, getLabel, onClose }) {
+// ── Tool button ──────────────────────────────────────────────────────
+function ToolNavItem({ item, getLabel, onClose, collapsed }) {
   const { openTool, activeTool } = useTools();
   const isActive = activeTool === item.toolId;
   return (
     <li>
       <button
         onClick={() => { openTool(item.toolId); onClose(); }}
-        className={`sidebar-link w-full ${isActive ? "active" : ""}`}
+        title={collapsed ? getLabel(item.key) : undefined}
+        className={`sidebar-link w-full ${isActive ? "active" : ""} ${collapsed ? "justify-center px-0" : ""}`}
         data-testid={`nav-${item.key}`}
       >
-        <item.icon className="h-4 w-4" />
-        <span>{getLabel(item.key)}</span>
-        {isActive && (
+        <item.icon className="h-4 w-4 flex-shrink-0" />
+        {!collapsed && <span>{getLabel(item.key)}</span>}
+        {!collapsed && isActive && (
           <span className="ml-auto w-1.5 h-1.5 rounded-full bg-sky-500 flex-shrink-0" />
         )}
       </button>
@@ -364,6 +365,21 @@ function LayoutInner() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // ── Sidebar collapse state (persisted) ──────────────────────────
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return localStorage.getItem("vfl_sidebar_collapsed") === "true"; }
+    catch { return false; }
+  });
+
+  const toggleCollapse = () => {
+    setCollapsed(prev => {
+      const next = !prev;
+      try { localStorage.setItem("vfl_sidebar_collapsed", String(next)); } catch {}
+      return next;
+    });
+  };
+
   const { t } = useLocale();
 
   const [openGroups, setOpenGroups] = useState(() => {
@@ -374,7 +390,10 @@ function LayoutInner() {
     return defaults;
   });
 
-  const toggleGroup = (idx) => setOpenGroups(prev => ({ ...prev, [idx]: !prev[idx] }));
+  const toggleGroup = (idx) => {
+    if (collapsed) return; // groups always show as icons when collapsed
+    setOpenGroups(prev => ({ ...prev, [idx]: !prev[idx] }));
+  };
 
   const isAdmin = user?.role === "admin";
 
@@ -396,9 +415,13 @@ function LayoutInner() {
   const getRoleDisplay    = (role) => role === "admin" ? t("Administrator","Administrador") : t("Operator","Operador");
   const getRoleBadgeColor = (role) => role === "admin" ? "bg-purple-100 text-purple-700" : "bg-sky-100 text-sky-700";
 
+  const sidebarW = collapsed ? "w-16" : "w-64";
+  const mainPl   = collapsed ? "lg:pl-16" : "lg:pl-64";
+
   return (
     <div className="min-h-screen bg-slate-50/50">
-      {/* Mobile header */}
+
+      {/* ── Mobile header ─────────────────────────────────────────── */}
       <header className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-white border-b border-slate-200 z-50 flex items-center px-4">
         <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(!sidebarOpen)} data-testid="mobile-menu-btn">
           {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
@@ -409,44 +432,95 @@ function LayoutInner() {
         </div>
       </header>
 
-      {sidebarOpen && <div className="lg:hidden fixed inset-0 bg-black/50 z-40" onClick={() => setSidebarOpen(false)} />}
+      {sidebarOpen && (
+        <div className="lg:hidden fixed inset-0 bg-black/50 z-40" onClick={() => setSidebarOpen(false)} />
+      )}
 
-      {/* Sidebar */}
-      <aside className={`fixed top-0 left-0 h-full w-64 bg-white border-r border-slate-200 z-50 transform transition-transform duration-200 lg:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
-        <div className="flex flex-col h-full">
-          {/* Logo */}
-          <div className="h-16 flex items-center px-6 border-b border-slate-100">
-            <Droplets className="h-7 w-7 text-sky-600" />
-            <div className="ml-3">
-              <h1 className="font-bold text-slate-900 text-lg leading-tight">Ventura Fresh</h1>
-              <p className="text-xs text-slate-500">Laundry CRM</p>
+      {/* ── Sidebar ───────────────────────────────────────────────── */}
+      <aside
+        className={`
+          fixed top-0 left-0 h-full bg-white border-r border-slate-200 z-50
+          transform transition-all duration-200 ease-in-out
+          lg:translate-x-0
+          ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
+          ${sidebarW}
+        `}
+      >
+        <div className="flex flex-col h-full overflow-hidden">
+
+          {/* Logo + collapse toggle */}
+          <div className={`h-16 flex items-center border-b border-slate-100 flex-shrink-0 ${collapsed ? "justify-center px-2" : "px-4 justify-between"}`}>
+            {!collapsed && (
+              <div className="flex items-center gap-2 min-w-0">
+                <Droplets className="h-7 w-7 text-sky-600 flex-shrink-0" />
+                <div className="min-w-0">
+                  <h1 className="font-bold text-slate-900 text-base leading-tight truncate">Ventura Fresh</h1>
+                  <p className="text-xs text-slate-500">Laundry CRM</p>
+                </div>
+              </div>
+            )}
+
+            {collapsed && <Droplets className="h-6 w-6 text-sky-600" />}
+
+            {/* Desktop toggle button */}
+            <button
+              onClick={toggleCollapse}
+              title={collapsed ? "Expandir sidebar" : "Colapsar sidebar"}
+              className={`
+                hidden lg:flex items-center justify-center
+                w-7 h-7 rounded-md text-slate-400
+                hover:text-slate-700 hover:bg-slate-100
+                transition-colors flex-shrink-0
+                ${collapsed ? "mt-0" : ""}
+              `}
+            >
+              {collapsed
+                ? <PanelLeftOpen  className="h-4 w-4" />
+                : <PanelLeftClose className="h-4 w-4" />
+              }
+            </button>
+          </div>
+
+          {/* Search — only when expanded */}
+          {!collapsed && (
+            <div className="pt-3 pb-1 flex-shrink-0">
+              <GlobalSearch onNavigate={(path) => { navigate(path); setSidebarOpen(false); }} />
             </div>
-          </div>
-
-          {/* Global Search */}
-          <div className="pt-3 pb-1">
-            <GlobalSearch onNavigate={(path) => { navigate(path); setSidebarOpen(false); }} />
-          </div>
+          )}
 
           {/* Navigation */}
-          <nav className="flex-1 overflow-y-auto py-2 px-3">
+          <nav className={`flex-1 overflow-y-auto py-2 ${collapsed ? "px-1" : "px-3"}`}>
             {visibleGroups.map((group, idx) => (
-              <div key={idx} className="mb-3">
-                <button
-                  onClick={() => toggleGroup(idx)}
-                  className="w-full flex items-center justify-between px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors text-left"
-                >
-                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                    <span>{group.emoji}</span>
-                    <span>{group.title}</span>
-                  </div>
-                  {openGroups[idx]
-                    ? <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
-                    : <ChevronRight className="h-3.5 w-3.5 text-slate-400" />}
-                </button>
+              <div key={idx} className="mb-2">
 
-                {openGroups[idx] && (
-                  <ul className="mt-1 ml-2 space-y-0.5">
+                {/* Group header */}
+                {collapsed ? (
+                  /* Collapsed: just a thin divider with emoji tooltip */
+                  <div
+                    title={group.title}
+                    className="flex items-center justify-center py-1 mb-0.5"
+                  >
+                    <span className="text-xs select-none opacity-60">{group.emoji}</span>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => toggleGroup(idx)}
+                    className="w-full flex items-center justify-between px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors text-left"
+                  >
+                    <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                      <span>{group.emoji}</span>
+                      <span>{group.title}</span>
+                    </div>
+                    {openGroups[idx]
+                      ? <ChevronDown  className="h-3.5 w-3.5 text-slate-400" />
+                      : <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
+                    }
+                  </button>
+                )}
+
+                {/* Group items */}
+                {(collapsed || openGroups[idx]) && (
+                  <ul className={`mt-0.5 space-y-0.5 ${collapsed ? "" : "ml-2"}`}>
                     {group.items.map(item =>
                       item.isTool ? (
                         <ToolNavItem
@@ -454,6 +528,7 @@ function LayoutInner() {
                           item={item}
                           getLabel={getLabel}
                           onClose={() => setSidebarOpen(false)}
+                          collapsed={collapsed}
                         />
                       ) : (
                         <li key={item.path}>
@@ -461,11 +536,14 @@ function LayoutInner() {
                             to={item.path}
                             end={item.path === "/admin"}
                             onClick={() => setSidebarOpen(false)}
-                            className={({ isActive }) => `sidebar-link ${isActive ? "active" : ""} ${item.highlight ? "highlight" : ""}`}
+                            title={collapsed ? getLabel(item.key) : undefined}
+                            className={({ isActive }) =>
+                              `sidebar-link ${isActive ? "active" : ""} ${item.highlight ? "highlight" : ""} ${collapsed ? "justify-center px-0" : ""}`
+                            }
                             data-testid={`nav-${item.key}`}
                           >
-                            <item.icon className="h-4 w-4" />
-                            <span>{getLabel(item.key)}</span>
+                            <item.icon className="h-4 w-4 flex-shrink-0" />
+                            {!collapsed && <span>{getLabel(item.key)}</span>}
                           </NavLink>
                         </li>
                       )
@@ -475,59 +553,110 @@ function LayoutInner() {
               </div>
             ))}
 
-            <div className="mt-3 pt-3 border-t border-slate-100">
-              <a href="/home" target="_blank" rel="noopener noreferrer" className="sidebar-link text-sky-600">
-                <ExternalLink className="h-4 w-4" />
-                <span>{t("View Landing Page","Ver página principal")}</span>
-              </a>
-            </div>
+            {/* External link */}
+            {!collapsed && (
+              <div className="mt-3 pt-3 border-t border-slate-100">
+                <a href="/home" target="_blank" rel="noopener noreferrer" className="sidebar-link text-sky-600">
+                  <ExternalLink className="h-4 w-4" />
+                  <span>{t("View Landing Page","Ver página principal")}</span>
+                </a>
+              </div>
+            )}
+            {collapsed && (
+              <div className="mt-2 pt-2 border-t border-slate-100">
+                <a
+                  href="/home"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Ver página principal"
+                  className="sidebar-link text-sky-600 justify-center px-0"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                </a>
+              </div>
+            )}
           </nav>
 
           {/* User section */}
-          <div className="p-4 border-t border-slate-100">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="h-9 w-9 rounded-full bg-sky-100 flex items-center justify-center flex-shrink-0">
-                <span className="text-sky-700 font-semibold text-sm">{user?.name?.charAt(0).toUpperCase()}</span>
+          <div className={`border-t border-slate-100 flex-shrink-0 ${collapsed ? "p-2" : "p-4"}`}>
+            {collapsed ? (
+              /* Collapsed: just avatar + logout */
+              <div className="flex flex-col items-center gap-2">
+                <div className="h-8 w-8 rounded-full bg-sky-100 flex items-center justify-center" title={user?.name}>
+                  <span className="text-sky-700 font-semibold text-sm">{user?.name?.charAt(0).toUpperCase()}</span>
+                </div>
+                <button
+                  onClick={handleLogout}
+                  title={t("Sign Out","Cerrar sesión")}
+                  className="p-1.5 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                  data-testid="logout-btn"
+                >
+                  <LogOut className="h-4 w-4" />
+                </button>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-slate-900 truncate">{user?.name}</p>
-                <p className="text-xs text-slate-500 truncate">{user?.email}</p>
-                <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full mt-1 ${getRoleBadgeColor(user?.role)}`}>
-                  <Shield className="h-3 w-3" />
-                  {getRoleDisplay(user?.role)}
-                </span>
-              </div>
-            </div>
-            <div className="mb-3"><LanguageToggle /></div>
-            <Button
-              variant="ghost"
-              className="w-full justify-start text-slate-600 hover:text-red-600 hover:bg-red-50"
-              onClick={handleLogout}
-              data-testid="logout-btn"
-            >
-              <LogOut className="h-4 w-4 mr-2" />
-              {t("Sign Out","Cerrar sesión")}
-            </Button>
+            ) : (
+              <>
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="h-9 w-9 rounded-full bg-sky-100 flex items-center justify-center flex-shrink-0">
+                    <span className="text-sky-700 font-semibold text-sm">{user?.name?.charAt(0).toUpperCase()}</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-slate-900 truncate">{user?.name}</p>
+                    <p className="text-xs text-slate-500 truncate">{user?.email}</p>
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full mt-1 ${getRoleBadgeColor(user?.role)}`}>
+                      <Shield className="h-3 w-3" />
+                      {getRoleDisplay(user?.role)}
+                    </span>
+                  </div>
+                </div>
+                <div className="mb-3"><LanguageToggle /></div>
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start text-slate-600 hover:text-red-600 hover:bg-red-50"
+                  onClick={handleLogout}
+                  data-testid="logout-btn"
+                >
+                  <LogOut className="h-4 w-4 mr-2" />
+                  {t("Sign Out","Cerrar sesión")}
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </aside>
 
-      {/* Main content */}
-      <main className="lg:pl-64 pt-16 lg:pt-0 min-h-screen">
+      {/* ── Floating expand button (visible only when collapsed, on desktop) ── */}
+      {collapsed && (
+        <button
+          onClick={toggleCollapse}
+          title="Expandir sidebar"
+          className="
+            hidden lg:flex
+            fixed top-1/2 -translate-y-1/2 left-16 z-40
+            w-5 h-10 items-center justify-center
+            bg-white border border-slate-200 border-l-0
+            rounded-r-md shadow-sm
+            text-slate-400 hover:text-sky-600 hover:bg-sky-50
+            transition-colors
+          "
+        >
+          <PanelLeftOpen className="h-3.5 w-3.5" />
+        </button>
+      )}
+
+      {/* ── Main content ───────────────────────────────────────────── */}
+      <main className={`${mainPl} pt-16 lg:pt-0 min-h-screen transition-all duration-200 ease-in-out`}>
         <div className="p-6 lg:p-8">
           <Outlet />
         </div>
       </main>
 
       {user?.role === "admin" && <AdminFloatingChat />}
-
-      {/* ✅ All tool modals rendered here, above everything */}
       <ToolsHub />
     </div>
   );
 }
 
-// Wrap with ToolsProvider so useTools() works in LayoutInner + ToolsHub
 export default function Layout() {
   return (
     <ToolsProvider>

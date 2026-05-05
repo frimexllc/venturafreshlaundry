@@ -107,6 +107,19 @@ NEW -> CONFIRMED -> PROCESSING -> READY -> COMPLETED
 - [x] Profile updates propagate to ALL linked customer records (same email)
 - [x] Inline profile edit mode in CustomerAccount.jsx with Edit/Save/Cancel
 - [x] "Add phone" / "Add address" links for empty fields
+
+### Phase 11 (Logistics Map Professionalization) — 2026-05-05
+- [x] Backend: /api/logistics/route-plan — real driving routes via ORS API (238+ waypoints)
+- [x] Backend: /api/logistics/gas-stations — Overpass API + Ventura fallback data
+- [x] MapView: Real driving routes via Google Directions API (not straight lines)
+- [x] MapView: Professional map styling (hidden POI, highway colors, water styling)
+- [x] MapView: Satellite/hybrid toggle, marker info windows
+- [x] TIM assistant: Starts CLOSED (removed auto-open after 2.8s)
+- [x] Toast cleanup: visibleToasts=3, duration=3s, traffic deduplication with toast IDs
+- [x] Gas stations: Prices displayed ($4.49-$5.09/gal range), sorted by cheapest
+- [x] 10-mile P&D limit enforced on backend (rejects with 400 + distance message)
+- [x] Addons/individual items: Operator can add items (comforter, blanket, etc.) with auto-recalc
+
 - [x] Login/Register backfills customer_email on existing orders (fixes ownership matching)
 - [x] GET /api/customer/me returns extended fields (city, state, zip_code)
 - [x] Verified Alejandro's real account: login, 13 orders visible, 8 pending payments, profile editing
@@ -163,4 +176,5 @@ NEW -> CONFIRMED -> PROCESSING -> READY -> COMPLETED
 
 ## Backlog
 - (P3) Advanced Stripe Sync bidirectional (PAUSED by user)
-- (P4) Split CustomerAccount.jsx into subcomponents (PendingPayments, OrderHistory, Preferences)
+- (P4) Split CustomerAccount.jsx into subcomponents
+- (P5) Virtual tour of the interface (guided walkthrough for new operators) (PendingPayments, OrderHistory, Preferences)

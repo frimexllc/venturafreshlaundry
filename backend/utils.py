@@ -162,20 +162,67 @@ def is_active_member(order: dict, customer: Optional[dict]) -> bool:
     return bool(plan)
 
 
-def calculate_service_amount(order: dict, customer: Optional[dict]) -> Optional[float]:
-    """Calculate total amount based on actual_lbs, service_plan, and price_per_lb."""
-    service_type = normalize_status(order.get("service_type") or "pickup_delivery")
+# ══════════════════════════════════════════════════════════════════════
+# PATCHED FUNCTION: calculate_delivery_fee (CANONICAL)
+# ══════════════════════════════════════════════════════════════════════
+def calculate_delivery_fee(distance_miles) -> float:
+    """
+    CANONICAL delivery fee — single source of truth.
+
+    Rules:
+        0 – 3 miles   →  FREE  ($0.00)
+        3 – 10 miles  →  $1.50/mile after mile 3, clamped [$2.99, $5.99]
+        > 10 miles    →  $5.99  (order should have been rejected upstream;
+                                  this is a defensive cap, not normal path)
+        None/unknown  →  $0.00  (never charge what we cannot confirm)
+
+    This function is imported by:
+        • public_forms.py  (calculate_auto_delivery_fee)
+        • orders.py        (get_order_ticket, notify_customer_direct)
+        • utils.py         (calculate_service_amount)
+    """
+    if distance_miles is None:
+        return 0.0
+    try:
+        d = float(distance_miles)
+    except (TypeError, ValueError):
+        return 0.0
+
+    if d <= 3.0:
+        return 0.0                              # ← FREE zone
+
+    if d > 10.0:
+        return 5.99                             # ← defensive cap
+
+    raw = (d - 3.0) * 1.50                     # $1.50 per extra mile
+    return round(max(2.99, min(raw, 5.99)), 2)
+
+
+# ══════════════════════════════════════════════════════════════════════
+# PATCHED FUNCTION: calculate_service_amount (uses fresh delivery fee)
+# ══════════════════════════════════════════════════════════════════════
+def calculate_service_amount(order: dict, customer) -> float | None:
+    """
+    Calculate total amount:
+        weight × rate  (min $40 for pickup, min 10 lb for wash-fold)
+      + delivery fee   (recalculated from distance — never stale stored value)
+      + addon amount
+      + 3% processing  (card payments only)
+
+    Returns None when actual_lbs is not yet set.
+    """
+    service_type = (order.get("service_type") or "pickup_delivery").strip().lower().replace(" ", "_")
     lbs_value = order.get("actual_lbs")
     if lbs_value is None:
         return None
     try:
         lbs_value = float(lbs_value)
-    except Exception:
+    except (TypeError, ValueError):
         return None
     if lbs_value <= 0:
         return None
 
-    # Pricing tables (must match frontend and public_forms.py)
+    # ── Pricing tables (must match frontend and public_forms.py) ──────
     PRICING_PD = {
         "standard": {"member": 2.50, "regular": 2.75},
         "premium":  {"member": 2.75, "regular": 3.00},
@@ -198,15 +245,35 @@ def calculate_service_amount(order: dict, customer: Optional[dict]) -> Optional[
         tier = PRICING_PD.get(plan, PRICING_PD["standard"])
         rate = tier["member"] if is_active_member(order, customer) else tier["regular"]
 
+    # ── Base amount ────────────────────────────────────────────────────
     if service_type == "wash_fold":
-        billable_lbs = max(lbs_value, 10)
+        billable_lbs = max(lbs_value, 10)       # 10 lb minimum
         amount = billable_lbs * rate
     else:
-        amount = max(lbs_value * rate, 40)
+        amount = max(lbs_value * rate, 40.0)    # $40 minimum
 
-    # Add delivery fee if present
-    delivery_fee = float(order.get("delivery_fee") or 0)
+    # ── Delivery fee — ALWAYS recalculate from distance ────────────────
+    # Never read order["delivery_fee"] here: it may be stale.
+    # calculate_delivery_fee returns 0 when distance is None/unknown.
+    distance_miles = order.get("distance_miles")
+    delivery_fee = calculate_delivery_fee(distance_miles)
     amount += delivery_fee
+
+    # ── Add-on services ────────────────────────────────────────────────
+    addon_amount = 0.0
+    for svc in (order.get("addon_services") or []):
+        try:
+            price = float(svc.get("price", 0) or 0)
+            qty   = int(svc.get("qty", 1) or 1)
+            addon_amount += price * qty
+        except (TypeError, ValueError):
+            pass
+    amount += addon_amount
+
+    # ── 3% processing fee (card only) ─────────────────────────────────
+    payment_method = (order.get("payment_method") or "").strip().lower()
+    if payment_method in ("card", "stripe"):
+        amount += round(amount * 0.03, 2)
 
     return round(float(amount), 2)
 
@@ -325,7 +392,7 @@ def build_qr_png_base64(payload: str) -> str:
 
 
 def build_ticket_svg(order: dict, customer: Optional[dict], qr_payload: str) -> bytes:
-    """Generate professional ticket SVG with QR, price breakdown, weight metrics."""
+    """Generate professional ticket SVG with QR, price breakdown, weight metrics and add‑ons."""
     qr_base64 = build_qr_png_base64(qr_payload)
     customer = customer or {}
     display_id = build_display_order_number(order)
@@ -357,6 +424,24 @@ def build_ticket_svg(order: dict, customer: Optional[dict], qr_payload: str) -> 
     subtotal = safe_currency(order.get("subtotal"))
     notes = order.get("notes") or order.get("special_instructions") or ""
     if len(notes) > 60: notes = notes[:57] + "..."
+
+    # ── Add‑ons ──────────────────────────────────────────────────────────
+    addon_services = order.get("addon_services", [])
+    addon_lines = ""
+    current_y = 414  # after the delivery fee line, before the total line
+    if addon_services:
+        for addon in addon_services:
+            addon_name = addon.get("name", "Add-on")
+            addon_price = float(addon.get("price") or 0)
+            if addon_price > 0:
+                addon_lines += f"""
+  <text x='16' y='{current_y}' class='sm'>{html.escape(addon_name)}</text>
+  <text x='{W-16}' y='{current_y}' text-anchor='end' class='val'>${addon_price:.2f}</text>"""
+                current_y += 18
+        if addon_lines:
+            # Add a separator before add‑ons
+            addon_lines = f"""
+  <line x1='16' y1='{current_y-22}' x2='{W-16}' y2='{current_y-22}' stroke='#cbd5e1' stroke-dasharray='2,2'/>""" + addon_lines
 
     status_colors = {
         "NEW": "#2563eb", "CONFIRMED": "#7c3aed", "PICKED_UP": "#4f46e5",
@@ -426,17 +511,18 @@ def build_ticket_svg(order: dict, customer: Optional[dict], qr_payload: str) -> 
   <text x='{W-16}' y='384' text-anchor='end' class='val'>{html.escape(subtotal)}</text>
   <text x='16' y='402' class='sm'>Delivery Fee / Envio</text>
   <text x='{W-16}' y='402' text-anchor='end' class='val'>{html.escape(delivery_fee)}</text>
-  <line x1='16' y1='414' x2='{W-16}' y2='414' stroke='#cbd5e1'/>
-  <text x='16' y='434' class='hdr' font-size='13'>TOTAL</text>
-  <text x='{W-16}' y='434' text-anchor='end' class='hdr' font-size='16'>{html.escape(total)}</text>
+  {addon_lines}
+  <line x1='16' y1='{current_y-4}' x2='{W-16}' y2='{current_y-4}' stroke='#cbd5e1'/>
+  <text x='16' y='{current_y+14}' class='hdr' font-size='13'>TOTAL</text>
+  <text x='{W-16}' y='{current_y+14}' text-anchor='end' class='hdr' font-size='16'>{html.escape(total)}</text>
 
   <!-- Payment Status -->
-  <rect x='16' y='448' width='{W-32}' height='30' rx='6' fill='{"#dcfce7" if payment_status == "PAID" else "#fef3c7"}'/>
-  <text x='{W//2}' y='468' text-anchor='middle' font-size='11' font-weight='700' fill='{"#166534" if payment_status == "PAID" else "#92400e"}' font-family='Arial'>
+  <rect x='16' y='{current_y+34}' width='{W-32}' height='30' rx='6' fill='{"#dcfce7" if payment_status == "PAID" else "#fef3c7"}'/>
+  <text x='{W//2}' y='{current_y+54}' text-anchor='middle' font-size='11' font-weight='700' fill='{"#166534" if payment_status == "PAID" else "#92400e"}' font-family='Arial'>
     PAYMENT: {html.escape(payment_status)} | METHOD: {html.escape(payment_method)}
   </text>
 
-  {"" if not notes else f"<text x='16' y='500' class='lbl'>NOTES</text><text x='16' y='514' class='sm'>{html.escape(notes)}</text>"}
+  {"" if not notes else f"<text x='16' y='{current_y+86}' class='lbl'>NOTES</text><text x='16' y='{current_y+100}' class='sm'>{html.escape(notes)}</text>"}
 
   <!-- Footer -->
   <line x1='16' y1='{H-36}' x2='{W-16}' y2='{H-36}' stroke='#e2e8f0'/>

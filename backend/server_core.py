@@ -345,6 +345,14 @@ except Exception as e:
     logger.warning(f"Logistics router not loaded: {e}")
 
 try:
+    from routes.route_planning import router as route_planning_router
+    app.include_router(route_planning_router)
+    logger.info("Route planning router enabled at /api/logistics/route-plan")
+except Exception as e:
+    logger.warning(f"Route planning router not loaded: {e}")
+
+
+try:
     from routes.geocode import router as geocode_router
     app.include_router(geocode_router, prefix="/api")
     logger.info("Geocode router enabled at /api/geocode/*")
