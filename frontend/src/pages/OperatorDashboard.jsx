@@ -258,9 +258,19 @@ const OrderRow = ({
             {statusInfo.label}
           </span>
         </div>
-        <p className="text-sm text-slate-700 font-medium truncate">
-          {safeString(order.customer_name, t("Customer", "Cliente"))}
-        </p>
+       <p className="text-sm text-slate-700 font-medium truncate flex items-center gap-1 flex-wrap">
+  {safeString(order.customer_name, t("Customer", "Cliente"))}
+  {order.service_type === "airbnb_host" && (
+    <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded-full">
+      🏠 Airbnb
+    </span>
+  )}
+  {order.service_type === "commercial" && (
+    <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded-full">
+      🏢 B2B
+    </span>
+  )}
+</p>
         {(() => {
           const addr = order.pickup_address || order.delivery_address;
           const cp = extractCP(addr);
@@ -1228,22 +1238,33 @@ export default function OperatorDashboard() {
 
   // ─── Derived data ────────────────────────────────────────────────────────────
 
-  const {
-    allPickupOrders,
-    allPickupDeliveries,
-    allWashFoldDropoffs,
-    allWashFoldReady,
-    allPickupPaymentQueue,
-    allWashFoldPaymentQueue,
-    ordersWithCoordinates,
-  } = useMemo(() => {
-    const pickupOrders = dedupeOrders(dashboard?.todays_pickups || [])
-      .filter((o) => !o.service_type || o.service_type === "pickup_delivery")
-      .map((o) => ({ ...o, pickup_time_window: o.pickup_time_window || o.pickup_time || "" }));
+const {
+  allPickupOrders,
+  allPickupDeliveries,
+  allWashFoldDropoffs,
+  allWashFoldReady,
+  allPickupPaymentQueue,
+  allWashFoldPaymentQueue,
+  ordersWithCoordinates,
+} = useMemo(() => {
+  // ✅ Incluir airbnb_host y commercial en pickup
+  const pickupOrders = dedupeOrders(dashboard?.todays_pickups || [])
+    .filter((o) => 
+      !o.service_type || 
+      o.service_type === "pickup_delivery" ||
+      o.service_type === "airbnb_host" ||
+      o.service_type === "commercial"
+    )
+    .map((o) => ({ ...o, pickup_time_window: o.pickup_time_window || o.pickup_time || "" }));
 
-    const pickupDeliveries = dedupeOrders(dashboard?.ready_for_delivery || [])
-      .filter((o) => !o.service_type || o.service_type === "pickup_delivery")
-      .map((o) => ({ ...o, pickup_time_window: o.pickup_time_window || o.pickup_time || "" }));
+  const pickupDeliveries = dedupeOrders(dashboard?.ready_for_delivery || [])
+    .filter((o) => 
+      !o.service_type || 
+      o.service_type === "pickup_delivery" ||
+      o.service_type === "airbnb_host" ||
+      o.service_type === "commercial"
+    )
+    .map((o) => ({ ...o, pickup_time_window: o.pickup_time_window || o.pickup_time || "" }));
 
     const wfDropoffs = dedupeOrders(dashboard?.wash_fold_dropoffs || []).map((o) => ({
       ...o,

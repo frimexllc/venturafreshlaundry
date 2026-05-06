@@ -248,6 +248,23 @@ const BCard = ({ b, delay, dir, accent }) => (
   </Reveal>
 );
 
+// ─── Contact Item — uses <div> wrapper, never <p>, to allow rich content ──────
+// FIX: replaced the generic <p>{c.text}</p> render with <div> to avoid
+//      the React warning "div cannot appear as descendant of p" that occurred
+//      when c.text contained JSX with <div> children (the Hours card).
+const ContactItem = ({ icon, label, text }) => (
+  <div className="flex items-center gap-4 p-5 rounded-2xl cursor-default hover:bg-white hover:shadow-md transition-all duration-300 group">
+    <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0 group-hover:bg-primary/20 group-hover:scale-110 transition-all duration-300">
+      {icon}
+    </div>
+    <div>
+      <p className="text-[11px] text-slate-400 uppercase tracking-widest font-semibold mb-0.5">{label}</p>
+      {/* Use <div> instead of <p> — content may include block-level JSX (e.g. Hours) */}
+      <div className="text-sm text-slate-700 font-medium">{text}</div>
+    </div>
+  </div>
+);
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function LandingPage() {
   const { t, locale } = useLocale();
@@ -293,6 +310,41 @@ export default function LandingPage() {
 
   const marquee = [t("Pickup & Delivery","Recogida y Entrega"), t("Wash & Fold","Lavado y Doblado"), t("Same-Day Service","Servicio en el Día"), t("Airbnb Specialists","Especialistas Airbnb"), t("B2B Solutions","Soluciones B2B"), t("Ventura County","Condado de Ventura")];
 
+  // ── Contact items ─────────────────────────────────────────────────────────
+  // FIX: Hours `text` uses JSX with <div> children — rendered inside <div>,
+  //      not <p>, via the ContactItem component to avoid invalid DOM nesting.
+  const contactItems = [
+    {
+      icon: <MapPin className="h-5 w-5 text-primary" />,
+      label: t("Find us","Encuéntranos"),
+      text: "5722 Telephone Rd #5, Ventura, CA",
+    },
+    {
+      icon: <Clock className="h-5 w-5 text-primary" />,
+      label: t("Hours","Horario"),
+      text: (
+        <div className="text-sm leading-tight">
+          <div>
+            <strong>{t("Self-Service:","Autoservicio:")}</strong>{" "}
+            {t("Mon–Sun 6:00 AM – 10:00 PM","Lun–Dom 6:00 AM – 10:00 PM")}
+          </div>
+          <div className="text-xs text-slate-500">
+            {t("Last wash at 9:00 PM","Última lavada a las 9:00 PM")}
+          </div>
+          <div className="mt-1">
+            <strong>{t("Wash & Fold:","Lavado y Doblado:")}</strong>{" "}
+            {t("Mon–Sun 8:00 AM – 6:00 PM","Lun–Dom 8:00 AM – 6:00 PM")}
+          </div>
+        </div>
+      ),
+    },
+    {
+      icon: <Phone className="h-5 w-5 text-primary" />,
+      label: t("Call or text","Llama o escribe"),
+      text: "(820) 234-8181",
+    },
+  ];
+
   return (<>
     {/* ── Custom Cursor ── */}
     <div className="pointer-events-none fixed inset-0 z-[9999] hidden lg:block">
@@ -317,26 +369,16 @@ export default function LandingPage() {
       preload="auto"
       onCanPlay={() => setVidReady(true)}
     />
-    {/* Capa negra adicional muy sutil para oscurecer un poco más */}
     <div className="absolute inset-0 bg-black/1" />
-
-    {/* Cinematic layers con opacidades ligeramente aumentadas */}
     <div className="absolute inset-0 bg-gradient-to-r from-slate-950/80 via-slate-900/50 to-slate-800/20" />
     <div className="absolute inset-0 bg-gradient-to-t from-slate-950/60 via-transparent to-slate-900/10" />
     <div
       className="absolute inset-0"
-      style={{
-        background:
-          "radial-gradient(ellipse at center, transparent 35%, rgba(0, 0, 0, 0.82) 100%)",
-      }}
+      style={{ background: "radial-gradient(ellipse at center, transparent 35%, rgba(0, 0, 0, 0.82) 100%)" }}
     />
-    {/* Subtle scan-lines texture */}
     <div
       className="absolute inset-0 opacity-[0.03]"
-      style={{
-        backgroundImage:
-          "repeating-linear-gradient(0deg,#000 0px,#000 1px,transparent 1px,transparent 3px)",
-      }}
+      style={{ backgroundImage: "repeating-linear-gradient(0deg,#000 0px,#000 1px,transparent 1px,transparent 3px)" }}
     />
   </div>
         <PublicNav />
@@ -344,7 +386,6 @@ export default function LandingPage() {
         <div className="relative z-10 px-6 sm:px-10 lg:px-14 max-w-7xl mx-auto w-full pt-24">
           <div className="max-w-4xl">
 
-            {/* Eyebrow badge */}
             <HR delay={60}>
               <div className="inline-flex items-center gap-2.5 px-4 py-2 rounded-full bg-white/8 backdrop-blur-lg border border-white/15 mb-8 group">
                 <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"/>
@@ -354,7 +395,6 @@ export default function LandingPage() {
               </div>
             </HR>
 
-            {/* Headline */}
             <HR delay={180}>
               <h1 className="text-5xl sm:text-6xl md:text-7xl lg:text-[88px] font-bold text-white leading-[1.0] mb-1 tracking-tight">
                 {t("We do your","Hacemos tu")}
@@ -371,7 +411,6 @@ export default function LandingPage() {
               </h2>
             </HR>
 
-            {/* CTAs */}
             <HR delay={580}>
               <div className="flex flex-col sm:flex-row gap-4 mb-12 flex-wrap">
                 <Link to="/schedule-pickup">
@@ -379,7 +418,6 @@ export default function LandingPage() {
                     className="relative overflow-hidden bg-primary text-white rounded-full px-10 py-4 text-[13px] font-bold uppercase tracking-widest shadow-2xl shadow-primary/50 cursor-pointer group inline-flex items-center gap-2.5 hover:-translate-y-px transition-all duration-300 active:scale-95">
                     {t("Schedule Pick-Up","Programar Recogida")}
                     <ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-1"/>
-                    {/* Shine */}
                     <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-in-out"/>
                   </Magnetic>
                 </Link>
@@ -398,7 +436,6 @@ export default function LandingPage() {
               </div>
             </HR>
 
-            {/* Service pills */}
             <HR delay={740}>
               <div className="flex flex-wrap gap-3">
                 {[t("Self Service","Autoservicio"), t("Wash & Fold","Lavado y Doblado"), t("Pickup & Delivery","Recogida y Entrega")].map((s,i)=>(
@@ -412,13 +449,11 @@ export default function LandingPage() {
           </div>
         </div>
 
-        {/* Scroll cue */}
         <div className="absolute bottom-32 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-1.5 opacity-50 select-none pointer-events-none">
           <span className="text-[10px] text-white uppercase tracking-[0.25em]">Scroll</span>
           <div className="w-px h-8 bg-gradient-to-b from-white/60 to-transparent animate-pulse"/>
         </div>
 
-        {/* Wave */}
         <div className="absolute bottom-0 left-0 right-0 z-20">
           <svg viewBox="0 0 1440 100" preserveAspectRatio="none" className="w-full h-14 sm:h-20 lg:h-24">
             <path d="M0,50 C200,10 400,90 720,50 C1000,10 1240,90 1440,50 L1440,100 L0,100 Z" fill="white"/>
@@ -450,13 +485,21 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Glow rule */}
       <div className="h-px mx-auto max-w-4xl bg-gradient-to-r from-transparent via-primary/25 to-transparent"/>
 
       {/* ══ FEATURES ════════════════════════════════════════════════════════ */}
       <section className="py-20 sm:py-24 bg-white relative overflow-hidden">
+        {/*
+          FIX: corrected typo in image URL — was "backgound.png", now "background.png".
+          If the image still 404s, replace the URL with your actual hosted asset.
+        */}
         <div className="absolute inset-0 opacity-[0.035] pointer-events-none will-change-transform"
-          style={{backgroundImage:`url(https://images.squarespace-cdn.com/content/v1/696c559a4b2b9b1b0febf8d7/8f9faf72-9068-4289-8f90-869a9b1b00d2/backgound.png)`,backgroundSize:"cover",backgroundPosition:"center",transform:`translateY(${scrollY*0.18}px)`}}/>
+          style={{
+            backgroundImage: `url(https://images.squarespace-cdn.com/content/v1/696c559a4b2b9b1b0febf8d7/8f9faf72-9068-4289-8f90-869a9b1b00d2/background.png)`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+            transform: `translateY(${scrollY * 0.18}px)`,
+          }}/>
         <div className="relative z-10 max-w-6xl mx-auto px-6 sm:px-8 lg:px-12">
           <Reveal dir="blur">
             <p className="text-center text-[11px] font-bold uppercase tracking-[0.22em] text-primary/50 mb-3">{t("Why us","Por qué nosotros")}</p>
@@ -525,12 +568,10 @@ export default function LandingPage() {
       {/* ══ TESTIMONIAL CTA ════════════════════════════════════════════════ */}
       <section className="py-20 sm:py-28 relative overflow-hidden"
         style={{background:"linear-gradient(135deg,#071828 0%,#0c3050 50%,#0c4a6e 100%)"}}>
-        {/* Animated orb mesh */}
         <div className="absolute top-0 left-0 w-[700px] h-[700px] rounded-full opacity-[0.18] will-change-transform pointer-events-none"
           style={{background:"radial-gradient(circle,#0ea5e9 0%,transparent 70%)",transform:`translate(-35%,-35%) translate(${scrollY*0.05}px,${scrollY*0.02}px)`}}/>
         <div className="absolute bottom-0 right-0 w-[500px] h-[500px] rounded-full opacity-[0.13] will-change-transform pointer-events-none"
           style={{background:"radial-gradient(circle,#38bdf8 0%,transparent 70%)",transform:`translate(30%,30%) translate(-${scrollY*0.03}px,-${scrollY*0.02}px)`}}/>
-        {/* Dot grid */}
         <div className="absolute inset-0 opacity-[0.06] pointer-events-none"
           style={{backgroundImage:"radial-gradient(rgba(255,255,255,0.6) 1px,transparent 1px)",backgroundSize:"32px 32px"}}/>
 
@@ -544,7 +585,7 @@ export default function LandingPage() {
           </Reveal>
           <Reveal delay={160}>
             <p className="text-base text-white/50 mb-12 max-w-lg mx-auto leading-relaxed">
-              {t("Hours disappear in laundry. Let us handle it while you focus on what matters.","Las horas desaparecen en la lavandería. Déjanos encargarnos mientras tú disfrutas.") }
+              {t("Hours disappear in laundry. Let us handle it while you focus on what matters.","Las horas desaparecen en la lavandería. Déjanos encargarnos mientras tú disfrutas.")}
             </p>
           </Reveal>
           <Reveal delay={240} dir="scale" dur={900}>
@@ -604,43 +645,15 @@ export default function LandingPage() {
       </section>
 
       {/* ══ CONTACT ════════════════════════════════════════════════════════ */}
+      {/* FIX: replaced inline map + <p>{c.text}</p> with <ContactItem> component
+              that uses <div> for the text slot, preventing invalid DOM nesting
+              when c.text contains block-level JSX (e.g. the Hours card). */}
       <section className="py-12 sm:py-14 border-t border-slate-100 bg-slate-50/60">
         <div className="max-w-5xl mx-auto px-6">
           <div className="grid sm:grid-cols-3 gap-4">
-            {[
-              {icon:<MapPin className="h-5 w-5 text-primary"/>, label:t("Find us","Encuéntranos"), text:"5722 Telephone Rd #5, Ventura, CA"},
-{
-  icon: <Clock className="h-5 w-5 text-primary" />,
-  label: t("Hours","Horario"),
-  text: (
-    <div className="text-sm leading-tight">
-      <div>
-        <strong>{t("Self-Service:", "Autoservicio:")}</strong>{" "}
-        {t("Mon–Sun 6:00 AM – 10:00 PM","Lun–Dom 6:00 AM – 10:00 PM")}
-      </div>
-
-      <div className="text-xs">
-        {t("Last wash at 9:00 PM","Última lavada a las 9:00 PM")}
-      </div>
-
-      <div className="mt-1">
-        <strong>{t("Wash & Fold:", "Lavado y Doblado:")}</strong>{" "}
-        {t("Mon–Sun 8:00 AM – 6:00 PM","Lun–Dom 8:00 AM – 6:00 PM")}
-      </div>
-    </div>
-  )
-},              {icon:<Phone className="h-5 w-5 text-primary"/>, label:t("Call or text","Llama o escribe"), text:"(820) 234-8181"},
-            ].map((c,i)=>(
-              <Reveal key={i} delay={i*80} dir="up">
-                <div className="flex items-center gap-4 p-5 rounded-2xl cursor-default hover:bg-white hover:shadow-md transition-all duration-300 group">
-                  <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0 group-hover:bg-primary/20 group-hover:scale-110 transition-all duration-300">
-                    {c.icon}
-                  </div>
-                  <div>
-                    <p className="text-[11px] text-slate-400 uppercase tracking-widest font-semibold mb-0.5">{c.label}</p>
-                    <p className="text-sm text-slate-700 font-medium">{c.text}</p>
-                  </div>
-                </div>
+            {contactItems.map((c, i) => (
+              <Reveal key={i} delay={i * 80} dir="up">
+                <ContactItem icon={c.icon} label={c.label} text={c.text} />
               </Reveal>
             ))}
           </div>

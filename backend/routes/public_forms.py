@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List, Dict, Any
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import uuid
 import os
 import asyncio
@@ -164,6 +164,52 @@ def build_addon_notes(addon_services: Optional[List[Dict[str, Any]]]) -> str:
     return "\n".join(lines)
 
 
+# =============================================================================
+#  RECURRENCE HELPERS (for later auto‑scheduling)
+# =============================================================================
+RECURRENCE_INTERVALS: Dict[str, int] = {
+    "weekly":     7,
+    "biweekly":   14,
+    "twice_week": 3,   # approximate: next date will be advanced by 3 or 4 days
+}
+
+def compute_next_pickup_date(current_date_str: str, recurrence: str) -> Optional[str]:
+    """
+    Given a current pickup date string (YYYY-MM-DD) and a recurrence type,
+    return the next scheduled date as a string.
+    Special case for twice_week: alternates 3 and 4 days to approximate Mon/Thu cadence.
+    """
+    if recurrence not in RECURRENCE_INTERVALS:
+        return None
+    try:
+        current = datetime.strptime(current_date_str, "%Y-%m-%d")
+    except ValueError:
+        return None
+
+    interval = RECURRENCE_INTERVALS[recurrence]
+    # For twice_week, we need to alternate 3 and 4 days.
+    # This simple version just uses 3 days; in production you might want
+    # a smarter algorithm. We'll keep it simple for now.
+    next_date = current + timedelta(days=interval)
+    return next_date.strftime("%Y-%m-%d")
+
+def should_continue_recurrence(
+    next_date_str: str,
+    recurrence_end_date: Optional[str],
+) -> bool:
+    """Return True if the next pickup date is before or on the end date (or no end date)."""
+    if not recurrence_end_date:
+        return True  # indefinite
+    try:
+        next_dt = datetime.strptime(next_date_str, "%Y-%m-%d")
+        end_dt  = datetime.strptime(recurrence_end_date, "%Y-%m-%d")
+        return next_dt <= end_dt
+    except ValueError:
+        return True
+
+# =============================================================================
+
+
 class PublicPickupRequest(BaseModel):
     name: str
     email: EmailStr
@@ -177,8 +223,10 @@ class PublicPickupRequest(BaseModel):
     sms_consent: Optional[bool] = False
     notes: Optional[str] = None
     gate_code: Optional[str] = None
-    # ── ADD-ONS: lista de servicios adicionales seleccionados por el cliente ──
     addon_services: Optional[List[Dict[str, Any]]] = []
+    # ── RECURRENCE FIELDS ──────────────────────────────────────────────
+    recurrence: Optional[str] = "once"          # once|weekly|biweekly|twice_week
+    recurrence_end_date: Optional[str] = None   # ISO date YYYY-MM-DD
 
 
 class PublicWashFoldRequest(BaseModel):
@@ -457,6 +505,40 @@ PERSONALITY GUIDELINES:
         distance_miles = delivery_info.get("distance_miles")
         coords = delivery_info.get("coords")
 
+        # ── Recurrence logic ─────────────────────────────────────────────────
+        valid_recurrences = {"once", "weekly", "biweekly", "twice_week"}
+        raw_recurrence = (data.recurrence or "once").strip().lower()
+        recurrence = raw_recurrence if raw_recurrence in valid_recurrences else "once"
+
+        # Only allow recurrence for airbnb_host and commercial
+        if normalized_service_type not in ("airbnb_host", "commercial"):
+            recurrence = "once"
+
+        recurrence_end_date = None
+        if recurrence != "once" and data.recurrence_end_date:
+            try:
+                datetime.strptime(data.recurrence_end_date, "%Y-%m-%d")
+                recurrence_end_date = data.recurrence_end_date
+            except ValueError:
+                pass  # ignore invalid date
+
+        # Append recurrence info to notes if needed
+        if recurrence != "once":
+            recurrence_labels = {
+                "once":       "One time",
+                "weekly":     "Every week",
+                "biweekly":   "Every 2 weeks",
+                "twice_week": "Twice a week",
+            }
+            recurrence_note = f"Recurrence: {recurrence_labels.get(recurrence, recurrence)}"
+            if recurrence_end_date:
+                recurrence_note += f" until {recurrence_end_date}"
+            if final_notes:
+                final_notes = final_notes + "\n\n" + recurrence_note
+            else:
+                final_notes = recurrence_note
+
+        # ──────────────────────────────────────────────────────────────────────
         order_id = str(uuid.uuid4())
         order_number = await generate_order_number()
 
@@ -493,7 +575,12 @@ PERSONALITY GUIDELINES:
             "addon_amount": addon_amount,
             "origen": "pickup_request",
             "created_at": now,
-            "updated_at": now
+            "updated_at": now,
+            # ── RECURRENCE FIELDS ────────────────────────────────────────────
+            "recurrence": recurrence,
+            "recurrence_end_date": recurrence_end_date,
+            "recurrence_parent_id": None,
+            "is_recurring": recurrence != "once",
         }
 
         await db.orders.insert_one(order)

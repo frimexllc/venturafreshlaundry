@@ -906,7 +906,7 @@ export function LogisticsMap() {
         onUpdateOrderStatus={updateOrderStatus}
       />
       {/* Componente flotante de navegación interna */}
-      {navigationMode && routeResult && (
+ {navigationMode && routeResult && (
         <InternalNavigation
           stops={routeResult.stops}
           hqLocation={HQ}

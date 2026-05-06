@@ -4,7 +4,7 @@ import os
 import uuid
 import zipfile
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 from typing import Dict, List, Optional
 from zoneinfo import ZoneInfo
 
@@ -25,6 +25,7 @@ from models import (
 )
 from realtime import emit_realtime
 from utils import (
+    TZ_PACIFIC,
     build_address_parts,
     build_display_order_number,
     build_order_times,
@@ -49,7 +50,6 @@ logger = logging.getLogger(__name__)
 # ── Notifications (optional) ─────────────────────────────────────────
 try:
     from notifications import notify_order_created, notify_order_status_changed
-
     NOTIFICATIONS_ENABLED = True
 except ImportError:
     NOTIFICATIONS_ENABLED = False
@@ -62,7 +62,6 @@ try:
         CheckoutStatusResponse,
         StripeCheckout,
     )
-
     STRIPE_CHECKOUT_AVAILABLE = True
 except ImportError:
     STRIPE_CHECKOUT_AVAILABLE = False
@@ -115,6 +114,20 @@ async def create_order(
 
     if not data.pickup_date:
         raise HTTPException(status_code=400, detail="pickup_date es obligatorio")
+
+    # ✅ VALIDACIÓN: Fecha de pickup no puede ser anterior a hoy
+    today_local = datetime.now(TZ_PACIFIC).date()
+    try:
+        pickup_date_obj = datetime.strptime(data.pickup_date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="pickup_date must be YYYY-MM-DD")
+
+    # Solo permitir fechas pasadas si el usuario es admin (opcional)
+    if current_user.get("role") != "admin" and pickup_date_obj < today_local:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Pickup date cannot be in the past. Today is {today_local.isoformat()}"
+        )
 
     if data.pickup_time_window and data.pickup_time_window not in ("8-12", "14-18"):
         raise HTTPException(
@@ -1244,7 +1257,6 @@ async def get_order_ticket(
         "transfer": "Transferencia",
     }.get(payment_method, payment_method.capitalize() or "-")
 
-    # ── FIX 1: <tr><td> correcto (antes era <td><td>) ────────────────
     items_html = ""
     if lbs > 0:
         items_html += (
@@ -1264,28 +1276,18 @@ async def get_order_ticket(
     if processing_fee > 0:
         items_html += f'<tr><td>Processing Fee (3%)</td><td class="r">${processing_fee:.2f}</td></tr>'
 
-    # ── FIX 2: sin [:50] — dirección completa, sin corte forzado ─────
     addr_html = ""
     if pickup_addr:
-        addr_html += (
-            f'<tr><td>Pickup</td>'
-            f'<td class="r addr">{pickup_addr}</td></tr>'
-        )
+        addr_html += f'<tr><td>Pickup</td><td class="r addr">{pickup_addr}</td></tr>'
     if delivery_addr and delivery_addr != pickup_addr:
-        addr_html += (
-            f'<tr><td>Entrega</td>'
-            f'<td class="r addr">{delivery_addr}</td></tr>'
-        )
+        addr_html += f'<tr><td>Entrega</td><td class="r addr">{delivery_addr}</td></tr>'
 
     phone_html = f'<tr><td>Tel</td><td class="r">{phone}</td></tr>' if phone else ""
 
     html = f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>Ticket {order_num}</title>
 <style>
-/* ── Reset ── */
 *{{margin:0;padding:0;box-sizing:border-box}}
-
-/* ── FIX 3: word-break en .r para evitar que texto largo desborde ── */
 body{{
   font-family:'Courier New',monospace;
   width:80mm;
@@ -1305,20 +1307,17 @@ td{{
   font-size:11px;
   vertical-align:top;
 }}
-/* columna izquierda: no se parte */
 td:first-child{{
   white-space:nowrap;
   width:28mm;
   padding-right:4px;
 }}
-/* columna derecha: se adapta y parte palabras largas */
 .r{{
   text-align:right;
   font-weight:600;
   word-break:break-word;
   overflow-wrap:anywhere;
 }}
-/* direcciones: font más pequeño para que quepan */
 .addr{{font-size:10px;font-weight:500}}
 .total-row td{{font-size:14px;font-weight:900;padding:6px 0;border-top:2px solid #111}}
 .badge{{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700}}
@@ -1339,11 +1338,11 @@ td:first-child{{
   <tr><td>Fecha</td><td class="r">{created}</td></tr>
   <tr><td>Cliente</td><td class="r">{name}</td></tr>
   {phone_html}
-  <tr><td>Servicio</td><td class="r">{"Wash &amp; Fold" if "wash" in service.lower() else "Pickup &amp; Delivery"}</td></tr>
+  <tr><td>Servicio</td><td class="r">{"Wash & Fold" if "wash" in service.lower() else "Pickup & Delivery"}</td></tr>
   {addr_html}
 </table>
 <hr>
-<table>
+</table>
   {items_html}
   <tr class="total-row"><td>TOTAL</td><td class="r">${total:.2f}</td></tr>
 </table>
@@ -1549,33 +1548,24 @@ def _build_paid_email_html(
   <tr><td style="background:linear-gradient(135deg,#059669,#10b981);padding:28px 30px;text-align:center;">
     <h1 style="margin:0;color:#fff;font-size:20px;">Ventura Fresh Laundry</h1>
     <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Payment Confirmed</p>
-  </td></tr>
+   </td></tr>
   <tr><td style="padding:30px;text-align:center;">
     <div style="width:64px;height:64px;background:#dcfce7;border-radius:50%;margin:0 auto 16px;line-height:64px;font-size:32px;">✓</div>
     <p style="margin:0;font-size:15px;color:#334155;">Hello <strong>{name}</strong>,</p>
     <p style="margin:10px 0 0;font-size:14px;color:#64748b;">We confirm payment for your order.</p>
     <table style="margin:20px auto;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;" cellpadding="12" cellspacing="0">
-      <tr>
-        <td style="font-size:13px;color:#64748b;border-bottom:1px solid #e2e8f0;">Order</td>
-        <td style="font-weight:700;color:#0f172a;border-bottom:1px solid #e2e8f0;">{order_num}</td>
-      </tr>
-      <tr>
-        <td style="font-size:13px;color:#64748b;border-bottom:1px solid #e2e8f0;">Total</td>
-        <td style="font-weight:800;font-size:18px;color:#059669;border-bottom:1px solid #e2e8f0;">{total_text}</td>
-      </tr>
-      <tr>
-        <td style="font-size:13px;color:#64748b;">Method</td>
-        <td style="font-weight:600;color:#0f172a;">{method_name}</td>
-      </tr>
+      <table><td style="font-size:13px;color:#64748b;border-bottom:1px solid #e2e8f0;">Order</td><td style="font-weight:700;color:#0f172a;border-bottom:1px solid #e2e8f0;">{order_num}</td></tr>
+      <tr><td style="font-size:13px;color:#64748b;border-bottom:1px solid #e2e8f0;">Total</td><td style="font-weight:800;font-size:18px;color:#059669;border-bottom:1px solid #e2e8f0;">{total_text}</td></tr>
+      <tr><td style="font-size:13px;color:#64748b;">Method</td><td style="font-weight:600;color:#0f172a;">{method_name}</td></tr>
     </table>
     <p style="margin:20px 0 0;font-size:13px;color:#64748b;">Thank you for trusting us!</p>
-  </td></tr>
+   </td></tr>
   <tr><td style="padding:0 30px 28px;">
     <hr style="border:none;border-top:1px solid #e2e8f0;margin:0 0 16px;">
     <p style="margin:0;font-size:11px;color:#94a3b8;text-align:center;">Ventura Fresh Laundry · 5722 Telephone Rd Suite 5, Ventura CA 93003 · (805) 515-4030</p>
-  </td></tr>
+   </td></tr>
 </table>
-  </td></tr>
+   </td></tr>
 </table>
 </body></html>"""
 
@@ -1595,20 +1585,11 @@ def _build_unpaid_email_html(
     breakdown_rows = ""
     if lbs > 0:
         breakdown_rows = f"""
-      <tr>
-        <td style="font-size:13px;color:#64748b;padding:10px 16px;border-bottom:1px solid #e2e8f0;">Weight</td>
-        <td style="font-weight:600;color:#0f172a;padding:10px 16px;border-bottom:1px solid #e2e8f0;text-align:right;">{lbs} lbs × ${rate:.2f}/lb</td>
-      </tr>
-      <tr>
-        <td style="font-size:13px;color:#64748b;padding:10px 16px;border-bottom:1px solid #e2e8f0;">Subtotal</td>
-        <td style="font-weight:600;color:#0f172a;padding:10px 16px;border-bottom:1px solid #e2e8f0;text-align:right;">${subtotal:.2f}</td>
-      </tr>"""
+      <tr><td style="font-size:13px;color:#64748b;padding:10px 16px;border-bottom:1px solid #e2e8f0;">Weight</td><td style="font-weight:600;color:#0f172a;padding:10px 16px;border-bottom:1px solid #e2e8f0;text-align:right;">{lbs} lbs × ${rate:.2f}/lb</td></tr>
+      <tr><td style="font-size:13px;color:#64748b;padding:10px 16px;border-bottom:1px solid #e2e8f0;">Subtotal</td><td style="font-weight:600;color:#0f172a;padding:10px 16px;border-bottom:1px solid #e2e8f0;text-align:right;">${subtotal:.2f}</td></tr>"""
         if delivery_fee > 0:
             breakdown_rows += f"""
-      <tr>
-        <td style="font-size:13px;color:#64748b;padding:10px 16px;border-bottom:1px solid #e2e8f0;">Delivery</td>
-        <td style="font-weight:600;color:#0f172a;padding:10px 16px;border-bottom:1px solid #e2e8f0;text-align:right;">${delivery_fee:.2f}</td>
-      </tr>"""
+      <tr><td style="font-size:13px;color:#64748b;padding:10px 16px;border-bottom:1px solid #e2e8f0;">Delivery</td><td style="font-weight:600;color:#0f172a;padding:10px 16px;border-bottom:1px solid #e2e8f0;text-align:right;">${delivery_fee:.2f}</td></tr>"""
 
     pay_btn = ""
     if payment_url:
@@ -1616,7 +1597,7 @@ def _build_unpaid_email_html(
   <tr><td style="padding:24px 30px 0;text-align:center;">
     <a href="{payment_url}" style="display:inline-block;padding:16px 48px;background:#0891b2;color:#fff;text-decoration:none;font-weight:700;font-size:16px;border-radius:12px;">Pay {total_text} Now</a>
     <p style="margin:10px 0 0;font-size:11px;color:#94a3b8;">Secure link · Card, Apple Pay, Google Pay</p>
-  </td></tr>"""
+   </td></tr>"""
 
     return f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
@@ -1627,20 +1608,17 @@ def _build_unpaid_email_html(
   <tr><td style="background:linear-gradient(135deg,#0e7490,#0891b2);padding:28px 30px;">
     <h1 style="margin:0;color:#fff;font-size:20px;">Ventura Fresh Laundry</h1>
     <p style="margin:4px 0 0;color:rgba(255,255,255,.8);font-size:13px;">Your order is ready for payment</p>
-  </td></tr>
+   </td></tr>
   <tr><td style="padding:28px 30px 0;">
     <p style="margin:0;font-size:15px;color:#334155;">Hello <strong>{name}</strong>,</p>
     <p style="margin:8px 0 0;font-size:14px;color:#64748b;">Your order <strong>#{order_num}</strong> is ready. Here are your payment options:</p>
-  </td></tr>
+   </td></tr>
   <tr><td style="padding:20px 30px 0;">
     <table width="100%" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;" cellpadding="0" cellspacing="0">
       {breakdown_rows}
-      <tr>
-        <td style="font-size:14px;font-weight:700;color:#0f172a;padding:14px 16px;background:#f0f9ff;">TOTAL</td>
-        <td style="font-size:20px;font-weight:800;color:#0891b2;padding:14px 16px;background:#f0f9ff;text-align:right;">{total_text}</td>
-      </tr>
+      <tr><td style="font-size:14px;font-weight:700;color:#0f172a;padding:14px 16px;background:#f0f9ff;">TOTAL</td><td style="font-size:20px;font-weight:800;color:#0891b2;padding:14px 16px;background:#f0f9ff;text-align:right;">{total_text}</td></tr>
     </table>
-  </td></tr>
+   </td></tr>
   {pay_btn}
   <tr><td style="padding:20px 30px 0;">
     <table width="100%" style="border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;" cellpadding="0" cellspacing="0">
@@ -1650,20 +1628,20 @@ def _build_unpaid_email_html(
         <p style="margin:2px 0 0;font-size:12px;color:#713f12;">Venmo: <strong>@VFLaundry</strong></p>
         <p style="margin:2px 0 0;font-size:12px;color:#713f12;">Cash App: <strong>$@VFLaundry</strong></p>
         <p style="margin:4px 0 0;font-size:11px;color:#a16207;">Note: Please include your order number {order_num}</p>
-      </td></tr>
+       </td></tr>
       <tr><td style="padding:14px 16px;background:#f0fdf4;">
         <p style="margin:0;font-size:13px;font-weight:700;color:#166534;">Cash</p>
         <p style="margin:4px 0 0;font-size:12px;color:#15803d;">Pay upon pickup or delivery</p>
-      </td></tr>
+       </td></tr>
     </table>
-  </td></tr>
+   </td></tr>
   <tr><td style="padding:24px 30px;">
     <p style="margin:0;font-size:13px;color:#64748b;">Once payment is completed, your order will continue processing.</p>
     <p style="margin:6px 0 0;font-size:13px;color:#64748b;">Thank you for trusting Ventura Fresh Laundry!</p>
     <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0;">
     <p style="margin:0;font-size:11px;color:#94a3b8;text-align:center;">Ventura Fresh Laundry · 5722 Telephone Rd Suite 5, Ventura CA 93003 · (805) 515-4030</p>
-  </td></tr>
+   </td></tr>
 </table>
-  </td></tr>
+   </td></tr>
 </table>
 </body></html>"""

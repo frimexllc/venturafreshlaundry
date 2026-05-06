@@ -51,6 +51,83 @@ const STAGES = [
 
 const WASH_PHASES = ["Pre-wash", "Washing", "Rinse", "Spin", "Done!"];
 
+// ─── Recurrence options ────────────────────────────────────────────────────────
+const RECURRENCE_OPTIONS = [
+  { val: "once",      icon: "1️⃣",  en: "One time",           es: "Una sola vez" },
+  { val: "weekly",    icon: "📅",  en: "Every week",         es: "Cada semana" },
+  { val: "biweekly",  icon: "📆",  en: "Every 2 weeks",      es: "Cada 2 semanas" },
+  { val: "twice_week",icon: "🔄",  en: "Twice a week",       es: "Dos veces por semana" },
+];
+
+const RECURRENCE_LABELS = {
+  once:       { en: "One time",        es: "Una sola vez" },
+  weekly:     { en: "Every week",      es: "Cada semana" },
+  biweekly:   { en: "Every 2 weeks",   es: "Cada 2 semanas" },
+  twice_week: { en: "Twice a week",    es: "Dos veces por semana" },
+};
+
+// ─── Weekday selector for twice_week ──────────────────────────────────────────
+const WEEKDAYS = [
+  { value: "Monday",    label: { en: "Monday",    es: "Lunes" } },
+  { value: "Tuesday",   label: { en: "Tuesday",   es: "Martes" } },
+  { value: "Wednesday", label: { en: "Wednesday", es: "Miércoles" } },
+  { value: "Thursday",  label: { en: "Thursday",  es: "Jueves" } },
+  { value: "Friday",    label: { en: "Friday",    es: "Viernes" } },
+  { value: "Saturday",  label: { en: "Saturday",  es: "Sábado" } },
+  { value: "Sunday",    label: { en: "Sunday",    es: "Domingo" } },
+];
+
+const WeekdaySelector = ({ selectedDays, onChange, locale, t }) => {
+  const toggleDay = (dayValue) => {
+    const newSelected = selectedDays.includes(dayValue)
+      ? selectedDays.filter(d => d !== dayValue)
+      : [...selectedDays, dayValue];
+    onChange(newSelected);
+  };
+
+  const isValid = selectedDays.length === 2;
+  const warning = selectedDays.length > 2 ? t("You can select up to 2 days", "Puedes seleccionar hasta 2 días") : null;
+
+  return (
+    <div style={{ marginTop: 12, animation: "tl_panel .2s ease both" }}>
+      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".13em", color: "hsl(var(--muted-foreground))", marginBottom: 4 }}>
+        {t("Select two days for pickup", "Selecciona dos días para la recogida")} *
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 6 }}>
+        {WEEKDAYS.map(day => {
+          const active = selectedDays.includes(day.value);
+          return (
+            <button
+              key={day.value}
+              type="button"
+              onClick={() => toggleDay(day.value)}
+              style={{
+                padding: "6px 12px",
+                borderRadius: 20,
+                border: `1.5px solid ${active ? "#0ea5e9" : "hsl(var(--border))"}`,
+                background: active ? "rgba(14,165,233,.1)" : "hsl(var(--secondary))",
+                cursor: "pointer",
+                fontSize: 11,
+                fontWeight: active ? 700 : 500,
+                color: active ? "#0ea5e9" : "hsl(var(--foreground))",
+                transition: "all .15s",
+              }}
+            >
+              {locale === "es" ? day.label.es : day.label.en}
+            </button>
+          );
+        })}
+      </div>
+      {warning && <div style={{ fontSize: 10, color: "#dc2626", marginTop: 2 }}>{warning}</div>}
+      {!isValid && selectedDays.length > 0 && selectedDays.length < 2 && (
+        <div style={{ fontSize: 10, color: "#f59e0b", marginTop: 2 }}>
+          {t("Please select exactly two days", "Por favor selecciona exactamente dos días")}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ─── Phone input ───────────────────────────────────────────────────────────────
 const PhoneInput = ({ value, dialCode, dialIso, onValueChange, onDialCodeChange }) => {
   const [open, setOpen]   = useState(false);
@@ -220,12 +297,6 @@ const WashMachine = ({ phase, done }) => {
       <text x="154" y="29" textAnchor="middle" fill="#38bdf8" fontSize="8" fontFamily="monospace" opacity=".9">
         {["--", "30°C", "40°C", "60°C", "40°C", "✓"][Math.min(phase + 1, 5)]}
       </text>
-      <rect x="47" y="49" width="7" height="11" rx="2" fill="#38bdf8" opacity=".6">
-        <animate attributeName="opacity" values=".6;.2;.6" dur="1s" repeatCount="indefinite" />
-      </rect>
-      <rect x="16" y="46" width="42" height="18" rx="5" fill="#0a1825" stroke="#1e3355" strokeWidth=".7" />
-      <rect x="19" y="49" width="12" height="11" rx="2" fill="#091525" />
-      <rect x="33" y="49" width="12" height="11" rx="2" fill="#091525" />
       <circle cx="119" cy="155" r="72" fill="#0b1a2a" stroke="#1a3050" strokeWidth="1.2" />
       <circle cx="119" cy="155" r="62" fill="#071e30" />
       <g clipPath="url(#wm_c)">
@@ -261,8 +332,6 @@ const WashMachine = ({ phase, done }) => {
         </g>
       </g>
       <circle cx="119" cy="155" r="62" fill="none" stroke="#1e3558" strokeWidth="2.5" />
-      <rect x="32" y="272" width="24" height="7" rx="3.5" fill="#0c1825" />
-      <rect x="184" y="272" width="24" height="7" rx="3.5" fill="#0c1825" />
     </svg>
   );
 };
@@ -341,10 +410,23 @@ const PRICING = {
   },
 };
 
-const PlanSelector = ({ value, onChange, serviceType }) => {
+// ─── Membership pricing logic ──────────────────────────────────────────────────
+const getMembershipDiscount = (membershipPlan) => {
+  if (!membershipPlan) return null;
+  const plan = membershipPlan.toLowerCase();
+  if (plan.includes("elite")) return { label: "Elite Member", discount: "member", badge: "👑 Elite" };
+  if (plan.includes("family")) return { label: "Family Plus", discount: "member", badge: "⭐ Family" };
+  if (plan.includes("popular") || plan.includes("most")) return { label: "Member", discount: "member", badge: "✨ Member" };
+  return { label: "Member", discount: "member", badge: "⭐ Member" };
+};
+
+const PlanSelector = ({ value, onChange, serviceType, membershipPlan }) => {
   const { t } = useLocale();
   const isPD = serviceType === "pickup_delivery" || serviceType === "airbnb_host" || serviceType === "commercial";
   const pricing = isPD ? PRICING.pickup_delivery : PRICING.wash_fold;
+  const memberInfo = getMembershipDiscount(membershipPlan);
+  const isMember = !!memberInfo;
+
   const plans = [
     { val: "standard", icon: "🕒", label: t("Standard", "Estándar") },
     { val: "premium",  icon: "⭐", label: "Premium" },
@@ -354,53 +436,134 @@ const PlanSelector = ({ value, onChange, serviceType }) => {
     if (time === "same_day") return t("Same Day", "Mismo día");
     return time;
   };
+
   return (
-    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
-      {plans.map((p) => {
-        const tier = pricing[p.val];
-        const active = value === p.val;
-        return (
-          <button
-            key={p.val}
-            type="button"
-            onClick={() => onChange(p.val)}
-            data-testid={`plan-${p.val}`}
-            style={{
-              flex: 1, padding: "12px 8px", borderRadius: 12, textAlign: "center",
-              border: `2px solid ${active ? "#0ea5e9" : "hsl(var(--border))"}`,
-              background: active ? "rgba(14,165,233,.08)" : "hsl(var(--secondary))",
-              cursor: "pointer", transition: "all .15s",
-              transform: active ? "scale(1.02)" : "scale(1)",
-              fontFamily: "inherit", position: "relative",
-            }}
-          >
-            <div style={{ fontSize: 22, marginBottom: 4 }}>{p.icon}</div>
-            <div style={{ fontSize: 11, fontWeight: 800, color: active ? "#0ea5e9" : "hsl(var(--foreground))", letterSpacing: "0.02em" }}>{p.label}</div>
-            <div style={{ fontSize: 10, color: "#64748b", marginTop: 2, fontWeight: 600 }}>{getTimeLabel(tier.time)}</div>
-            {isPD ? (
-              <div style={{ marginTop: 6 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#059669" }}>
-                  ${tier.member.toFixed(2)}/lb
-                  <span style={{ fontSize: 9, color: "#94a3b8", fontWeight: 500, marginLeft: 3 }}>{t("Member", "Miembro")}</span>
+    <div>
+      {isMember && (
+        <div style={{ marginBottom: 8, padding: "6px 12px", borderRadius: 8,
+          background: "linear-gradient(135deg,rgba(14,165,233,.08),rgba(56,189,248,.04))",
+          border: "1px solid rgba(14,165,233,.25)", display: "flex", alignItems: "center", gap: 7, animation: "tl_panel .2s ease both" }}>
+          <span style={{ fontSize: 14 }}>{memberInfo.badge}</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: "#0ea5e9" }}>
+            {t("Member pricing applied", "Precio de miembro aplicado")} — {memberInfo.label}
+          </span>
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
+        {plans.map((p) => {
+          const tier = pricing[p.val];
+          const active = value === p.val;
+          return (
+            <button key={p.val} type="button" onClick={() => onChange(p.val)}
+              data-testid={`plan-${p.val}`}
+              style={{ flex: 1, padding: "12px 8px", borderRadius: 12, textAlign: "center",
+                border: `2px solid ${active ? "#0ea5e9" : "hsl(var(--border))"}`,
+                background: active ? "rgba(14,165,233,.08)" : "hsl(var(--secondary))",
+                cursor: "pointer", transition: "all .15s",
+                transform: active ? "scale(1.02)" : "scale(1)",
+                fontFamily: "inherit", position: "relative" }}>
+              <div style={{ fontSize: 22, marginBottom: 4 }}>{p.icon}</div>
+              <div style={{ fontSize: 11, fontWeight: 800, color: active ? "#0ea5e9" : "hsl(var(--foreground))", letterSpacing: "0.02em" }}>{p.label}</div>
+              <div style={{ fontSize: 10, color: "#64748b", marginTop: 2, fontWeight: 600 }}>{getTimeLabel(tier.time)}</div>
+              {isPD ? (
+                <div style={{ marginTop: 6 }}>
+                  {isMember ? (
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#059669" }}>
+                      ${tier.member.toFixed(2)}/lb
+                      <span style={{ fontSize: 9, color: "#0ea5e9", fontWeight: 700, marginLeft: 3 }}>MEMBER</span>
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#059669" }}>
+                        ${tier.member.toFixed(2)}/lb
+                        <span style={{ fontSize: 9, color: "#94a3b8", fontWeight: 500, marginLeft: 3 }}>{t("Member", "Miembro")}</span>
+                      </div>
+                      <div style={{ fontSize: 10, color: "#64748b", fontWeight: 600 }}>
+                        ${tier.regular.toFixed(2)}/lb
+                        <span style={{ fontSize: 9, color: "#94a3b8", fontWeight: 500, marginLeft: 3 }}>{t("Regular", "Regular")}</span>
+                      </div>
+                    </>
+                  )}
                 </div>
-                <div style={{ fontSize: 10, color: "#64748b", fontWeight: 600 }}>
-                  ${tier.regular.toFixed(2)}/lb
-                  <span style={{ fontSize: 9, color: "#94a3b8", fontWeight: 500, marginLeft: 3 }}>{t("Regular", "Regular")}</span>
+              ) : (
+                <div style={{ marginTop: 6, fontSize: 12, fontWeight: 700, color: "#059669" }}>
+                  ${tier.price.toFixed(2)}/lb
                 </div>
-              </div>
-            ) : (
-              <div style={{ marginTop: 6, fontSize: 12, fontWeight: 700, color: "#059669" }}>
-                ${tier.price.toFixed(2)}/lb
-              </div>
-            )}
-          </button>
-        );
-      })}
+              )}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 };
 
-// ─── Service Info Panels (unchanged) ──────────────────────────────────────────
+// ─── Recurrence Selector (with weekday picker for twice_week) ─────────────────
+const RecurrenceSelector = ({ value, onChange, endDate, onEndDateChange, selectedDays, onDaysChange, locale, t }) => {
+  const isRecurring = value && value !== "once";
+  const showDaysSelector = value === "twice_week";
+
+  return (
+    <div style={{ animation: "tl_panel .25s ease both" }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {RECURRENCE_OPTIONS.map((o) => {
+          const active = value === o.val;
+          return (
+            <button key={o.val} type="button" onClick={() => onChange(o.val)}
+              style={{ flex: "1 1 calc(50% - 8px)", minWidth: 120, padding: "10px 8px", borderRadius: 10,
+                textAlign: "center", border: `1.5px solid ${active ? "#0ea5e9" : "hsl(var(--border))"}`,
+                background: active ? "rgba(14,165,233,.08)" : "hsl(var(--secondary))",
+                cursor: "pointer", transition: "all .15s", fontFamily: "inherit",
+                transform: active ? "scale(1.02)" : "scale(1)" }}>
+              <span style={{ fontSize: 18, display: "block", marginBottom: 3 }}>{o.icon}</span>
+              <span style={{ fontSize: 11, fontWeight: active ? 700 : 500,
+                color: active ? "#0ea5e9" : "hsl(var(--foreground))" }}>
+                {locale === "es" ? o.es : o.en}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {showDaysSelector && (
+        <WeekdaySelector
+          selectedDays={selectedDays}
+          onChange={onDaysChange}
+          locale={locale}
+          t={t}
+        />
+      )}
+
+      {isRecurring && (
+        <div style={{ marginTop: 12, animation: "tl_panel .2s ease both" }}>
+          <div style={{ padding: "10px 14px", borderRadius: 9,
+            background: "linear-gradient(135deg,rgba(14,165,233,.06),rgba(56,189,248,.03))",
+            border: "1px solid rgba(14,165,233,.2)", marginBottom: 10 }}>
+            <div style={{ fontSize: 11, color: "#0ea5e9", fontWeight: 700, marginBottom: 2 }}>
+              🔄 {t("Recurring schedule activated", "Programación recurrente activada")}
+            </div>
+            <div style={{ fontSize: 10, color: "hsl(var(--muted-foreground))" }}>
+              {t("Pickups will be auto-scheduled based on your first pickup date.",
+                 "Los pickups se programarán automáticamente desde tu primera fecha.")}
+            </div>
+          </div>
+          <FF label={t("Recurring until (optional)", "Recurrente hasta (opcional)")}>
+            <FInput type="date" value={endDate || ""}
+              onChange={(e) => onEndDateChange(e.target.value)}
+              min={new Date().toISOString().split("T")[0]}
+              style={{ cursor: "pointer" }} />
+            <div style={{ fontSize: 10, color: "hsl(var(--muted-foreground))", marginTop: 3 }}>
+              {t("Leave empty for indefinite recurring pickups",
+                 "Deja vacío para pickups recurrentes indefinidos")}
+            </div>
+          </FF>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── Service Info Panels ───────────────────────────────────────────────────────
 const PickupDeliveryInfoPanel = ({ t }) => (
   <div style={{ padding: "13px 15px", borderRadius: 11, marginTop: 8,
     background: "linear-gradient(135deg,rgba(14,165,233,.06),rgba(56,189,248,.04))",
@@ -421,10 +584,6 @@ const PickupDeliveryInfoPanel = ({ t }) => (
           <span style={{ fontSize: 13 }}>{f.icon}</span><span>{t(f.en, f.es)}</span>
         </div>
       ))}
-    </div>
-    <div style={{ padding: "7px 10px", borderRadius: 8, background: "rgba(14,165,233,.07)", fontSize: 10, color: "#0369a1", lineHeight: 1.55 }}>
-      {t("💡 We'll pick up your laundry at your convenience, wash with care, and deliver back fresh & folded.",
-         "💡 Recogemos tu ropa cuando prefieras, la lavamos con cuidado y te la devolvemos fresca y doblada.")}
     </div>
   </div>
 );
@@ -487,7 +646,7 @@ const CommercialInfoPanel = ({ t }) => (
   </div>
 );
 
-// ─── ADD-ON SERVICES SECTION (dynamic from admin) ────────────────────────────
+// ─── ADD-ON SERVICES SECTION ──────────────────────────────────────────────────
 const PRICE_UNIT_LABELS = {
   per_lb:    { en: "/ lb",    es: "/ lb"    },
   per_order: { en: "/ order", es: "/ orden" },
@@ -512,13 +671,10 @@ function getServiceIcon(name = "", category = "") {
 
 const AddonServicesSection = ({ services, selectedIds, onToggle, t, locale }) => {
   if (!services || services.length === 0) return null;
-
   return (
     <div style={{ animation: "tl_panel .3s ease both" }}>
-      <div style={{
-        display: "flex", alignItems: "center", gap: 8, marginBottom: 10,
-        paddingBottom: 8, borderBottom: "1px solid hsl(var(--border))",
-      }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10,
+        paddingBottom: 8, borderBottom: "1px solid hsl(var(--border))" }}>
         <div style={{ width: 28, height: 28, borderRadius: 8, background: "rgba(14,165,233,.1)", display: "flex",
           alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>✨</div>
         <div>
@@ -530,44 +686,30 @@ const AddonServicesSection = ({ services, selectedIds, onToggle, t, locale }) =>
           </div>
         </div>
       </div>
-
       <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
         {services.map((svc) => {
           const active = selectedIds.has(svc.id);
           const icon = getServiceIcon(svc.name, svc.category || "");
           const unitLabel = PRICE_UNIT_LABELS[svc.price_unit] || { en: "", es: "" };
           const unit = locale === "es" ? unitLabel.es : unitLabel.en;
-
           return (
-            <button
-              key={svc.id}
-              type="button"
-              onClick={() => onToggle(svc)}
-              style={{
-                display: "flex", alignItems: "center", gap: 11, padding: "10px 12px",
+            <button key={svc.id} type="button" onClick={() => onToggle(svc)}
+              style={{ display: "flex", alignItems: "center", gap: 11, padding: "10px 12px",
                 borderRadius: 10, textAlign: "left", width: "100%",
                 border: `1.5px solid ${active ? "#0ea5e9" : "hsl(var(--border))"}`,
                 background: active ? "rgba(14,165,233,.06)" : "hsl(var(--secondary))",
                 cursor: "pointer", transition: "all .15s", fontFamily: "inherit",
                 transform: active ? "scale(1.005)" : "scale(1)",
-                boxShadow: active ? "0 0 0 3px rgba(14,165,233,.1)" : "none",
-              }}
-            >
-              <div style={{
-                width: 18, height: 18, borderRadius: 5, flexShrink: 0,
+                boxShadow: active ? "0 0 0 3px rgba(14,165,233,.1)" : "none" }}>
+              <div style={{ width: 18, height: 18, borderRadius: 5, flexShrink: 0,
                 border: `2px solid ${active ? "#0ea5e9" : "hsl(var(--border))"}`,
                 background: active ? "#0ea5e9" : "transparent",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                transition: "all .15s",
-              }}>
+                display: "flex", alignItems: "center", justifyContent: "center", transition: "all .15s" }}>
                 {active && <svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>}
               </div>
-              <div style={{
-                width: 32, height: 32, borderRadius: 8, flexShrink: 0,
+              <div style={{ width: 32, height: 32, borderRadius: 8, flexShrink: 0,
                 background: active ? "rgba(14,165,233,.12)" : "hsl(var(--background))",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 16, transition: "all .15s",
-              }}>{icon}</div>
+                display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, transition: "all .15s" }}>{icon}</div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, lineHeight: 1.3, color: active ? "#0ea5e9" : "hsl(var(--foreground))", transition: "color .15s" }}>
                   {svc.name}
@@ -586,13 +728,10 @@ const AddonServicesSection = ({ services, selectedIds, onToggle, t, locale }) =>
           );
         })}
       </div>
-
       {selectedIds.size > 0 && (
-        <div style={{
-          marginTop: 9, padding: "7px 11px", borderRadius: 8,
+        <div style={{ marginTop: 9, padding: "7px 11px", borderRadius: 8,
           background: "rgba(14,165,233,.08)", border: "1px solid rgba(14,165,233,.2)",
-          display: "flex", alignItems: "center", gap: 7, animation: "tl_panel .2s ease both",
-        }}>
+          display: "flex", alignItems: "center", gap: 7, animation: "tl_panel .2s ease both" }}>
           <span style={{ fontSize: 13 }}>✅</span>
           <span style={{ fontSize: 11, fontWeight: 600, color: "#0ea5e9" }}>
             {selectedIds.size} {t(selectedIds.size === 1 ? "add-on selected" : "add-ons selected",
@@ -604,7 +743,7 @@ const AddonServicesSection = ({ services, selectedIds, onToggle, t, locale }) =>
   );
 };
 
-// ─── Other form components ────────────────────────────────────────────────────
+// ─── Temp + time selectors ─────────────────────────────────────────────────────
 const TempRow = ({ value, onChange, options }) => (
   <div style={{ display: "flex", gap: 6 }}>
     {options.map((o) => (
@@ -668,7 +807,7 @@ const SumBlock = ({ title, rows }) => (
   </div>
 );
 
-// ─── Conveyor track ─────────────────────────────────────────────────────────────
+// ─── Conveyor track ────────────────────────────────────────────────────────────
 const ConveyorTrack = ({ cur, locale, onStageClick }) => {
   const stageRefs = useRef([]);
   const trackRef  = useRef(null);
@@ -693,11 +832,11 @@ const ConveyorTrack = ({ cur, locale, onStageClick }) => {
           <div style={{ position: "absolute", top: 38, left: 0, right: 0, height: 4,
             background: "repeating-linear-gradient(90deg,#1e3558 0,#1e3558 18px,#0b1929 18px,#0b1929 24px)",
             borderRadius: 2, zIndex: 0 }} />
-          <div style={{
-            position: "absolute", top: 10, left: riderLeft,
+          <div style={{ position: "absolute", top: 10, left: riderLeft,
             transition: "left .6s cubic-bezier(.34,1.56,.64,1)", zIndex: 3, pointerEvents: "none",
-            animation: "tl_float 4s ease-in-out infinite",
-          }}><RiderMachine step={cur} /></div>
+            animation: "tl_float 4s ease-in-out infinite" }}>
+            <RiderMachine step={cur} />
+          </div>
           {STAGES.map((s, i) => (
             <React.Fragment key={`stage-group-${i}`}>
               {i > 0 && (
@@ -720,8 +859,7 @@ const ConveyorTrack = ({ cur, locale, onStageClick }) => {
                   border: `2.5px solid ${i < cur ? "#0ea5e9" : i === cur ? "#38bdf8" : "#1e3558"}`,
                   boxShadow: i === cur ? "0 0 0 6px rgba(14,165,233,.2)" : "none",
                   transform: i === cur ? "scale(1.18)" : "scale(1)",
-                  transition: "all .25s cubic-bezier(.34,1.56,.64,1)",
-                }}>
+                  transition: "all .25s cubic-bezier(.34,1.56,.64,1)" }}>
                   {s.icon}
                   {i === cur && <div style={{ position: "absolute", inset: -8, borderRadius: "50%", border: "2px solid rgba(14,165,233,.35)", animation: "tl_pulse 1.6s ease-out infinite" }} />}
                   {i < cur && <div style={{ position: "absolute", bottom: -2, right: -2, width: 16, height: 16,
@@ -746,7 +884,7 @@ const ConveyorTrack = ({ cur, locale, onStageClick }) => {
   );
 };
 
-// ─── localStorage key ──────────────────────────────────────────────────────────
+// ─── localStorage keys ─────────────────────────────────────────────────────────
 const LS_FORM_KEY = "vfl_pickup_form";
 const LS_STEP_KEY = "vfl_pickup_step";
 
@@ -755,6 +893,9 @@ const EMPTY = {
   contact_method: "", sms_consent: false,
   address_line1: "", address_line2: "", city: "", state: "", zip_code: "", addr_notes: "",
   service_type: "", service_plan: "",
+  recurrence: "once",
+  recurrence_end_date: "",
+  recurrence_days: [],
   wash_temp: "", dry_temp: "", notes: "",
   pickup_date: "", pickup_time: "", terms: false,
   distance_miles: null,
@@ -763,10 +904,7 @@ const EMPTY = {
 const loadSavedForm = () => {
   try {
     const saved = localStorage.getItem(LS_FORM_KEY);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      return { ...EMPTY, ...parsed };
-    }
+    if (saved) return { ...EMPTY, ...JSON.parse(saved) };
   } catch {}
   return { ...EMPTY };
 };
@@ -782,7 +920,7 @@ const loadSavedStep = () => {
   return 0;
 };
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+// ─── Main Component ────────────────────────────────────────────────────────────
 export default function SchedulePickup() {
   const { t, locale } = useLocale();
   const topRef = useRef(null);
@@ -795,7 +933,8 @@ export default function SchedulePickup() {
   const [washPhase, setWashPhase] = useState(-1);
   const [washDone, setWashDone] = useState(false);
 
-  // Add‑ons
+  const [membershipInfo, setMembershipInfo] = useState(null);
+
   const [addonServices, setAddonServices] = useState([]);
   const [selectedAddons, setSelectedAddons] = useState(new Map());
   const [showResumeBanner, setShowResumeBanner] = useState(() => {
@@ -807,58 +946,61 @@ export default function SchedulePickup() {
     } catch { return false; }
   });
 
-  // Distancia
   const [distanceError, setDistanceError] = useState("");
   const [distanceValid, setDistanceValid] = useState(false);
   const checkDistanceDebounce = useRef(null);
 
   const setF = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
-  // Función para validar distancia mediante backend
+  useEffect(() => {
+    try {
+      const cd = localStorage.getItem("customer_data");
+      if (cd) {
+        const c = JSON.parse(cd);
+        if (c.membership_plan || c.membership_status === "active") {
+          setMembershipInfo({
+            plan: c.membership_plan,
+            status: c.membership_status,
+          });
+        }
+      }
+    } catch {}
+  }, []);
+
   const checkDistance = useCallback(async (zipCode) => {
     if (!zipCode || zipCode.trim().length < 5) {
-      setDistanceError("");
-      setDistanceValid(false);
-      return false;
+      setDistanceError(""); setDistanceValid(false); return false;
     }
     try {
       const res = await axios.post(`${API}/delivery-rules/calculate-fee`, {
-        zip_code: zipCode,
-        distance_miles: null,
+        zip_code: zipCode, distance_miles: null,
       });
       if (res.data && res.data.eligible === false) {
         setDistanceError(res.data.reason || t("Address outside delivery area (max 10 miles)", "Dirección fuera del área de entrega (máx 10 millas)"));
-        setDistanceValid(false);
-        return false;
+        setDistanceValid(false); return false;
       } else {
-        setDistanceError("");
-        setDistanceValid(true);
+        setDistanceError(""); setDistanceValid(true);
         if (res.data.distance_miles) setF("distance_miles", res.data.distance_miles);
         return true;
       }
     } catch (err) {
       const msg = err.response?.data?.detail || t("Could not verify address distance", "No se pudo verificar la distancia");
-      setDistanceError(msg);
-      setDistanceValid(false);
-      return false;
+      setDistanceError(msg); setDistanceValid(false); return false;
     }
-  }, [t, setF]);
+  }, [t]);
 
-  // Efecto para validar automáticamente cuando cambia el código postal (debounce)
   useEffect(() => {
     if (checkDistanceDebounce.current) clearTimeout(checkDistanceDebounce.current);
     checkDistanceDebounce.current = setTimeout(() => {
       if (form.zip_code && form.zip_code.trim().length >= 5) {
         checkDistance(form.zip_code);
       } else {
-        setDistanceError("");
-        setDistanceValid(false);
+        setDistanceError(""); setDistanceValid(false);
       }
     }, 500);
     return () => clearTimeout(checkDistanceDebounce.current);
   }, [form.zip_code, checkDistance]);
 
-  // Fetch add‑ons
   useEffect(() => {
     const load = async () => {
       try {
@@ -869,6 +1011,14 @@ export default function SchedulePickup() {
     load();
   }, []);
 
+  useEffect(() => {
+    if (form.service_type === "pickup_delivery") {
+      setF("recurrence", "once");
+      setF("recurrence_end_date", "");
+      setF("recurrence_days", []);
+    }
+  }, [form.service_type]);
+
   const toggleAddon = (svc) => {
     setSelectedAddons(prev => {
       const next = new Map(prev);
@@ -878,7 +1028,6 @@ export default function SchedulePickup() {
     });
   };
 
-  // Persist to localStorage
   useEffect(() => {
     try { localStorage.setItem(LS_FORM_KEY, JSON.stringify(form)); } catch {}
   }, [form]);
@@ -886,7 +1035,6 @@ export default function SchedulePickup() {
     try { localStorage.setItem(LS_STEP_KEY, String(cur)); } catch {}
   }, [cur]);
 
-  // Pre‑fill from customer_data
   useEffect(() => {
     try {
       const cd = localStorage.getItem("customer_data");
@@ -918,6 +1066,8 @@ export default function SchedulePickup() {
     } catch {}
   };
 
+  const showRecurrenceSelector = form.service_type === "airbnb_host" || form.service_type === "commercial";
+
   const validate = () => {
     const err = (msg) => { toast.error(msg); return false; };
     if (cur === 0) {
@@ -933,10 +1083,7 @@ export default function SchedulePickup() {
       if (!form.city.trim()) return err(t("Enter your city", "Ingresa tu ciudad"));
       if (!form.state.trim()) return err(t("Enter your state", "Ingresa tu estado"));
       if (!form.zip_code.trim()) return err(t("Enter your ZIP", "Ingresa tu código postal"));
-      if (distanceError) {
-        toast.error(distanceError);
-        return false;
-      }
+      if (distanceError) { toast.error(distanceError); return false; }
       if (!distanceValid && form.zip_code && form.zip_code.trim().length >= 5) {
         toast.error(t("Please check your address, it may be outside delivery area", "Verifica tu dirección, podría estar fuera del área de entrega"));
         return false;
@@ -945,6 +1092,9 @@ export default function SchedulePickup() {
     if (cur === 2) {
       if (!form.service_type) return err(t("Select a service", "Selecciona un servicio"));
       if (form.service_type === "pickup_delivery" && !form.service_plan) return err(t("Select a turnaround plan", "Selecciona un plan de tiempo"));
+      if (form.recurrence === "twice_week" && (!form.recurrence_days || form.recurrence_days.length !== 2)) {
+        return err(t("Please select exactly two days for twice-a-week pickup", "Por favor selecciona exactamente dos días para recogidas dos veces por semana"));
+      }
     }
     if (cur === 3 && !form.pickup_time) return err(t("Select a time window", "Selecciona un horario"));
     if (cur === 4 && !form.terms) return err(t("Accept terms to continue", "Acepta los términos"));
@@ -953,13 +1103,10 @@ export default function SchedulePickup() {
 
   const handleNext = async () => {
     if (!validate()) return;
-
     if (cur === 1) {
-      // Validación adicional por si acaso
       const isOk = await checkDistance(form.zip_code);
       if (!isOk) return;
     }
-
     if (cur < 4) { goTo(cur + 1); return; }
 
     setWashPhase(0); setWashDone(false);
@@ -985,21 +1132,35 @@ export default function SchedulePickup() {
         addonNote,
       ].filter(Boolean).join("\n");
 
+      let recurrencePayload = { recurrence: "once", recurrence_end_date: null, recurrence_days: null };
+      if (showRecurrenceSelector && form.recurrence && form.recurrence !== "once") {
+        recurrencePayload = {
+          recurrence: form.recurrence,
+          recurrence_end_date: form.recurrence_end_date || null,
+          recurrence_days: form.recurrence === "twice_week" ? form.recurrence_days : null,
+        };
+      }
+
       await axios.post(`${API}/public/pickup-request`, {
         name: `${form.first_name} ${form.last_name}`.trim(),
-        email: form.email.trim(), phone: fullPhone,
-        address: fullAddress, pickup_date: form.pickup_date,
-        pickup_time: form.pickup_time, service_type: form.service_type,
+        email: form.email.trim(),
+        phone: fullPhone,
+        address: fullAddress,
+        pickup_date: form.pickup_date,
+        pickup_time: form.pickup_time,
+        service_type: form.service_type,
         service_plan: form.service_plan,
-        contact_method: form.contact_method, sms_consent: form.sms_consent, notes,
+        contact_method: form.contact_method,
+        sms_consent: form.sms_consent,
+        notes,
         addon_services: addonList.map(s => ({ id: s.id, name: s.name, price: s.price, price_unit: s.price_unit, category: s.category })),
+        ...recurrencePayload,
       });
     } catch (e) { toast.error(getErr(e)); }
     finally { setSubmitting(false); }
 
     setTimeout(() => {
-      setWashPhase(5);
-      setWashDone(true);
+      setWashPhase(5); setWashDone(true);
       clearSavedSession();
     }, cum + 400);
   };
@@ -1008,12 +1169,10 @@ export default function SchedulePickup() {
     setForm({ ...EMPTY });
     setCur(0);
     setFormKey(k => k + 1);
-    setWashPhase(-1);
-    setWashDone(false);
+    setWashPhase(-1); setWashDone(false);
     setShowResumeBanner(false);
     setSelectedAddons(new Map());
-    setDistanceError("");
-    setDistanceValid(false);
+    setDistanceError(""); setDistanceValid(false);
     clearSavedSession();
     scrollToForm();
   };
@@ -1033,17 +1192,23 @@ export default function SchedulePickup() {
     express:  t("Express (Same Day)", "Express (mismo día)"),
   };
   const tempMap = { cold: "Cold ≤30°C", warm: "Warm 40°C", hot: "Hot 60°C+", any: t("Any temperature", "Cualquier temperatura") };
-  const dryMap  = {
-    low:    t("Low heat",    "Calor bajo"),
-    medium: t("Medium heat", "Calor medio"),
-    high:   t("High heat",   "Calor alto"),
-    air:    t("Air dry",     "Secado al aire"),
-  };
+  const dryMap  = { low: t("Low heat","Calor bajo"), medium: t("Medium heat","Calor medio"), high: t("High heat","Calor alto"), air: t("Air dry","Secado al aire") };
   const timeMap = { "8am-12pm": "8:00 AM – 12:00 PM", "2pm-6pm": "2:00 PM – 6:00 PM" };
   const cmMap   = { phone: t("Phone call", "Llamada"), text: "Text/SMS", email: "Email" };
 
   const selectedAddonsList = Array.from(selectedAddons.values());
   const selectedAddonIds   = new Set(selectedAddons.keys());
+
+  const recurrenceLabel = form.recurrence && form.recurrence !== "once"
+    ? (locale === "es" ? RECURRENCE_LABELS[form.recurrence]?.es : RECURRENCE_LABELS[form.recurrence]?.en)
+    : null;
+
+  const twiceWeekDays = (form.recurrence === "twice_week" && form.recurrence_days.length === 2)
+    ? form.recurrence_days.map(d => {
+        const found = WEEKDAYS.find(w => w.value === d);
+        return locale === "es" ? found?.label.es : found?.label.en;
+      }).join(" / ")
+    : null;
 
   return (
     <div className="min-h-screen" style={{ background: "hsl(var(--background))" }}>
@@ -1068,7 +1233,6 @@ export default function SchedulePickup() {
         position: "relative", overflow: "hidden",
       }}>
         <div style={{ position: "absolute", inset: 0, backgroundImage: "linear-gradient(rgba(255,255,255,.022) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)", backgroundSize: "44px 44px", pointerEvents: "none" }} />
-        <div style={{ position: "absolute", top: -80, left: -60, width: 340, height: 340, borderRadius: "50%", background: "radial-gradient(circle,rgba(14,165,233,.14) 0%,transparent 65%)", filter: "blur(40px)", pointerEvents: "none" }} />
         <div style={{ width: "100%", maxHeight: 280, overflow: "hidden", position: "relative" }}>
           <img src={heroBanner} alt="Ventura Fresh Laundry"
             style={{ width: "100%", height: 280, objectFit: "cover", objectPosition: "center", display: "block", opacity: 0.75 }} />
@@ -1095,20 +1259,16 @@ export default function SchedulePickup() {
       {/* Main content */}
       <section style={{ padding: "0 0 64px" }}>
         <div style={{ maxWidth: 800, margin: "0 auto", padding: "0 16px" }}>
-
           <div ref={formRef} id="schedule-pickup-form" style={{ marginTop: "-20px", position: "relative", zIndex: 2 }}>
             <ConveyorTrack cur={washPhase >= 0 ? 4 : cur} locale={locale} onStageClick={(i) => { if (washPhase < 0) goTo(i); }} />
           </div>
 
           {/* Resume session banner */}
           {showResumeBanner && washPhase < 0 && (
-            <div style={{
-              marginTop: 12, padding: "11px 16px", borderRadius: 12,
+            <div style={{ marginTop: 12, padding: "11px 16px", borderRadius: 12,
               background: "linear-gradient(135deg,rgba(14,165,233,.08),rgba(56,189,248,.04))",
               border: "1px solid rgba(14,165,233,.3)",
-              display: "flex", alignItems: "center", gap: 10,
-              animation: "tl_panel .3s ease both",
-            }}>
+              display: "flex", alignItems: "center", gap: 10, animation: "tl_panel .3s ease both" }}>
               <span style={{ fontSize: 18, flexShrink: 0 }}>💾</span>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: "#0ea5e9" }}>{t("You have a saved session", "Tienes una sesión guardada")}</div>
@@ -1117,11 +1277,11 @@ export default function SchedulePickup() {
                      `Retomando desde el paso ${cur + 1}${form.first_name ? ` · ¡Hola, ${form.first_name}!` : ""}`)}
                 </div>
               </div>
-              <button type="button" onClick={() => { setShowResumeBanner(false); }}
+              <button type="button" onClick={() => setShowResumeBanner(false)}
                 style={{ fontSize: 11, fontWeight: 700, color: "#0ea5e9", background: "none", border: "none", cursor: "pointer", padding: "4px 8px", fontFamily: "inherit" }}>
                 {t("Continue →", "Continuar →")}
               </button>
-              <button type="button" onClick={() => { handleReset(); }}
+              <button type="button" onClick={handleReset}
                 style={{ fontSize: 11, color: "hsl(var(--muted-foreground))", background: "none", border: "none", cursor: "pointer", padding: "4px 8px", fontFamily: "inherit" }}>
                 {t("Start over", "Empezar de nuevo")}
               </button>
@@ -1137,9 +1297,6 @@ export default function SchedulePickup() {
                   <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'Manrope',sans-serif", color: "white", marginTop: 14 }}>
                     {[t("Pre-rinsing…","Pre-enjuague…"), t("Washing…","Lavando…"), t("Rinsing…","Enjuagando…"), t("Spinning…","Centrifugando…"), t("Done!","¡Listo!")][Math.min(washPhase, 4)]}
                   </div>
-                  <div style={{ fontSize: 11, color: "rgba(255,255,255,.4)", marginTop: 4 }}>
-                    {["Getting things started", "Cleaning in progress", "Rinsing with care", "Almost there!", "✓ Confirmed"][Math.min(washPhase, 4)]}
-                  </div>
                   <div style={{ display: "flex", justifyContent: "center", gap: 10, marginTop: 16 }}>
                     {WASH_PHASES.map((p, i) => (
                       <div key={i} style={{ textAlign: "center", width: 52 }}>
@@ -1153,25 +1310,30 @@ export default function SchedulePickup() {
                 <div style={{ animation: "tl_panel .5s ease both" }}>
                   <div style={{ width: 180, margin: "0 auto", animation: "tl_float 4s ease-in-out infinite" }}><WashMachine phase={5} done={true} /></div>
                   <div style={{ width: 60, height: 60, borderRadius: "50%", background: "rgba(52,211,153,.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, margin: "12px auto 10px" }}>🎉</div>
-                  <div style={{ fontSize: 20, fontWeight: 800, fontFamily: "'Manrope',sans-serif", color: "white", marginBottom: 6 }}>{t("Request submitted!", "¡Solicitud enviada!")}</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, fontFamily: "'Manrope',sans-serif", color: "white", marginBottom: 6 }}>
+                    {t("Request submitted!", "¡Solicitud enviada!")}
+                  </div>
+
+                  {showRecurrenceSelector && form.recurrence && form.recurrence !== "once" && (
+                    <div style={{ margin: "0 auto 16px", maxWidth: 320, padding: "10px 14px", borderRadius: 10,
+                      background: "rgba(14,165,233,.1)", border: "1px solid rgba(14,165,233,.2)", animation: "tl_panel .4s ease both" }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#38bdf8", marginBottom: 3 }}>
+                        🔄 {t("Recurring schedule confirmed", "Programación recurrente confirmada")}
+                      </div>
+                      <div style={{ fontSize: 10, color: "rgba(255,255,255,.55)" }}>
+                        {form.recurrence === "twice_week" && twiceWeekDays
+                          ? `${recurrenceLabel} (${twiceWeekDays})`
+                          : recurrenceLabel}
+                        {form.recurrence_end_date ? ` · ${t("Until", "Hasta")} ${form.recurrence_end_date}` : ` · ${t("Indefinite", "Indefinido")}`}
+                      </div>
+                    </div>
+                  )}
+
                   <p style={{ fontSize: 13, color: "rgba(255,255,255,.45)", maxWidth: 280, lineHeight: 1.65, margin: "0 auto 20px" }}>
                     {t("Our team will confirm your pickup via", "Nuestro equipo confirmará por")}{" "}
                     <strong style={{ color: "#38bdf8" }}>{cmMap[form.contact_method] || t("your preferred method", "tu método preferido")}</strong>.
                   </p>
-                  {selectedAddonsList.length > 0 && (
-                    <div style={{ margin: "0 auto 20px", maxWidth: 280, padding: "10px 14px", borderRadius: 10, background: "rgba(14,165,233,.1)", border: "1px solid rgba(14,165,233,.2)", textAlign: "left" }}>
-                      <div style={{ fontSize: 10, fontWeight: 700, color: "#38bdf8", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 6 }}>
-                        {t("Add-ons requested", "Servicios adicionales solicitados")}
-                      </div>
-                      {selectedAddonsList.map((s) => (
-                        <div key={s.id} style={{ fontSize: 11, color: "rgba(255,255,255,.6)", display: "flex", justifyContent: "space-between", padding: "2px 0" }}>
-                          <span>✓ {s.name}</span>
-                          {s.price != null && <span style={{ color: "#38bdf8", fontWeight: 600 }}>${s.price}</span>}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <button onClick={handleReset} style={{ padding: "11px 24px", borderRadius: 10, border: "none", background: "linear-gradient(135deg,#0ea5e9,#2563eb)", color: "white", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", boxShadow: "var(--shadow-sky)" }}>
+                  <button onClick={handleReset} style={{ padding: "11px 24px", borderRadius: 10, border: "none", background: "linear-gradient(135deg,#0ea5e9,#2563eb)", color: "white", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
                     🔄 {t("Schedule another", "Programar otra")}
                   </button>
                 </div>
@@ -1241,7 +1403,7 @@ export default function SchedulePickup() {
                             setF("address_line1", addr.street);
                             if (addr.city) setF("city", addr.city);
                             if (addr.state) setF("state", addr.state.length > 2 ? addr.state.substring(0, 2).toUpperCase() : addr.state.toUpperCase());
-                            if (addr.zip) setF("zip_code", addr.zip); // Esto disparará la validación automática
+                            if (addr.zip) setF("zip_code", addr.zip);
                           }}
                           placeholder={t("123 Main St", "Calle Principal 123")}
                           renderInput={(props) => <FInput {...props} data-testid="pickup-address-autocomplete" />}
@@ -1252,15 +1414,8 @@ export default function SchedulePickup() {
                         <FF label={t("City *", "Ciudad *")}><FInput value={form.city} onChange={(e) => setF("city", e.target.value)} placeholder="Los Angeles" autoComplete="address-level2" /></FF>
                         <FF label={t("State *", "Estado *")}><FInput value={form.state} onChange={(e) => setF("state", e.target.value.toUpperCase())} placeholder="CA" maxLength={2} /></FF>
                         <FF label={t("ZIP *", "CP *")}>
-                          <FInput
-                            value={form.zip_code}
-                            onChange={(e) => setF("zip_code", e.target.value)}
-                            placeholder="90001"
-                            maxLength={10}
-                          />
-                          {distanceError && (
-                            <div style={{ color: "#dc2626", fontSize: 11, marginTop: 4, paddingLeft: 4 }}>{distanceError}</div>
-                          )}
+                          <FInput value={form.zip_code} onChange={(e) => setF("zip_code", e.target.value)} placeholder="90001" maxLength={10} />
+                          {distanceError && <div style={{ color: "#dc2626", fontSize: 11, marginTop: 4, paddingLeft: 4 }}>{distanceError}</div>}
                         </FF>
                       </div>
                       <FF label={t("Access notes (optional)", "Notas de acceso (opcional)")}>
@@ -1279,38 +1434,68 @@ export default function SchedulePickup() {
                             { val: "airbnb_host", icon: "🏠", title: t("Airbnb Host", "Anfitrión Airbnb"), desc: t("Linens, towels & priority", "Sábanas, toallas y prioridad"), badge: t("NEW", "NUEVO"), badgeBg: "rgba(255,92,37,.12)", badgeColor: "#ff5c25", badgeBorder: "rgba(255,92,37,.3)", accentColor: "#ff5c25", accentBg: "rgba(255,92,37,.07)", accentGlow: "rgba(255,92,37,.18)" },
                             { val: "commercial", icon: "🏢", title: t("Commercial / B2B", "Comercial / B2B"), desc: t("Bulk & business laundry", "Lavado masivo y empresas") },
                           ]} />
+
                         {form.service_type === "pickup_delivery" && (
                           <>
                             <FF label={t("Turnaround plan *", "Plan de tiempo *")}>
-                              <PlanSelector value={form.service_plan} onChange={(v) => setF("service_plan", v)} serviceType={form.service_type} />
+                              <PlanSelector value={form.service_plan} onChange={(v) => setF("service_plan", v)}
+                                serviceType={form.service_type} membershipPlan={membershipInfo?.plan} />
                             </FF>
                             <PickupDeliveryInfoPanel t={t} />
                           </>
                         )}
-                        {form.service_type === "airbnb_host" && <AirbnbInfoPanel t={t} />}
-                        {form.service_type === "commercial" && <CommercialInfoPanel t={t} />}
+                        {form.service_type === "airbnb_host" && (
+                          <>
+                            <FF label={t("Turnaround plan *", "Plan de tiempo *")}>
+                              <PlanSelector value={form.service_plan} onChange={(v) => setF("service_plan", v)}
+                                serviceType={form.service_type} membershipPlan={membershipInfo?.plan} />
+                            </FF>
+                            <AirbnbInfoPanel t={t} />
+                          </>
+                        )}
+                        {form.service_type === "commercial" && (
+                          <>
+                            <FF label={t("Turnaround plan *", "Plan de tiempo *")}>
+                              <PlanSelector value={form.service_plan} onChange={(v) => setF("service_plan", v)}
+                                serviceType={form.service_type} membershipPlan={membershipInfo?.plan} />
+                            </FF>
+                            <CommercialInfoPanel t={t} />
+                          </>
+                        )}
+
                         <p style={{ fontSize: 11, color: "hsl(var(--muted-foreground))", marginTop: 8 }}>
                           {t("Need Wash & Fold drop-off?", "¿Necesitas Wash & Fold drop-off?")}{" "}
                           <Link to="/wash-fold" style={{ color: "#0ea5e9", fontWeight: 600 }}>{t("Go to form →", "Ir al formulario →")}</Link>
                         </p>
                       </FF>
 
+                      {showRecurrenceSelector && (
+                        <FF label={t("Pickup frequency *", "Frecuencia de recogida *")}>
+                          <RecurrenceSelector
+                            value={form.recurrence}
+                            onChange={(v) => setF("recurrence", v)}
+                            endDate={form.recurrence_end_date}
+                            onEndDateChange={(v) => setF("recurrence_end_date", v)}
+                            selectedDays={form.recurrence_days}
+                            onDaysChange={(days) => setF("recurrence_days", days)}
+                            locale={locale}
+                            t={t}
+                          />
+                        </FF>
+                      )}
+
                       <FF label={t("Wash temperature", "Temperatura de lavado")}>
                         <TempRow value={form.wash_temp} onChange={(v) => setF("wash_temp", v)} options={WASH_TEMP_OPTIONS} />
                       </FF>
-
                       <FF label={t("Dry temperature", "Temperatura de secado")}>
                         <TempRow value={form.dry_temp} onChange={(v) => setF("dry_temp", v)} options={DRY_TEMP_OPTIONS} />
                         <p style={{ fontSize: 10, color: "hsl(var(--muted-foreground))", marginTop: 5, lineHeight: 1.5 }}>
-                          {t("Choose low or air dry for delicates, knits and activewear.",
-                             "Elige baja o secado al aire para prendas delicadas, tejidos y ropa deportiva.")}
+                          {t("Choose low or air dry for delicates, knits and activewear.", "Elige baja o secado al aire para prendas delicadas, tejidos y ropa deportiva.")}
                         </p>
                       </FF>
-
                       <FF label={t("Special instructions (optional)", "Instrucciones especiales (opcional)")}>
                         <FTextarea value={form.notes} onChange={(e) => setF("notes", e.target.value)} placeholder={t("Detergent type, hang-dry items, folding style…", "Tipo de detergente, prendas a secar, estilo de doblado…")} />
                       </FF>
-
                       {addonServices.length > 0 && (
                         <FF label={t("Add-on services (optional)", "Servicios adicionales (opcional)")}>
                           <AddonServicesSection services={addonServices} selectedIds={selectedAddonIds} onToggle={toggleAddon} t={t} locale={locale} />
@@ -1323,17 +1508,20 @@ export default function SchedulePickup() {
                   {cur === 3 && (
                     <>
                       <FF label={t("Preferred pickup date", "Fecha preferida")}>
-                        <FInput 
-                          type="date" 
-                          value={form.pickup_date} 
-                          onChange={(e) => setF("pickup_date", e.target.value)} 
-                          min={new Date().toISOString().split("T")[0]} 
-                          style={{ cursor: "pointer" }} 
-                        />
-                        {/* Mensaje para plan Express: se permite el mismo día */}
+                        <FInput type="date" value={form.pickup_date} onChange={(e) => setF("pickup_date", e.target.value)}
+                          min={new Date().toISOString().split("T")[0]} style={{ cursor: "pointer" }} />
                         {form.service_plan === "express" && (
                           <div style={{ fontSize: 11, color: "#0ea5e9", marginTop: 4, paddingLeft: 4 }}>
-                            ✨ Express plan allows same‑day pickup. You can choose today!
+                            ✨ Express plan allows same-day pickup. You can choose today!
+                          </div>
+                        )}
+                        {showRecurrenceSelector && form.recurrence && form.recurrence !== "once" && (
+                          <div style={{ marginTop: 6, padding: "7px 10px", borderRadius: 7,
+                            background: "rgba(14,165,233,.07)", border: "1px solid rgba(14,165,233,.18)",
+                            fontSize: 10, color: "#0ea5e9", display: "flex", alignItems: "center", gap: 5 }}>
+                            🔄 {t("This is your first pickup date. Future pickups will be auto-scheduled",
+                               "Esta es tu primera fecha. Los siguientes pickups se programarán automáticamente")}
+                            {form.recurrence === "twice_week" && twiceWeekDays && ` (${twiceWeekDays})`}
                           </div>
                         )}
                       </FF>
@@ -1361,7 +1549,10 @@ export default function SchedulePickup() {
                       ]} />
                       <SumBlock title={`🧺 ${t("Service", "Servicio")}`} rows={[
                         [t("Type","Tipo"), svcMap[form.service_type]],
-                        ...(form.service_type === "pickup_delivery" && form.service_plan ? [[t("Plan","Plan"), planMap[form.service_plan]]] : []),
+                        ...(form.service_plan ? [[t("Plan","Plan"), planMap[form.service_plan]]] : []),
+                        ...(membershipInfo?.plan ? [[t("Pricing","Precio"), `${getMembershipDiscount(membershipInfo.plan)?.badge || "⭐"} ${t("Member rate","Tarifa miembro")}`]] : []),
+                        ...(recurrenceLabel ? [[t("Frequency","Frecuencia"), `🔄 ${recurrenceLabel}${form.recurrence === "twice_week" && twiceWeekDays ? ` (${twiceWeekDays})` : ""}`]] : []),
+                        ...(form.recurrence_end_date && recurrenceLabel ? [[t("Until","Hasta"), form.recurrence_end_date]] : []),
                         [t("Wash temp","Temp lavado"), tempMap[form.wash_temp]],
                         [t("Dry temp","Temp secado"), dryMap[form.dry_temp]],
                         ...(form.notes ? [[t("Notes","Notas"), form.notes.slice(0,70)]] : []),
@@ -1378,11 +1569,7 @@ export default function SchedulePickup() {
                               {s.price != null && (
                                 <span style={{ fontWeight: 700, color: "#0ea5e9", flexShrink: 0 }}>
                                   ${s.price}
-                                  {s.price_unit && (
-                                    <span style={{ fontSize: 9, fontWeight: 500, color: "hsl(var(--muted-foreground))", marginLeft: 2 }}>
-                                      {(PRICE_UNIT_LABELS[s.price_unit] || {}).en || ""}
-                                    </span>
-                                  )}
+                                  {s.price_unit && <span style={{ fontSize: 9, fontWeight: 500, color: "hsl(var(--muted-foreground))", marginLeft: 2 }}>{(PRICE_UNIT_LABELS[s.price_unit] || {}).en || ""}</span>}
                                 </span>
                               )}
                             </div>
@@ -1395,13 +1582,13 @@ export default function SchedulePickup() {
                         [t("Window","Ventana"), timeMap[form.pickup_time]],
                       ]} />
                       <div style={{ display: "flex", alignItems: "flex-start", gap: 9, padding: "10px 12px", background: "hsl(var(--secondary))", borderRadius: 9, border: "0.5px solid hsl(var(--border))" }}>
-                        <input type="checkbox" id="sp-terms" checked={form.terms} onChange={(e) => setF("terms", e.target.checked)} style={{ width: 15, height: 15, flexShrink: 0, marginTop: 1, accentColor: "#0ea5e9", cursor: "pointer" }} />
+                        <input type="checkbox" id="sp-terms" checked={form.terms} onChange={(e) => setF("terms", e.target.checked)}
+                          style={{ width: 15, height: 15, flexShrink: 0, marginTop: 1, accentColor: "#0ea5e9", cursor: "pointer" }} />
                         <label htmlFor="sp-terms" style={{ fontSize: 11, color: "hsl(var(--muted-foreground))", lineHeight: 1.5, cursor: "pointer" }}>
                           {t("I accept the", "Acepto los")}{" "}
                           <Link to="/terms-and-conditions" style={{ color: "#0ea5e9", fontWeight: 600 }}>{t("Terms", "Términos")}</Link>{" & "}
                           <Link to="/privacy-policy" style={{ color: "#0ea5e9", fontWeight: 600 }}>{t("Privacy Policy", "Privacidad")}</Link>.{" "}
-                          {t("By submitting I authorize Ventura Fresh Laundry to contact me.", "Al enviar autorizo a Ventura Fresh Laundry a contactarme.")}
-                        </label>
+{t("By submitting I authorize Ventura Fresh Laundry to contact me.", "Al enviar autorizo a Ventura Fresh Laundry a contactarme.")}                        </label>
                       </div>
                     </>
                   )}
@@ -1410,12 +1597,20 @@ export default function SchedulePickup() {
                 {/* Navigation */}
                 <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
                   {cur > 0 && (
-                    <button type="button" onClick={() => goTo(cur - 1)} style={{ padding: "10px 16px", borderRadius: 9, border: "1px solid hsl(var(--border))", background: "hsl(var(--secondary))", color: "hsl(var(--muted-foreground))", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", transition: "all .15s" }}>
+                    <button type="button" onClick={() => goTo(cur - 1)}
+                      style={{ padding: "10px 16px", borderRadius: 9, border: "1px solid hsl(var(--border))", background: "hsl(var(--secondary))", color: "hsl(var(--muted-foreground))", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", transition: "all .15s" }}>
                       ← {t("Back", "Atrás")}
                     </button>
                   )}
-                  <button type="button" onClick={handleNext} disabled={submitting || (cur === 4 && !form.terms) || (cur === 1 && distanceError)}
-                    style={{ flex: 1, padding: "11px 16px", borderRadius: 9, border: "none", background: "linear-gradient(135deg,#0ea5e9,#2563eb)", color: "white", fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".1em", cursor: (submitting || (cur === 4 && !form.terms) || (cur === 1 && distanceError)) ? "not-allowed" : "pointer", opacity: (submitting || (cur === 4 && !form.terms) || (cur === 1 && distanceError)) ? 0.5 : 1, fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, boxShadow: "var(--shadow-sky)", transition: "all .15s", position: "relative", overflow: "hidden" }}>
+                  <button type="button" onClick={handleNext}
+                    disabled={submitting || (cur === 4 && !form.terms) || (cur === 1 && distanceError) || (cur === 2 && form.recurrence === "twice_week" && form.recurrence_days.length !== 2)}
+                    style={{ flex: 1, padding: "11px 16px", borderRadius: 9, border: "none",
+                      background: "linear-gradient(135deg,#0ea5e9,#2563eb)", color: "white",
+                      fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".1em",
+                      cursor: (submitting || (cur === 4 && !form.terms) || (cur === 1 && distanceError) || (cur === 2 && form.recurrence === "twice_week" && form.recurrence_days.length !== 2)) ? "not-allowed" : "pointer",
+                      opacity: (submitting || (cur === 4 && !form.terms) || (cur === 1 && distanceError) || (cur === 2 && form.recurrence === "twice_week" && form.recurrence_days.length !== 2)) ? 0.5 : 1,
+                      fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
+                      boxShadow: "var(--shadow-sky)", transition: "all .15s", position: "relative", overflow: "hidden" }}>
                     {submitting ? (
                       <>
                         <div style={{ width: 13, height: 13, border: "2px solid rgba(255,255,255,.4)", borderTopColor: "white", borderRadius: "50%", animation: "tl_spin .7s linear infinite" }} />

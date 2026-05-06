@@ -7,7 +7,8 @@ import {
   Mail, MapPin, Package, LogOut, Calendar, Clock,
   ArrowRight, Sparkles, ChevronDown, Settings, Heart, Award,
   CreditCard, Building2, DollarSign, ScanLine, X, Copy, CheckCircle,
-  Phone, Edit3, Save, Camera, ExternalLink, Truck
+  Phone, Edit3, Save, Camera, ExternalLink, Truck, RefreshCw,
+  RotateCcw, Repeat, AlertCircle, Pause, Play, Trash2, Key, ChevronUp
 } from "lucide-react";
 import PublicNav from "../components/PublicNav";
 import PublicFooter from "../components/PublicFooter";
@@ -15,17 +16,34 @@ import { useLocale } from "../context/LocaleContext";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
+// ─── Status configs ────────────────────────────────────────────────────────────
 const statusConfig = {
-  new:             { label: { en: "New",             es: "Nueva"      }, cls: "bg-blue-50 text-blue-600 border-blue-200/60" },
-  processing:      { label: { en: "Processing",      es: "Procesando" }, cls: "bg-amber-50 text-amber-600 border-amber-200/60" },
-  ready:           { label: { en: "Ready",           es: "Lista"      }, cls: "bg-violet-50 text-violet-600 border-violet-200/60" },
-  out_for_delivery:{ label: { en: "Out for Delivery",es: "En camino"  }, cls: "bg-orange-50 text-orange-600 border-orange-200/60" },
-  delivered:       { label: { en: "Delivered",       es: "Entregada"  }, cls: "bg-emerald-50 text-emerald-600 border-emerald-200/60" },
-  completed:       { label: { en: "Completed",       es: "Completada" }, cls: "bg-emerald-50 text-emerald-600 border-emerald-200/60" },
-  cancelled:       { label: { en: "Cancelled",       es: "Cancelada"  }, cls: "bg-red-50 text-red-600 border-red-200/60" },
+  new:              { label: { en: "New",             es: "Nueva"      }, cls: "bg-blue-50 text-blue-600 border-blue-200/60" },
+  confirmed:        { label: { en: "Confirmed",       es: "Confirmada" }, cls: "bg-violet-50 text-violet-600 border-violet-200/60" },
+  processing:       { label: { en: "Processing",      es: "Procesando" }, cls: "bg-amber-50 text-amber-600 border-amber-200/60" },
+  ready:            { label: { en: "Ready",           es: "Lista"      }, cls: "bg-violet-50 text-violet-600 border-violet-200/60" },
+  out_for_delivery: { label: { en: "Out for Delivery",es: "En camino"  }, cls: "bg-orange-50 text-orange-600 border-orange-200/60" },
+  delivered:        { label: { en: "Delivered",       es: "Entregada"  }, cls: "bg-emerald-50 text-emerald-600 border-emerald-200/60" },
+  completed:        { label: { en: "Completed",       es: "Completada" }, cls: "bg-emerald-50 text-emerald-600 border-emerald-200/60" },
+  cancelled:        { label: { en: "Cancelled",       es: "Cancelada"  }, cls: "bg-red-50 text-red-600 border-red-200/60" },
 };
 
-// ─── Hooks ───────────────────────────────────────────────────────────────────
+// ─── Recurrence labels ─────────────────────────────────────────────────────────
+const RECURRENCE_LABELS = {
+  once:       { en: "One time",      es: "Una sola vez",       icon: "1️⃣" },
+  weekly:     { en: "Every week",    es: "Cada semana",        icon: "📅" },
+  biweekly:   { en: "Every 2 weeks", es: "Cada 2 semanas",     icon: "📆" },
+  twice_week: { en: "Twice a week",  es: "Dos veces/semana",   icon: "🔄" },
+};
+
+const SERVICE_ICONS = {
+  pickup_delivery: "🚚",
+  airbnb_host:     "🏠",
+  commercial:      "🏢",
+  wash_fold:       "🧺",
+};
+
+// ─── Hooks ────────────────────────────────────────────────────────────────────
 function useInView(threshold = 0.1) {
   const ref = useRef(null);
   const [v, setV] = useState(false);
@@ -56,7 +74,7 @@ function useCursor() {
   return { ring, dot };
 }
 
-// ─── UI primitives ───────────────────────────────────────────────────────────
+// ─── UI primitives ────────────────────────────────────────────────────────────
 const ORIGINS = { up: "opacity-0 translate-y-8", left: "opacity-0 translate-x-6", right: "opacity-0 -translate-x-6", scale: "opacity-0 scale-95" };
 const Reveal = ({ children, delay = 0, dir = "up", dur = 650, className = "" }) => {
   const [ref, v] = useInView();
@@ -66,16 +84,6 @@ const Reveal = ({ children, delay = 0, dir = "up", dur = 650, className = "" }) 
       {children}
     </div>
   );
-};
-
-const Mag = ({ children, className = "", strength = 0.28, as: Tag = "div", ...p }) => {
-  const ref = useRef(null);
-  const onMove = useCallback((e) => {
-    const r = ref.current.getBoundingClientRect();
-    ref.current.style.transform = `translate(${(e.clientX - r.left - r.width / 2) * strength}px,${(e.clientY - r.top - r.height / 2) * strength}px)`;
-  }, [strength]);
-  const onLeave = useCallback(() => { ref.current.style.transform = "translate(0,0)"; }, []);
-  return <Tag ref={ref} className={className} style={{ transition: "transform 500ms cubic-bezier(0.34,1.56,0.64,1)" }} onMouseMove={onMove} onMouseLeave={onLeave} {...p}>{children}</Tag>;
 };
 
 const Tilt = ({ children, className = "", depth = 4 }) => {
@@ -123,120 +131,287 @@ const PreferencesSkeleton = () => (
   </div>
 );
 
-// ─── Order Image Block ─────────────────────────────────────────────────────
+// ─── Recurrence Badge ──────────────────────────────────────────────────────────
+const RecurrenceBadge = ({ recurrence, locale }) => {
+  if (!recurrence || recurrence === "once") return null;
+  const info = RECURRENCE_LABELS[recurrence];
+  if (!info) return null;
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border bg-sky-50 text-sky-600 border-sky-200">
+      <Repeat className="w-2.5 h-2.5" />
+      {locale === "es" ? info.es : info.en}
+    </span>
+  );
+};
+
+// ─── Recurrence Manager Panel ──────────────────────────────────────────────────
+const RecurrenceManager = ({ order, token, t, locale, onUpdate }) => {
+  const [open, setOpen] = useState(false);
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editRecurrence, setEditRecurrence] = useState(order.recurrence || "once");
+  const [editEndDate, setEditEndDate] = useState(order.recurrence_end_date || "");
+  const [cancelFuture, setCancelFuture] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+
+  const fetchRecurrence = async () => {
+    if (!token) return;
+    setLoading(true);
+    try {
+      const res = await axios.get(`${API}/orders/${order.id}/recurrence`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setData(res.data);
+      setEditRecurrence(res.data.recurrence || "once");
+      setEditEndDate(res.data.recurrence_end_date || "");
+    } catch {
+      setData({
+        is_recurring: order.is_recurring,
+        recurrence: order.recurrence || "once",
+        recurrence_end_date: order.recurrence_end_date,
+        upcoming_pickups: [],
+      });
+    } finally { setLoading(false); }
+  };
+
+  const handleOpen = () => {
+    setOpen(true);
+    fetchRecurrence();
+  };
+
+  const handleSave = async () => {
+    if (!token) return;
+    setSaving(true);
+    try {
+      await axios.patch(`${API}/orders/${order.id}/recurrence`, {
+        recurrence: editRecurrence,
+        recurrence_end_date: editEndDate || null,
+        cancel_future: cancelFuture,
+      }, { headers: { Authorization: `Bearer ${token}` } });
+      toast.success(t("Recurrence updated!", "¡Frecuencia actualizada!"));
+      setOpen(false);
+      onUpdate?.();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || t("Could not update recurrence", "No se pudo actualizar la frecuencia"));
+    } finally { setSaving(false); }
+  };
+
+  const handleCancelAll = async () => {
+    if (!token) return;
+    setSaving(true);
+    try {
+      await axios.patch(`${API}/orders/${order.id}/recurrence`, {
+        recurrence: "once",
+        cancel_future: true,
+      }, { headers: { Authorization: `Bearer ${token}` } });
+      toast.success(t("Recurring schedule cancelled", "Programación recurrente cancelada"));
+      setOpen(false);
+      setConfirmCancel(false);
+      onUpdate?.();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || t("Could not cancel", "No se pudo cancelar"));
+    } finally { setSaving(false); }
+  };
+
+  if (!order.is_recurring && order.recurrence === "once") return null;
+
+  return (
+    <>
+      <button onClick={handleOpen}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-sky-50 border border-sky-200 text-sky-600 hover:bg-sky-100 transition-all">
+        <Repeat className="w-3 h-3" />
+        {t("Manage schedule", "Gestionar horario")}
+      </button>
+
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setOpen(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="bg-gradient-to-r from-sky-600 to-sky-500 px-6 py-5 flex items-center justify-between">
+              <div>
+                <h3 className="text-white font-black text-lg flex items-center gap-2">
+                  <Repeat className="w-5 h-5" />
+                  {t("Recurring Schedule", "Programación Recurrente")}
+                </h3>
+                <p className="text-white/70 text-xs mt-0.5">{order.order_number}</p>
+              </div>
+              <button onClick={() => setOpen(false)} className="text-white/70 hover:text-white"><X className="w-5 h-5" /></button>
+            </div>
+
+            <div className="p-6 space-y-5">
+              {loading ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="w-6 h-6 border-2 border-sky-200 border-t-sky-600 rounded-full animate-spin" />
+                </div>
+              ) : (
+                <>
+                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">{t("Current frequency", "Frecuencia actual")}</p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">{RECURRENCE_LABELS[data?.recurrence || "once"]?.icon}</span>
+                      <span className="font-bold text-slate-800">
+                        {locale === "es"
+                          ? RECURRENCE_LABELS[data?.recurrence || "once"]?.es
+                          : RECURRENCE_LABELS[data?.recurrence || "once"]?.en}
+                      </span>
+                      {data?.recurrence_end_date && (
+                        <span className="text-xs text-slate-400">· {t("until", "hasta")} {data.recurrence_end_date}</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {data?.upcoming_pickups?.length > 0 && (
+                    <div>
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">{t("Upcoming scheduled pickups", "Próximos pickups programados")}</p>
+                      <div className="space-y-2 max-h-32 overflow-y-auto">
+                        {data.upcoming_pickups.slice(0, 5).map((p, i) => (
+                          <div key={p.id || i} className="flex items-center justify-between text-sm p-2 rounded-lg bg-sky-50/50 border border-sky-100">
+                            <span className="flex items-center gap-2">
+                              <Calendar className="w-3.5 h-3.5 text-sky-500" />
+                              <span className="font-medium text-slate-700">{p.pickup_date}</span>
+                            </span>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-600">
+                              {p.order_number}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div>
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">{t("Change frequency", "Cambiar frecuencia")}</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {Object.entries(RECURRENCE_LABELS).map(([val, info]) => (
+                        <button key={val} type="button" onClick={() => setEditRecurrence(val)}
+                          className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-semibold transition-all ${editRecurrence === val ? "border-sky-400 bg-sky-50 text-sky-700" : "border-slate-200 text-slate-600 hover:border-sky-200"}`}>
+                          <span>{info.icon}</span>
+                          <span>{locale === "es" ? info.es : info.en}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {editRecurrence !== "once" && (
+                    <div>
+                      <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{t("Recurring until (optional)", "Recurrente hasta (opcional)")}</label>
+                      <input type="date" value={editEndDate} onChange={e => setEditEndDate(e.target.value)}
+                        min={new Date().toISOString().split("T")[0]}
+                        className="mt-1.5 w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100" />
+                      <p className="text-xs text-slate-400 mt-1">{t("Leave empty for indefinite", "Deja vacío para indefinido")}</p>
+                    </div>
+                  )}
+
+                  {editRecurrence !== "once" && (
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input type="checkbox" checked={cancelFuture} onChange={e => setCancelFuture(e.target.checked)}
+                        className="mt-0.5 w-4 h-4 accent-sky-500" />
+                      <span className="text-sm text-slate-600">{t("Cancel all pending future pickups when saving", "Cancelar todos los pickups futuros pendientes al guardar")}</span>
+                    </label>
+                  )}
+
+                  <div className="flex gap-3 pt-2">
+                    <button onClick={handleSave} disabled={saving}
+                      className="flex-1 bg-sky-600 hover:bg-sky-700 text-white rounded-xl py-2.5 text-sm font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                      {saving ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Save className="w-4 h-4" />}
+                      {t("Save changes", "Guardar cambios")}
+                    </button>
+                    {(data?.is_recurring || order.is_recurring) && (
+                      <button onClick={() => setConfirmCancel(true)}
+                        className="px-4 py-2.5 rounded-xl border border-red-200 text-red-500 hover:bg-red-50 text-sm font-semibold transition-all">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+
+                  {confirmCancel && (
+                    <div className="p-4 rounded-xl bg-red-50 border border-red-200 animate-in fade-in">
+                      <p className="text-sm font-semibold text-red-700 mb-3">
+                        ⚠️ {t("Cancel all future pickups?", "¿Cancelar todos los pickups futuros?")}
+                      </p>
+                      <div className="flex gap-2">
+                        <button onClick={handleCancelAll} disabled={saving}
+                          className="flex-1 bg-red-600 text-white rounded-lg py-2 text-sm font-bold hover:bg-red-700 disabled:opacity-50">
+                          {t("Yes, cancel all", "Sí, cancelar todos")}
+                        </button>
+                        <button onClick={() => setConfirmCancel(false)} className="flex-1 border border-slate-200 rounded-lg py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">
+                          {t("Keep", "Mantener")}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
+
+// ─── Order Image Block ─────────────────────────────────────────────────────────
 function OrderImageBlock({ orderId, type, token, t }) {
   const [blobUrl, setBlobUrl] = useState(null);
   const [loading, setLoading] = useState(true);
   const [noImage, setNoImage] = useState(false);
-
-  const isPickup   = type === "pickup";
-  const endpoint   = `${API}/order/${orderId}/${type}-image/view`;
-  const bgClass    = isPickup ? "bg-slate-50 border-slate-100" : "bg-emerald-50 border-emerald-100";
-  const headerCls  = isPickup ? "text-slate-500" : "text-emerald-700";
-  const iconColor  = isPickup ? "text-slate-400" : "text-emerald-400";
-  const checkColor = isPickup ? "text-emerald-500" : "text-emerald-600";
-  const linkColor  = isPickup ? "text-primary" : "text-emerald-600";
-  const borderImg  = isPickup ? "border-slate-200" : "border-emerald-200";
-  const Icon       = isPickup ? Camera : Truck;
-  const title      = isPickup
-    ? t("Pickup Confirmation Photo", "Foto de Confirmación de Recolección")
-    : t("Delivery Confirmation Photo", "Foto de Confirmación de Entrega");
-  const driverMsg  = isPickup
-    ? t("Driver confirmed pickup", "El conductor confirmó la recolección")
-    : t("Driver confirmed delivery", "El conductor confirmó la entrega");
-  const footerMsg  = isPickup
-    ? t("This photo was taken by the driver as proof of pickup", "Esta foto fue tomada por el conductor como comprobante de recolección")
-    : t("This photo was taken by the driver as proof of delivery", "Esta foto fue tomada por el conductor como comprobante de entrega");
+  const isPickup  = type === "pickup";
+  const endpoint  = `${API}/order/${orderId}/${type}-image/view`;
 
   useEffect(() => {
     let revoked = false;
-    setLoading(true);
-    setNoImage(false);
-    setBlobUrl(null);
-
-    fetch(endpoint, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    })
+    setLoading(true); setNoImage(false); setBlobUrl(null);
+    fetch(endpoint, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
       .then(async (res) => {
         if (!res.ok) { setNoImage(true); return; }
         const blob = await res.blob();
-        if (!revoked) {
-          const url = URL.createObjectURL(blob);
-          setBlobUrl(url);
-        }
+        if (!revoked) setBlobUrl(URL.createObjectURL(blob));
       })
       .catch(() => setNoImage(true))
       .finally(() => setLoading(false));
-
     return () => {
       revoked = true;
       if (blobUrl) URL.revokeObjectURL(blobUrl);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderId, type, token]);
 
-  const openFullSize = async () => {
+  const openFull = async () => {
     try {
-      const res = await fetch(endpoint, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const res = await fetch(endpoint, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
       if (!res.ok) return;
       const blob = await res.blob();
-      const url  = URL.createObjectURL(blob);
-      const win  = window.open(url, "_blank");
+      const url = URL.createObjectURL(blob);
+      const win = window.open(url, "_blank");
       if (win) setTimeout(() => URL.revokeObjectURL(url), 10000);
     } catch {}
   };
 
+  const Icon = isPickup ? Camera : Truck;
+  const title = isPickup ? t("Pickup Photo", "Foto de Recolección") : t("Delivery Photo", "Foto de Entrega");
+
   return (
-    <div className={`rounded-xl p-4 border ${bgClass}`}>
-      <h4 className={`text-xs font-bold uppercase tracking-wider mb-3 flex items-center gap-2 ${headerCls}`}>
-        <Icon className="w-3.5 h-3.5" />
-        {title}
+    <div className={`rounded-xl p-4 border ${isPickup ? "bg-slate-50 border-slate-100" : "bg-emerald-50 border-emerald-100"}`}>
+      <h4 className={`text-xs font-bold uppercase tracking-wider mb-3 flex items-center gap-2 ${isPickup ? "text-slate-500" : "text-emerald-700"}`}>
+        <Icon className="w-3.5 h-3.5" />{title}
       </h4>
-
-      {loading && (
-        <div className="flex items-center justify-center py-10">
-          <div className="w-8 h-8 rounded-full border-2 border-slate-200 border-t-primary animate-spin" />
-        </div>
-      )}
-
-      {!loading && noImage && (
-        <div className="text-center py-8 text-slate-400">
-          <Icon className={`w-10 h-10 mx-auto mb-2 opacity-30 ${iconColor}`} />
-          <p className="text-sm">{t("No photo available yet", "Foto aún no disponible")}</p>
-        </div>
-      )}
-
+      {loading && <div className="flex items-center justify-center py-8"><div className="w-6 h-6 rounded-full border-2 border-slate-200 border-t-primary animate-spin" /></div>}
+      {!loading && noImage && <div className="text-center py-6 text-slate-400"><Icon className="w-8 h-8 mx-auto mb-2 opacity-30" /><p className="text-sm">{t("No photo yet", "Foto aún no disponible")}</p></div>}
       {!loading && blobUrl && (
-        <div className="space-y-3">
-          <div className={`relative rounded-lg overflow-hidden bg-white border ${borderImg}`}>
-            <img
-              src={blobUrl}
-              alt={isPickup ? "Pickup confirmation" : "Delivery confirmation"}
-              className="w-full h-auto max-h-72 object-contain cursor-pointer hover:opacity-90 transition-opacity"
-              onClick={openFullSize}
-            />
+        <div className="space-y-2">
+          <div className={`relative rounded-lg overflow-hidden bg-white border ${isPickup ? "border-slate-200" : "border-emerald-200"}`}>
+            <img src={blobUrl} alt={title} className="w-full h-auto max-h-72 object-contain cursor-pointer hover:opacity-90 transition-opacity" onClick={openFull} />
           </div>
           <div className="flex items-center justify-between text-xs text-slate-500">
-            <span className="flex items-center gap-1">
-              <CheckCircle className={`w-3.5 h-3.5 ${checkColor}`} />
-              {driverMsg}
-            </span>
-            <button onClick={openFullSize} className={`hover:underline flex items-center gap-1 ${linkColor}`}>
-              <ExternalLink className="w-3 h-3" />
-              {t("View full size", "Ver tamaño completo")}
-            </button>
+            <span className="flex items-center gap-1"><CheckCircle className={`w-3.5 h-3.5 ${isPickup ? "text-emerald-500" : "text-emerald-600"}`} />{isPickup ? t("Driver confirmed pickup", "Conductor confirmó recolección") : t("Driver confirmed delivery", "Conductor confirmó entrega")}</span>
+            <button onClick={openFull} className="hover:underline flex items-center gap-1 text-primary"><ExternalLink className="w-3 h-3" />{t("Full size", "Tamaño completo")}</button>
           </div>
         </div>
       )}
-
-      <p className="text-[11px] text-slate-400 mt-3 text-center">{footerMsg}</p>
     </div>
   );
 }
 
-// ─── Payment Instruction Modal ────────────────────────────────────────────────
+// ─── Payment Modal ─────────────────────────────────────────────────────────────
 const PAYMENT_DEFAULTS = {
   zelle:   { phone: "(805) 626-2524", handle: "VFLaundry" },
   venmo:   { phone: "(805) 626-2524", handle: "@VFLaundry" },
@@ -246,24 +421,18 @@ const PAYMENT_DEFAULTS = {
 function PaymentInstructionModal({ method, order, onClose, onReceiptUpload, uploadingReceipt, paymentInfo }) {
   const [copied, setCopied] = useState(null);
   if (!method || !order) return null;
-
-  const amount   = Number(order.total_amount || 0).toFixed(2);
+  const amount = Number(order.total_amount || 0).toFixed(2);
   const orderNum = order.order_number || order.id;
-  const info     = paymentInfo || {};
-
+  const info = paymentInfo || {};
   const copy = (text, key) => {
     navigator.clipboard.writeText(text).catch(() => {});
-    setCopied(key);
-    setTimeout(() => setCopied(null), 2000);
+    setCopied(key); setTimeout(() => setCopied(null), 2000);
   };
-
   const CopyBtn = ({ value, label }) => (
-    <button onClick={() => copy(value, label)}
-      className="ml-2 text-slate-400 hover:text-primary transition-colors flex-shrink-0" title="Copy">
+    <button onClick={() => copy(value, label)} className="ml-2 text-slate-400 hover:text-primary transition-colors flex-shrink-0">
       {copied === label ? <CheckCircle className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
     </button>
   );
-
   const Row = ({ emoji, label, value, copyKey }) => (
     <div className="flex items-center justify-between py-2.5 border-b border-slate-100 last:border-0">
       <span className="text-sm text-slate-500 font-medium">{emoji} {label}</span>
@@ -273,91 +442,43 @@ function PaymentInstructionModal({ method, order, onClose, onReceiptUpload, uplo
       </div>
     </div>
   );
-
   const configs = {
-    zelle: {
-      title: "💙 Zelle® Payment", color: "from-purple-600 to-indigo-600",
-      rows: [
-        { emoji: "💰", label: "Amount", value: `$${amount}`, copyKey: "amount" },
-        { emoji: "📱", label: "Phone",  value: info.zelle_phone  || PAYMENT_DEFAULTS.zelle.phone,  copyKey: "phone"  },
-        { emoji: "🔗", label: "Handle", value: info.zelle_handle || PAYMENT_DEFAULTS.zelle.handle, copyKey: "handle" },
-        { emoji: "📝", label: "Note",   value: `Order #${orderNum}`, copyKey: "note" },
-      ],
-    },
-    venmo: {
-      title: "💜 Pay with Venmo", color: "from-blue-600 to-sky-500",
-      rows: [
-        { emoji: "💰", label: "Amount", value: `$${amount}`, copyKey: "amount" },
-        { emoji: "📱", label: "Phone",  value: info.zelle_phone || PAYMENT_DEFAULTS.venmo.phone,   copyKey: "phone"  },
-        { emoji: "🔗", label: "Handle", value: info.venmo_handle || PAYMENT_DEFAULTS.venmo.handle, copyKey: "handle" },
-        { emoji: "📝", label: "Note",   value: `Order #${orderNum}`, copyKey: "note" },
-      ],
-    },
-    cashapp: {
-      title: "💚 Pay with Cash App", color: "from-green-600 to-emerald-500",
-      rows: [
-        { emoji: "💰", label: "Amount",   value: `$${amount}`,  copyKey: "amount" },
-        { emoji: "💲", label: "$Cashtag", value: info.cashapp_tag || PAYMENT_DEFAULTS.cashapp.tag, copyKey: "tag" },
-        { emoji: "📱", label: "Phone",    value: info.zelle_phone || PAYMENT_DEFAULTS.cashapp.phone, copyKey: "phone" },
-        { emoji: "📝", label: "Note",     value: `Order #${orderNum}`, copyKey: "note" },
-      ],
-    },
+    zelle:   { title: "💙 Zelle® Payment",     color: "from-purple-600 to-indigo-600", rows: [{ emoji:"💰",label:"Amount",value:`$${amount}`,copyKey:"amount" },{ emoji:"📱",label:"Phone",value:info.zelle_phone||PAYMENT_DEFAULTS.zelle.phone,copyKey:"phone" },{ emoji:"🔗",label:"Handle",value:info.zelle_handle||PAYMENT_DEFAULTS.zelle.handle,copyKey:"handle" },{ emoji:"📝",label:"Note",value:`Order #${orderNum}`,copyKey:"note" }] },
+    venmo:   { title: "💜 Pay with Venmo",     color: "from-blue-600 to-sky-500",     rows: [{ emoji:"💰",label:"Amount",value:`$${amount}`,copyKey:"amount" },{ emoji:"📱",label:"Phone",value:info.zelle_phone||PAYMENT_DEFAULTS.venmo.phone,copyKey:"phone" },{ emoji:"🔗",label:"Handle",value:info.venmo_handle||PAYMENT_DEFAULTS.venmo.handle,copyKey:"handle" },{ emoji:"📝",label:"Note",value:`Order #${orderNum}`,copyKey:"note" }] },
+    cashapp: { title: "💚 Pay with Cash App",  color: "from-green-600 to-emerald-500",rows: [{ emoji:"💰",label:"Amount",value:`$${amount}`,copyKey:"amount" },{ emoji:"💲",label:"$Cashtag",value:info.cashapp_tag||PAYMENT_DEFAULTS.cashapp.tag,copyKey:"tag" },{ emoji:"📱",label:"Phone",value:info.zelle_phone||PAYMENT_DEFAULTS.cashapp.phone,copyKey:"phone" },{ emoji:"📝",label:"Note",value:`Order #${orderNum}`,copyKey:"note" }] },
   };
-
   const cfg = configs[method];
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className={`bg-gradient-to-r ${cfg.color} px-6 py-5 flex items-center justify-between`}>
-          <div>
-            <h3 className="text-white font-black text-lg">{cfg.title}</h3>
-            <p className="text-white/70 text-xs mt-0.5">Send payment then upload your receipt</p>
-          </div>
-          <button onClick={onClose} className="text-white/70 hover:text-white transition-colors">
-            <X className="w-5 h-5" />
-          </button>
+          <div><h3 className="text-white font-black text-lg">{cfg.title}</h3><p className="text-white/70 text-xs mt-0.5">Send payment then upload your receipt</p></div>
+          <button onClick={onClose} className="text-white/70 hover:text-white"><X className="w-5 h-5" /></button>
         </div>
-        <div className="px-6 py-4">
-          {cfg.rows.map((r, i) => <Row key={i} emoji={r.emoji} label={r.label} value={r.value} copyKey={r.copyKey} />)}
-        </div>
+        <div className="px-6 py-4">{cfg.rows.map((r, i) => <Row key={i} emoji={r.emoji} label={r.label} value={r.value} copyKey={r.copyKey} />)}</div>
         <div className="px-6 pb-6 space-y-3">
-          <button
-            onClick={async () => {
-              const token = localStorage.getItem("customer_token");
-              if (!token) return;
-              try {
-                await axios.post(`${API}/customer/order/${order.id}/mark-zelle?method=${method}`, {}, {
-                  headers: { Authorization: `Bearer ${token}` },
-                });
-                toast.success("Payment marked as sent — awaiting verification");
-                onClose();
-              } catch (err) {
-                toast.error(err.response?.data?.detail || "Error marking payment");
-              }
-            }}
-            className={`w-full py-3 rounded-xl text-white font-bold text-sm bg-gradient-to-r ${cfg.color} hover:brightness-110 transition-all active:scale-95`}>
+          <button onClick={async () => {
+            const token = localStorage.getItem("customer_token"); if (!token) return;
+            try {
+              await axios.post(`${API}/customer/order/${order.id}/mark-zelle?method=${method}`, {}, { headers: { Authorization: `Bearer ${token}` } });
+              toast.success("Payment marked as sent — awaiting verification");
+              onClose();
+            } catch (err) { toast.error(err.response?.data?.detail || "Error marking payment"); }
+          }} className={`w-full py-3 rounded-xl text-white font-bold text-sm bg-gradient-to-r ${cfg.color} hover:brightness-110 transition-all active:scale-95`}>
             ✅ I've sent the payment
           </button>
-          <button
-            onClick={() => { onClose(); onReceiptUpload(order.id, order.total_amount, method); }}
-            disabled={uploadingReceipt?.orderId === order.id}
+          <button onClick={() => { onClose(); onReceiptUpload(order.id, order.total_amount, method); }} disabled={uploadingReceipt?.orderId === order.id}
             className="w-full py-3 rounded-xl text-indigo-700 font-bold text-sm border-2 border-indigo-200 bg-indigo-50 hover:bg-indigo-100 transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50">
-            {uploadingReceipt?.orderId === order.id
-              ? <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
-              : <ScanLine className="w-4 h-4" />
-            }
+            {uploadingReceipt?.orderId === order.id ? <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" /> : <ScanLine className="w-4 h-4" />}
             📤 Upload receipt for instant verification
           </button>
-          <p className="text-center text-xs text-slate-400">
-            Tap "I've sent the payment" or upload a receipt screenshot for faster verification
-          </p>
         </div>
       </div>
     </div>
   );
 }
 
-// ─── MAIN ─────────────────────────────────────────────────────────────────────
+// ─── MAIN ──────────────────────────────────────────────────────────────────────
 export default function CustomerAccount() {
   const { t, locale } = useLocale();
   const navigate = useNavigate();
@@ -389,18 +510,35 @@ export default function CustomerAccount() {
   });
   const [preferencesMeta, setPreferencesMeta] = useState({ updated_at: null, version: null });
   const [preferencesLoading, setPreferencesLoading] = useState(false);
-
   const [viewingOrderDetails, setViewingOrderDetails] = useState(null);
 
+  // ─── Password change state ──────────────────────────────────────────────────
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [passwordData, setPasswordData] = useState({
+    current_password: "",
+    new_password: "",
+    confirm_password: "",
+  });
+  const [changingPassword, setChangingPassword] = useState(false);
+
+  // ─── Pagination state ───────────────────────────────────────────────────────
+  const [ordersPage, setOrdersPage] = useState(1);
+  const ORDERS_PER_PAGE = 5;
+
+  // ─── Filter states ──────────────────────────────────────────────────────────
+  const [orderFilter, setOrderFilter] = useState("all"); // all | recurring | once
+  const [ordersSearch, setOrdersSearch] = useState("");
+
+  // ─── Helper functions ───────────────────────────────────────────────────────
   const statusLabel = (s) => { const c = statusConfig[s]; return c ? (locale === "es" ? c.label.es : c.label.en) : s; };
   const statusCls   = (s) => statusConfig[s]?.cls || "bg-slate-100 text-slate-600 border-slate-200";
 
   const paymentStatusLabel = (s) => {
     const map = {
-      unpaid:               { en: "Unpaid",   es: "Sin pagar",  cls: "bg-red-50 text-red-600 border-red-200" },
-      pending:              { en: "Pending",   es: "Pendiente",  cls: "bg-amber-50 text-amber-600 border-amber-200" },
-      pending_verification: { en: "Pending",   es: "Pendiente",  cls: "bg-amber-50 text-amber-600 border-amber-200" },
-      paid:                 { en: "Paid",      es: "Pagado",     cls: "bg-emerald-50 text-emerald-600 border-emerald-200" },
+      unpaid:               { en: "Unpaid",  es: "Sin pagar", cls: "bg-red-50 text-red-600 border-red-200" },
+      pending:              { en: "Pending", es: "Pendiente", cls: "bg-amber-50 text-amber-600 border-amber-200" },
+      pending_verification: { en: "Pending", es: "Pendiente", cls: "bg-amber-50 text-amber-600 border-amber-200" },
+      paid:                 { en: "Paid",    es: "Pagado",    cls: "bg-emerald-50 text-emerald-600 border-emerald-200" },
     };
     const cfg = map[s] || map.unpaid;
     return { label: locale === "es" ? cfg.es : cfg.en, cls: cfg.cls };
@@ -420,7 +558,7 @@ export default function CustomerAccount() {
     try {
       const r = await axios.get(`${API}/customer/pending-payments`, { headers: { Authorization: `Bearer ${token}` } });
       setPendingPayments((r.data || []).filter(o => o.total_amount > 0));
-    } catch { /* silent */ }
+    } catch {}
   };
 
   const fetchMembershipStatus = async (token) => {
@@ -460,6 +598,40 @@ export default function CustomerAccount() {
     navigate("/account/login");
   };
 
+  const handleChangePassword = async () => {
+    if (passwordData.new_password !== passwordData.confirm_password) {
+      toast.error(t("New passwords do not match", "Las nuevas contraseñas no coinciden"));
+      return;
+    }
+    if (passwordData.new_password.length < 6) {
+      toast.error(t("Password must be at least 6 characters", "La contraseña debe tener al menos 6 caracteres"));
+      return;
+    }
+
+    const token = localStorage.getItem("customer_token");
+    if (!token) return;
+
+    setChangingPassword(true);
+    try {
+      await axios.post(
+        `${API}/customer/auth/change-password`,
+        {
+          current_password: passwordData.current_password,
+          new_password: passwordData.new_password,
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      toast.success(t("Password changed successfully", "Contraseña cambiada con éxito"));
+      setShowPasswordModal(false);
+      setPasswordData({ current_password: "", new_password: "", confirm_password: "" });
+    } catch (err) {
+      const msg = err.response?.data?.detail || t("Error changing password", "Error al cambiar la contraseña");
+      toast.error(msg);
+    } finally {
+      setChangingPassword(false);
+    }
+  };
+
   useEffect(() => {
     let ticking = false;
     const fn = () => { if (!ticking) { requestAnimationFrame(() => { setScrollY(window.pageYOffset); ticking = false; }); ticking = true; } };
@@ -478,7 +650,7 @@ export default function CustomerAccount() {
     setCustomerToken(token);
     if (cd) setCustomer(JSON.parse(cd));
 
-    const params      = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(window.location.search);
     const paidOrderId = params.get("paid");
     if (paidOrderId) {
       axios.post(`${API}/customer/order/${paidOrderId}/confirm-payment`, {})
@@ -499,14 +671,14 @@ export default function CustomerAccount() {
     fetchMembershipStatus(token).then(hasMem => { if (hasMem) fetchPreferences(token); });
 
     axios.get(`${API}/customer/me`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(res => {
-        if (res.data) {
-          setCustomer(res.data);
-          localStorage.setItem("customer_data", JSON.stringify(res.data));
-        }
-      })
+      .then(res => { if (res.data) { setCustomer(res.data); localStorage.setItem("customer_data", JSON.stringify(res.data)); } })
       .catch(() => {});
   }, [navigate]);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setOrdersPage(1);
+  }, [orderFilter, ordersSearch]);
 
   const handleSavePreferences = async () => {
     const token = localStorage.getItem("customer_token"); if (!token) return;
@@ -528,7 +700,7 @@ export default function CustomerAccount() {
       toast.success(t("Preferences deleted", "Preferencias eliminadas"));
       setPreferences({ detergent_type: "", water_temperature: "", fabric_softener: "", dryer_sheets: "", bleach: "", drying: "", folding_style: "", special_care: "", garment_separation: "", hanging_instructions: "", allergies: "", special_instructions: "", pickup_time_preference: "", gate_code: "" });
       setPreferencesMeta({ updated_at: null, version: null });
-    } catch (err) { toast.error(err.response?.data?.detail || t("Could not delete preferences", "No se pudieron eliminar las preferencias")); }
+    } catch (err) { toast.error(err.response?.data?.detail || t("Could not delete", "No se pudo eliminar")); }
   };
 
   const handlePayStripe = async (orderId) => {
@@ -545,33 +717,19 @@ export default function CustomerAccount() {
   const handleUploadReceipt = async (orderId, expectedAmount, method = "zelle") => {
     const token = localStorage.getItem("customer_token"); if (!token) return;
     const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "image/jpeg,image/png,image/webp";
+    input.type = "file"; input.accept = "image/jpeg,image/png,image/webp";
     input.onchange = async (e) => {
       const file = e.target.files[0]; if (!file) return;
       setUploadingReceipt({ orderId, method, loading: true });
-      const formData = new FormData();
-      formData.append("file", file);
+      const formData = new FormData(); formData.append("file", file);
       try {
         toast.info(t("Uploading receipt…", "Subiendo comprobante…"));
-        const uploadRes = await axios.post(`${API}/customer/upload-receipt`, formData, {
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "multipart/form-data" },
-          params: { context: `payment:${orderId}` },
-        });
+        const uploadRes = await axios.post(`${API}/customer/upload-receipt`, formData, { headers: { Authorization: `Bearer ${token}`, "Content-Type": "multipart/form-data" }, params: { context: `payment:${orderId}` } });
         toast.info(t("Analyzing with AI…", "Analizando con IA…"));
-        const ocrRes = await axios.post(`${API}/customer/ocr-receipt/${uploadRes.data.id}`, {}, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
+        const ocrRes = await axios.post(`${API}/customer/ocr-receipt/${uploadRes.data.id}`, {}, { headers: { Authorization: `Bearer ${token}` } });
         const isValid = ocrRes.data.is_valid_payment;
         const extracted = ocrRes.data.amount;
-        const rejectionReason = ocrRes.data.rejection_reason || "";
-
-        if (!isValid) {
-          toast.error(rejectionReason || t("This does not appear to be a completed payment receipt.", "Esto no parece ser un comprobante de pago completado."), { duration: 8000 });
-          return;
-        }
-
+        if (!isValid) { toast.error(ocrRes.data.rejection_reason || t("This doesn't appear to be a completed payment.", "Esto no parece un pago completado."), { duration: 8000 }); return; }
         const tolerance = Math.max(Number(expectedAmount) * 0.10, 1.00);
         if (Math.abs(extracted - Number(expectedAmount)) <= tolerance) {
           await axios.post(`${API}/customer/order/${orderId}/mark-zelle?method=${method}`, {}, { headers: { Authorization: `Bearer ${token}` } });
@@ -581,42 +739,32 @@ export default function CustomerAccount() {
         } else {
           toast.error(t(`Amount mismatch: expected $${Number(expectedAmount).toFixed(2)}, got $${Number(extracted).toFixed(2)}`, `Monto no coincide: esperado $${Number(expectedAmount).toFixed(2)}, obtenido $${Number(extracted).toFixed(2)}`), { duration: 8000 });
         }
-      } catch (err) {
-        toast.error(err.response?.data?.detail || t("Error processing receipt", "Error al procesar el comprobante"));
-      } finally { setUploadingReceipt(null); }
+      } catch (err) { toast.error(err.response?.data?.detail || t("Error processing receipt", "Error al procesar")); }
+      finally { setUploadingReceipt(null); }
     };
     input.click();
   };
 
-  const openPaymentModal  = (method, order) => setPaymentModal({ method, order });
-  const closePaymentModal = () => setPaymentModal(null);
-
   const startEditProfile = () => {
     const addrParts = (customer?.address || "").split(",").map(s => s.trim());
     setProfileForm({
-      name: customer?.name || "",
-      phone: (customer?.phone || "").replace(/^\+\d+\s?/, ""),
+      name: customer?.name || "", phone: (customer?.phone || "").replace(/^\+\d+\s?/, ""),
       address: customer?.address_line1 || addrParts[0] || "",
-      city: customer?.city || addrParts[1] || "",
-      state: customer?.state || addrParts[2] || "",
+      city: customer?.city || addrParts[1] || "", state: customer?.state || addrParts[2] || "",
       zip_code: customer?.zip_code || addrParts[3] || "",
     });
     setEditingProfile(true);
   };
 
   const handleSaveProfile = async () => {
-    const token = localStorage.getItem("customer_token");
-    if (!token) return;
+    const token = localStorage.getItem("customer_token"); if (!token) return;
     setSavingProfile(true);
     try {
       const res = await axios.put(`${API}/customer/me`, profileForm, { headers: { Authorization: `Bearer ${token}` } });
-      setCustomer(res.data);
-      localStorage.setItem("customer_data", JSON.stringify(res.data));
-      setEditingProfile(false);
-      toast.success(t("Profile updated", "Perfil actualizado"));
-    } catch (err) {
-      toast.error(err.response?.data?.detail || t("Could not update profile", "No se pudo actualizar el perfil"));
-    } finally { setSavingProfile(false); }
+      setCustomer(res.data); localStorage.setItem("customer_data", JSON.stringify(res.data));
+      setEditingProfile(false); toast.success(t("Profile updated", "Perfil actualizado"));
+    } catch (err) { toast.error(err.response?.data?.detail || t("Could not update profile", "No se pudo actualizar el perfil")); }
+    finally { setSavingProfile(false); }
   };
 
   const setPref = (k, v) => setPreferences(p => ({ ...p, [k]: v }));
@@ -625,8 +773,23 @@ export default function CustomerAccount() {
     return new Date(ds).toLocaleDateString(locale === "es" ? "es-ES" : "en-US", { year: "numeric", month: "long", day: "numeric" });
   };
 
-  const PICKUP_STATUSES   = ['picked_up', 'processing', 'ready', 'out_for_delivery', 'delivered', 'completed'];
-  const DELIVERY_STATUSES = ['delivered', 'completed'];
+  const PICKUP_STATUSES   = ["picked_up","processing","ready","out_for_delivery","delivered","completed"];
+  const DELIVERY_STATUSES = ["delivered","completed"];
+
+  // Filter and paginate orders
+  const filteredOrders = orders.filter(o => {
+    const matchFilter = orderFilter === "all" ? true : orderFilter === "recurring" ? o.is_recurring : !o.is_recurring;
+    const q = ordersSearch.toLowerCase();
+    const matchSearch = !q || (o.order_number || "").toLowerCase().includes(q) || (o.service_type || "").toLowerCase().includes(q) || (o.pickup_date || "").includes(q);
+    return matchFilter && matchSearch;
+  });
+
+  const totalFiltered = filteredOrders.length;
+  const totalPages = Math.ceil(totalFiltered / ORDERS_PER_PAGE);
+  const paginatedOrders = filteredOrders.slice(0, ordersPage * ORDERS_PER_PAGE);
+  const hasMore = ordersPage * ORDERS_PER_PAGE < totalFiltered;
+
+  const recurringCount = orders.filter(o => o.is_recurring).length;
 
   if (loading) return (
     <div className="min-h-screen bg-white">
@@ -641,11 +804,70 @@ export default function CustomerAccount() {
 
   return (<>
     {paymentModal && (
-      <PaymentInstructionModal
-        method={paymentModal.method} order={paymentModal.order}
-        onClose={closePaymentModal} onReceiptUpload={handleUploadReceipt}
-        uploadingReceipt={uploadingReceipt} paymentInfo={paymentInfo}
-      />
+      <PaymentInstructionModal method={paymentModal.method} order={paymentModal.order}
+        onClose={() => setPaymentModal(null)} onReceiptUpload={handleUploadReceipt}
+        uploadingReceipt={uploadingReceipt} paymentInfo={paymentInfo} />
+    )}
+
+    {/* Password Change Modal */}
+    {showPasswordModal && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowPasswordModal(false)}>
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
+          <div className="bg-gradient-to-r from-primary to-sky-500 px-6 py-5 flex items-center justify-between">
+            <div>
+              <h3 className="text-white font-black text-lg flex items-center gap-2">
+                <Key className="w-5 h-5" />
+                {t("Change Password", "Cambiar contraseña")}
+              </h3>
+              <p className="text-white/70 text-xs mt-0.5">{t("Enter your current and new password", "Ingresa tu contraseña actual y nueva")}</p>
+            </div>
+            <button onClick={() => setShowPasswordModal(false)} className="text-white/70 hover:text-white"><X className="w-5 h-5" /></button>
+          </div>
+          <div className="px-6 py-5 space-y-4">
+            <div>
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-400">{t("Current Password", "Contraseña actual")}</label>
+              <input
+                type="password"
+                value={passwordData.current_password}
+                onChange={e => setPasswordData(p => ({ ...p, current_password: e.target.value }))}
+                className={inputCls}
+                placeholder="••••••"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-400">{t("New Password", "Nueva contraseña")}</label>
+              <input
+                type="password"
+                value={passwordData.new_password}
+                onChange={e => setPasswordData(p => ({ ...p, new_password: e.target.value }))}
+                className={inputCls}
+                placeholder="Mínimo 6 caracteres"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-400">{t("Confirm New Password", "Confirmar nueva contraseña")}</label>
+              <input
+                type="password"
+                value={passwordData.confirm_password}
+                onChange={e => setPasswordData(p => ({ ...p, confirm_password: e.target.value }))}
+                className={inputCls}
+                placeholder="••••••"
+              />
+            </div>
+            <button
+              onClick={handleChangePassword}
+              disabled={changingPassword}
+              className="w-full py-3 rounded-xl text-white font-bold text-sm bg-gradient-to-r from-primary to-sky-500 hover:brightness-110 transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {changingPassword ? (
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                t("Update Password", "Actualizar contraseña")
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
     )}
 
     <div className="pointer-events-none fixed inset-0 z-[9999] hidden lg:block">
@@ -657,6 +879,8 @@ export default function CustomerAccount() {
       @keyframes fadeUp { from { opacity:0; transform:translateY(16px) } to { opacity:1; transform:translateY(0) } }
       @keyframes float  { 0%,100% { transform:translateY(0) } 50% { transform:translateY(-8px) } }
       .float-animation { animation: float 4s ease-in-out infinite; }
+      @keyframes pulse-ring { 0%,100%{box-shadow:0 0 0 0 rgba(14,165,233,.3)} 50%{box-shadow:0 0 0 8px rgba(14,165,233,0)} }
+      .pulse-ring { animation: pulse-ring 2s ease-in-out infinite; }
     `}</style>
 
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-sky-50/30 overflow-x-hidden">
@@ -681,6 +905,15 @@ export default function CustomerAccount() {
             </span>
           </h1>
           <p className="text-white/60 text-lg" style={{ animation:"fadeUp 0.9s 0.35s both ease-out" }}>{customer?.email}</p>
+
+          {recurringCount > 0 && (
+            <div className="mt-6 inline-flex items-center gap-2 px-4 py-2.5 rounded-full bg-sky-500/20 backdrop-blur-sm border border-sky-400/30" style={{ animation:"fadeUp 0.9s 0.5s both ease-out" }}>
+              <Repeat className="w-4 h-4 text-sky-300" />
+              <span className="text-sm text-white/80 font-semibold">
+                {recurringCount} {t("recurring pickup(s) active", recurringCount === 1 ? "pickup recurrente activo" : "pickups recurrentes activos")}
+              </span>
+            </div>
+          )}
         </div>
         <div className="absolute bottom-0 left-0 right-0 z-20">
           <svg viewBox="0 0 1440 70" preserveAspectRatio="none" className="w-full h-10 sm:h-14">
@@ -702,7 +935,7 @@ export default function CustomerAccount() {
                     <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-sky-400 to-primary flex items-center justify-center shadow-xl shadow-primary/25 float-animation">
                       <span className="text-white text-xl font-black">{firstName[0]?.toUpperCase()}</span>
                     </div>
-                    <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-400 rounded-full border-2 border-white shadow-md" />
+                    <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-400 rounded-full border-2 border-white shadow-md pulse-ring" />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="font-bold text-slate-800 text-lg break-words">
@@ -710,13 +943,25 @@ export default function CustomerAccount() {
                       <Heart className="w-3.5 h-3.5 text-rose-400 fill-rose-400 inline-block ml-1.5 align-middle" />
                     </div>
                     <p className="text-slate-400 text-sm break-words">{customer?.email}</p>
+                    {membershipPlan && (
+                      <div className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-50 border border-violet-200 text-violet-600 text-[10px] font-bold">
+                        <Award className="w-2.5 h-2.5" /> {membershipPlan}
+                      </div>
+                    )}
                   </div>
                 </div>
-                <button onClick={handleLogout} data-testid="customer-logout-btn"
-                  className="group flex items-center gap-2 px-5 py-2.5 rounded-full border border-slate-200 text-slate-500 text-sm font-semibold hover:border-red-200 hover:text-red-500 hover:bg-red-50 transition-all duration-300 shadow-sm flex-shrink-0">
-                  <LogOut className="h-4 w-4 transition-transform duration-200 group-hover:-translate-x-0.5" />
-                  {t("Sign out", "Cerrar sesión")}
-                </button>
+                <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
+                  <button onClick={() => setShowPasswordModal(true)}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-slate-200 text-slate-500 text-xs font-semibold hover:border-primary/30 hover:text-primary hover:bg-sky-50 transition-all duration-200">
+                    <Key className="w-3.5 h-3.5" />
+                    {t("Change Password", "Cambiar contraseña")}
+                  </button>
+                  <button onClick={handleLogout} data-testid="customer-logout-btn"
+                    className="group flex items-center gap-2 px-5 py-2.5 rounded-full border border-slate-200 text-slate-500 text-sm font-semibold hover:border-red-200 hover:text-red-500 hover:bg-red-50 transition-all duration-300 shadow-sm flex-shrink-0">
+                    <LogOut className="h-4 w-4 transition-transform duration-200 group-hover:-translate-x-0.5" />
+                    {t("Sign out", "Cerrar sesión")}
+                  </button>
+                </div>
               </div>
             </Card>
           </Tilt>
@@ -730,12 +975,36 @@ export default function CustomerAccount() {
             <h3 className="text-xl font-bold text-white mb-1">{t("Ready for your next pickup?","¿Listo para tu próxima recogida?")}</h3>
             <p className="text-white/60 text-sm mb-6">{t("Schedule in seconds, we'll handle the rest.","Programa en segundos, nosotros hacemos el resto.")}</p>
             <Link to="/schedule-pickup">
-              <Mag as="div" strength={0.22} className="inline-flex items-center gap-2 bg-gradient-to-r from-primary to-sky-500 text-white rounded-full px-8 py-3.5 text-sm font-bold uppercase tracking-wider shadow-lg hover:shadow-xl cursor-pointer hover:-translate-y-0.5 transition-all duration-300 active:scale-95 group overflow-hidden relative">
+              <div className="inline-flex items-center gap-2 bg-gradient-to-r from-primary to-sky-500 text-white rounded-full px-8 py-3.5 text-sm font-bold uppercase tracking-wider shadow-lg hover:shadow-xl cursor-pointer hover:-translate-y-0.5 transition-all duration-300 active:scale-95 group overflow-hidden relative">
                 <span className="relative z-10 flex items-center gap-2">🚚 {t("Schedule Pickup","Programar Recogida")}<ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-1" /></span>
-              </Mag>
+              </div>
             </Link>
           </div>
         </Reveal>
+
+        {/* Stats */}
+        <div className="grid grid-cols-3 sm:grid-cols-4 gap-4">
+          {[
+            { value: orders.length, label: t("Orders","Órdenes"), color:"from-sky-400 to-primary", icon: Package },
+            { value: orders.filter(o=>["new","processing","confirmed"].includes(o.status)).length, label:t("Active","Activas"), color:"from-amber-400 to-orange-500", icon: Calendar },
+            { value: recurringCount, label:t("Recurring","Recurrentes"), color:"from-sky-500 to-indigo-500", icon: Repeat },
+            { value: orders.filter(o=>o.status==="completed").length, label:t("Done","Completadas"), color:"from-emerald-400 to-teal-500", icon: Award },
+          ].map((s, i) => (
+            <Reveal key={i} delay={i * 80} dir="up">
+              <Tilt depth={3}>
+                <Card hover className="transition-all duration-300 hover:scale-[1.02]">
+                  <div className="px-4 py-5 text-center">
+                    <div className={`w-10 h-10 bg-gradient-to-br ${s.color} rounded-xl flex items-center justify-center mx-auto mb-3 shadow-md`}>
+                      <s.icon className="h-5 w-5 text-white" />
+                    </div>
+                    <p className="text-3xl font-black text-slate-800">{s.value}</p>
+                    <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">{s.label}</p>
+                  </div>
+                </Card>
+              </Tilt>
+            </Reveal>
+          ))}
+        </div>
 
         {/* Membership upsell */}
         {!hasMembership && (
@@ -748,41 +1017,18 @@ export default function CustomerAccount() {
                   </div>
                   <div>
                     <h2 className="font-bold text-slate-800 text-base">{t("Upgrade to Membership", "Obtén una Membresía")}</h2>
-                    <p className="text-xs text-slate-400">{t("Unlock laundry preferences & exclusive benefits", "Desbloquea preferencias de lavado y beneficios exclusivos")}</p>
+                    <p className="text-xs text-slate-400">{t("Unlock laundry preferences & exclusive benefits", "Desbloquea preferencias y beneficios exclusivos")}</p>
                   </div>
                 </div>
                 <Link to="/membership">
-                  <Mag as="div" strength={0.2} className="inline-flex items-center gap-1.5 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-full px-5 py-2.5 text-xs font-bold uppercase tracking-wider shadow-md hover:shadow-lg transition-all duration-300 cursor-pointer active:scale-95" data-testid="membership-upsell-btn">
+                  <div className="inline-flex items-center gap-1.5 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-full px-5 py-2.5 text-xs font-bold uppercase tracking-wider shadow-md hover:shadow-lg transition-all duration-300 cursor-pointer active:scale-95" data-testid="membership-upsell-btn">
                     {t("View Plans", "Ver Planes")}<ArrowRight className="w-3.5 h-3.5" />
-                  </Mag>
+                  </div>
                 </Link>
               </div>
             </Card>
           </Reveal>
         )}
-
-        {/* Stats */}
-        <div className="grid grid-cols-3 gap-5">
-          {[
-            { value: orders.length, label: t("Orders","Órdenes"), color:"from-sky-400 to-primary", icon: Package },
-            { value: orders.filter(o=>["new","processing"].includes(o.status)).length, label:t("Active","Activas"), color:"from-amber-400 to-orange-500", icon: Calendar },
-            { value: orders.filter(o=>o.status==="completed").length, label:t("Done","Completadas"), color:"from-emerald-400 to-teal-500", icon: Award },
-          ].map((s, i) => (
-            <Reveal key={i} delay={i * 80} dir="up">
-              <Tilt depth={3}>
-                <Card hover className="transition-all duration-300 hover:scale-[1.02]">
-                  <div className="px-5 py-5 text-center">
-                    <div className={`w-10 h-10 bg-gradient-to-br ${s.color} rounded-xl flex items-center justify-center mx-auto mb-3 shadow-md`}>
-                      <s.icon className="h-5 w-5 text-white" />
-                    </div>
-                    <p className="text-3xl font-black text-slate-800">{s.value}</p>
-                    <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">{s.label}</p>
-                  </div>
-                </Card>
-              </Tilt>
-            </Reveal>
-          ))}
-        </div>
 
         {/* Pending payments */}
         {pendingPayments.length > 0 && (
@@ -802,30 +1048,27 @@ export default function CustomerAccount() {
                   <div key={order.id} className="rounded-2xl border border-slate-100 bg-white p-5 space-y-4 hover:border-primary/20 hover:shadow-md transition-all duration-300" data-testid={`pending-order-${order.order_number}`}>
                     <div className="flex items-center justify-between flex-wrap gap-2">
                       <div>
-                        <span className="font-bold text-slate-800 text-sm">{order.order_number}</span>
-                        <span className={`ml-2 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${paymentStatusLabel(order.payment_status).cls}`}>
-                          {paymentStatusLabel(order.payment_status).label}
-                        </span>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-bold text-slate-800 text-sm">{order.order_number}</span>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${paymentStatusLabel(order.payment_status).cls}`}>
+                            {paymentStatusLabel(order.payment_status).label}
+                          </span>
+                          {order.is_recurring && <RecurrenceBadge recurrence={order.recurrence} locale={locale} />}
+                        </div>
+                        {order.service_type && <p className="text-xs text-slate-400 capitalize mt-1">{SERVICE_ICONS[order.service_type] || "🧺"} {order.service_type.replace(/_/g," ")}</p>}
                       </div>
                       <span className="font-black text-primary text-xl">${Number(order.total_amount||0).toFixed(2)}</span>
                     </div>
-                    {order.service_type && <p className="text-xs text-slate-400 capitalize">{order.service_type.replace(/_/g," ")}</p>}
                     {isPendingVerification(order.payment_status) ? (
                       <div className="bg-amber-50 rounded-xl border border-amber-200 p-3 text-xs text-amber-700 font-medium">
                         {t("Payment submitted — waiting for verification by our team.", "Pago enviado — esperando verificación de nuestro equipo.")}
                       </div>
                     ) : (
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                        <button onClick={() => openPaymentModal("zelle", order)} className="flex items-center justify-center gap-2 text-white rounded-xl px-4 py-3 text-sm font-semibold transition-all duration-200 hover:brightness-110 active:scale-95" style={{ backgroundColor:"#6D1ED4" }}>
-                          <Building2 className="h-4 w-4" /> Zelle
-                        </button>
-                        <button onClick={() => openPaymentModal("venmo", order)} className="flex items-center justify-center gap-2 text-white rounded-xl px-4 py-3 text-sm font-semibold transition-all duration-200 hover:brightness-110 active:scale-95" style={{ backgroundColor:"#0074DE" }}>
-                          <DollarSign className="h-4 w-4" /> Venmo
-                        </button>
-                        <button onClick={() => openPaymentModal("cashapp", order)} className="flex items-center justify-center gap-2 text-black rounded-xl px-4 py-3 text-sm font-semibold transition-all duration-200 hover:brightness-110 active:scale-95" style={{ backgroundColor:"#00E013" }}>
-                          <DollarSign className="h-4 w-4" /> CashApp
-                        </button>
-                        <button onClick={() => handlePayStripe(order.id)} disabled={payingOrderId===order.id} className="flex items-center justify-center gap-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl px-4 py-3 text-sm font-semibold transition-all duration-200 disabled:opacity-50">
+                        <button onClick={() => setPaymentModal({ method: "zelle", order })} className="flex items-center justify-center gap-2 text-white rounded-xl px-4 py-3 text-sm font-semibold transition-all hover:brightness-110 active:scale-95" style={{ backgroundColor:"#6D1ED4" }}><Building2 className="h-4 w-4" /> Zelle</button>
+                        <button onClick={() => setPaymentModal({ method: "venmo", order })} className="flex items-center justify-center gap-2 text-white rounded-xl px-4 py-3 text-sm font-semibold transition-all hover:brightness-110 active:scale-95" style={{ backgroundColor:"#0074DE" }}><DollarSign className="h-4 w-4" /> Venmo</button>
+                        <button onClick={() => setPaymentModal({ method: "cashapp", order })} className="flex items-center justify-center gap-2 text-black rounded-xl px-4 py-3 text-sm font-semibold transition-all hover:brightness-110 active:scale-95" style={{ backgroundColor:"#00E013" }}><DollarSign className="h-4 w-4" /> CashApp</button>
+                        <button onClick={() => handlePayStripe(order.id)} disabled={payingOrderId===order.id} className="flex items-center justify-center gap-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl px-4 py-3 text-sm font-semibold transition-all disabled:opacity-50">
                           {payingOrderId===order.id ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <CreditCard className="h-4 w-4" />}
                           {t("Card","Tarjeta")}
                         </button>
@@ -833,7 +1076,7 @@ export default function CustomerAccount() {
                     )}
                     {!isPendingVerification(order.payment_status) && (
                       <button onClick={() => handleUploadReceipt(order.id, order.total_amount)} disabled={uploadingReceipt?.orderId===order.id}
-                        className="w-full flex items-center justify-center gap-2 bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-200 disabled:opacity-50">
+                        className="w-full flex items-center justify-center gap-2 bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all disabled:opacity-50">
                         {uploadingReceipt?.orderId===order.id ? <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" /> : <ScanLine className="h-4 w-4" />}
                         📤 {t("Upload receipt for instant verification","Sube comprobante para verificación instantánea")}
                       </button>
@@ -942,7 +1185,7 @@ export default function CustomerAccount() {
                               <SelectItem value="Standard Fold">{t("Standard Fold","Doblado estándar")}</SelectItem>
                               <SelectItem value="Retail Fold (Store Style)">{t("Retail Fold","Doblado tipo tienda")}</SelectItem>
                               <SelectItem value="Hanging (Shirts Only)">{t("Hanging (Shirts Only)","Colgado (solo camisas)")}</SelectItem>
-                              <SelectItem value="Fold + Hang Combination">{t("Fold + Hang Combination","Doblado + colgado")}</SelectItem>
+                              <SelectItem value="Fold + Hang Combination">{t("Fold + Hang","Doblado + colgado")}</SelectItem>
                               <SelectItem value="No Preference">{t("No Preference","Sin preferencia")}</SelectItem>
                             </SelectContent>
                           </Select>
@@ -952,7 +1195,7 @@ export default function CustomerAccount() {
                             <SelectTrigger className="mt-1.5 rounded-xl border-slate-200 text-sm h-[44px]" data-testid="customer-pref-special-care"><SelectValue placeholder={t("Select","Selecciona")} /></SelectTrigger>
                             <SelectContent>
                               <SelectItem value="Hypoallergenic Only">{t("Hypoallergenic Only","Solo hipoalergénico")}</SelectItem>
-                              <SelectItem value="Baby Safe Products">{t("Baby Safe Products","Productos seguros para bebé")}</SelectItem>
+                              <SelectItem value="Baby Safe Products">{t("Baby Safe Products","Seguros para bebé")}</SelectItem>
                               <SelectItem value="No Harsh Chemicals">{t("No Harsh Chemicals","Sin químicos agresivos")}</SelectItem>
                               <SelectItem value="No Preference">{t("No Preference","Sin preferencia")}</SelectItem>
                             </SelectContent>
@@ -963,9 +1206,9 @@ export default function CustomerAccount() {
                             <SelectTrigger className="mt-1.5 rounded-xl border-slate-200 text-sm h-[44px]" data-testid="customer-pref-separation"><SelectValue placeholder={t("Select","Selecciona")} /></SelectTrigger>
                             <SelectContent>
                               <SelectItem value="No Separation">{t("No Separation","Sin separación")}</SelectItem>
-                              <SelectItem value="Separate by Person (Label Bags by Name)">{t("Separate by Person","Separar por persona")}</SelectItem>
-                              <SelectItem value="Separate by Clothing Type">{t("Separate by Clothing Type","Separar por tipo de prenda")}</SelectItem>
-                              <SelectItem value="Separate by Color (Light / Dark)">{t("Separate by Color","Separar por color")}</SelectItem>
+                              <SelectItem value="Separate by Person (Label Bags by Name)">{t("Separate by Person","Por persona")}</SelectItem>
+                              <SelectItem value="Separate by Clothing Type">{t("Separate by Clothing Type","Por tipo de prenda")}</SelectItem>
+                              <SelectItem value="Separate by Color (Light / Dark)">{t("Separate by Color","Por color")}</SelectItem>
                               <SelectItem value="No Preference">{t("No Preference","Sin preferencia")}</SelectItem>
                             </SelectContent>
                           </Select>
@@ -981,7 +1224,7 @@ export default function CustomerAccount() {
                         <textarea value={preferences.special_instructions} onChange={e=>setPref("special_instructions",e.target.value)} rows={3} placeholder={t("Special instructions","Instrucciones especiales")} className={`${inputCls} resize-none`} data-testid="customer-pref-notes" />
                       </Field>
                       <div className="grid sm:grid-cols-2 gap-4">
-                        <Field label={t("Preferred pickup time","Horario preferido de pickup")}>
+                        <Field label={t("Preferred pickup time","Horario preferido")}>
                           <input value={preferences.pickup_time_preference} onChange={e=>setPref("pickup_time_preference",e.target.value)} placeholder={t("e.g. 8am – 12pm","Ej. 8am – 12pm")} className={inputCls} data-testid="customer-pref-pickup-time" />
                         </Field>
                         <Field label={t("Gate / Access code","Puerta / Código de acceso")}>
@@ -1006,43 +1249,77 @@ export default function CustomerAccount() {
           </Reveal>
         )}
 
-        {/* Orders */}
+        {/* ── ORDERS SECTION with Pagination ── */}
         <Reveal delay={160} dir="up">
           <Card hover>
-            <div className="px-7 py-5 flex items-center justify-between border-b border-slate-100">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center"><Package className="h-5 w-5 text-primary" /></div>
-                <h2 className="font-bold text-slate-800 text-lg">{t("Orders","Órdenes")}</h2>
+            <div className="px-7 py-5 border-b border-slate-100">
+              <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center"><Package className="h-5 w-5 text-primary" /></div>
+                  <div>
+                    <h2 className="font-bold text-slate-800 text-lg">{t("Orders","Órdenes")}</h2>
+                    <p className="text-xs text-slate-400">{orders.length} {t("total","total")} · {recurringCount} {t("recurring","recurrentes")}</p>
+                  </div>
+                </div>
+                <Link to="/schedule-pickup">
+                  <div className="inline-flex items-center gap-1.5 bg-gradient-to-r from-primary to-sky-500 text-white rounded-full px-5 py-2 text-xs font-bold uppercase tracking-wider shadow-md hover:shadow-lg transition-all duration-300 cursor-pointer active:scale-95">
+                    + {t("New Pickup","Nueva recogida")}
+                  </div>
+                </Link>
               </div>
-              <Link to="/schedule-pickup">
-                <Mag as="div" strength={0.2} className="inline-flex items-center gap-1.5 bg-gradient-to-r from-primary to-sky-500 text-white rounded-full px-5 py-2 text-xs font-bold uppercase tracking-wider shadow-md hover:shadow-lg transition-all duration-300 cursor-pointer active:scale-95">
-                  + {t("New Pickup","Nueva recogida")}
-                </Mag>
-              </Link>
+
+              {/* Filter tabs + search */}
+              <div className="flex flex-wrap gap-3 items-center">
+                <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
+                  {[
+                    { key: "all",       label: t("All","Todas") },
+                    { key: "recurring", label: t("Recurring","Recurrentes"), icon: <Repeat className="w-3 h-3" /> },
+                    { key: "once",      label: t("One-time","Únicas") },
+                  ].map(f => (
+                    <button key={f.key} onClick={() => setOrderFilter(f.key)}
+                      className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${orderFilter === f.key ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
+                      {f.icon}{f.label}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="text"
+                  value={ordersSearch}
+                  onChange={e => setOrdersSearch(e.target.value)}
+                  placeholder={t("Search orders…","Buscar órdenes…")}
+                  className="flex-1 min-w-[140px] border border-slate-200 rounded-xl px-3 py-1.5 text-sm text-slate-700 placeholder-slate-300 focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/10 transition-all"
+                />
+              </div>
             </div>
+
             <div className="px-7 py-5">
-              {orders.length === 0 ? (
+              {filteredOrders.length === 0 ? (
                 <div className="text-center py-14">
                   <div className="w-20 h-20 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-inner"><Package className="h-10 w-10 text-slate-300" /></div>
-                  <p className="text-slate-500 font-medium mb-2">{t("No orders yet","Aún no tienes órdenes")}</p>
-                  <p className="text-slate-400 text-sm mb-6">{t("Schedule your first pickup to get started.","Programa tu primera recogida para comenzar.")}</p>
+                  <p className="text-slate-500 font-medium mb-2">{t("No orders found","No se encontraron órdenes")}</p>
                   <Link to="/schedule-pickup">
-                    <Mag as="div" strength={0.2} className="inline-flex items-center gap-2 bg-gradient-to-r from-primary to-sky-500 text-white rounded-full px-8 py-3.5 text-sm font-bold uppercase tracking-wider shadow-lg hover:shadow-xl cursor-pointer hover:-translate-y-0.5 transition-all duration-300 active:scale-95">
+                    <div className="inline-flex items-center gap-2 bg-gradient-to-r from-primary to-sky-500 text-white rounded-full px-8 py-3.5 text-sm font-bold uppercase tracking-wider shadow-lg cursor-pointer hover:-translate-y-0.5 transition-all duration-300 active:scale-95 mt-4">
                       🚚 {t("Schedule Your First Pickup","Programa tu primera recogida")}
-                    </Mag>
+                    </div>
                   </Link>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {orders.map((order, i) => (
-                    <Reveal key={order.id} delay={i * 60} dir="up">
-                      <div className="relative p-4 rounded-2xl border border-slate-100 hover:border-primary/30 hover:shadow-lg hover:shadow-sky-50 transition-all duration-300 group bg-white overflow-hidden">
+                  {paginatedOrders.map((order, i) => (
+                    <Reveal key={order.id} delay={i * 50} dir="up">
+                      <div className={`relative p-4 rounded-2xl border hover:shadow-lg hover:shadow-sky-50 transition-all duration-300 group bg-white overflow-hidden ${order.is_recurring ? "border-sky-100 hover:border-sky-300" : "border-slate-100 hover:border-primary/30"}`}>
+                        {/* Recurring indicator stripe */}
+                        {order.is_recurring && (
+                          <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl bg-gradient-to-b from-sky-400 to-indigo-500" />
+                        )}
+
                         <div className="absolute inset-0 bg-gradient-to-r from-sky-50/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
 
-                        {/* Cabecera */}
-                        <div className="relative flex items-center justify-between flex-wrap gap-3">
-                          <div>
-                            <div className="flex items-center gap-3 mb-2 flex-wrap">
+                        {/* Order header */}
+                        <div className="relative flex items-start justify-between flex-wrap gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-2 flex-wrap">
+                              <span className="text-lg">{SERVICE_ICONS[order.service_type] || "🧺"}</span>
                               <span className="font-bold text-slate-800 text-sm">{order.order_number}</span>
                               <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${statusCls(order.status)}`}>
                                 {statusLabel(order.status)}
@@ -1052,122 +1329,99 @@ export default function CustomerAccount() {
                                   {paymentStatusLabel(order.payment_status).label}
                                 </span>
                               )}
+                              {order.is_recurring && <RecurrenceBadge recurrence={order.recurrence} locale={locale} />}
+                              {order.recurrence_parent_id && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border bg-slate-50 text-slate-500 border-slate-200">
+                                  <RotateCcw className="w-2.5 h-2.5" />
+                                  {t("Auto-scheduled", "Auto-programado")}
+                                </span>
+                              )}
                             </div>
                             <div className="flex items-center gap-4 text-xs text-slate-400 flex-wrap">
                               <span className="flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5" />{order.pickup_date || "TBD"}</span>
                               {order.pickup_time_window && <span className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" />{order.pickup_time_window}</span>}
-                              {order.pickup_address && <span className="flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5" />{order.pickup_address.split(",")[0]}</span>}
+                              {order.pickup_address && <span className="flex items-center gap-1.5 truncate max-w-[200px]"><MapPin className="h-3.5 w-3.5 flex-shrink-0" />{order.pickup_address.split(",")[0]}</span>}
                             </div>
+                            {order.is_recurring && order.recurrence_end_date && (
+                              <div className="mt-1 flex items-center gap-1 text-xs text-slate-400">
+                                <AlertCircle className="w-3 h-3" />
+                                {t("Recurring until", "Recurrente hasta")} {order.recurrence_end_date}
+                              </div>
+                            )}
                           </div>
-                          <div className="relative flex items-center gap-3">
-                            {order.service_type && <p className="text-xs text-slate-400 capitalize">{order.service_type.replace("_", " ")}</p>}
+                          <div className="flex items-center gap-2 flex-shrink-0">
                             {order.total_amount != null && <p className="font-black text-primary text-lg">${Number(order.total_amount).toFixed(2)}</p>}
                             <button
                               onClick={() => setViewingOrderDetails(prev => prev === order.id ? null : order.id)}
-                              className="ml-2 p-2 rounded-lg bg-slate-100 hover:bg-primary/10 text-slate-500 hover:text-primary transition-all duration-200"
-                              title={t("View details", "Ver detalles")}
-                            >
+                              className="p-2 rounded-lg bg-slate-100 hover:bg-primary/10 text-slate-500 hover:text-primary transition-all duration-200">
                               <ChevronDown className={`w-4 h-4 transition-transform duration-300 ${viewingOrderDetails === order.id ? 'rotate-180' : ''}`} />
                             </button>
                           </div>
                         </div>
 
-                        {/* Panel expandible */}
+                        {/* Recurrence manager button */}
+                        {(order.is_recurring || order.recurrence) && order.recurrence !== "once" && customerToken && (
+                          <div className="relative mt-3 pt-3 border-t border-slate-100 flex items-center gap-2 flex-wrap">
+                            <RecurrenceManager
+                              order={order}
+                              token={customerToken}
+                              t={t}
+                              locale={locale}
+                              onUpdate={() => {
+                                const tk = localStorage.getItem("customer_token");
+                                if (tk) fetchOrders(tk);
+                              }}
+                            />
+                            {order.recurrence_end_date ? (
+                              <span className="text-xs text-slate-400 flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                {t("Ends", "Termina")} {order.recurrence_end_date}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-slate-400">{t("No end date — indefinite", "Sin fecha fin — indefinido")}</span>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Expandable details */}
                         {viewingOrderDetails === order.id && (
                           <div className="mt-4 pt-4 border-t border-slate-100 space-y-4">
-
-                            {/* Info recolección */}
                             {order.pickup_address && (
                               <div className="bg-slate-50 rounded-xl p-4">
                                 <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3 flex items-center gap-2">
-                                  <MapPin className="w-3.5 h-3.5" />
-                                  {t("Pickup Information", "Información de Recolección")}
+                                  <MapPin className="w-3.5 h-3.5" />{t("Pickup Information", "Información de Recolección")}
                                 </h4>
                                 <div className="grid sm:grid-cols-2 gap-3 text-sm">
-                                  <div>
-                                    <p className="text-slate-400 text-xs mb-1">{t("Address", "Dirección")}</p>
-                                    <p className="font-medium text-slate-700">{order.pickup_address}</p>
-                                  </div>
-                                  {order.pickup_date && (
-                                    <div>
-                                      <p className="text-slate-400 text-xs mb-1">{t("Date & Time", "Fecha y Hora")}</p>
-                                      <p className="font-medium text-slate-700">{order.pickup_date} {order.pickup_time_window && `(${order.pickup_time_window})`}</p>
-                                    </div>
-                                  )}
+                                  <div><p className="text-slate-400 text-xs mb-1">{t("Address","Dirección")}</p><p className="font-medium text-slate-700">{order.pickup_address}</p></div>
+                                  {order.pickup_date && <div><p className="text-slate-400 text-xs mb-1">{t("Date & Time","Fecha y Hora")}</p><p className="font-medium text-slate-700">{order.pickup_date} {order.pickup_time_window && `(${order.pickup_time_window})`}</p></div>}
                                 </div>
                               </div>
                             )}
 
-                            {/* ── FOTO DE RECOLECCIÓN ── */}
                             {PICKUP_STATUSES.includes(order.status) && customerToken && (
-                              <OrderImageBlock
-                                key={`pickup-${order.id}`}
-                                orderId={order.id}
-                                type="pickup"
-                                token={customerToken}
-                                t={t}
-                              />
+                              <OrderImageBlock key={`pickup-${order.id}`} orderId={order.id} type="pickup" token={customerToken} t={t} />
                             )}
-
-                            {/* ── FOTO DE ENTREGA ── */}
                             {DELIVERY_STATUSES.includes(order.status) && customerToken && (
-                              <OrderImageBlock
-                                key={`delivery-${order.id}`}
-                                orderId={order.id}
-                                type="delivery"
-                                token={customerToken}
-                                t={t}
-                              />
+                              <OrderImageBlock key={`delivery-${order.id}`} orderId={order.id} type="delivery" token={customerToken} t={t} />
                             )}
 
-                            {/* Info entrega */}
-                            {order.delivery_address && (
-                              <div className="bg-slate-50 rounded-xl p-4">
-                                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3 flex items-center gap-2">
-                                  <Package className="w-3.5 h-3.5" />
-                                  {t("Delivery Information", "Información de Entrega")}
-                                </h4>
-                                <div className="grid sm:grid-cols-2 gap-3 text-sm">
-                                  <div>
-                                    <p className="text-slate-400 text-xs mb-1">{t("Address", "Dirección")}</p>
-                                    <p className="font-medium text-slate-700">{order.delivery_address}</p>
-                                  </div>
-                                  {order.delivery_date && (
-                                    <div>
-                                      <p className="text-slate-400 text-xs mb-1">{t("Estimated Delivery", "Entrega Estimada")}</p>
-                                      <p className="font-medium text-slate-700">{order.delivery_date}</p>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Notas */}
                             {order.notes && (
                               <div className="bg-amber-50 rounded-xl p-4 border border-amber-100">
-                                <h4 className="text-xs font-bold uppercase tracking-wider text-amber-700 mb-2">{t("Order Notes", "Notas de la Orden")}</h4>
-                                <p className="text-sm text-slate-700">{order.notes}</p>
+                                <h4 className="text-xs font-bold uppercase tracking-wider text-amber-700 mb-2">{t("Order Notes","Notas de la Orden")}</h4>
+                                <p className="text-sm text-slate-700 whitespace-pre-line">{order.notes}</p>
                               </div>
                             )}
 
-                            {/* Timeline */}
                             {order.status_history && order.status_history.length > 0 && (
                               <div className="bg-slate-50 rounded-xl p-4">
-                                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">{t("Order Timeline", "Línea de Tiempo")}</h4>
+                                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">{t("Order Timeline","Línea de Tiempo")}</h4>
                                 <div className="space-y-2">
                                   {order.status_history.slice().reverse().map((event, idx) => (
                                     <div key={idx} className="flex items-start gap-3 text-sm">
                                       <div className="w-2 h-2 rounded-full bg-primary mt-1.5 flex-shrink-0" />
                                       <div className="flex-1">
-                                        <p className="text-slate-700">
-                                          <span className="font-medium">{statusLabel(event.to || event.status)}</span>
-                                          {event.from && event.from !== event.to && <span className="text-slate-400"> ← {statusLabel(event.from)}</span>}
-                                        </p>
-                                        {event.changed_at && (
-                                          <p className="text-xs text-slate-400">
-                                            {new Date(event.changed_at).toLocaleString(locale === "es" ? "es-ES" : "en-US", { dateStyle: "medium", timeStyle: "short" })}
-                                          </p>
-                                        )}
+                                        <p className="text-slate-700"><span className="font-medium">{statusLabel(event.to || event.status)}</span></p>
+                                        {event.changed_at && <p className="text-xs text-slate-400">{new Date(event.changed_at).toLocaleString(locale === "es" ? "es-ES" : "en-US", { dateStyle:"medium", timeStyle:"short" })}</p>}
                                       </div>
                                     </div>
                                   ))}
@@ -1179,6 +1433,30 @@ export default function CustomerAccount() {
                       </div>
                     </Reveal>
                   ))}
+
+                  {/* Load more / Show less buttons */}
+                  {hasMore && (
+                    <div className="text-center pt-4">
+                      <button
+                        onClick={() => setOrdersPage(p => p + 1)}
+                        className="inline-flex items-center gap-2 px-6 py-2 rounded-full border border-slate-200 text-slate-600 text-sm font-semibold hover:border-primary/30 hover:text-primary hover:bg-sky-50 transition-all"
+                      >
+                        {t("Load more", "Cargar más")}
+                        <ChevronDown className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+                  {ordersPage > 1 && !hasMore && (
+                    <div className="text-center pt-4">
+                      <button
+                        onClick={() => setOrdersPage(1)}
+                        className="inline-flex items-center gap-2 px-6 py-2 rounded-full border border-slate-200 text-slate-600 text-sm font-semibold hover:border-primary/30 hover:text-primary transition-all"
+                      >
+                        {t("Show less", "Mostrar menos")}
+                        <ChevronUp className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1190,26 +1468,21 @@ export default function CustomerAccount() {
           <Card hover>
             <div className="px-7 py-5 flex items-center justify-between border-b border-slate-100">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
-                  <Mail className="h-5 w-5 text-primary" />
-                </div>
-                <h2 className="font-bold text-slate-800 text-lg">{t("My Profile", "Mi Perfil")}</h2>
+                <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center"><Mail className="h-5 w-5 text-primary" /></div>
+                <h2 className="font-bold text-slate-800 text-lg">{t("My Profile","Mi Perfil")}</h2>
               </div>
               {!editingProfile ? (
                 <button onClick={startEditProfile} data-testid="edit-profile-btn"
                   className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-slate-200 text-slate-500 text-xs font-semibold hover:border-primary/30 hover:text-primary hover:bg-sky-50 transition-all duration-200">
-                  <Edit3 className="w-3.5 h-3.5" />
-                  {t("Edit", "Editar")}
+                  <Edit3 className="w-3.5 h-3.5" />{t("Edit","Editar")}
                 </button>
               ) : (
                 <div className="flex gap-2">
-                  <button onClick={() => setEditingProfile(false)} className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-500 text-xs font-semibold hover:bg-slate-50 transition-all">
-                    {t("Cancel", "Cancelar")}
-                  </button>
+                  <button onClick={() => setEditingProfile(false)} className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-500 text-xs font-semibold hover:bg-slate-50 transition-all">{t("Cancel","Cancelar")}</button>
                   <button onClick={handleSaveProfile} disabled={savingProfile} data-testid="save-profile-btn"
                     className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-primary text-white text-xs font-bold hover:bg-primary/90 transition-all disabled:opacity-50">
                     {savingProfile ? <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                    {t("Save", "Guardar")}
+                    {t("Save","Guardar")}
                   </button>
                 </div>
               )}
@@ -1218,63 +1491,33 @@ export default function CustomerAccount() {
               {editingProfile ? (
                 <div className="space-y-4">
                   <div className="grid sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{t("Full Name", "Nombre completo")}</label>
-                      <input value={profileForm.name} onChange={e => setProfileForm(p => ({...p, name: e.target.value}))} className={inputCls} data-testid="profile-name-input" />
-                    </div>
-                    <div>
-                      <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{t("Phone", "Teléfono")}</label>
-                      <input value={profileForm.phone} onChange={e => setProfileForm(p => ({...p, phone: e.target.value}))} className={inputCls} placeholder="(805) 555-1234" data-testid="profile-phone-input" />
-                    </div>
+                    <div><label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{t("Full Name","Nombre completo")}</label><input value={profileForm.name} onChange={e => setProfileForm(p => ({...p, name: e.target.value}))} className={inputCls} data-testid="profile-name-input" /></div>
+                    <div><label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{t("Phone","Teléfono")}</label><input value={profileForm.phone} onChange={e => setProfileForm(p => ({...p, phone: e.target.value}))} className={inputCls} placeholder="(805) 555-1234" data-testid="profile-phone-input" /></div>
                   </div>
-                  <div>
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{t("Street Address", "Dirección")}</label>
-                    <input value={profileForm.address} onChange={e => setProfileForm(p => ({...p, address: e.target.value}))} className={inputCls} placeholder="1120 Carlsbad Place" data-testid="profile-address-input" />
-                  </div>
+                  <div><label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{t("Street Address","Dirección")}</label><input value={profileForm.address} onChange={e => setProfileForm(p => ({...p, address: e.target.value}))} className={inputCls} data-testid="profile-address-input" /></div>
                   <div className="grid grid-cols-3 gap-4">
-                    <div>
-                      <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{t("City", "Ciudad")}</label>
-                      <input value={profileForm.city} onChange={e => setProfileForm(p => ({...p, city: e.target.value}))} className={inputCls} placeholder="Ventura" data-testid="profile-city-input" />
-                    </div>
-                    <div>
-                      <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{t("State", "Estado")}</label>
-                      <input value={profileForm.state} onChange={e => setProfileForm(p => ({...p, state: e.target.value}))} className={inputCls} placeholder="CA" data-testid="profile-state-input" />
-                    </div>
-                    <div>
-                      <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{t("Zip", "C.P.")}</label>
-                      <input value={profileForm.zip_code} onChange={e => setProfileForm(p => ({...p, zip_code: e.target.value}))} className={inputCls} placeholder="93003" data-testid="profile-zip-input" />
-                    </div>
+                    <div><label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{t("City","Ciudad")}</label><input value={profileForm.city} onChange={e => setProfileForm(p => ({...p, city: e.target.value}))} className={inputCls} placeholder="Ventura" data-testid="profile-city-input" /></div>
+                    <div><label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{t("State","Estado")}</label><input value={profileForm.state} onChange={e => setProfileForm(p => ({...p, state: e.target.value}))} className={inputCls} placeholder="CA" data-testid="profile-state-input" /></div>
+                    <div><label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{t("Zip","C.P.")}</label><input value={profileForm.zip_code} onChange={e => setProfileForm(p => ({...p, zip_code: e.target.value}))} className={inputCls} placeholder="93003" data-testid="profile-zip-input" /></div>
                   </div>
-                  <p className="text-[11px] text-slate-400">{t("This information auto-fills your service forms for faster orders.", "Esta información auto-completa tus formularios de servicio para órdenes más rápidas.")}</p>
+                  <p className="text-[11px] text-slate-400">{t("This information auto-fills your service forms.","Esta información auto-completa tus formularios.")}</p>
                 </div>
               ) : (
                 <div className="grid sm:grid-cols-2 gap-6">
                   <div className="space-y-3">
-                    <div>
-                      <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">{t("Email", "Correo")}</p>
-                      <p className="text-slate-700 font-medium text-sm break-words">{customer?.email}</p>
-                    </div>
+                    <div><p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">{t("Email","Correo")}</p><p className="text-slate-700 font-medium text-sm break-words">{customer?.email}</p></div>
                     {customer?.phone ? (
-                      <div>
-                        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">{t("Phone", "Teléfono")}</p>
-                        <p className="text-slate-700 font-medium text-sm flex items-center gap-1.5"><Phone className="w-3.5 h-3.5 text-slate-400" />{customer.phone}</p>
-                      </div>
+                      <div><p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">{t("Phone","Teléfono")}</p><p className="text-slate-700 font-medium text-sm flex items-center gap-1.5"><Phone className="w-3.5 h-3.5 text-slate-400" />{customer.phone}</p></div>
                     ) : (
-                      <div>
-                        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">{t("Phone", "Teléfono")}</p>
-                        <button onClick={startEditProfile} className="text-sky-500 text-xs font-semibold hover:underline">+ {t("Add phone number", "Agregar teléfono")}</button>
-                      </div>
+                      <div><p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">{t("Phone","Teléfono")}</p><button onClick={startEditProfile} className="text-sky-500 text-xs font-semibold hover:underline">+ {t("Add phone number","Agregar teléfono")}</button></div>
                     )}
                   </div>
                   <div>
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">{t("Address", "Dirección")}</p>
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">{t("Address","Dirección")}</p>
                     {customer?.address ? (
-                      <p className="text-slate-700 font-medium text-sm flex items-start gap-1.5">
-                        <MapPin className="w-3.5 h-3.5 text-slate-400 mt-0.5 flex-shrink-0" />
-                        <span className="break-words">{customer.address}</span>
-                      </p>
+                      <p className="text-slate-700 font-medium text-sm flex items-start gap-1.5"><MapPin className="w-3.5 h-3.5 text-slate-400 mt-0.5 flex-shrink-0" /><span className="break-words">{customer.address}</span></p>
                     ) : (
-                      <button onClick={startEditProfile} className="text-sky-500 text-xs font-semibold hover:underline">+ {t("Add address for auto-fill", "Agregar dirección para auto-completar")}</button>
+                      <button onClick={startEditProfile} className="text-sky-500 text-xs font-semibold hover:underline">+ {t("Add address for auto-fill","Agregar dirección para auto-completar")}</button>
                     )}
                   </div>
                 </div>

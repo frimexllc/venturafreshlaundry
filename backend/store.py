@@ -8,6 +8,9 @@ from datetime import datetime, timezone
 import uuid
 import os
 import shutil
+import secrets
+import string
+import hashlib
 from fastapi import File, UploadFile, Form
 from pathlib import Path
 import openrouteservice
@@ -1675,6 +1678,7 @@ class MembershipCheckoutRequest(BaseModel):
     customer_name: Optional[str] = None
     customer_phone: Optional[str] = None
     preferences: Optional[dict] = None
+    registration_data: Optional[dict] = None   # ← NUEVO: datos completos del formulario
 
 class ServiceCheckoutRequest(BaseModel):
     service_id: str
@@ -1744,10 +1748,12 @@ async def create_membership_checkout(checkout: MembershipCheckoutRequest, reques
         "customer_name": normalized_name or checkout.customer_name,
         "customer_phone": normalized_phone or checkout.customer_phone,
         "preferences": preferences,
+        "registration_data": checkout.registration_data or {},  # ← NUEVO
         "amount": price,
         "payment_status": "pending",
         "stripe_session_id": None,
         "status": "pending",
+        "completed": False,                                      # ← NUEVO
         "created_at": now,
         "updated_at": now
     }
@@ -1853,7 +1859,7 @@ async def get_membership_checkout_status(session_id: str):
                             {
                                 "$set": {
                                     "payment_status": "paid",
-                                    "status": "active",
+                                    "status": "converted",   # ← CAMBIO: active → converted
                                     "updated_at": now
                                 }
                             }
@@ -1936,6 +1942,287 @@ async def get_membership_checkout_status(session_id: str):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get checkout status: {str(e)}")
+
+
+def _generate_temp_password(length: int = 12) -> str:
+    """Genera contraseña temporal segura."""
+    alphabet = string.ascii_letters + string.digits + "!@#$"
+    return "".join(secrets.choice(alphabet) for _ in range(length))
+
+
+@store_router.post("/membership/complete-registration/{session_id}")
+async def complete_membership_registration(session_id: str):
+    """
+    Llamado por el frontend después de volver de Stripe con pago exitoso.
+
+    Flujo:
+      1. Verifica el pago en Stripe.
+      2. Busca los datos de registro guardados en membership_signups.
+      3. Crea (o actualiza) cuenta de cliente con contraseña temporal.
+      4. Activa la membresía en db.memberships.
+      5. Guarda preferencias Elite si aplica.
+      6. Envía email de bienvenida con credenciales.
+      7. Devuelve access_token + customer.
+    """
+    # ── Verificar pago ───────────────────────────────────────────────────────
+    if not STRIPE_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Stripe integration not available")
+
+    stripe_api_key = os.environ.get("STRIPE_API_KEY")
+    if not stripe_api_key:
+        raise HTTPException(status_code=500, detail="Payment configuration error")
+
+    stripe_checkout_obj = StripeCheckout(api_key=stripe_api_key, webhook_url="")
+    try:
+        status = await stripe_checkout_obj.get_checkout_status(session_id)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Could not verify payment: {exc}")
+
+    payment_status = normalize_payment_status(status.payment_status, status.status)
+    if payment_status != "paid":
+        raise HTTPException(status_code=402, detail="Payment not completed")
+
+    # ── Buscar signup pendiente ──────────────────────────────────────────────
+    signup = await db.membership_signups.find_one(
+        {"stripe_session_id": session_id}, {"_id": 0}
+    )
+    if not signup:
+        raise HTTPException(
+            status_code=404,
+            detail="Registration data not found for this session. Please contact support.",
+        )
+
+    # Evitar procesar dos veces
+    if signup.get("completed"):
+        # Ya fue procesado → intentar devolver el token si el customer existe
+        cust = await db.customers.find_one(
+            {"email": signup.get("customer_email")}, {"_id": 0, "password_hash": 0}
+        )
+        if cust:
+            from auth import create_customer_token
+            token = create_customer_token(cust["id"], cust["email"])
+            return {"access_token": token, "token_type": "bearer", "customer": cust}
+        raise HTTPException(status_code=409, detail="Already processed")
+
+    # ── Datos del formulario ─────────────────────────────────────────────────
+    reg = signup.get("registration_data") or {}
+    email = normalize_email(signup.get("customer_email") or reg.get("email") or "")
+    if not email:
+        raise HTTPException(status_code=400, detail="No email in registration data")
+
+    plan_name = signup.get("plan_name", "Membership")
+    plan_id   = signup.get("plan_id")
+    preferences = normalize_preference_dict(signup.get("preferences") or {})
+
+    first_name  = reg.get("first_name") or signup.get("customer_name", "").split(" ")[0]
+    last_name   = reg.get("last_name") or " ".join(signup.get("customer_name", "").split(" ")[1:])
+    full_name   = f"{first_name} {last_name}".strip() or signup.get("customer_name", "Member")
+    phone       = normalize_phone(reg.get("phone") or signup.get("customer_phone"))
+
+    addr_parts  = [
+        p for p in [
+            reg.get("address_line1"), reg.get("address_line2"),
+            reg.get("city"), reg.get("state"), reg.get("zip_code"),
+        ] if p
+    ]
+    full_address = ", ".join(addr_parts) if addr_parts else None
+    now = datetime.now(timezone.utc).isoformat()
+
+    # ── Importar auth helpers ────────────────────────────────────────────────
+    from auth import hash_password, create_customer_token
+
+    # ── Crear / actualizar cuenta de cliente ─────────────────────────────────
+    existing = await db.customers.find_one({"email": email})
+    temp_password = None   # Solo enviamos email si creamos contraseña nueva
+
+    if existing and existing.get("password_hash"):
+        # Ya tiene cuenta → solo actualizamos datos y activamos membresía
+        customer_id = existing["id"]
+        await db.customers.update_one(
+            {"id": customer_id},
+            {
+                "$set": {
+                    "name":      full_name or existing.get("name"),
+                    "phone":     phone or existing.get("phone"),
+                    "address":   full_address or existing.get("address"),
+                    "city":      reg.get("city") or existing.get("city"),
+                    "state":     reg.get("state") or existing.get("state"),
+                    "zip_code":  reg.get("zip_code") or existing.get("zip_code"),
+                    "is_member": True,
+                    "membership_plan":   plan_name,
+                    "membership_status": "active",
+                    "updated_at": now,
+                }
+            },
+        )
+    else:
+        temp_password = _generate_temp_password()
+        if existing:
+            # Tiene registro pero sin contraseña (creado por orden anterior)
+            customer_id = existing["id"]
+            await db.customers.update_one(
+                {"id": customer_id},
+                {
+                    "$set": {
+                        "name":          full_name,
+                        "phone":         phone,
+                        "address":       full_address,
+                        "city":          reg.get("city"),
+                        "state":         reg.get("state"),
+                        "zip_code":      reg.get("zip_code"),
+                        "password_hash": hash_password(temp_password),
+                        "is_member":     True,
+                        "membership_plan":   plan_name,
+                        "membership_status": "active",
+                        "updated_at": now,
+                    }
+                },
+            )
+        else:
+            # Cliente completamente nuevo
+            customer_id = str(uuid.uuid4())
+            customer_doc = {
+                "id":             customer_id,
+                "name":           full_name,
+                "email":          email,
+                "phone":          phone,
+                "address":        full_address,
+                "city":           reg.get("city"),
+                "state":          reg.get("state"),
+                "zip_code":       reg.get("zip_code"),
+                "preferred_contact":   reg.get("contact_method", "email"),
+                "sms_consent":    reg.get("sms_consent", False),
+                "notes":          None,
+                "status":         "active",
+                "is_member":      True,
+                "membership_plan":      plan_name,
+                "membership_status":    "active",
+                "membership_start_date": now,
+                "total_orders":   0,
+                "password_hash":  hash_password(temp_password),
+                "created_at":     now,
+                "updated_at":     now,
+            }
+            await db.customers.insert_one(customer_doc)
+
+    # ── Crear membresía activa ───────────────────────────────────────────────
+    # Verificar que no exista ya una membresía activa para este signup
+    existing_membership = await db.memberships.find_one(
+        {"stripe_session_id": session_id}
+    )
+    if not existing_membership:
+        membership_doc = {
+            "id":                  str(uuid.uuid4()),
+            "customer_id":         customer_id,
+            "customer_email":      email,
+            "plan":                plan_name,
+            "plan_id":             plan_id,
+            "stripe_session_id":   session_id,
+            "status":              "active",
+            "laundry_frequency":   reg.get("laundry_frequency"),
+            "estimated_lbs":       reg.get("estimated_lbs"),
+            "sms_consent":         reg.get("sms_consent", False),
+            "contact_method":      reg.get("contact_method"),
+            "preferences":         preferences,
+            "created_at":          now,
+            "updated_at":          now,
+        }
+        await db.memberships.insert_one(membership_doc)
+
+    # ── Guardar preferencias Elite ───────────────────────────────────────────
+    if preferences:
+        existing_pref = await db.customer_preferences.find_one(
+            {"customer_id": customer_id}
+        )
+        version = (existing_pref.get("version", 0) + 1) if existing_pref else 1
+        pref_doc = {
+            **preferences,
+            "customer_id": customer_id,
+            "updated_at":  now,
+            "version":     version,
+        }
+        await db.customer_preferences.update_one(
+            {"customer_id": customer_id},
+            {"$set": pref_doc},
+            upsert=True,
+        )
+
+    # ── Marcar signup como completado ────────────────────────────────────────
+    await db.membership_signups.update_one(
+        {"stripe_session_id": session_id},
+        {
+            "$set": {
+                "payment_status": "paid",
+                "status":         "converted",   # ← CAMBIO: active → converted
+                "completed":      True,
+                "customer_id":    customer_id,
+                "completed_at":   now,
+                "updated_at":     now,
+            }
+        },
+    )
+
+    # ── Enviar email de bienvenida con credenciales ───────────────────────────
+    if temp_password:
+        try:
+            from notifications import send_email
+            frontend_url = (
+                os.environ.get("FRONTEND_URL")
+                or os.environ.get("REACT_APP_BACKEND_URL")
+                or os.environ.get("BUSINESS_WEBSITE", "")
+            )
+            login_url = f"{frontend_url}/account/login"
+            html = f"""
+            <div style="font-family:system-ui,-apple-system,sans-serif;max-width:520px;margin:0 auto;padding:24px;">
+              <div style="background:linear-gradient(135deg,#0284c7,#0ea5e9);border-radius:16px 16px 0 0;padding:32px 24px;text-align:center;">
+                <h1 style="color:white;font-size:24px;margin:0;font-weight:800;">Ventura Fresh Laundry</h1>
+                <p style="color:rgba(255,255,255,0.8);font-size:14px;margin:8px 0 0;">¡Tu membresía está activa!</p>
+              </div>
+              <div style="background:#ffffff;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 16px 16px;padding:32px 24px;">
+                <p style="color:#1e293b;font-size:16px;font-weight:600;">Hola {first_name} 👋</p>
+                <p style="color:#64748b;font-size:14px;line-height:1.7;">
+                  Tu membresía <strong>{plan_name}</strong> está activa. Aquí están tus credenciales:
+                </p>
+                <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:12px;padding:20px;margin:20px 0;text-align:center;">
+                  <p style="margin:4px 0;color:#1e293b;font-size:15px;"><strong>Correo:</strong> {email}</p>
+                  <p style="margin:8px 0 4px;color:#1e293b;font-size:15px;"><strong>Contraseña temporal:</strong></p>
+                  <span style="font-family:monospace;background:#e0f2fe;padding:6px 16px;border-radius:8px;font-size:18px;color:#0284c7;font-weight:800;letter-spacing:2px;">
+                    {temp_password}
+                  </span>
+                </div>
+                <p style="color:#64748b;font-size:13px;">Te recomendamos cambiar tu contraseña después de iniciar sesión.</p>
+                <div style="text-align:center;margin:28px 0 16px;">
+                  <a href="{login_url}" style="display:inline-block;background:#0284c7;color:white;padding:14px 36px;border-radius:12px;text-decoration:none;font-weight:700;font-size:15px;">
+                    Acceder a mi cuenta →
+                  </a>
+                </div>
+                <p style="color:#94a3b8;font-size:12px;text-align:center;">
+                  Como miembro disfrutas de precios especiales en todos tus pedidos.
+                </p>
+              </div>
+            </div>
+            """
+            await send_email(
+                email,
+                f"¡Bienvenido a tu membresía {plan_name}! — Ventura Fresh Laundry",
+                f"Hola {first_name}, tu membresía {plan_name} está activa. Correo: {email} | Contraseña temporal: {temp_password} | Accede en: {login_url}",
+                html,
+            )
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).error("Welcome email error: %s", exc)
+
+    # ── Devolver token ───────────────────────────────────────────────────────
+    customer_data = await db.customers.find_one(
+        {"id": customer_id}, {"_id": 0, "password_hash": 0}
+    )
+    token = create_customer_token(customer_id, email)
+
+    return {
+        "access_token": token,
+        "token_type":   "bearer",
+        "customer":     customer_data,
+    }
 
 
 @store_router.post("/service/checkout")
@@ -2063,4 +2350,3 @@ async def get_transactions():
     """Get payment transactions"""
     transactions = await db.payment_transactions.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
     return transactions
-

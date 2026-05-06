@@ -212,7 +212,6 @@ function getServiceIcon(name = "", category = "") {
   return "✨";
 }
 
-// Groups services by category for display
 function groupByCategory(services) {
   const groups = {};
   for (const svc of services) {
@@ -294,7 +293,7 @@ const AdminServicesSection = ({ t, locale }) => {
           setServices(data);
         }
       } catch (err) {
-        // Silent fail — section just won't render
+        // Silent fail
       } finally {
         setLoading(false);
       }
@@ -634,26 +633,58 @@ const WashFoldServiceCardHead = ({ t }) => {
   );
 };
 
+// ─── MEMBERSHIP CARD — imagen como banner de fondo con gradiente ──────────────
 const MembershipCard = ({ plan, price, image, features, isPopular }) => {
   const { t } = useLocale();
   const [h, setH] = useState(false);
   return (
     <Tilt depth={isPopular ? 4 : 3}>
-      <div className={`relative bg-white rounded-2xl overflow-hidden h-full flex flex-col transition-all duration-300 ${isPopular ? "border-2 border-primary shadow-2xl shadow-primary/20 sm:scale-105 md:scale-110 z-10" : "border border-slate-200 shadow-lg"} ${h ? "-translate-y-1" : ""}`} onMouseEnter={() => setH(true)} onMouseLeave={() => setH(false)}>
+      <div
+        className={`relative bg-white rounded-2xl overflow-hidden h-full flex flex-col transition-all duration-300 ${isPopular ? "border-2 border-primary shadow-2xl shadow-primary/20 sm:scale-105 md:scale-110 z-10" : "border border-slate-200 shadow-lg"} ${h ? "-translate-y-1" : ""}`}
+        onMouseEnter={() => setH(true)}
+        onMouseLeave={() => setH(false)}
+      >
+        {/* Badge MOST POPULAR */}
         {isPopular && (
-          <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 z-20">
-            <div className="flex items-center gap-1.5 bg-gradient-to-r from-primary to-sky-400 text-white px-3 sm:px-4 py-1.5 rounded-full text-[11px] font-black uppercase tracking-widest shadow-lg whitespace-nowrap"><Star className="w-3 h-3 fill-white flex-shrink-0" />{t("MOST POPULAR", "MÁS POPULAR")}</div>
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20">
+            <div className="flex items-center gap-1.5 bg-gradient-to-r from-primary to-sky-400 text-white px-3 sm:px-4 py-1.5 rounded-full text-[11px] font-black uppercase tracking-widest shadow-lg whitespace-nowrap">
+              <Star className="w-3 h-3 fill-white flex-shrink-0" />
+              {t("MOST POPULAR", "MÁS POPULAR")}
+            </div>
           </div>
         )}
-        <div className={`h-36 overflow-hidden flex items-center justify-center p-4 ${isPopular ? "bg-gradient-to-br from-sky-50 to-primary/5" : "bg-gradient-to-br from-slate-50 to-slate-100/50"}`}>
-          <img src={image} alt={`${plan} – Ventura Fresh Laundry`} className={`max-w-full max-h-full object-contain transition-transform duration-500 ${h ? "scale-110" : ""}`} loading="lazy" />
+
+        {/* Image as full-width background banner */}
+        <div className="relative h-40 w-full overflow-hidden bg-gradient-to-br from-sky-100 to-sky-200 flex-shrink-0">
+          {image && (
+            <img
+              src={image}
+              alt={`${plan} – Ventura Fresh Laundry`}
+              className={`absolute inset-0 w-full h-full object-cover object-center transition-transform duration-500 ${h ? "scale-105" : "scale-100"}`}
+              loading="lazy"
+              onError={(e) => { e.currentTarget.style.display = "none"; }}
+            />
+          )}
+          {/* Gradient fade to white */}
+          <div className="absolute inset-0 bg-gradient-to-t from-white via-white/20 to-transparent" />
+
+          {/* Plan name overlaid at the bottom of the banner */}
+          <div className="absolute bottom-0 left-0 right-0 px-4 pb-2">
+            <h2 className={`text-base sm:text-lg font-black transition-colors duration-200 ${h ? "text-primary" : "text-slate-900"}`}>
+              {plan}
+            </h2>
+          </div>
         </div>
-        <div className="p-4 sm:p-6 flex flex-col flex-grow">
-          <h2 className={`text-base sm:text-xl font-black mb-1 transition-colors duration-200 ${h ? "text-primary" : "text-slate-900"}`}>{plan}</h2>
+
+        {/* Card content */}
+        <div className="px-4 sm:px-5 pb-5 pt-2 flex flex-col flex-grow">
           <p className="text-2xl sm:text-3xl font-black text-primary mb-4">{price}</p>
           <ul className="space-y-2 flex-grow">
             {features.map((f, i) => (
-              <li key={i} className="flex items-start gap-2 text-xs sm:text-sm text-slate-500"><Check className={`w-4 h-4 flex-shrink-0 mt-0.5 transition-colors duration-200 ${h ? "text-primary" : "text-sky-400"}`} />{f}</li>
+              <li key={i} className="flex items-start gap-2 text-xs sm:text-sm text-slate-500">
+                <Check className={`w-4 h-4 flex-shrink-0 mt-0.5 transition-colors duration-200 ${h ? "text-primary" : "text-sky-400"}`} />
+                {f}
+              </li>
             ))}
           </ul>
         </div>
@@ -772,14 +803,49 @@ const SelfServiceTable = ({ t, washerPrices, dryerPrices }) => (
       <p className="text-slate-400 text-xs mt-1">{t("Open 6:00 AM – 10:00 PM", "Abierto 6:00 AM – 10:00 PM")}</p>
     </div>
     <div className="flex-grow grid grid-cols-2 divide-x divide-slate-100">
+      {/* Washers */}
       <div className="p-4">
-        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-3 flex items-center gap-1.5"><span className="w-0.5 h-4 bg-primary rounded-full inline-block flex-shrink-0" />{t("Washers", "Lavadoras")}</p>
-        <table className="w-full"><tbody>{washerPrices.map((it, i) => (<tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-sky-50/30 transition-colors group"><td className="py-2 text-xs text-slate-500 group-hover:text-slate-700 pr-1 leading-tight">{it.size}</td><td className="py-2 text-right text-xs font-bold text-slate-800 group-hover:text-primary transition-colors whitespace-nowrap">{it.price}</td></tr>))}</tbody></table>
+        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-3 flex items-center gap-1.5">
+          <span className="w-0.5 h-4 bg-primary rounded-full inline-block flex-shrink-0" />
+          {t("Washers", "Lavadoras")}
+        </p>
+        <table className="w-full">
+          <tbody>
+            {washerPrices.map((it, i) => (
+              <tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-sky-50/30 transition-colors group">
+                <td className="py-2 text-xs text-slate-500 group-hover:text-slate-700 pr-1">{it.size}</td>
+                <td className="py-2 text-right text-xs font-bold text-slate-800 group-hover:text-primary transition-colors whitespace-nowrap">{it.price}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
+
+      {/* Dryers — now with 3 columns: size, time, price */}
       <div className="p-4">
-        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-3 flex items-center gap-1.5"><span className="w-0.5 h-4 bg-sky-300 rounded-full inline-block flex-shrink-0" />{t("Dryers", "Secadoras")}</p>
-        <table className="w-full"><tbody>{dryerPrices.map((it, i) => (<tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-sky-50/30 transition-colors group"><td className="py-2 text-xs text-slate-500 group-hover:text-slate-700 pr-1">{it.size}</td><td className="py-2 text-right text-xs font-bold text-slate-800 group-hover:text-primary transition-colors whitespace-nowrap">{it.price}</td></tr>))}</tbody></table>
-        <p className="text-[11px] text-slate-400 mt-2">{t("+6 min extra: $0.25", "+6 min extra: $0.25")}</p>
+        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-3 flex items-center gap-1.5">
+          <span className="w-0.5 h-4 bg-sky-300 rounded-full inline-block flex-shrink-0" />
+          {t("Dryers", "Secadoras")}
+        </p>
+        <table className="w-full">
+          <thead>
+            <tr className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              <th className="text-left py-1">{t("Size", "Tamaño")}</th>
+              <th className="text-left py-1">{t("Time", "Tiempo")}</th>
+              <th className="text-right py-1">{t("Price", "Precio")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {dryerPrices.map((it, i) => (
+              <tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-sky-50/30 transition-colors group">
+                <td className="py-2 text-xs text-slate-500 group-hover:text-slate-700 pr-1 whitespace-nowrap">{it.size}</td>
+                <td className="py-2 text-xs text-slate-500 group-hover:text-slate-700 pr-1 whitespace-nowrap">{it.time}</td>
+                <td className="py-2 text-right text-xs font-bold text-slate-800 group-hover:text-primary transition-colors whitespace-nowrap">{it.price}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="text-[11px] text-slate-400 mt-2">{t("+5 min extra: $0.25", "+5 min extra: $0.25")}</p>
       </div>
     </div>
   </div>
@@ -858,8 +924,8 @@ export default function ServicesPage() {
     { category: t("Comforters", "Edredones"), items: [{ name: t("Comforter T/D/Q", "Edredón T/D/Q"), price: "$18.00" }, { name: t("Comforter King", "Edredón King"), price: "$20.00" }, { name: t("Mattress Cover", "Cubrecama"), price: "$20.00" }, { name: t("Down Comforters", "Edredones plumas"), price: "$40.00" }] },
   ];
 
-  const WASHER_PRICES = [{ size: t("20 lb (2 loads)", "20 lb (2 cargas)"), price: "$4.00" }, { size: t("30 lb (3 loads)", "30 lb (3 cargas)"), price: "$5.25" }, { size: t("40 lb (4 loads)", "40 lb (4 cargas)"), price: "$6.00" }, { size: t("60 lb (6 loads)", "60 lb (6 cargas)"), price: "$7.75" }, { size: t("90 lb (9 loads)", "90 lb (9 cargas)"), price: "$11.25" }];
-  const DRYER_PRICES = [{ size: "30 lb", price: "$2.25" }, { size: "50 lb", price: "$2.50" }, { size: "80 lb", price: "$3.00" }];
+  const WASHER_PRICES = [{ size: t("20 lb (2 loads)", "20 lb (2 cargas)"), price: "$3.25" }, { size: t("30 lb (3 loads)", "30 lb (3 cargas)"), price: "$4.50" }, { size: t("50 lb (4 loads)", "50 lb (4 cargas)"), price: "$6.00" }, { size: t("60 lb (6 loads)", "60 lb (6 cargas)"), price: "$7.50" }, { size: t("90 lb (9 loads)", "90 lb (9 cargas)"), price: "$9.00" }];
+  const DRYER_PRICES = [{ size: "30 lb",time:"10min", price: "$0.50" }, { size: "50 lb",time:"8min", price: "$0.50" }];
 
   const toggleAcc = (sec, idx) => setOpenAccordions(p => ({ ...p, [sec]: p[sec] === idx ? -1 : idx }));
 

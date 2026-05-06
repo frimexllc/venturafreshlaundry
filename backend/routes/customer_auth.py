@@ -254,3 +254,47 @@ async def reset_password(data: ResetPasswordRequest):
 
     logger.info(f"Password reset for {email}: {result.modified_count} records updated")
     return {"ok": True, "detail": "Password has been reset successfully"}
+
+
+# ==================== CHANGE PASSWORD (authenticated) ====================
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+@router.post("/customer/auth/change-password")
+async def change_password(
+    data: ChangePasswordRequest,
+    current_customer: dict = Depends(get_current_customer),
+):
+    """Permite al cliente autenticado cambiar su propia contraseña."""
+    if len(data.new_password) < 6:
+        raise HTTPException(
+            status_code=400, detail="Password must be at least 6 characters"
+        )
+
+    # Obtener el registro completo (con hash) para verificar contraseña actual
+    customer_doc = await db.customers.find_one({"id": current_customer["id"]})
+    if not customer_doc:
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    if not customer_doc.get("password_hash"):
+        raise HTTPException(
+            status_code=400,
+            detail="No password set. Use 'Forgot Password' to create one.",
+        )
+
+    if not verify_password(data.current_password, customer_doc["password_hash"]):
+        raise HTTPException(status_code=401, detail="Current password is incorrect")
+
+    new_hash = hash_password(data.new_password)
+    now = datetime.now(timezone.utc).isoformat()
+
+    # Actualizar en todos los registros con el mismo email (duplicados)
+    await db.customers.update_many(
+        {"email": {"$regex": f"^{current_customer['email']}$", "$options": "i"}},
+        {"$set": {"password_hash": new_hash, "updated_at": now}},
+    )
+
+    return {"ok": True, "detail": "Password changed successfully"}

@@ -20,13 +20,6 @@ const normalizeStatus = (status) =>
     .toLowerCase()
     .replace(/\s+/g, "_");
 
-const serviceLabels = {
-  pickup_delivery: "Pickup & Delivery",
-  wash_fold: "Wash & Fold",
-  self_service: "Self Service",
-  commercial: "Commercial / B2B"
-};
-
 const preferenceLabels = {
   detergent_type: "Detergent",
   water_temperature: "Water temperature",
@@ -71,7 +64,6 @@ export default function Orders() {
   const [qrStatusFilter, setQrStatusFilter] = useState("");
   const [qrServiceFilter, setQrServiceFilter] = useState("");
 
-  // Status labels with translation
   const statusLabels = {
     new: { label: t("New", "Nueva"), class: "badge-pending" },
     processing: { label: t("Processing", "Procesando"), class: "badge-processing" },
@@ -85,7 +77,6 @@ export default function Orders() {
   const getStatusMeta = (status) =>
     statusLabels[normalizeStatus(status)] || { label: status || "-", class: "badge-pending" };
 
-  // Translate preference labels dynamically
   const getPreferenceLabel = (key) => {
     const map = {
       detergent_type: t("Detergent", "Detergente"),
@@ -103,13 +94,13 @@ export default function Orders() {
     return map[key] || key;
   };
 
-  // Translate service labels
   const getServiceLabel = (key) => {
     const map = {
       pickup_delivery: t("Pickup & Delivery", "Recogida y Entrega"),
       wash_fold: t("Wash & Fold", "Lavado y Doblado"),
       self_service: t("Self Service", "Autoservicio"),
-      commercial: t("Commercial / B2B", "Comercial / B2B")
+      commercial: t("Commercial / B2B", "Comercial / B2B"),
+      airbnb_host: t("Airbnb Host", "Anfitrión Airbnb")
     };
     return map[key] || key;
   };
@@ -149,26 +140,57 @@ export default function Orders() {
     }
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setSubmitting(true);
-
-    try {
-      const data = {
-        ...form,
-        estimated_lbs: form.estimated_lbs ? parseFloat(form.estimated_lbs) : null
-      };
-      await axios.post(`${API}/orders`, data);
-      toast.success(t("Order created", "Orden creada"));
-      setDialogOpen(false);
-      setForm(emptyForm);
-      fetchOrders();
-    } catch (error) {
-      toast.error(error.response?.data?.detail || t("Error creating order", "Error creando orden"));
-    } finally {
-      setSubmitting(false);
-    }
+  // Función auxiliar para obtener la fecha local en formato YYYY-MM-DD
+  const getLocalDate = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
   };
+
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  
+  // 🔧 Forzar corrección de time_window
+  let correctedTimeWindow = form.pickup_time_window;
+  if (correctedTimeWindow === "8am-12am") correctedTimeWindow = "8-12";
+  if (correctedTimeWindow === "2pm-6pm") correctedTimeWindow = "14-18";
+  
+  // 🔧 Forzar fecha sin offset de zona horaria
+  let correctedPickupDate = form.pickup_date;
+  if (correctedPickupDate) {
+    // Asegurar que la fecha se envía tal cual sin conversión
+    const [year, month, day] = correctedPickupDate.split('-');
+    correctedPickupDate = `${year}-${month}-${day}`;
+  }
+  
+  const today = getLocalDate();
+  if (correctedPickupDate && correctedPickupDate < today) {
+    toast.error(t("Pickup date cannot be in the past", "La fecha de recogida no puede ser anterior a hoy"));
+    return;
+  }
+
+  setSubmitting(true);
+  try {
+    const data = {
+      ...form,
+      pickup_time_window: correctedTimeWindow,
+      pickup_date: correctedPickupDate,
+      estimated_lbs: form.estimated_lbs ? parseFloat(form.estimated_lbs) : null
+    };
+    console.log("Enviando orden:", data); // 👈 verifica en consola
+    await axios.post(`${API}/orders`, data);
+    toast.success(t("Order created", "Orden creada"));
+    setDialogOpen(false);
+    setForm(emptyForm);
+    fetchOrders();
+  } catch (error) {
+    toast.error(error.response?.data?.detail || t("Error creating order", "Error creando orden"));
+  } finally {
+    setSubmitting(false);
+  }
+};
 
   const updateStatus = async (orderId, newStatus) => {
     try {
@@ -237,12 +259,8 @@ export default function Orders() {
         start_date: qrStartDate,
         end_date: qrEndDate
       });
-      if (qrStatusFilter) {
-        params.append("status", qrStatusFilter);
-      }
-      if (qrServiceFilter) {
-        params.append("service_type", qrServiceFilter);
-      }
+      if (qrStatusFilter) params.append("status", qrStatusFilter);
+      if (qrServiceFilter) params.append("service_type", qrServiceFilter);
       const res = await axios.get(`${API}/orders/qr/export?${params.toString()}`, { responseType: "blob" });
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement("a");
@@ -269,19 +287,19 @@ export default function Orders() {
   };
 
   const buildDateSlug = (dateStr) => {
-    const base = dateStr ? new Date(dateStr) : new Date();
-    if (Number.isNaN(base.getTime())) {
-      return new Date().toISOString().slice(0, 10).replace(/-/g, "");
-    }
-    return base.toISOString().slice(0, 10).replace(/-/g, "");
+    if (!dateStr) return new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}${month}${day}`;
   };
 
   const formatOrderNumber = (order) => {
     if (!order) return "-";
-    if (order.order_number && order.order_number.startsWith("VFL-")) {
-      return order.order_number;
-    }
-    const dateSlug = buildDateSlug(order.created_at || order.pickup_date);
+    if (order.order_number && order.order_number.startsWith("VFL-")) return order.order_number;
+    const dateSlug = buildDateSlug(order.pickup_date || order.created_at);
     const raw = (order.order_number || order.id || "00000000").toString();
     const short = raw.replace(/[^a-zA-Z0-9]/g, "").toLowerCase().slice(-8).padStart(8, "0");
     return `VFL-${dateSlug}-${short}`;
@@ -290,20 +308,14 @@ export default function Orders() {
   const getWeightDelta = () => {
     const est = parseFloat(weightForm.estimated_lbs);
     const act = parseFloat(weightForm.actual_lbs);
-    if (Number.isNaN(est) || Number.isNaN(act)) {
-      return "-";
-    }
+    if (isNaN(est) || isNaN(act)) return "-";
     const diff = parseFloat((act - est).toFixed(2));
     return diff > 0 ? `+${diff}` : `${diff}`;
   };
 
   const renderPreferenceValue = (value) => {
-    if (Array.isArray(value)) {
-      return value.length ? value.join(", ") : "-";
-    }
-    if (value === null || value === undefined || value === "") {
-      return "-";
-    }
+    if (Array.isArray(value)) return value.length ? value.join(", ") : "-";
+    if (value === null || value === undefined || value === "") return "-";
     return value.toString();
   };
 
@@ -349,6 +361,8 @@ export default function Orders() {
                     <SelectItem value="pickup_delivery">{t("Pickup & Delivery", "Pickup & Delivery")}</SelectItem>
                     <SelectItem value="wash_fold">{t("Wash & Fold", "Wash & Fold")}</SelectItem>
                     <SelectItem value="self_service">{t("Self Service", "Self Service")}</SelectItem>
+                    <SelectItem value="commercial">{t("Commercial / B2B", "Comercial / B2B")}</SelectItem>
+                    <SelectItem value="airbnb_host">{t("Airbnb Host", "Anfitrión Airbnb")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -360,6 +374,7 @@ export default function Orders() {
                     value={form.pickup_date}
                     onChange={(e) => setForm({ ...form, pickup_date: e.target.value })}
                     className="mt-1.5"
+                    min={getLocalDate()}
                     data-testid="order-date-input"
                   />
                 </div>
@@ -370,11 +385,9 @@ export default function Orders() {
                       <SelectValue placeholder={t("Select", "Seleccionar")} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="8am-10am">8am - 10am</SelectItem>
-                      <SelectItem value="10am-12pm">10am - 12pm</SelectItem>
-                      <SelectItem value="12pm-2pm">12pm - 2pm</SelectItem>
-                      <SelectItem value="2pm-4pm">2pm - 4pm</SelectItem>
-                      <SelectItem value="4pm-6pm">4pm - 6pm</SelectItem>
+                      {/* ✅ VALORES CORRECTOS para el backend: "8-12" y "14-18" */}
+                      <SelectItem value="8-12">8am - 12am</SelectItem>
+                      <SelectItem value="14-18">2pm - 6pm</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -403,6 +416,7 @@ export default function Orders() {
                   <Label>{t("Estimated Lbs", "Libras Estimadas")}</Label>
                   <Input
                     type="number"
+                    step="0.1"
                     value={form.estimated_lbs}
                     onChange={(e) => setForm({ ...form, estimated_lbs: e.target.value })}
                     className="mt-1.5"
@@ -410,7 +424,7 @@ export default function Orders() {
                   />
                 </div>
                 <div>
-                  <Label>{t("Gate Code", "Gate Code")}</Label>
+                  <Label>{t("Gate Code", "Código de acceso")}</Label>
                   <Input
                     value={form.gate_code}
                     onChange={(e) => setForm({ ...form, gate_code: e.target.value })}
@@ -442,7 +456,7 @@ export default function Orders() {
         </Dialog>
       </div>
 
-      {/* Filters */}
+      {/* Filtros de estado */}
       <div className="flex gap-2 flex-wrap">
         {["all", "new", "processing", "ready", "out_for_delivery", "delivered", "completed", "cancelled"].map((status) => (
           <Button
@@ -458,6 +472,7 @@ export default function Orders() {
         ))}
       </div>
 
+      {/* Exportación de tickets QR */}
       <div className="flex flex-col lg:flex-row gap-3 items-start lg:items-end">
         <div>
           <Label>{t("Start", "Inicio")}</Label>
@@ -497,6 +512,8 @@ export default function Orders() {
             <option value="pickup_delivery">{t("Pickup & Delivery", "Pickup & Delivery")}</option>
             <option value="wash_fold">{t("Wash & Fold", "Wash & Fold")}</option>
             <option value="self_service">{t("Self Service", "Self Service")}</option>
+            <option value="commercial">{t("Commercial / B2B", "Comercial / B2B")}</option>
+            <option value="airbnb_host">{t("Airbnb Host", "Anfitrión Airbnb")}</option>
           </select>
         </div>
         <Button variant="outline" onClick={handleExportQrBatch} disabled={exportingQr} data-testid="qr-export-button">
@@ -505,7 +522,7 @@ export default function Orders() {
         </Button>
       </div>
 
-      {/* Order Detail Dialog */}
+      {/* Modal de detalle de orden */}
       <Dialog open={!!viewOrder} onOpenChange={() => setViewOrder(null)}>
         <DialogContent className="sm:max-w-lg bg-white" style={{ backgroundColor: 'white', opacity: 1 }}>
           <DialogHeader>
@@ -626,7 +643,7 @@ export default function Orders() {
         </DialogContent>
       </Dialog>
 
-      {/* Table */}
+      {/* Tabla de órdenes */}
       <div className="table-card">
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -655,7 +672,6 @@ export default function Orders() {
                   const normalizedStatus = normalizeStatus(order.status);
                   const statusMeta = getStatusMeta(order.status);
                   const paymentIsPaid = (order.payment_status || "").toLowerCase() === "paid";
-
                   return (
                     <tr key={order.id} className="hover:bg-slate-50/50" data-testid={`order-row-${order.id}`}>
                       <td className="px-6 py-4">
@@ -707,7 +723,6 @@ export default function Orders() {
                               {t("Download Ticket", "Descargar Ticket")}
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            {/* Status updates */}
                             {normalizedStatus === "new" && (
                               <DropdownMenuItem data-testid={`order-status-processing-${order.id}`} onClick={() => updateStatus(order.id, "processing")}>
                                 <CheckCircle className="h-4 w-4 mr-2" />
@@ -739,7 +754,6 @@ export default function Orders() {
                               </DropdownMenuItem>
                             )}
                             <DropdownMenuSeparator />
-                            {/* Payment status updates */}
                             {!paymentIsPaid && (
                               <DropdownMenuItem data-testid={`order-payment-paid-${order.id}`} onClick={() => updatePaymentStatus(order.id, "paid")}>
                                 <CheckCircle className="h-4 w-4 mr-2 text-green-600" />
