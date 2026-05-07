@@ -8,6 +8,8 @@ import {
   DollarSign, Scale, CreditCard, Banknote, Send, RefreshCw,
   Printer, X, ImageIcon, CheckCircle2, AlertTriangle, Eye,
   ShieldCheck, ShieldX, Clock, FileDown, Package, Truck,
+  ChevronDown, ChevronUp, User, MapPin, Calendar, StickyNote,
+  Zap, Hash,
 } from "lucide-react";
 import { toast } from "sonner";
 import { safeString, formatCurrency, formatOrderNumber, isWashFoldService } from "./utils";
@@ -21,7 +23,6 @@ const authHeaders = () => ({
   Authorization: `Bearer ${token()}`,
 });
 
-// ── CANONICAL DELIVERY FEE (solo una vez, al inicio) ────────────────
 function calcDeliveryFee(distanceMiles) {
   if (distanceMiles == null || isNaN(Number(distanceMiles))) return 0;
   const d = Number(distanceMiles);
@@ -31,7 +32,41 @@ function calcDeliveryFee(distanceMiles) {
   return Math.round(Math.max(2.99, Math.min(raw, 5.99)) * 100) / 100;
 }
 
-// ── Receipt Card (sin cambios) ──────────────────────────────────────
+// ── Section wrapper ────────────────────────────────────────────────
+function Section({ icon, title, badge, children, collapsible = false, defaultOpen = true }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="rounded-2xl border border-slate-200 overflow-hidden bg-white shadow-sm">
+      <div
+        className={`flex items-center gap-2.5 px-4 py-3 bg-gradient-to-r from-slate-50 to-white border-b border-slate-100 ${collapsible ? "cursor-pointer select-none" : ""}`}
+        onClick={() => collapsible && setOpen(v => !v)}
+      >
+        <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-sky-50 text-sky-600 shrink-0">
+          {icon}
+        </span>
+        <h3 className="font-semibold text-slate-800 text-sm flex-1">{title}</h3>
+        {badge}
+        {collapsible && (
+          <span className="text-slate-400">{open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}</span>
+        )}
+      </div>
+      {(!collapsible || open) && <div className="p-4">{children}</div>}
+    </div>
+  );
+}
+
+// ── Data row ───────────────────────────────────────────────────────
+function DataRow({ label, value, className = "" }) {
+  if (!value) return null;
+  return (
+    <div className={`space-y-0.5 ${className}`}>
+      <p className="text-[10px] font-semibold tracking-widest text-slate-400 uppercase">{label}</p>
+      <p className="text-sm font-medium text-slate-800 leading-snug">{value}</p>
+    </div>
+  );
+}
+
+// ── Receipt Card ───────────────────────────────────────────────────
 function ReceiptCard({ receipt, onValidate, validating }) {
   const { t } = useLocale();
   const [expanded, setExpanded] = useState(false);
@@ -41,8 +76,7 @@ function ReceiptCard({ receipt, onValidate, validating }) {
 
   useEffect(() => {
     let objectUrl = null;
-    setImgLoading(true);
-    setImgError(false);
+    setImgLoading(true); setImgError(false);
     const fetchImage = async (retry = true) => {
       try {
         const tk = localStorage.getItem("token");
@@ -53,7 +87,7 @@ function ReceiptCard({ receipt, onValidate, validating }) {
         const blob = await res.blob();
         objectUrl = URL.createObjectURL(blob);
         setBlobUrl(objectUrl);
-      } catch (err) {
+      } catch {
         if (retry) setTimeout(() => fetchImage(false), 1000);
         else { setImgError(true); setImgLoading(false); }
       }
@@ -62,27 +96,29 @@ function ReceiptCard({ receipt, onValidate, validating }) {
     return () => { if (objectUrl) URL.revokeObjectURL(objectUrl); };
   }, [receipt.id]);
 
-  const statusIcon = {
-    verified_paid: <ShieldCheck className="w-4 h-4 text-emerald-500" />,
-    rejected:      <ShieldX    className="w-4 h-4 text-red-500"     />,
-    pending:       <Clock      className="w-4 h-4 text-amber-500"   />,
-  }[receipt.ai_validation_status || "pending"] ?? <Clock className="w-4 h-4 text-slate-400" />;
-
-  const statusLabel = {
-    verified_paid: t("AI: Verified payment",      "IA: Pago verificado"),
-    rejected:      t("AI: Not a valid payment",   "IA: No es pago válido"),
-    pending:       t("Pending AI review",          "Pendiente revisión IA"),
-  }[receipt.ai_validation_status || "pending"] ?? t("Pending", "Pendiente");
-
-  const statusCls = {
-    verified_paid: "bg-emerald-50 border-emerald-200 text-emerald-700",
-    rejected:      "bg-red-50 border-red-200 text-red-700",
-    pending:       "bg-amber-50 border-amber-200 text-amber-700",
-  }[receipt.ai_validation_status || "pending"] ?? "bg-slate-50 border-slate-200 text-slate-600";
+  const statusConfig = {
+    verified_paid: {
+      icon: <ShieldCheck className="w-4 h-4" />,
+      label: t("AI: Verified payment", "IA: Pago verificado"),
+      cls: "bg-emerald-50 border-emerald-200 text-emerald-700",
+    },
+    rejected: {
+      icon: <ShieldX className="w-4 h-4" />,
+      label: t("AI: Not a valid payment", "IA: No es pago válido"),
+      cls: "bg-red-50 border-red-200 text-red-700",
+    },
+    pending: {
+      icon: <Clock className="w-4 h-4" />,
+      label: t("Pending AI review", "Pendiente revisión IA"),
+      cls: "bg-amber-50 border-amber-200 text-amber-700",
+    },
+  };
+  const st = statusConfig[receipt.ai_validation_status || "pending"] ?? statusConfig.pending;
 
   return (
-    <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm">
-      <div className="flex items-center gap-2 px-3 py-2.5 bg-slate-50 border-b border-slate-100">
+    <div className="rounded-xl border border-slate-200 overflow-hidden bg-white">
+      {/* Header row */}
+      <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 border-b border-slate-100">
         <ImageIcon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
         <span className="text-xs font-medium text-slate-600 truncate flex-1">
           {receipt.original_filename || "receipt"}
@@ -91,15 +127,21 @@ function ReceiptCard({ receipt, onValidate, validating }) {
           {receipt.created_at ? new Date(receipt.created_at).toLocaleString() : ""}
         </span>
       </div>
+
+      {/* Image */}
       <div
         className={`relative bg-slate-100 cursor-pointer transition-all duration-300 ${expanded ? "min-h-[200px]" : "min-h-[120px]"}`}
         onClick={() => !imgLoading && !imgError && setExpanded(v => !v)}
       >
-        {imgLoading && <div className="absolute inset-0 flex items-center justify-center"><RefreshCw className="w-5 h-5 text-slate-400 animate-spin" /></div>}
+        {imgLoading && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <RefreshCw className="w-5 h-5 text-slate-400 animate-spin" />
+          </div>
+        )}
         {imgError && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-slate-400">
             <AlertTriangle className="w-6 h-6" />
-            <span className="text-[11px] text-center px-2">{t("Could not load image.", "No se pudo cargar la imagen.")}</span>
+            <span className="text-[11px]">{t("Could not load image.", "No se pudo cargar la imagen.")}</span>
           </div>
         )}
         {blobUrl && !imgError && (
@@ -109,23 +151,40 @@ function ReceiptCard({ receipt, onValidate, validating }) {
             onError={() => { setImgError(true); setImgLoading(false); }} />
         )}
         {!imgLoading && !imgError && blobUrl && (
-          <button onClick={e => { e.stopPropagation(); setExpanded(v => !v); }}
-            className="absolute bottom-2 right-2 bg-black/50 text-white rounded-lg px-2 py-1 text-[10px] flex items-center gap-1 hover:bg-black/70 transition-colors">
-            <Eye className="w-3 h-3" />{expanded ? t("Collapse","Colapsar") : t("Expand","Ampliar")}
+          <button
+            onClick={e => { e.stopPropagation(); setExpanded(v => !v); }}
+            className="absolute bottom-2 right-2 bg-black/50 text-white rounded-lg px-2 py-1 text-[10px] flex items-center gap-1 hover:bg-black/70 transition-colors"
+          >
+            <Eye className="w-3 h-3" />
+            {expanded ? t("Collapse", "Colapsar") : t("Expand", "Ampliar")}
           </button>
         )}
       </div>
-      <div className={`px-3 py-2 border-t border-slate-100 flex items-start gap-2 ${statusCls} border rounded-b-none`}>
-        <div className="shrink-0 mt-0.5">{statusIcon}</div>
+
+      {/* Status */}
+      <div className={`px-3 py-2.5 flex items-start gap-2.5 border-t border-slate-100 ${st.cls}`}>
+        <span className="shrink-0 mt-0.5">{st.icon}</span>
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-semibold">{statusLabel}</p>
-          {receipt.ai_validation_notes && <p className="text-[11px] mt-0.5 opacity-80 leading-snug">{receipt.ai_validation_notes}</p>}
-          {receipt.ai_extracted_amount > 0 && <p className="text-[11px] mt-0.5 font-bold">{t("Amount detected","Monto detectado")}: ${Number(receipt.ai_extracted_amount).toFixed(2)}</p>}
+          <p className="text-xs font-semibold">{st.label}</p>
+          {receipt.ai_validation_notes && (
+            <p className="text-[11px] mt-0.5 opacity-80 leading-snug">{receipt.ai_validation_notes}</p>
+          )}
+          {receipt.ai_extracted_amount > 0 && (
+            <p className="text-[11px] mt-0.5 font-bold">
+              {t("Amount detected", "Monto detectado")}: ${Number(receipt.ai_extracted_amount).toFixed(2)}
+            </p>
+          )}
         </div>
         {(receipt.ai_validation_status || "pending") === "pending" && (
-          <Button size="sm" className="h-7 px-2.5 text-[10px] bg-sky-600 hover:bg-sky-700 shrink-0"
-            onClick={() => onValidate(receipt.id)} disabled={validating === receipt.id}>
-            {validating === receipt.id ? <RefreshCw className="w-3 h-3 animate-spin" /> : t("Validate IA","Validar IA")}
+          <Button
+            size="sm"
+            className="h-7 px-2.5 text-[10px] bg-sky-600 hover:bg-sky-700 shrink-0"
+            onClick={() => onValidate(receipt.id)}
+            disabled={validating === receipt.id}
+          >
+            {validating === receipt.id
+              ? <RefreshCw className="w-3 h-3 animate-spin" />
+              : t("Validate IA", "Validar IA")}
           </Button>
         )}
       </div>
@@ -133,7 +192,24 @@ function ReceiptCard({ receipt, onValidate, validating }) {
   );
 }
 
-// ── Componente principal OrderDetailDialog ───────────────────────────
+// ── Payment method button ──────────────────────────────────────────
+function PayMethodBtn({ val, label, icon, active, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex flex-col items-center gap-1.5 py-2.5 px-1 rounded-xl border-2 text-[11px] font-semibold transition-all duration-150 ${
+        active
+          ? "bg-sky-600 text-white border-sky-600 shadow-md shadow-sky-200"
+          : "bg-white text-slate-500 border-slate-200 hover:border-sky-300 hover:text-sky-600"
+      }`}
+    >
+      <span className={active ? "text-white" : "text-slate-400"}>{icon}</span>
+      {label}
+    </button>
+  );
+}
+
+// ── Main component ─────────────────────────────────────────────────
 export default function OrderDetailDialog({ order, onClose, onRefresh }) {
   const { t } = useLocale();
   const [lbs, setLbs] = useState("");
@@ -147,25 +223,24 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
   const [notifySending, setNotifySending] = useState(false);
 
   const ADDON_CATALOG = [
-    { id: "bath_mat",       name: "Bath Mat",          price: 5.00  },
-    { id: "cooking_glove",  name: "Cooking Glove",     price: 5.00  },
-    { id: "pet_bed_s",      name: "Pet Bed (Small)",   price: 5.00  },
-    { id: "pet_bed_ml",     name: "Pet Bed (M/L)",     price: 8.00  },
-    { id: "pillow_std",     name: "Standard Pillow",   price: 8.00  },
-    { id: "pillow_lg",      name: "Large Pillow",      price: 10.00 },
-    { id: "duvet_cover",    name: "Duvet Cover",       price: 8.00  },
+    { id: "bath_mat",       name: "Bath Mat",         price: 5.00  },
+    { id: "cooking_glove",  name: "Cooking Glove",    price: 5.00  },
+    { id: "pet_bed_s",      name: "Pet Bed (S)",      price: 5.00  },
+    { id: "pet_bed_ml",     name: "Pet Bed (M/L)",    price: 8.00  },
+    { id: "pillow_std",     name: "Pillow Std",       price: 8.00  },
+    { id: "pillow_lg",      name: "Pillow Lg",        price: 10.00 },
+    { id: "duvet_cover",    name: "Duvet Cover",      price: 8.00  },
     { id: "blanket",        name: "Blanket",           price: 10.00 },
     { id: "comforter_tdq",  name: "Comforter T/D/Q",  price: 18.00 },
-    { id: "comforter_king", name: "Comforter King",    price: 20.00 },
-    { id: "mattress_cover", name: "Mattress Cover",    price: 20.00 },
-    { id: "down_comforter", name: "Down Comforter",    price: 40.00 },
+    { id: "comforter_king", name: "Comforter King",   price: 20.00 },
+    { id: "mattress_cover", name: "Mattress Cover",   price: 20.00 },
+    { id: "down_comforter", name: "Down Comforter",   price: 40.00 },
   ];
   const [addons, setAddons] = useState([]);
   const [savingAddons, setSavingAddons] = useState(false);
 
   useEffect(() => {
-    if (order?.addon_services) setAddons(order.addon_services);
-    else setAddons([]);
+    setAddons(order?.addon_services ?? []);
   }, [order]);
 
   const [receipts, setReceipts] = useState([]);
@@ -200,17 +275,19 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
 
   if (!localOrder) return null;
 
-  const orderId    = localOrder.id || localOrder.order_id;
-  const isPaid     = (localOrder.payment_status || "").toLowerCase() === "paid";
-  const totalAmount = localOrder.total_amount || localOrder.total || 0;
-  const isWF       = isWashFoldService(localOrder.service_type);
-
-  // ── Delivery fee: recalculated from distance (no stale stored value) ─
+  const orderId           = localOrder.id || localOrder.order_id;
+  const isPaid            = (localOrder.payment_status || "").toLowerCase() === "paid";
+  const totalAmount       = localOrder.total_amount || localOrder.total || 0;
+  const isWF              = isWashFoldService(localOrder.service_type);
   const effectiveDeliveryFee = calcDeliveryFee(localOrder.distance_miles);
   const storedDeliveryFee    = Number(localOrder.delivery_fee || 0);
-  const deliveryFeeMismatch  = Math.abs(effectiveDeliveryFee - storedDeliveryFee) > 0.01
-                               && localOrder.distance_miles != null;
+  const deliveryFeeMismatch  =
+    Math.abs(effectiveDeliveryFee - storedDeliveryFee) > 0.01 && localOrder.distance_miles != null;
+  const verifiedReceipts     = receipts.filter(r => r.ai_validation_status === "verified_paid");
+  const hasVerifiedReceipt   = verifiedReceipts.length > 0;
+  const addonTotal           = addons.reduce((s, a) => s + (Number(a.price) || 0) * (Number(a.qty) || 1), 0);
 
+  // ── Handlers (logic unchanged) ──────────────────────────────────
   const handleValidateReceipt = async (fileId) => {
     setValidatingId(fileId);
     try {
@@ -262,7 +339,8 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
             body: JSON.stringify({ channel: autoChannel }),
           });
           const nd = await nr.json();
-          if (nr.ok && nd.ok) toast.success(t(`Notification sent via ${autoChannel.toUpperCase()}`, `Notificación enviada vía ${autoChannel.toUpperCase()}`));
+          if (nr.ok && nd.ok)
+            toast.success(t(`Notification sent via ${autoChannel.toUpperCase()}`, `Notificación enviada vía ${autoChannel.toUpperCase()}`));
         } catch (err) { console.error("Auto-notify error:", err); }
       } else {
         const err = await res.json().catch(() => ({}));
@@ -301,7 +379,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
         const data = await res.json();
         setLocalOrder(prev => ({ ...prev, payment_status: "paid", payment_method: payMethod, amount_paid: amt, change_due: data.change_due }));
         toast.success(payMethod === "cash" && data.change_due > 0
-          ? `${t("Paid!","¡Pagado!")} ${t("Change","Cambio")}: ${formatCurrency(data.change_due)}`
+          ? `${t("Paid!", "¡Pagado!")} ${t("Change", "Cambio")}: ${formatCurrency(data.change_due)}`
           : t("Payment registered", "Pago registrado"));
         onRefresh?.();
       } else {
@@ -334,9 +412,9 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
       if (!res.ok) throw new Error();
       const html = await res.text();
       const pw = window.open("", "_blank", "width=350,height=600");
-      if (!pw) { toast.error(t("Allow pop-ups","Permite pop-ups")); return; }
+      if (!pw) { toast.error(t("Allow pop-ups", "Permite pop-ups")); return; }
       pw.document.write(html); pw.document.close();
-    } catch { toast.error(t("Could not print ticket","No se pudo imprimir ticket")); }
+    } catch { toast.error(t("Could not print ticket", "No se pudo imprimir ticket")); }
   };
 
   const handleDownloadPDF = async () => {
@@ -355,13 +433,9 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
         jsPDF: { unit: "mm", format: [100, 250], orientation: "portrait" },
       }).from(container).save();
       document.body.removeChild(container);
-      toast.success(t("PDF downloaded","PDF descargado"));
-    } catch { toast.error(t("Could not generate PDF","No se pudo generar el PDF")); }
+      toast.success(t("PDF downloaded", "PDF descargado"));
+    } catch { toast.error(t("Could not generate PDF", "No se pudo generar el PDF")); }
   };
-
-  const verifiedReceipts  = receipts.filter(r => r.ai_validation_status === "verified_paid");
-  const hasVerifiedReceipt = verifiedReceipts.length > 0;
-  const addonTotal = addons.reduce((s, a) => s + (Number(a.price) || 0) * (Number(a.qty) || 1), 0);
 
   const handleAddAddon = (item) => {
     const existing = addons.find(a => a.id === item.id);
@@ -379,298 +453,498 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
       if (res.ok) {
         const updated = await res.json();
         setLocalOrder(prev => ({ ...prev, addon_services: addons, total_amount: updated.total_amount }));
-        toast.success(t("Add-ons saved","Extras guardados"));
+        toast.success(t("Add-ons saved", "Extras guardados"));
         onRefresh?.();
       }
-    } catch { toast.error(t("Error saving add-ons","Error al guardar extras")); }
+    } catch { toast.error(t("Error saving add-ons", "Error al guardar extras")); }
     finally { setSavingAddons(false); }
   };
 
+  // ── Status pill colour ─────────────────────────────────────────
+  const statusPillCls = {
+    paid:      "bg-emerald-100 text-emerald-700 border-emerald-200",
+    unpaid:    "bg-red-50 text-red-600 border-red-200",
+    pending:   "bg-amber-50 text-amber-700 border-amber-200",
+    completed: "bg-sky-50 text-sky-700 border-sky-200",
+  };
+  const rawStatus = (localOrder.status || "").toLowerCase();
+  const pillCls   = statusPillCls[rawStatus] ?? "bg-slate-100 text-slate-600 border-slate-200";
+
+  // ── Render ─────────────────────────────────────────────────────
   return (
     <Dialog open={!!order} onOpenChange={() => onClose()}>
-      <DialogContent className="w-[95vw] max-w-xl max-h-[90vh] overflow-y-auto bg-white" data-testid="order-detail-dialog">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-base">
-            {t("Order","Orden")} {formatOrderNumber(localOrder)}
-            <Badge variant="outline" className="ml-auto text-xs">{safeString(localOrder.status)}</Badge>
-          </DialogTitle>
-        </DialogHeader>
-
-        <div className="space-y-4 text-sm">
-
-          {/* Customer info */}
-          <div className="grid grid-cols-2 gap-3 bg-slate-50 rounded-lg p-3" data-testid="order-detail-customer">
-            <div><span className="text-slate-400 text-xs">{t("Customer","Cliente")}</span><p className="font-semibold text-slate-800">{safeString(localOrder.customer_name,"N/A")}</p></div>
-            <div><span className="text-slate-400 text-xs">{t("Phone","Telefono")}</span><p className="font-medium text-slate-700">{safeString(localOrder.customer_phone,"N/A")}</p></div>
-            <div><span className="text-slate-400 text-xs">{t("Email","Email")}</span><p className="font-medium text-slate-700 truncate">{safeString(localOrder.customer_email,"N/A")}</p></div>
-            <div><span className="text-slate-400 text-xs">{t("Service","Servicio")}</span><p className="font-medium text-slate-700">{isWF ? "Wash & Fold" : "Pickup & Delivery"}</p></div>
-            {localOrder.preferred_contact && <div><span className="text-slate-400 text-xs">{t("Contact pref.","Pref. contacto")}</span><p className="font-medium text-slate-700 capitalize">{localOrder.preferred_contact}</p></div>}
-            {localOrder.membership_plan && <div><span className="text-slate-400 text-xs">{t("Membership","Membresia")}</span><p className="font-medium text-sky-700">{localOrder.membership_plan}</p></div>}
+      <DialogContent
+        className="w-[95vw] max-w-xl max-h-[92vh] overflow-y-auto bg-slate-50 p-0 gap-0 rounded-2xl"
+        data-testid="order-detail-dialog"
+      >
+        {/* ── Sticky header ── */}
+        <div className="sticky top-0 z-20 flex items-center gap-3 px-5 py-4 bg-white border-b border-slate-200 rounded-t-2xl">
+          <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-sky-600 text-white shrink-0">
+            <Hash className="w-4 h-4" />
           </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] font-bold tracking-widest text-slate-400 uppercase leading-none mb-0.5">
+              {t("Order", "Orden")}
+            </p>
+            <p className="text-base font-bold text-slate-900 leading-tight tracking-tight">
+              {formatOrderNumber(localOrder)}
+            </p>
+          </div>
+          <span className={`text-[11px] font-bold px-3 py-1.5 rounded-full border capitalize ${pillCls}`}>
+            {safeString(localOrder.status)}
+          </span>
+          <button
+            onClick={onClose}
+            className="flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
 
-          {/* Distance / delivery zone badge */}
+        <div className="p-4 space-y-3">
+
+          {/* ── Customer info ── */}
+          <Section icon={<User className="w-4 h-4" />} title={t("Customer", "Cliente")} data-testid="order-detail-customer">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+              <DataRow label={t("Name", "Nombre")}        value={safeString(localOrder.customer_name, "N/A")} />
+              <DataRow label={t("Phone", "Teléfono")}     value={safeString(localOrder.customer_phone, "N/A")} />
+              <DataRow label="Email"                       value={safeString(localOrder.customer_email, "N/A")} className="col-span-2" />
+              <DataRow label={t("Service", "Servicio")}   value={isWF ? "Wash & Fold" : "Pickup & Delivery"} />
+              {localOrder.preferred_contact && (
+                <DataRow label={t("Contact pref.", "Pref. contacto")} value={localOrder.preferred_contact} />
+              )}
+              {localOrder.membership_plan && (
+                <div className="col-span-2">
+                  <p className="text-[10px] font-semibold tracking-widest text-slate-400 uppercase mb-0.5">
+                    {t("Membership", "Membresía")}
+                  </p>
+                  <span className="inline-flex items-center gap-1 text-xs font-bold text-sky-700 bg-sky-50 border border-sky-200 rounded-full px-2.5 py-1">
+                    <Zap className="w-3 h-3" />{localOrder.membership_plan}
+                  </span>
+                </div>
+              )}
+            </div>
+          </Section>
+
+          {/* ── Distance badge ── */}
           {localOrder.distance_miles != null && (
-            <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium ${
+            <div className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold border ${
               localOrder.distance_miles <= 3
-                ? "bg-emerald-50 border border-emerald-200 text-emerald-700"
-                : "bg-sky-50 border border-sky-200 text-sky-700"
+                ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                : "bg-sky-50 border-sky-200 text-sky-700"
             }`}>
-              <Truck className="w-3.5 h-3.5 shrink-0" />
+              <Truck className="w-4 h-4 shrink-0" />
               <span>
-                {Number(localOrder.distance_miles).toFixed(1)} {t("miles from store","millas de la tienda")}
+                {Number(localOrder.distance_miles).toFixed(1)} {t("miles from store", "millas de la tienda")}
                 {" · "}
                 {localOrder.distance_miles <= 3
-                  ? t("FREE delivery zone","Zona de entrega GRATIS")
-                  : `${t("Delivery fee","Tarifa de entrega")}: ${formatCurrency(effectiveDeliveryFee)}`}
+                  ? t("FREE delivery", "Entrega GRATIS")
+                  : `${t("Fee", "Tarifa")}: ${formatCurrency(effectiveDeliveryFee)}`}
               </span>
               {deliveryFeeMismatch && (
-                <span className="ml-auto text-amber-600 text-[10px] flex items-center gap-1">
+                <span className="ml-auto flex items-center gap-1 text-amber-600 text-[10px] font-bold">
                   <AlertTriangle className="w-3 h-3" />
-                  {t("Fee recalculated","Tarifa recalculada")}
+                  {t("Recalculated", "Recalculada")}
                 </span>
               )}
             </div>
           )}
 
-          {/* Addresses */}
+          {/* ── Addresses ── */}
           {(localOrder.pickup_address || localOrder.delivery_address) && (
-            <div className="bg-slate-50 rounded-lg p-3 space-y-2" data-testid="order-detail-addresses">
-              {localOrder.pickup_address && <div><span className="text-slate-400 text-xs">{t("Pickup address","Dir. pickup")}</span><p className="font-medium text-slate-700">{localOrder.pickup_address}</p></div>}
-              {localOrder.delivery_address && localOrder.delivery_address !== localOrder.pickup_address && <div><span className="text-slate-400 text-xs">{t("Delivery address","Dir. entrega")}</span><p className="font-medium text-slate-700">{localOrder.delivery_address}</p></div>}
-              {localOrder.gate_code && <div><span className="text-slate-400 text-xs">{t("Gate code","Codigo porton")}</span><p className="font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded inline-block">{localOrder.gate_code}</p></div>}
-            </div>
+            <Section icon={<MapPin className="w-4 h-4" />} title={t("Addresses", "Direcciones")} data-testid="order-detail-addresses">
+              <div className="space-y-3">
+                <DataRow label={t("Pickup address", "Dir. pickup")} value={localOrder.pickup_address} />
+                {localOrder.delivery_address && localOrder.delivery_address !== localOrder.pickup_address && (
+                  <DataRow label={t("Delivery address", "Dir. entrega")} value={localOrder.delivery_address} />
+                )}
+                {localOrder.gate_code && (
+                  <div>
+                    <p className="text-[10px] font-semibold tracking-widest text-slate-400 uppercase mb-1">
+                      {t("Gate code", "Código portón")}
+                    </p>
+                    <span className="inline-block font-mono font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1 text-sm tracking-widest">
+                      {localOrder.gate_code}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </Section>
           )}
 
-          {/* Schedule */}
+          {/* ── Schedule ── */}
           {(localOrder.pickup_date || localOrder.pickup_time) && (
-            <div className="flex gap-4">
-              {localOrder.pickup_date && <div><span className="text-slate-400 text-xs">{t("Date","Fecha")}</span><p className="font-medium">{formatShortDatePT(localOrder.pickup_date)}</p></div>}
-              {localOrder.pickup_time && <div><span className="text-slate-400 text-xs">{t("Time","Hora")}</span><p className="font-medium">{localOrder.pickup_time}</p></div>}
-            </div>
+            <Section icon={<Calendar className="w-4 h-4" />} title={t("Schedule", "Horario")}>
+              <div className="flex gap-6">
+                <DataRow label={t("Date", "Fecha")} value={localOrder.pickup_date ? formatShortDatePT(localOrder.pickup_date) : null} />
+                <DataRow label={t("Time", "Hora")}  value={localOrder.pickup_time} />
+              </div>
+            </Section>
           )}
 
-          {/* Notes */}
-          {notes && (
-            <div className="bg-amber-50 border border-amber-100 rounded-lg p-3" data-testid="order-detail-notes">
-              <span className="text-amber-600 text-xs font-semibold">{t("Notes / Instructions","Notas / Instrucciones")}</span>
-              <p className="text-sm text-slate-700 mt-1 whitespace-pre-wrap">{notes}</p>
-            </div>
-          )}
+         {/* ── Notes — FIX: parse inline list items ── */}
+{notes && (
+  <Section icon={<StickyNote className="w-4 h-4" />} title={t("Notes / Instructions", "Notas / Instrucciones")} data-testid="order-detail-notes">
+    <ul className="space-y-1.5 list-disc pl-5 text-sm text-slate-700">
+      {notes
+        // Detecta patrones como "- item" o divide por espacios seguidos de palabra clave
+        .split(/(?=- [A-Z])|(?<=[a-z]): /)
+        .map((item) => item.trim())
+        .filter((item) => item && item.length > 0)
+        .map((item, i) => (
+          <li key={i} className="leading-relaxed">
+            {item.replace(/^- /, '')} {/* limpia guiones iniciales */}
+          </li>
+        ))}
+    </ul>
+  </Section>
+)}
 
-          {/* Preferences snapshot */}
+          {/* ── Preferences snapshot ── */}
           {localOrder.preferences_snapshot && (
-            <details className="bg-slate-50 rounded-lg p-3">
-              <summary className="text-xs text-slate-500 cursor-pointer font-semibold">{t("Customer preferences","Preferencias del cliente")}</summary>
-              <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+            <Section
+              icon={<User className="w-4 h-4" />}
+              title={t("Customer preferences", "Preferencias del cliente")}
+              collapsible
+              defaultOpen={false}
+            >
+              <div className="grid grid-cols-2 gap-x-4 gap-y-3">
                 {Object.entries(localOrder.preferences_snapshot)
-                  .filter(([k]) => !["id","version","customer_id"].includes(k))
-                  .map(([k,v]) => (
-                    <div key={k}>
-                      <span className="text-slate-400">{k.replace(/_/g," ")}</span>
-                      <p className="text-slate-700 font-medium">{String(v||"—")}</p>
-                    </div>
+                  .filter(([k]) => !["id", "version", "customer_id"].includes(k))
+                  .map(([k, v]) => (
+                    <DataRow key={k} label={k.replace(/_/g, " ")} value={String(v || "—")} />
                   ))}
               </div>
-            </details>
+            </Section>
           )}
 
-          {/* Receipts */}
-          <div className="border border-slate-200 rounded-xl overflow-hidden" data-testid="order-detail-receipts">
-            <div className="flex items-center gap-2 px-4 py-3 bg-slate-50 border-b border-slate-100">
-              <ImageIcon className="w-4 h-4 text-slate-500 shrink-0" />
-              <h3 className="font-semibold text-slate-800 text-sm flex-1">{t("Payment Receipts","Comprobantes de Pago")}</h3>
-              {receiptsLoading && <RefreshCw className="w-3.5 h-3.5 text-slate-400 animate-spin" />}
-              {hasVerifiedReceipt && <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5"><CheckCircle2 className="w-3 h-3" />{verifiedReceipts.length} {t("verified","verificado(s)")}</span>}
-              <button onClick={() => loadReceipts(orderId)} className="text-slate-400 hover:text-slate-600 transition-colors" title={t("Refresh","Actualizar")}><RefreshCw className="w-3.5 h-3.5" /></button>
-            </div>
-            <div className="p-3">
+          {/* ── Receipts ── */}
+          <Section
+            icon={<ImageIcon className="w-4 h-4" />}
+            title={t("Payment Receipts", "Comprobantes de Pago")}
+            badge={
+              hasVerifiedReceipt
+                ? <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">
+                    <CheckCircle2 className="w-3 h-3" />{verifiedReceipts.length} {t("verified", "verificado(s)")}
+                  </span>
+                : receiptsLoading
+                  ? <RefreshCw className="w-3.5 h-3.5 text-slate-400 animate-spin" />
+                  : null
+            }
+            data-testid="order-detail-receipts"
+          >
+            <div className="space-y-3">
               {receiptsLoading ? (
-                <div className="py-6 text-center text-slate-400 text-xs flex flex-col items-center gap-2"><RefreshCw className="w-5 h-5 animate-spin" />{t("Loading receipts…","Cargando comprobantes…")}</div>
+                <div className="py-8 text-center text-slate-400 text-xs flex flex-col items-center gap-2">
+                  <RefreshCw className="w-6 h-6 animate-spin" />
+                  {t("Loading receipts…", "Cargando comprobantes…")}
+                </div>
               ) : receipts.length === 0 ? (
-                <div className="py-6 text-center text-slate-400 text-xs flex flex-col items-center gap-1.5"><ImageIcon className="w-8 h-8 opacity-30" /><p>{t("No receipts uploaded by customer yet","El cliente aún no ha subido comprobantes")}</p></div>
+                <div className="py-8 text-center text-slate-400 text-xs flex flex-col items-center gap-2">
+                  <ImageIcon className="w-10 h-10 opacity-20" />
+                  <p>{t("No receipts uploaded by customer yet", "El cliente aún no ha subido comprobantes")}</p>
+                </div>
               ) : (
-                <div className="space-y-3">{receipts.map(r => <ReceiptCard key={r.id} receipt={r} onValidate={handleValidateReceipt} validating={validatingId} />)}</div>
+                receipts.map(r => (
+                  <ReceiptCard key={r.id} receipt={r} onValidate={handleValidateReceipt} validating={validatingId} />
+                ))
               )}
-              {(localOrder.payment_status === "pending_verification" || localOrder.payment_status === "pending") && !hasVerifiedReceipt && receipts.length > 0 && (
-                <div className="mt-3 flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 text-xs text-amber-800">
-                  <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                  <p>{t("Customer submitted payment — validate the receipt with AI before confirming.","El cliente envió pago — valida el comprobante con IA antes de confirmar.")}</p>
+
+              {!hasVerifiedReceipt && receipts.length > 0 &&
+                ["pending_verification", "pending"].includes(localOrder.payment_status) && (
+                <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-xl px-3.5 py-3 text-xs text-amber-800">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <p>{t("Customer submitted payment — validate the receipt with AI before confirming.", "El cliente envió pago — valida el comprobante con IA antes de confirmar.")}</p>
                 </div>
               )}
-            </div>
-          </div>
 
-          {/* Add-ons */}
-          <details className="border border-slate-200 rounded-xl overflow-hidden" data-testid="order-detail-addons">
-            <summary className="flex items-center gap-2 px-4 py-3 bg-slate-50 border-b border-slate-100 cursor-pointer select-none">
-              <Package className="w-4 h-4 text-sky-500 shrink-0" />
-              <span className="font-semibold text-slate-800 text-sm flex-1">{t("Individual Items / Add-ons","Artículos Individuales / Extras")}</span>
-              {addons.length > 0 && <span className="text-[11px] font-bold text-sky-600 bg-sky-50 border border-sky-200 rounded-full px-2 py-0.5">{addons.length} — {formatCurrency(addonTotal)}</span>}
-            </summary>
-            <div className="p-3 space-y-3">
+              <button
+                onClick={() => loadReceipts(orderId)}
+                className="w-full py-1.5 text-[11px] text-slate-400 hover:text-slate-600 flex items-center justify-center gap-1.5 transition-colors"
+              >
+                <RefreshCw className="w-3 h-3" />{t("Refresh", "Actualizar")}
+              </button>
+            </div>
+          </Section>
+
+          {/* ── Add-ons ── */}
+          <Section
+            icon={<Package className="w-4 h-4" />}
+            title={t("Individual Items / Add-ons", "Artículos / Extras")}
+            collapsible
+            defaultOpen={addons.length > 0}
+            badge={addons.length > 0
+              ? <span className="text-[11px] font-bold text-sky-600 bg-sky-50 border border-sky-200 rounded-full px-2 py-0.5">
+                  {addons.length} — {formatCurrency(addonTotal)}
+                </span>
+              : null}
+            data-testid="order-detail-addons"
+          >
+            <div className="space-y-3">
+              {/* Selected addons */}
               {addons.length > 0 && (
                 <div className="space-y-1.5">
                   {addons.map(a => (
-                    <div key={a.id} className="flex items-center justify-between bg-white border border-slate-100 rounded-lg px-3 py-2">
-                      <span className="text-sm text-slate-700 font-medium">{a.name} {a.qty > 1 ? `×${a.qty}` : ""}</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-bold text-slate-800">{formatCurrency((a.price||0)*(a.qty||1))}</span>
-                        <button onClick={() => handleRemoveAddon(a.id)} className="text-red-400 hover:text-red-600 transition-colors" data-testid={`addon-remove-${a.id}`}><X className="w-3.5 h-3.5" /></button>
+                    <div key={a.id} className="flex items-center justify-between bg-sky-50 border border-sky-100 rounded-xl px-3 py-2.5">
+                      <span className="text-sm text-slate-700 font-medium">
+                        {a.name}{a.qty > 1 ? <span className="ml-1 text-sky-500 font-bold">×{a.qty}</span> : ""}
+                      </span>
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-sm font-bold text-slate-800">{formatCurrency((a.price || 0) * (a.qty || 1))}</span>
+                        <button
+                          onClick={() => handleRemoveAddon(a.id)}
+                          className="flex items-center justify-center w-6 h-6 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                          data-testid={`addon-remove-${a.id}`}
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     </div>
                   ))}
-                  <Button size="sm" onClick={handleSaveAddons} disabled={savingAddons} className="w-full h-8 bg-sky-600 hover:bg-sky-700 text-xs" data-testid="addon-save-btn">
-                    {savingAddons ? <RefreshCw className="w-3 h-3 animate-spin mr-1" /> : null}{t("Save Add-ons","Guardar Extras")}
+                  <Button
+                    size="sm"
+                    onClick={handleSaveAddons}
+                    disabled={savingAddons}
+                    className="w-full h-9 bg-sky-600 hover:bg-sky-700 text-xs font-semibold rounded-xl"
+                    data-testid="addon-save-btn"
+                  >
+                    {savingAddons && <RefreshCw className="w-3 h-3 animate-spin mr-1.5" />}
+                    {t("Save Add-ons", "Guardar Extras")}
                   </Button>
                 </div>
               )}
+
+              {/* Catalog grid */}
               <div className="grid grid-cols-2 gap-1.5 max-h-48 overflow-y-auto">
                 {ADDON_CATALOG.map(item => (
-                  <button key={item.id} onClick={() => handleAddAddon(item)} data-testid={`addon-add-${item.id}`}
-                    className="flex items-center justify-between px-2.5 py-2 text-left border border-slate-100 rounded-lg hover:border-sky-200 hover:bg-sky-50/50 transition-all text-xs">
+                  <button
+                    key={item.id}
+                    onClick={() => handleAddAddon(item)}
+                    data-testid={`addon-add-${item.id}`}
+                    className="flex items-center justify-between px-3 py-2 text-left border border-slate-100 rounded-xl hover:border-sky-300 hover:bg-sky-50 transition-all text-xs group"
+                  >
                     <span className="text-slate-700 font-medium truncate">{item.name}</span>
-                    <span className="text-sky-600 font-bold shrink-0 ml-1">${item.price.toFixed(2)}</span>
+                    <span className="text-sky-600 font-bold shrink-0 ml-1 group-hover:text-sky-700">
+                      ${item.price.toFixed(2)}
+                    </span>
                   </button>
                 ))}
               </div>
             </div>
-          </details>
+          </Section>
 
-          {/* Lbs + Payment */}
-          <div className="border-t border-slate-200 pt-4 space-y-3" data-testid="order-detail-lbs-payment">
-            <div className="flex items-end gap-2">
-              <div className="flex-1">
-                <Label className="text-xs flex items-center gap-1.5">
-                  <Scale className="w-3.5 h-3.5 text-slate-500" />{t("Actual Lbs","Libras reales")}
-                </Label>
-                <Input type="number" step="0.1" min="0" placeholder="0.0" value={lbs} onChange={e => setLbs(e.target.value)} className="mt-1 h-9 text-sm" data-testid="order-detail-lbs-input" />
-              </div>
-              <Button size="sm" onClick={handleSaveLbs} disabled={saving} className="h-9 bg-sky-600 hover:bg-sky-700" data-testid="order-detail-save-lbs">
-                {saving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : t("Save lbs","Guardar lbs")}
-              </Button>
-            </div>
-
-            {/* Price breakdown */}
-            <div className="bg-slate-50 rounded-lg px-3 py-2.5 space-y-1.5 text-xs">
-              {localOrder.price_per_lb && localOrder.actual_lbs && (
-                <div className="flex justify-between text-slate-500">
-                  <span>{Number(localOrder.actual_lbs).toFixed(1)} lbs × ${Number(localOrder.price_per_lb).toFixed(2)}/lb</span>
-                  <span>{formatCurrency(Number(localOrder.actual_lbs) * Number(localOrder.price_per_lb))}</span>
+          {/* ── Lbs + Price breakdown ── */}
+          <Section
+            icon={<Scale className="w-4 h-4" />}
+            title={t("Weight & Total", "Peso y Total")}
+            data-testid="order-detail-lbs-payment"
+          >
+            <div className="space-y-4">
+              {/* Lbs input */}
+              <div className="flex items-end gap-2">
+                <div className="flex-1">
+                  <Label className="text-[10px] font-semibold tracking-widest text-slate-400 uppercase">
+                    {t("Actual Lbs", "Libras reales")}
+                  </Label>
+                  <Input
+                    type="number" step="0.1" min="0" placeholder="0.0"
+                    value={lbs} onChange={e => setLbs(e.target.value)}
+                    className="mt-1.5 h-10 text-sm rounded-xl border-slate-200 focus:border-sky-400 focus:ring-sky-200"
+                    data-testid="order-detail-lbs-input"
+                  />
                 </div>
-              )}
-              {/* Delivery fee — usa el valor recalculado */}
-              <div className="flex justify-between text-slate-500">
-                <span className="flex items-center gap-1">
-                  <Truck className="w-3 h-3" />
-                  {t("Delivery fee","Tarifa de entrega")}
-                  {effectiveDeliveryFee === 0 && localOrder.distance_miles != null && (
-                    <span className="text-emerald-600 font-semibold ml-1">{t("(FREE)","(GRATIS)")}</span>
-                  )}
-                </span>
-                <span className={effectiveDeliveryFee === 0 ? "text-emerald-600 font-semibold" : ""}>
-                  {effectiveDeliveryFee === 0 ? "$0.00" : formatCurrency(effectiveDeliveryFee)}
-                </span>
-              </div>
-              {addonTotal > 0 && (
-                <div className="flex justify-between text-slate-500">
-                  <span>{t("Add-ons","Extras")}</span>
-                  <span>{formatCurrency(addonTotal)}</span>
-                </div>
-              )}
-              <div className="flex items-center justify-between pt-1.5 border-t border-slate-200">
-                <span className="font-semibold text-slate-700 text-sm">{t("Total","Total")}</span>
-                <span className="text-xl font-bold text-slate-900" data-testid="order-detail-total">
-                  {totalAmount ? formatCurrency(totalAmount) : t("Pending lbs","Pendiente lbs")}
-                </span>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <span className="text-slate-500">{t("Payment","Pago")}</span>
-              <Badge variant={isPaid ? "default" : "destructive"} data-testid="order-detail-payment-status">
-                {isPaid ? t("Paid","Pagado") : t("Unpaid","Sin pagar")}
-              </Badge>
-            </div>
-
-            {isPaid && localOrder.change_due > 0 && (
-              <div className="text-sm text-amber-600 font-semibold bg-amber-50 rounded-lg px-3 py-2">
-                {t("Change due","Cambio")}: {formatCurrency(localOrder.change_due)}
-              </div>
-            )}
-
-            {!isPaid && (
-              <div className="space-y-3 border border-sky-100 bg-sky-50/30 rounded-lg p-3" data-testid="order-detail-pay-section">
-                <div>
-                  <Label className="text-xs">{t("Payment method","Metodo de pago")}</Label>
-                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 mt-1.5">
-                    {[
-                      { val: "zelle",   label: "Zelle",                    icon: <Send className="w-3.5 h-3.5" /> },
-                      { val: "venmo",   label: "Venmo",                    icon: <Send className="w-3.5 h-3.5" /> },
-                      { val: "cashapp", label: "CashApp",                  icon: <DollarSign className="w-3.5 h-3.5" /> },
-                      { val: "card",    label: "Stripe",                   icon: <CreditCard className="w-3.5 h-3.5" /> },
-                      { val: "cash",    label: t("Cash","Efectivo"),        icon: <Banknote className="w-3.5 h-3.5" /> },
-                      { val: "other",   label: t("Other","Otro"),           icon: <DollarSign className="w-3.5 h-3.5" /> },
-                    ].map(m => (
-                      <button key={m.val} onClick={() => setPayMethod(m.val)}
-                        className={`flex flex-col items-center gap-1 py-2 rounded-lg border text-xs font-medium transition-all ${payMethod===m.val ? "bg-sky-600 text-white border-sky-600" : "bg-white text-slate-600 border-slate-200 hover:border-sky-300"}`}
-                        data-testid={`order-detail-pay-${m.val}`}>
-                        {m.icon}{m.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                {payMethod === "cash" && (
-                  <div>
-                    <Label className="text-xs">{t("Amount received","Monto recibido")}</Label>
-                    <Input type="number" step="0.01" min={totalAmount||0} placeholder={totalAmount ? `$${Number(totalAmount).toFixed(2)}` : "0.00"} value={amountReceived} onChange={e => setAmountReceived(e.target.value)} className="mt-1 h-9" data-testid="order-detail-cash-amount" />
-                  </div>
-                )}
-                {payMethod === "zelle" && (
-                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-xs text-amber-800" data-testid="order-detail-zelle-info">
-                    <p className="font-semibold mb-1">Instrucciones Zelle:</p>
-                    <p>Enviar a: <strong>payments@venturafreshlaundry.com</strong></p>
-                    <p>Nota: Orden <strong>{formatOrderNumber(localOrder)}</strong></p>
-                  </div>
-                )}
-                {(payMethod === "venmo" || payMethod === "cashapp") && (
-                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-xs text-amber-800">
-                    <p className="font-semibold mb-1">{payMethod==="venmo" ? "Instrucciones Venmo:" : "Instrucciones Cash App:"}</p>
-                    <p>Enviar a: <strong>{payMethod==="venmo" ? "@VFLaundry" : "$VFLaundry"}</strong></p>
-                    <p>Nota: Orden <strong>{formatOrderNumber(localOrder)}</strong></p>
-                  </div>
-                )}
-                <Button className="w-full bg-emerald-600 hover:bg-emerald-700" onClick={handlePayment} disabled={processing||!totalAmount} data-testid="order-detail-collect-btn">
-                  {processing ? <RefreshCw className="w-4 h-4 animate-spin mr-2" /> : <DollarSign className="w-4 h-4 mr-2" />}
-                  {payMethod==="card" ? t("Pay with Stripe / Tap-to-Pay","Pagar con Stripe / Tap") : t("Register payment","Registrar pago")}
+                <Button
+                  size="sm"
+                  onClick={handleSaveLbs}
+                  disabled={saving}
+                  className="h-10 px-4 bg-sky-600 hover:bg-sky-700 rounded-xl font-semibold"
+                  data-testid="order-detail-save-lbs"
+                >
+                  {saving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : t("Save", "Guardar")}
                 </Button>
-                {!totalAmount && <p className="text-xs text-amber-600 text-center">{t("Enter lbs first to calculate total","Ingresa libras primero para calcular total")}</p>}
               </div>
-            )}
-          </div>
 
-          {/* Actions */}
-          <div className="flex flex-wrap gap-2 border-t border-slate-200 pt-3" data-testid="order-detail-actions">
-            <Button variant="outline" size="sm" className="text-xs gap-1" onClick={handlePrintTicket} data-testid="order-detail-print">
-              <Printer className="w-3.5 h-3.5" /> {t("Print Ticket","Imprimir Ticket")}
+              {/* Price breakdown */}
+              <div className="rounded-xl bg-slate-50 border border-slate-200 overflow-hidden text-xs">
+                {localOrder.price_per_lb && localOrder.actual_lbs && (
+                  <div className="flex justify-between items-center px-3.5 py-2.5 border-b border-slate-100">
+                    <span className="text-slate-500">
+                      {Number(localOrder.actual_lbs).toFixed(1)} lbs × ${Number(localOrder.price_per_lb).toFixed(2)}/lb
+                    </span>
+                    <span className="font-semibold text-slate-700">
+                      {formatCurrency(Number(localOrder.actual_lbs) * Number(localOrder.price_per_lb))}
+                    </span>
+                  </div>
+                )}
+                <div className="flex justify-between items-center px-3.5 py-2.5 border-b border-slate-100">
+                  <span className="flex items-center gap-1.5 text-slate-500">
+                    <Truck className="w-3.5 h-3.5" />
+                    {t("Delivery fee", "Tarifa de entrega")}
+                    {effectiveDeliveryFee === 0 && localOrder.distance_miles != null && (
+                      <span className="text-emerald-600 font-bold">{t("FREE", "GRATIS")}</span>
+                    )}
+                  </span>
+                  <span className={effectiveDeliveryFee === 0 ? "font-bold text-emerald-600" : "font-semibold text-slate-700"}>
+                    {effectiveDeliveryFee === 0 ? "$0.00" : formatCurrency(effectiveDeliveryFee)}
+                  </span>
+                </div>
+                {addonTotal > 0 && (
+                  <div className="flex justify-between items-center px-3.5 py-2.5 border-b border-slate-100">
+                    <span className="text-slate-500">{t("Add-ons", "Extras")}</span>
+                    <span className="font-semibold text-slate-700">{formatCurrency(addonTotal)}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between px-3.5 py-3 bg-white">
+                  <span className="font-bold text-slate-700">{t("Total", "Total")}</span>
+                  <span className="text-2xl font-extrabold text-slate-900 tracking-tight" data-testid="order-detail-total">
+                    {totalAmount ? formatCurrency(totalAmount) : <span className="text-sm font-medium text-slate-400">{t("Pending lbs", "Pendiente lbs")}</span>}
+                  </span>
+                </div>
+              </div>
+
+              {/* Payment status */}
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-500 uppercase tracking-widest">
+                  {t("Payment status", "Estado de pago")}
+                </span>
+                <span className={`text-xs font-bold px-3 py-1.5 rounded-full border ${
+                  isPaid
+                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                    : "bg-red-50 text-red-600 border-red-200"
+                }`} data-testid="order-detail-payment-status">
+                  {isPaid ? `✓ ${t("Paid", "Pagado")}` : t("Unpaid", "Sin pagar")}
+                </span>
+              </div>
+
+              {isPaid && localOrder.change_due > 0 && (
+                <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-3.5 py-2.5">
+                  <span className="text-xs font-semibold text-amber-700">{t("Change due", "Cambio")}</span>
+                  <span className="text-sm font-bold text-amber-800">{formatCurrency(localOrder.change_due)}</span>
+                </div>
+              )}
+
+              {/* Pay section */}
+              {!isPaid && (
+                <div className="space-y-4 border border-sky-200 bg-sky-50/40 rounded-2xl p-4" data-testid="order-detail-pay-section">
+                  <div>
+                    <p className="text-[10px] font-bold tracking-widest text-slate-400 uppercase mb-2.5">
+                      {t("Payment method", "Método de pago")}
+                    </p>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { val: "zelle",   label: "Zelle",                   icon: <Send className="w-4 h-4" /> },
+                        { val: "venmo",   label: "Venmo",                   icon: <Send className="w-4 h-4" /> },
+                        { val: "cashapp", label: "Cash App",                icon: <DollarSign className="w-4 h-4" /> },
+                        { val: "card",    label: "Stripe",                  icon: <CreditCard className="w-4 h-4" /> },
+                        { val: "cash",    label: t("Cash", "Efectivo"),      icon: <Banknote className="w-4 h-4" /> },
+                        { val: "other",   label: t("Other", "Otro"),         icon: <DollarSign className="w-4 h-4" /> },
+                      ].map(m => (
+                        <PayMethodBtn
+                          key={m.val} val={m.val} label={m.label} icon={m.icon}
+                          active={payMethod === m.val}
+                          onClick={() => setPayMethod(m.val)}
+                          data-testid={`order-detail-pay-${m.val}`}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  {payMethod === "cash" && (
+                    <div>
+                      <Label className="text-[10px] font-bold tracking-widest text-slate-400 uppercase">
+                        {t("Amount received", "Monto recibido")}
+                      </Label>
+                      <Input
+                        type="number" step="0.01" min={totalAmount || 0}
+                        placeholder={totalAmount ? `$${Number(totalAmount).toFixed(2)}` : "0.00"}
+                        value={amountReceived} onChange={e => setAmountReceived(e.target.value)}
+                        className="mt-1.5 h-10 rounded-xl border-slate-200"
+                        data-testid="order-detail-cash-amount"
+                      />
+                    </div>
+                  )}
+
+                  {["zelle", "venmo", "cashapp"].includes(payMethod) && (
+                    <div className="bg-white border border-amber-200 rounded-xl p-3.5 text-xs text-amber-800 space-y-1" data-testid="order-detail-zelle-info">
+                      <p className="font-bold">
+                        {payMethod === "zelle" ? "Instrucciones Zelle" : payMethod === "venmo" ? "Instrucciones Venmo" : "Instrucciones Cash App"}:
+                      </p>
+                      <p>Enviar a: <strong>{payMethod === "zelle" ? "payments@venturafreshlaundry.com" : payMethod === "venmo" ? "@VFLaundry" : "$VFLaundry"}</strong></p>
+                      <p>Nota: Orden <strong>{formatOrderNumber(localOrder)}</strong></p>
+                    </div>
+                  )}
+
+                  <Button
+                    className="w-full h-11 bg-emerald-600 hover:bg-emerald-700 rounded-xl font-bold text-sm shadow-md shadow-emerald-100 transition-all"
+                    onClick={handlePayment}
+                    disabled={processing || !totalAmount}
+                    data-testid="order-detail-collect-btn"
+                  >
+                    {processing
+                      ? <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+                      : <DollarSign className="w-4 h-4 mr-2" />}
+                    {payMethod === "card"
+                      ? t("Pay with Stripe / Tap-to-Pay", "Pagar con Stripe / Tap")
+                      : t("Register payment", "Registrar pago")}
+                  </Button>
+
+                  {!totalAmount && (
+                    <p className="text-[11px] text-amber-600 text-center font-medium">
+                      {t("Enter lbs first to calculate total", "Ingresa libras primero para calcular total")}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          </Section>
+
+          {/* ── Actions bar ── */}
+          <div className="flex flex-wrap items-center gap-2 pt-1 pb-2" data-testid="order-detail-actions">
+            <Button
+              variant="outline" size="sm"
+              className="text-xs gap-1.5 h-9 rounded-xl border-slate-200 font-semibold"
+              onClick={handlePrintTicket}
+              data-testid="order-detail-print"
+            >
+              <Printer className="w-3.5 h-3.5" /> {t("Print", "Imprimir")}
             </Button>
-            <Button variant="outline" size="sm" className="text-xs gap-1" onClick={handleDownloadPDF} data-testid="order-detail-pdf">
+            <Button
+              variant="outline" size="sm"
+              className="text-xs gap-1.5 h-9 rounded-xl border-slate-200 font-semibold"
+              onClick={handleDownloadPDF}
+              data-testid="order-detail-pdf"
+            >
               <FileDown className="w-3.5 h-3.5" /> PDF
             </Button>
-            <div className="flex items-center gap-1" data-testid="order-detail-notify-group">
-              <select value={notifyChannel} onChange={e => setNotifyChannel(e.target.value)} className="h-8 text-[10px] border border-slate-200 rounded-md px-1.5 bg-white" data-testid="order-detail-notify-channel">
+
+            {/* Notify */}
+            <div className="flex items-center gap-1.5 ml-auto" data-testid="order-detail-notify-group">
+              <select
+                value={notifyChannel}
+                onChange={e => setNotifyChannel(e.target.value)}
+                className="h-9 text-xs border border-slate-200 rounded-xl px-2.5 bg-white font-medium text-slate-600 focus:outline-none focus:border-sky-400"
+                data-testid="order-detail-notify-channel"
+              >
                 <option value="sms">SMS</option>
                 <option value="email">Email</option>
                 <option value="call">Llamada</option>
                 <option value="whatsapp">WhatsApp</option>
               </select>
-              <Button variant="outline" size="sm" className="text-xs gap-1" onClick={handleSendNotification} disabled={notifySending} data-testid="order-detail-notify">
-                <Send className="w-3.5 h-3.5" /> {notifySending ? "..." : t("Notify","Notificar")}
+              <Button
+                size="sm"
+                className="h-9 gap-1.5 text-xs bg-sky-600 hover:bg-sky-700 rounded-xl font-semibold"
+                onClick={handleSendNotification}
+                disabled={notifySending}
+                data-testid="order-detail-notify"
+              >
+                {notifySending
+                  ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  : <Send className="w-3.5 h-3.5" />}
+                {t("Notify", "Notificar")}
               </Button>
             </div>
-            <Button variant="outline" size="sm" className="text-xs gap-1 ml-auto" onClick={onClose} data-testid="order-detail-close">
-              <X className="w-3.5 h-3.5" /> {t("Close","Cerrar")}
-            </Button>
           </div>
+
         </div>
       </DialogContent>
     </Dialog>

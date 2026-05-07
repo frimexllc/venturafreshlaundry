@@ -16,7 +16,8 @@ import {
   CheckCircle,
   ArrowRight,
   Sparkles,
-  Zap
+  Zap,
+  Award
 } from "lucide-react";
 import { toast } from "sonner";
 import { createNotificationsSocket } from "../utils/notificationsSocket";
@@ -124,10 +125,12 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [briefingLoading, setBriefingLoading] = useState(true);
   const [realtimeStatus, setRealtimeStatus] = useState("offline");
+  const [financeStats, setFinanceStats] = useState(null);
 
   useEffect(() => {
     fetchData();
     fetchBriefing();
+    fetchFinanceStats();
   }, []);
 
   useEffect(() => {
@@ -141,6 +144,8 @@ export default function Dashboard() {
       const message = payload?.message || t("Update received", "Actualización recibida");
       toast.info(message);
       fetchData();
+      fetchBriefing();
+      fetchFinanceStats();
     };
 
     socket.on("connect", () => setRealtimeStatus("connected"));
@@ -150,6 +155,7 @@ export default function Dashboard() {
     socket.on("dashboard", () => {
       fetchData();
       fetchBriefing();
+      fetchFinanceStats();
     });
 
     return () => {
@@ -190,6 +196,15 @@ export default function Dashboard() {
     }
   };
 
+  const fetchFinanceStats = async () => {
+    try {
+      const res = await axios.get(`${API}/finances/dashboard?period=month`);
+      setFinanceStats(res.data);
+    } catch (error) {
+      console.error("Error loading finance stats:", error);
+    }
+  };
+
   const realtimeLabel = realtimeStatus === "connected"
     ? t("Realtime: connected", "Tiempo real: conectado")
     : realtimeStatus === "disabled"
@@ -208,6 +223,8 @@ export default function Dashboard() {
       </div>
     );
   }
+
+  const totalRevenue = (stats?.revenue_this_month || 0) + (financeStats?.membership_revenue || 0);
 
   return (
     <div data-testid="dashboard-page" className="space-y-6">
@@ -307,14 +324,14 @@ export default function Dashboard() {
           color="bg-amber-100 text-amber-600"
         />
         <StatCard
-          icon={DollarSign}
-          label={t("Monthly Revenue", "Ingresos del mes")}
-          value={`$${(stats?.revenue_this_month || 0).toLocaleString()}`}
+          icon={Award}
+          label={t("Active Members", "Miembros activos")}
+          value={stats?.active_members || 0}
           color="bg-purple-100 text-purple-600"
         />
       </div>
 
-      {/* Secondary Stats */}
+      {/* Financial Stats Row */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <StatCard
           icon={FileText}
@@ -329,14 +346,36 @@ export default function Dashboard() {
           color="bg-indigo-100 text-indigo-600"
         />
         <StatCard
-          icon={TrendingUp}
-          label={t("Active Members", "Miembros activos")}
-          value={stats?.active_members || 0}
-          color="bg-rose-100 text-rose-600"
+          icon={DollarSign}
+          label={t("Monthly Revenue (Orders)", "Ingresos mensuales (Órdenes)")}
+          value={`$${(stats?.revenue_this_month || 0).toLocaleString()}`}
+          color="bg-emerald-100 text-emerald-600"
         />
       </div>
 
-      {/* Recent Activity */}
+      {/* Additional Revenue Row */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {financeStats && (
+          <>
+            <StatCard
+              icon={Award}
+              label={t("Membership Revenue", "Ingresos por membresías")}
+              value={`$${(financeStats.membership_revenue || 0).toLocaleString()}`}
+              color="bg-violet-100 text-violet-600"
+              subtext={t("This month", "Este mes")}
+            />
+            <StatCard
+              icon={TrendingUp}
+              label={t("Total Revenue", "Ingresos totales")}
+              value={`$${totalRevenue.toLocaleString()}`}
+              color="bg-amber-100 text-amber-600"
+              subtext={t("Orders + Memberships", "Órdenes + membresías")}
+            />
+          </>
+        )}
+      </div>
+
+      {/* Recent Activity & Business Overview */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Activity Feed */}
         <div className="bg-white rounded-xl border border-slate-200 p-6">

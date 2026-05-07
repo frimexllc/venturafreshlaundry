@@ -1,13 +1,11 @@
-"""Dashboard endpoints: stats, recent activity"""
+# routes/dashboard.py
 from fastapi import APIRouter, Depends
 from datetime import datetime, timezone
-
 from database import db
 from models import DashboardStats
 from auth import get_current_user
 
 router = APIRouter(prefix="/api", tags=["Dashboard"])
-
 
 @router.get("/dashboard/stats", response_model=DashboardStats)
 async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
@@ -22,24 +20,25 @@ async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
     new_leads = await db.leads.count_documents({"status": "new"})
     orders_today = await db.orders.count_documents({"created_at": {"$gte": today}})
 
-    # Revenue from finances collection (most accurate)
-    fin_pipeline = [
-        {"$match": {"type": "income", "created_at": {"$gte": month_start}}},
+    # Ingresos mensuales (desde órdenes y membresías)
+    revenue_orders = 0
+    revenue_memberships = 0
+    # Podrías usar el agregado de finances, pero para simplificar:
+    pipeline_orders = [
+        {"$match": {"payment_status": "paid", "$or": [
+            {"paid_at": {"$gte": month_start}}, {"created_at": {"$gte": month_start}}
+        ]}},
+        {"$group": {"_id": None, "total": {"$sum": "$total_amount"}}}
+    ]
+    order_total = await db.orders.aggregate(pipeline_orders).to_list(1)
+    revenue_orders = order_total[0]["total"] if order_total else 0
+
+    pipeline_memberships = [
+        {"$match": {"payment_status": "paid", "created_at": {"$gte": month_start}}},
         {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
     ]
-    fin_rev = await db.finances.aggregate(fin_pipeline).to_list(1)
-    if fin_rev:
-        revenue = fin_rev[0]["total"]
-    else:
-        pipeline = [
-            {"$match": {"payment_status": "paid", "$or": [
-                {"paid_at": {"$gte": month_start}},
-                {"created_at": {"$gte": month_start}}
-            ]}},
-            {"$group": {"_id": None, "total": {"$sum": "$total_amount"}}}
-        ]
-        revenue_result = await db.orders.aggregate(pipeline).to_list(1)
-        revenue = revenue_result[0]["total"] if revenue_result else 0
+    member_total = await db.membership_signups.aggregate(pipeline_memberships).to_list(1)
+    revenue_memberships = member_total[0]["total"] if member_total else 0
 
     return DashboardStats(
         total_customers=total_customers,
@@ -49,11 +48,7 @@ async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
         active_quotes=active_quotes,
         new_leads=new_leads,
         orders_today=orders_today,
-        revenue_this_month=revenue or 0
+        revenue_this_month=revenue_orders,
+        membership_revenue=revenue_memberships,
+        total_revenue=revenue_orders + revenue_memberships
     )
-
-
-@router.get("/dashboard/recent-activity")
-async def get_recent_activity(current_user: dict = Depends(get_current_user)):
-    logs = await db.audit_logs.find({}, {"_id": 0}).sort("created_at", -1).limit(20).to_list(20)
-    return logs

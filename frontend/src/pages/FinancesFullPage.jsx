@@ -7,6 +7,7 @@ import {
   Image as ImageIcon, AlertTriangle, ChevronDown, Wallet,
   RefreshCw, Eye, Filter, Check, ChevronLeft, ChevronRight,
   GripVertical, ArrowUp, ArrowDown, ArrowUpDown, Download,
+  Award
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -438,13 +439,11 @@ const DetailSheet = ({ expense, files, onClose, onOpenLightbox }) => {
   const imgs = files.filter(f => f.content_type?.startsWith("image/"))
                     .map(f => `${API}${f.url}?auth=${token()}`);
   return (
-    <PortalModal open onClose={onClose} maxWidth="480px">  {/* ← quitamos "sheet" */}
-      {/* Handle - ya no es necesario pero lo dejamos, no afecta */}
+    <PortalModal open onClose={onClose} maxWidth="480px">
       <div style={{ display: "flex", justifyContent: "center", padding: "12px 0 0" }}>
         <div style={{ width: "36px", height: "4px", borderRadius: "4px", background: "#e2e8f0" }} />
       </div>
       <div style={{ padding: "16px 22px 28px" }}>
-        {/* Header */}
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "20px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
             <div style={{ width: "44px", height: "44px", borderRadius: "12px",
@@ -467,7 +466,6 @@ const DetailSheet = ({ expense, files, onClose, onOpenLightbox }) => {
           </button>
         </div>
 
-        {/* Amount block */}
         <div style={{
           background: "#f8fafc", borderRadius: "14px",
           padding: "18px 20px", marginBottom: "16px",
@@ -490,7 +488,6 @@ const DetailSheet = ({ expense, files, onClose, onOpenLightbox }) => {
           </span>
         </div>
 
-        {/* Detail grid */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "16px" }}>
           {[
             ["Fecha",    fmtDate(expense.date)],
@@ -509,7 +506,6 @@ const DetailSheet = ({ expense, files, onClose, onOpenLightbox }) => {
           ))}
         </div>
 
-        {/* Receipt thumbnails */}
         {imgs.length > 0 && (
           <div style={{ background: "#f8fafc", borderRadius: "12px", padding: "14px 16px",
                         border: "1px solid #f1f5f9", marginBottom: "16px" }}>
@@ -638,7 +634,6 @@ const ExpenseForm = ({
           style={{ ...inputBase, resize: "none", lineHeight: "1.5" }} />
       </F>
 
-      {/* Attachments */}
       <F label="Comprobante">
         <input ref={cameraRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={onFileSelect} />
         <input ref={fileRef} type="file" accept="image/*,.pdf" multiple style={{ display: "none" }} onChange={onFileSelect} />
@@ -875,7 +870,6 @@ const VehicleCard = ({ vehicle, onEdit, onDelete }) => {
         transform: hov ? "translateY(-2px)" : "none", transition: "all .2s",
       }}
     >
-      {/* Accent stripe */}
       <div style={{ height: "2px", background: "linear-gradient(90deg,#818cf8,#8b5cf6)" }} />
       <div style={{ padding: "18px" }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "16px" }}>
@@ -953,10 +947,12 @@ const ALL_EXPENSE_COLS = [
 const PAGE_SIZES = [10, 25, 50];
 
 const STAT_DEFS = [
-  { key: "revenue",  label: "Ingresos",      icon: TrendingUp,   accent: ["#10b981", "#14b8a6"] },
-  { key: "expenses", label: "Gastos",         icon: TrendingDown, accent: ["#f87171", "#ef4444"] },
-  { key: "net",      label: "Utilidad Neta",  icon: DollarSign,   accent: ["#818cf8", "#8b5cf6"] },
-  { key: "mileage",  label: "Millaje Total",  icon: Car,          accent: ["#38bdf8", "#06b6d4"] },
+  { key: "orderRevenue", label: "Ingresos (Órdenes)", icon: TrendingUp,   accent: ["#10b981", "#14b8a6"] },
+  { key: "membership",   label: "Membresías",        icon: Award,         accent: ["#8b5cf6", "#c084fc"] },
+  { key: "totalRevenue", label: "Ingresos Total",    icon: DollarSign,    accent: ["#3b82f6", "#60a5fa"] },
+  { key: "expenses",     label: "Gastos",            icon: TrendingDown,  accent: ["#f87171", "#ef4444"] },
+  { key: "net",          label: "Utilidad Neta",     icon: DollarSign,    accent: ["#06b6d4", "#22d3ee"] },
+  { key: "mileage",      label: "Millaje Total",     icon: Car,           accent: ["#f59e0b", "#fbbf24"] },
 ];
 
 export default function FinancesPage() {
@@ -1228,11 +1224,14 @@ export default function FinancesPage() {
   };
 
   // ── Dashboard values ────────────────────────────────────────────────────────
+  const totalRevenue = (dashboard?.order_revenue || 0) + (dashboard?.membership_revenue || 0);
   const statValues = {
-    revenue:  { value: fmtCurrency(dashboard?.revenue || 0), sub: "Periodo seleccionado" },
-    expenses: { value: fmtCurrency(dashboard?.total_expenses || 0), sub: `${expenses.length} registros` },
-    net:      { value: fmtCurrency(dashboard?.net_income || 0), sub: "Utilidad del periodo" },
-    mileage:  { value: `${(dashboard?.mileage?.total_miles || 0).toFixed(0)} mi`, sub: `${dashboard?.mileage?.total_trips || 0} viajes` },
+    orderRevenue: { value: fmtCurrency(dashboard?.order_revenue || 0), sub: "Órdenes + Tienda" },
+    membership:   { value: fmtCurrency(dashboard?.membership_revenue || 0), sub: "Pagos de membresías" },
+    totalRevenue: { value: fmtCurrency(totalRevenue), sub: "Suma total" },
+    expenses:     { value: fmtCurrency(dashboard?.total_expenses || 0), sub: "Gastos operativos" },
+    net:          { value: fmtCurrency(dashboard?.net_income || 0), sub: dashboard?.net_income >= 0 ? "Ganancia" : "Pérdida" },
+    mileage:      { value: `${(dashboard?.mileage?.total_miles || 0).toFixed(0)} mi`, sub: `${dashboard?.mileage?.total_trips || 0} viajes` },
   };
 
   // ─── Render ────────────────────────────────────────────────────────────────
@@ -1273,15 +1272,20 @@ export default function FinancesPage() {
 
         {/* ── Stat Cards ── */}
         {!loading && dashboard && (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: "14px", marginBottom: "20px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px,1fr))", gap: "14px", marginBottom: "20px" }}>
             {statOrder.map((defIdx, i) => {
-              const def  = STAT_DEFS[defIdx];
+              const def = STAT_DEFS[defIdx];
               const vals = statValues[def.key];
+              if (!vals) return null;
               return (
                 <StatCard
-                  key={defIdx} index={i}
-                  icon={def.icon} accent={def.accent}
-                  label={def.label} value={vals.value} sub={vals.sub}
+                  key={defIdx}
+                  index={i}
+                  icon={def.icon}
+                  accent={def.accent}
+                  label={def.label}
+                  value={vals.value}
+                  sub={vals.sub}
                   onDragStart={onStatDragStart}
                   onDragEnter={onStatDragEnter}
                   onDragEnd={onStatDragEnd}
@@ -1353,7 +1357,6 @@ export default function FinancesPage() {
         {/* ══ TAB: Expenses ══════════════════════════════════════════════════ */}
         {activeTab === "expenses" && (
           <div style={{ ...surface, overflow: "hidden" }}>
-            {/* Toolbar */}
             <div style={{ padding: "13px 16px", borderBottom: "1px solid #f1f5f9",
                           background: "#f8fafc", display: "flex", flexWrap: "wrap",
                           alignItems: "center", gap: "8px", justifyContent: "space-between" }}>
@@ -1427,7 +1430,6 @@ export default function FinancesPage() {
               </div>
             </div>
 
-            {/* Drag hint */}
             <div style={{ padding: "6px 16px", background: "#f8fafc", borderBottom: "1px solid #f1f5f9",
                           fontSize: "10px", color: "#b0bec5", fontWeight: 500,
                           display: "flex", alignItems: "center", gap: "6px" }}>
@@ -1435,7 +1437,6 @@ export default function FinancesPage() {
               Arrastra las cabeceras para reordenar · Arrastra filas para reorganizar
             </div>
 
-            {/* Table */}
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "660px" }}>
                 <thead>
@@ -1516,7 +1517,6 @@ export default function FinancesPage() {
               </table>
             </div>
 
-            {/* Pagination */}
             {totalPages > 1 && (
               <div style={{ padding: "12px 16px", borderTop: "1px solid #f1f5f9",
                             display: "flex", alignItems: "center", justifyContent: "space-between" }}>

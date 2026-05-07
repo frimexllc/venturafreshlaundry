@@ -85,7 +85,7 @@ const navigationGroups = [
   {
     title: "FINANCES", emoji: "💰",
     items: [
-      { path: "/admin/finances", icon: DollarSign, key: "finances", adminOnly: true },
+      { path: "/admin/financesreport", icon: DollarSign, key: "finances", adminOnly: true },
     ],
   },
   {
@@ -147,6 +147,7 @@ navigationGroups.flatMap(g => g.items).forEach(item => {
     leads:               ["Leads",            "Prospectos"],
     services:            ["Services",         "Servicios"],
     finances:            ["Finances",         "Finanzas"],
+    financesreport:      ["Financesreport",         "Finanzas reporte"],
     ai_metrics:          ["AI Metrics",       "Métricas IA"],
     operational_kpis:    ["KPIs Dashboard",   "KPIs Operativos"],
     ocr_analytics:       ["OCR Analytics",    "Analytics OCR"],

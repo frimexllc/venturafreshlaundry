@@ -454,6 +454,31 @@ class DashboardStats(BaseModel):
 
 
 # ============================================================
+# PUBLIC FORMS MODELS (Suggestion & Refund)
+# ============================================================
+
+class PublicSuggestionCreate(BaseModel):
+    date: str
+    types: List[str]          # e.g., ["service", "machines", ...]
+    suggestion: str
+    improve: List[str]        # e.g., ["experience", "time", ...]
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    acceptPromotions: bool = False
+
+
+class PublicRefundCreate(BaseModel):
+    date: str
+    time: Optional[str] = None
+    machine_number: str
+    amount: float
+    reasons: List[str]
+    comment: Optional[str] = None
+    name: Optional[str] = None
+    phone: Optional[str] = None
+
+
+# ============================================================
 # NEW MODELS FOR LOGISTICS & FUEL REAL DATA
 # ============================================================
 

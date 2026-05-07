@@ -539,7 +539,7 @@ const WashFoldServiceCard = ({ t }) => {
         <div className="relative px-5 py-2 bg-slate-50 border-t border-slate-100 text-xs text-slate-500">{t("Professional care · Minimum 10 lb per order", "Cuidado profesional · Mínimo 10 lb por orden")}</div>
         <div className="relative px-5 py-2 bg-slate-50 border-t border-slate-100 text-xs text-slate-500">{t("Monday – Sunday · 8:00 AM – 6:00 PM", "Lunes – Domingo · 8:00 AM – 6:00 PM")}</div>
         <div className="relative px-5 sm:px-7 pb-6 pt-4">
-          <Link to="/schedule-pickup">
+          <Link to="/wash-fold">
             <button className="group w-full flex items-center justify-center gap-2 bg-slate-900 text-white rounded-xl px-6 py-3.5 text-sm font-bold uppercase tracking-wider hover:bg-slate-800 active:scale-95 transition-all duration-300 shadow-md overflow-hidden relative touch-manipulation" style={{ minHeight: "48px" }}>
               <span className="relative z-10 flex items-center gap-2">{t("DROP OFF / SCHEDULE", "ENTREGA / PROGRAMAR")}<ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-1" /></span>
               <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
@@ -621,7 +621,7 @@ const WashFoldServiceCardHead = ({ t }) => {
         <div className="relative px-5 py-2 bg-slate-50 border-t border-slate-100 text-xs text-slate-500">{t("Professional care · Minimum 10 lb per order", "Cuidado profesional · Mínimo 10 lb por orden")}</div>
         <div className="relative px-5 py-2 bg-slate-50 border-t border-slate-100 text-xs text-slate-500">{t("Monday – Sunday · 8:00 AM – 6:00 PM", "Lunes – Domingo · 8:00 AM – 6:00 PM")}</div>
         <div className="relative px-5 sm:px-7 pb-6 pt-4">
-          <Link to="/schedule-pickup">
+          <Link to="/wash-fold">
             <button className="group w-full flex items-center justify-center gap-2 bg-slate-900 text-white rounded-xl px-6 py-3.5 text-sm font-bold uppercase tracking-wider hover:bg-slate-800 active:scale-95 transition-all duration-300 shadow-md overflow-hidden relative touch-manipulation" style={{ minHeight: "48px" }}>
               <span className="relative z-10 flex items-center gap-2">{t("DROP OFF / SCHEDULE", "ENTREGA / PROGRAMAR")}<ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-1" /></span>
               <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />

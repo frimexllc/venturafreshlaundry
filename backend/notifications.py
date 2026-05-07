@@ -1,14 +1,13 @@
 """
-Notification services — Ventura Fresh Laundry  v3.3
-FIXES vs v3.2:
-  1. _sent_cache replaced by DB-backed deduplication (survives restarts).
-  2. Language detection runs BEFORE build_premium_message, so MX numbers
-     always get es-MX content — not after the message is already built.
-  3. _generate_internal_payment_url() builds a per-order URL using the
-     order id, not a generic /account href.
-  4. admin_phone now reads from env var with fallback.
-  5. should_notify_order_status() guard applied consistently everywhere.
-  6. _notify_customer_after_image() respects SKIP_SERVER_NOTIFICATIONS.
+Notification services — Ventura Fresh Laundry  v3.4
+CHANGES vs v3.3:
+  1. Voice calls are clean — no order numbers spoken digit-by-digit,
+     natural phrasing in both English and Spanish.
+  2. Email HTML completely redesigned — premium look, card layout,
+     consistent brand colors, readable hierarchy.
+  3. Payment URLs always route to /account?order={id}; checkout_url
+     is preserved when available but always falls back cleanly.
+  4. All other fixes from v3.3 preserved unchanged.
 """
 
 import os
@@ -42,7 +41,6 @@ SENDGRID_FROM_NAME      = os.environ.get("SENDGRID_FROM_NAME", BUSINESS_NAME)
 SENDGRID_DATA_RESIDENCY = os.environ.get("SENDGRID_DATA_RESIDENCY", "").lower()
 GROQ_API_KEY            = os.environ.get("GROQ_API_KEY")
 USE_ULTRA_PREMIUM       = os.environ.get("USE_ULTRA_PREMIUM", "false").lower() == "true"
-# FIX 4: admin phone from env
 ADMIN_PHONE             = os.environ.get("ADMIN_PHONE", "")
 
 QUIET_START             = os.environ.get("QUIET_HOURS_START", "21:00")
@@ -53,14 +51,17 @@ ENFORCE_QUIET_HOURS     = os.environ.get("ENFORCE_QUIET_HOURS", "false").lower()
 URL_SHORTENER_API       = os.environ.get("URL_SHORTENER_API", "none")
 BITLY_API_TOKEN         = os.environ.get("BITLY_API_TOKEN", "")
 
+# Brand colors
 VFL_BLUE    = "#0ea5e9"
 VFL_DARK    = "#0b1929"
+VFL_NAVY    = "#0f2744"
 VFL_ACCENT  = "#38bdf8"
-VFL_SUCCESS = "#34d399"
+VFL_SUCCESS = "#10b981"
 VFL_WARN    = "#f59e0b"
 VFL_DANGER  = "#ef4444"
 VFL_GRAY    = "#64748b"
 VFL_LIGHT   = "#f0f9ff"
+VFL_BORDER  = "#e2e8f0"
 
 _BORDER_COLORS = {
     VFL_ACCENT:  "#bae6fd",
@@ -75,13 +76,11 @@ def _border_color(accent: str) -> str:
     return _BORDER_COLORS.get(accent, "#bae6fd")
 
 
-# FIX 1: in-memory cache kept only as a fast layer; authoritative dedup is DB.
 _sent_cache: Set[str] = set()
 _audit_log: list = []
 
 
 async def _is_already_sent_db(key: str) -> bool:
-    """DB-backed deduplication — survives process restarts."""
     try:
         from database import db as _db
         doc = await _db.notification_dedupe.find_one({"key": key})
@@ -134,9 +133,6 @@ MILESTONES = {
     "support":         {"order_created"},
 }
 
-# Statuses that should NEVER generate a customer notification (purely internal/operational)
-# NOTE: "confirmed" maps to pickup_confirmed/order_received — MUST notify
-# NOTE: "picked_up" maps to processing — MUST notify
 _NO_NOTIFY_STATUSES = {"pickup_scheduled"}
 
 EVENT_MAPPING = {
@@ -197,7 +193,6 @@ def get_groq_client():
 
 
 def format_phone(phone: str) -> Optional[str]:
-    """Convert phone to E.164 format. Defaults to +1 (US) for 10-digit numbers."""
     if not phone:
         return None
     cleaned = "".join(c for c in phone if c.isdigit() or c == "+")
@@ -206,7 +201,6 @@ def format_phone(phone: str) -> Optional[str]:
     if len(cleaned) == 11 and cleaned.startswith("1"):
         return "+" + cleaned
     if len(cleaned) == 10:
-        # Default to US (+1) — this is a US-based business (Ventura, CA)
         return "+1" + cleaned
     if cleaned.startswith("52") and len(cleaned) >= 12:
         return "+" + cleaned
@@ -256,26 +250,14 @@ def normalize_status_value(value: Optional[str]) -> str:
 
 
 def should_notify_customer(status: str) -> bool:
-    """
-    FIX 5: Centralised guard used by BOTH orders.py and operator.py.
-    Returns False for internal/operational statuses that have no
-    customer-facing meaning (e.g. 'picked_up' just means the driver
-    has the bag — the customer already got a 'pickup_confirmed' message).
-    """
     return normalize_status_value(status) not in _NO_NOTIFY_STATUSES
 
 
 def detect_language(customer: Optional[Dict], phone: Optional[str]) -> str:
-    """
-    FIX 2: Language resolution is deterministic and runs BEFORE
-    build_premium_message.  MX numbers always resolve to es-MX here,
-    not in a late override after content is already built.
-    """
     if not customer:
-        # Phone-only path
         if phone and detect_country(phone) == "mx":
             return "es-MX"
-        return "es-MX"  # default for this business
+        return "es-MX"
 
     preferred = (
         customer.get("preferred_language") or customer.get("language") or ""
@@ -286,7 +268,6 @@ def detect_language(customer: Optional[Dict], phone: Optional[str]) -> str:
     if preferred in {"en", "en-us", "english"}:
         return "en-US"
 
-    # Phone-based override (authoritative)
     resolved = phone or customer.get("phone")
     if resolved:
         country = detect_country(resolved)
@@ -309,12 +290,10 @@ def extract_contact_from_notes(order: Dict) -> Optional[str]:
     return None
 
 
-# FIX 3: per-order payment URL
+# FIX v3.4: Payment URL always routes to /account?order={id}
+# If a Stripe checkout_url exists, it is used directly.
+# Otherwise we always build /account?order={id} — never a bare /account.
 def _generate_internal_payment_url(order: Dict, base_url: str = "") -> str:
-    """
-    Build a URL pointing to the customer-facing payment page for this
-    specific order.  Falls back to /account if no Stripe session is set.
-    """
     origin = (base_url or BUSINESS_WEBSITE).rstrip("/")
     order_id = order.get("id") or order.get("order_number", "")
     pay_status = (order.get("payment_status") or "pending").lower()
@@ -323,187 +302,233 @@ def _generate_internal_payment_url(order: Dict, base_url: str = "") -> str:
     if pay_status == "paid" or total < 0.50:
         return ""
 
-    # If there is an existing Stripe checkout URL in the order, use it
     checkout_url = order.get("checkout_url") or order.get("payment_url") or ""
     if checkout_url and checkout_url.startswith("http"):
         return checkout_url
 
-    # Otherwise point to the customer portal with the order id as a query param
+    if not order_id:
+        return f"{origin}/account"
+
     return f"{origin}/account?order={order_id}"
 
 
-# ── HTML helpers (unchanged from v3.2 — omitted for brevity, kept in full below) ──
-def _html_base(content_html: str, accent_color: str = VFL_BLUE) -> str:
+# ── HTML helpers ───────────────────────────────────────────────────────
+# v3.4: complete redesign — cleaner layout, better hierarchy, consistent spacing.
+
+_EMAIL_CSS = """
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 0; background-color: #f1f5f9; font-family: 'DM Sans', Arial, sans-serif; }
+  .wrapper { background: #f1f5f9; padding: 40px 16px; }
+  .card { background: #ffffff; border-radius: 20px; max-width: 560px; margin: 0 auto; overflow: hidden; box-shadow: 0 4px 24px rgba(11,25,41,0.10); }
+  .header { background: linear-gradient(135deg, #0b1929 0%, #0f2744 100%); padding: 32px; text-align: center; }
+  .header-logo { color: #38bdf8; font-size: 11px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; margin: 0 0 6px; }
+  .header-name { color: #ffffff; font-size: 22px; font-weight: 700; margin: 0; }
+  .status-bar { padding: 12px 32px; text-align: center; }
+  .status-bar span { font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #fff; }
+  .body { padding: 36px 32px; }
+  .order-chip { background: #0f2744; border-radius: 12px; padding: 18px 24px; text-align: center; margin-bottom: 28px; }
+  .order-chip .label { color: rgba(255,255,255,0.45); font-size: 10px; letter-spacing: 2px; text-transform: uppercase; margin: 0 0 6px; }
+  .order-chip .value { color: #38bdf8; font-family: 'Courier New', monospace; font-size: 24px; font-weight: 700; margin: 0; }
+  .heading { color: #0b1929; font-size: 24px; font-weight: 700; margin: 0 0 10px; line-height: 1.25; }
+  .subtext { color: #475569; font-size: 15px; line-height: 1.6; margin: 0 0 24px; }
+  .total-row { background: #f8fafc; border-radius: 10px; padding: 14px 18px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+  .total-row .t-label { color: #64748b; font-size: 13px; font-weight: 500; }
+  .total-row .t-value { color: #0b1929; font-size: 18px; font-weight: 700; }
+  .cta { display: block; text-align: center; margin: 0 0 16px; }
+  .btn { display: inline-block; padding: 16px 40px; border-radius: 50px; font-size: 15px; font-weight: 700; text-decoration: none; letter-spacing: 0.3px; }
+  .tip { border-radius: 12px; padding: 14px 18px; margin-top: 8px; }
+  .tip p { margin: 0; font-size: 13px; line-height: 1.55; }
+  .pay-link { text-align: center; margin-top: 12px; }
+  .pay-link a { font-size: 11px; color: #94a3b8; word-break: break-all; }
+  .footer { background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 24px 32px; text-align: center; }
+  .footer .biz { color: #334155; font-size: 13px; font-weight: 700; margin: 0 0 4px; }
+  .footer .addr { color: #94a3b8; font-size: 11px; margin: 0 0 10px; }
+  .footer .web { font-size: 11px; }
+  .footer .web a { color: #0ea5e9; text-decoration: none; }
+"""
+
+def _html_base(content_html: str, accent_color: str = VFL_BLUE, status_label: str = "", lang: str = "es") -> str:
     phone_line = f" &middot; {BUSINESS_PHONE_DISPLAY}" if BUSINESS_PHONE_DISPLAY else ""
+    status_bar = (
+        f'<div class="status-bar" style="background:{accent_color}">'
+        f'<span>{status_label}</span></div>'
+    ) if status_label else ""
     return (
-        '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">'
-        '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
-        f'<title>{BUSINESS_NAME}</title><style>'
-        'body{{margin:0;padding:0;background-color:#f0f9ff}}'
-        '.email-wrapper{{background-color:#f0f9ff;padding:32px 16px}}'
-        f'.btn{{background-color:{accent_color};border-radius:50px;color:#ffffff !important;'
-        'display:inline-block;font-family:Arial,sans-serif;font-size:15px;font-weight:700;'
-        'line-height:1;padding:16px 36px;text-align:center;text-decoration:none !important}}'
-        '</style></head><body><div class="email-wrapper">'
-        '<table border="0" cellpadding="0" cellspacing="0" width="100%"><tr><td align="center">'
-        '<table border="0" cellpadding="0" cellspacing="0" width="560">'
-        f'<tr><td bgcolor="{VFL_DARK}" style="border-radius:16px 16px 0 0;padding:28px 32px;text-align:center">'
-        f'<span style="font-family:Arial,sans-serif;font-size:18px;font-weight:700;color:#ffffff">{BUSINESS_NAME}</span>'
-        '</td></tr>'
+        f'<!DOCTYPE html><html lang="{lang}"><head>'
+        '<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+        f'<title>{BUSINESS_NAME}</title>'
+        f'<style>{_EMAIL_CSS}</style>'
+        '</head><body><div class="wrapper">'
+        '<div class="card">'
+        '<div class="header">'
+        f'<p class="header-logo">Laundry &amp; Delivery</p>'
+        f'<p class="header-name">{BUSINESS_NAME}</p>'
+        '</div>'
+        + status_bar
         + content_html
-        + f'<tr><td bgcolor="#f8fafc" style="border-radius:0 0 16px 16px;padding:24px 32px;text-align:center">'
-        f'<p style="margin:0 0 4px;font-weight:700;color:#334155">{BUSINESS_NAME}</p>'
-        f'<p style="margin:0 0 10px;font-size:11px;color:#94a3b8">{BUSINESS_ADDRESS}{phone_line}</p>'
-        f'<p style="margin:0 0 14px;font-size:11px"><a href="{BUSINESS_WEBSITE}" style="color:{VFL_BLUE}">{BUSINESS_WEBSITE}</a></p>'
-        '</td></tr></table></td></tr></table></div></body></html>'
+        + f'<div class="footer">'
+        f'<p class="biz">{BUSINESS_NAME}</p>'
+        f'<p class="addr">{BUSINESS_ADDRESS}{phone_line}</p>'
+        f'<p class="web"><a href="{BUSINESS_WEBSITE}">{BUSINESS_WEBSITE}</a></p>'
+        '</div>'
+        '</div></div></body></html>'
     )
 
 
-def _spacer(px: int = 16) -> str:
-    return f'<p style="margin:0;padding:0;line-height:{px}px;font-size:{px}px">&nbsp;</p>'
-
-
-def _status_band(text: str, color: str) -> str:
+def _order_chip(order_number: str, is_es: bool) -> str:
+    label = "Número de Orden" if is_es else "Order Number"
     return (
-        f'<tr><td bgcolor="{color}" style="padding:14px 32px;text-align:center">'
-        f'<span style="color:#fff;font-size:11px;font-weight:700;text-transform:uppercase">{text}</span>'
-        f'</td></tr>'
+        f'<div class="order-chip">'
+        f'<p class="label">{label}</p>'
+        f'<p class="value">#{order_number}</p>'
+        '</div>'
     )
 
 
 def _tip_box(text: str, accent: str = VFL_ACCENT) -> str:
     border = _border_color(accent)
+    bg = {"#10b981": "#ecfdf5", "#f59e0b": "#fffbeb", "#ef4444": "#fef2f2"}.get(accent, "#f0f9ff")
+    text_color = {"#10b981": "#065f46", "#f59e0b": "#78350f", "#ef4444": "#7f1d1d"}.get(accent, "#0369a1")
     return (
-        f'<table width="100%"><tr><td bgcolor="{VFL_LIGHT}" style="border:1px solid {border};border-radius:10px;padding:14px 16px">'
-        f'<p style="margin:0;font-size:12px;color:#0369a1">{text}</p></td></tr></table>'
+        f'<div class="tip" style="background:{bg};border:1px solid {border}">'
+        f'<p style="color:{text_color}">{text}</p></div>'
     )
 
 
 def _cta_button(url: str, label: str, color: str = VFL_BLUE) -> str:
     return (
-        f'<a href="{url}" style="background-color:{color};border-radius:50px;color:#fff;'
-        f'display:inline-block;padding:16px 36px;text-decoration:none;font-size:15px;font-weight:700">'
-        f'{label}</a>'
+        f'<div class="cta"><a class="btn" href="{url}" '
+        f'style="background:{color};color:#ffffff">{label}</a></div>'
     )
 
 
-def _order_number_box(label: str, value: str) -> str:
+def _total_row(order_total: Optional[float], is_es: bool) -> str:
+    if not order_total:
+        return ""
+    label = "Total a pagar" if is_es else "Amount due"
     return (
-        f'<table width="100%"><tr><td bgcolor="#0f2744" style="border-radius:10px;padding:16px;text-align:center">'
-        f'<p style="margin:0 0 5px;font-size:10px;color:rgba(255,255,255,.45);text-transform:uppercase">{label}</p>'
-        f'<p style="margin:0;font-family:\'Courier New\',monospace;font-size:22px;font-weight:700;color:{VFL_ACCENT}">#{value}</p>'
-        f'</td></tr></table>'
+        f'<div class="total-row">'
+        f'<span class="t-label">{label}</span>'
+        f'<span class="t-value">${order_total:.2f}</span>'
+        '</div>'
     )
 
 
-def _body_wrap(inner_html: str) -> str:
-    return f'<tr><td bgcolor="#ffffff" style="padding:32px">{inner_html}</td></tr>'
-
-
-# ── HTML per-event builders (same logic as v3.2) ──────────────────────
-def _html_payment_request(
-    name: str, order_number: str, order_total: Optional[float],
-    payment_url: str, is_es: bool
-) -> str:
-    accent = VFL_SUCCESS
-    greeting = "Pago pendiente" if is_es else "Payment required"
-    sub = (
-        f"Hola {name}, tu servicio #{order_number} está listo para pagar."
-        if is_es else
-        f"Hi {name}, your service #{order_number} is ready to pay."
-    )
-    tip = "El enlace expira en 24 horas." if is_es else "The link expires in 24 hours."
-    badge = "Pago Requerido" if is_es else "Payment Required"
-    total_html = f'<p><strong>Total: </strong>${order_total:.2f}</p>' if order_total else ""
-    button = _cta_button(payment_url, "Pagar ahora" if is_es else "Pay now", accent)
-    body = (
-        _order_number_box("Orden", order_number)
-        + _spacer(22)
-        + f'<p style="font-size:22px;font-weight:700">{greeting}</p><p>{sub}</p>{total_html}'
-        + _spacer(22)
-        + f'<div style="text-align:center">{button}</div>'
-        + _spacer(12)
-        + f'<p style="text-align:center;font-size:11px;word-break:break-all"><a href="{payment_url}">{payment_url}</a></p>'
-        + _spacer(16)
-        + _tip_box(tip, accent)
-    )
-    return _html_base(_status_band(badge, accent) + _body_wrap(body), accent)
-
-
-def _html_generic(
-    name: str, is_es: bool, title: Optional[str] = None,
-    body_text: Optional[str] = None
-) -> str:
-    accent = VFL_BLUE
-    heading = title or ("Actualización" if is_es else "Update")
-    text = body_text or (
-        f"Hola {name}, tienes una actualización de tu servicio."
-        if is_es else
-        f"Hi {name}, you have a service update."
-    )
-    body = (
-        f'<p style="font-size:22px;font-weight:700">{heading}</p><p>{text}</p>'
-        + _spacer(16)
-        + _tip_box(
-            "Gracias por elegir Ventura Fresh Laundry."
-            if is_es else
-            "Thank you for choosing Ventura Fresh Laundry.",
-            accent
-        )
-    )
-    return _html_base(
-        _status_band("Actualización" if is_es else "Update", accent) + _body_wrap(body),
-        accent
-    )
-
+# ── HTML per-event builders (v3.4 redesign) ───────────────────────────
 
 def _html_order_created(name, order_number, pickup_date, pickup_window, is_es):
     accent = VFL_BLUE
-    greeting = "Tu orden fue programada con éxito" if is_es else "Your order has been scheduled"
-    sub = (
-        f"Hola {name}, recibimos tu solicitud."
-        if is_es else f"Hi {name}, we received your request."
+    lang = "es" if is_es else "en"
+    heading = f"¡Hola, {name}! 👋" if is_es else f"Hi {name}! 👋"
+    subtext = (
+        f"Tu orden <strong>#{order_number}</strong> fue programada con éxito. "
+        "Te avisamos en cada paso del camino."
+        if is_es else
+        f"Your order <strong>#{order_number}</strong> has been scheduled. "
+        "We'll keep you updated every step of the way."
     )
-    tip = "Si necesitas cambios, contáctanos." if is_es else "If you need changes, contact us."
-    badge = "Orden Programada" if is_es else "Order Scheduled"
+    pickup_html = ""
+    if pickup_date:
+        pickup_html = (
+            f'<div class="tip" style="background:#f0f9ff;border:1px solid #bae6fd;margin-bottom:20px">'
+            f'<p style="color:#0369a1">📅 {"Recolección" if is_es else "Pickup"}: <strong>{pickup_date}'
+            + (f' · {pickup_window}' if pickup_window else '') +
+            '</strong></p></div>'
+        )
+    tip = "Si necesitas cambios, escríbenos." if is_es else "Need changes? Just reach out."
+    status_label = "Orden Programada" if is_es else "Order Scheduled"
     body = (
-        _order_number_box("Orden" if is_es else "Order", order_number)
-        + _spacer(22)
-        + f'<p style="font-size:22px;font-weight:700">{greeting}</p><p>{sub}</p>'
-        + _spacer(16) + _tip_box(tip, accent)
+        '<div class="body">'
+        + _order_chip(order_number, is_es)
+        + f'<h2 class="heading">{heading}</h2>'
+        + f'<p class="subtext">{subtext}</p>'
+        + pickup_html
+        + _tip_box(tip, accent)
+        + '</div>'
     )
-    return _html_base(_status_band(badge, accent) + _body_wrap(body), accent)
+    return _html_base(body, accent, status_label, lang)
 
 
 def _html_pickup_confirmed(name, order_number, pickup_date, pickup_window, is_es):
     accent = VFL_BLUE
-    body = (
-        _order_number_box("Orden", order_number) + _spacer(22)
-        + f'<p style="font-size:22px;font-weight:700">{"Recolección confirmada" if is_es else "Pickup confirmed"}</p>'
-        + f'<p>{"Hola " + name + ", tu recolección fue programada." if is_es else "Hi " + name + ", your pickup was scheduled."}</p>'
-        + _spacer(16) + _tip_box("Ten tu ropa lista." if is_es else "Have your laundry ready.", accent)
+    lang = "es" if is_es else "en"
+    heading = "Recolección confirmada ✓" if is_es else "Pickup confirmed ✓"
+    subtext = (
+        f"Hola <strong>{name}</strong>, tu recolección fue confirmada. "
+        "Ten tu ropa lista y un mensajero estará contigo en el horario acordado."
+        if is_es else
+        f"Hi <strong>{name}</strong>, your pickup is confirmed. "
+        "Have your laundry ready and we'll be there at the scheduled time."
     )
-    return _html_base(_status_band("Confirmada" if is_es else "Confirmed", accent) + _body_wrap(body), accent)
+    pickup_html = ""
+    if pickup_date:
+        pickup_html = (
+            f'<div class="tip" style="background:#f0f9ff;border:1px solid #bae6fd;margin-bottom:20px">'
+            f'<p style="color:#0369a1">📅 <strong>{pickup_date}'
+            + (f' · {pickup_window}' if pickup_window else '') +
+            '</strong></p></div>'
+        )
+    tip = "🧺 Ten tu ropa lista en una bolsa." if is_es else "🧺 Have your laundry in a bag ready to hand off."
+    status_label = "Recolección Confirmada" if is_es else "Pickup Confirmed"
+    body = (
+        '<div class="body">'
+        + _order_chip(order_number, is_es)
+        + f'<h2 class="heading">{heading}</h2>'
+        + f'<p class="subtext">{subtext}</p>'
+        + pickup_html
+        + _tip_box(tip, accent)
+        + '</div>'
+    )
+    return _html_base(body, accent, status_label, lang)
 
 
 def _html_processing(name, order_number, is_es):
     accent = VFL_WARN
-    body = (
-        f'<p style="font-size:22px;font-weight:700">{"Tu ropa está en proceso" if is_es else "Your laundry is being processed"}</p>'
-        + f'<p>{"Hola " + name + ", ya tenemos tu ropa y la estamos procesando." if is_es else "Hi " + name + ", we have your laundry and are processing it."}</p>'
-        + _spacer(16) + _tip_box("Te avisaremos cuando esté lista." if is_es else "We'll notify you when ready.", accent)
+    lang = "es" if is_es else "en"
+    heading = "Tu ropa está en proceso 🧺" if is_es else "Your laundry is being processed 🧺"
+    subtext = (
+        f"Hola <strong>{name}</strong>, ya tenemos tu ropa y la estamos procesando con cuidado. "
+        "Te avisamos cuando esté lista."
+        if is_es else
+        f"Hi <strong>{name}</strong>, we have your laundry and it's being carefully processed. "
+        "We'll notify you as soon as it's ready."
     )
-    return _html_base(_status_band("En Proceso" if is_es else "Processing", accent) + _body_wrap(body), accent)
+    tip = "⏱ Tiempo estimado: 24–48 horas." if is_es else "⏱ Estimated time: 24–48 hours."
+    status_label = "En Proceso" if is_es else "Processing"
+    body = (
+        '<div class="body">'
+        + _order_chip(order_number, is_es)
+        + f'<h2 class="heading">{heading}</h2>'
+        + f'<p class="subtext">{subtext}</p>'
+        + _tip_box(tip, accent)
+        + '</div>'
+    )
+    return _html_base(body, accent, status_label, lang)
 
 
 def _html_ready(name, order_number, service_type, is_es):
     accent = VFL_SUCCESS
-    body = (
-        f'<p style="font-size:22px;font-weight:700">{"Tu ropa está lista" if is_es else "Your laundry is ready"}</p>'
-        + f'<p>{"Hola " + name + ", tu ropa está lista para entrega." if is_es else "Hi " + name + ", your laundry is ready for delivery."}</p>'
-        + _spacer(16) + _tip_box("Mantente atento." if is_es else "Stay tuned.", accent)
+    lang = "es" if is_es else "en"
+    heading = "¡Tu ropa está lista! ✨" if is_es else "Your laundry is ready! ✨"
+    subtext = (
+        f"Hola <strong>{name}</strong>, tu ropa está lista y limpia. "
+        "Pronto estará en camino a tu domicilio."
+        if is_es else
+        f"Hi <strong>{name}</strong>, your laundry is fresh and clean. "
+        "It will be on its way to you shortly."
     )
-    return _html_base(_status_band("Lista" if is_es else "Ready", accent) + _body_wrap(body), accent)
+    tip = "🚚 Mantente disponible para recibir tu entrega." if is_es else "🚚 Stay available to receive your delivery."
+    status_label = "Lista" if is_es else "Ready"
+    body = (
+        '<div class="body">'
+        + _order_chip(order_number, is_es)
+        + f'<h2 class="heading">{heading}</h2>'
+        + f'<p class="subtext">{subtext}</p>'
+        + _tip_box(tip, accent)
+        + '</div>'
+    )
+    return _html_base(body, accent, status_label, lang)
 
 
 def _html_wash_fold_ready(name, order_number, is_es):
@@ -512,24 +537,51 @@ def _html_wash_fold_ready(name, order_number, is_es):
 
 def _html_out_for_delivery(name, order_number, is_es):
     accent = VFL_BLUE
-    body = (
-        f'<p style="font-size:22px;font-weight:700">{"Tu entrega está en camino" if is_es else "Your delivery is on the way"}</p>'
-        + f'<p>{"Hola " + name + ", tu ropa está en camino." if is_es else "Hi " + name + ", your laundry is on its way."}</p>'
-        + _spacer(16) + _tip_box("Por favor, está atento." if is_es else "Please be ready.", accent)
+    lang = "es" if is_es else "en"
+    heading = "Tu entrega va en camino 🚚" if is_es else "Your delivery is on the way 🚚"
+    subtext = (
+        f"Hola <strong>{name}</strong>, tu ropa limpia está en camino. "
+        "El mensajero llegará en breve."
+        if is_es else
+        f"Hi <strong>{name}</strong>, your clean laundry is on its way. "
+        "Your delivery driver will arrive shortly."
     )
-    return _html_base(_status_band("En Camino" if is_es else "Out for Delivery", accent) + _body_wrap(body), accent)
+    tip = "📱 Por favor, mantente disponible para recibir tu entrega." if is_es else "📱 Please be available to receive your delivery."
+    status_label = "En Camino" if is_es else "Out for Delivery"
+    body = (
+        '<div class="body">'
+        + _order_chip(order_number, is_es)
+        + f'<h2 class="heading">{heading}</h2>'
+        + f'<p class="subtext">{subtext}</p>'
+        + _tip_box(tip, accent)
+        + '</div>'
+    )
+    return _html_base(body, accent, status_label, lang)
 
 
 def _html_delivered(name, order_number, order_total, is_es):
     accent = VFL_SUCCESS
-    total_html = f'<p><strong>Total:</strong> ${order_total:.2f}</p>' if order_total else ""
-    body = (
-        f'<p style="font-size:22px;font-weight:700">{"Entrega completada" if is_es else "Delivery completed"}</p>'
-        + f'<p>{"Hola " + name + ", tu ropa fue entregada." if is_es else "Hi " + name + ", your laundry was delivered."}</p>'
-        + total_html + _spacer(16)
-        + _tip_box("¡Gracias por confiar en nosotros!" if is_es else "Thank you for trusting us!", accent)
+    lang = "es" if is_es else "en"
+    heading = "¡Entrega completada! 🎉" if is_es else "Delivery completed! 🎉"
+    subtext = (
+        f"Hola <strong>{name}</strong>, tu ropa fue entregada. "
+        "Esperamos que estés muy satisfecho con el servicio."
+        if is_es else
+        f"Hi <strong>{name}</strong>, your laundry has been delivered. "
+        "We hope you're happy with the service."
     )
-    return _html_base(_status_band("Entregado" if is_es else "Delivered", accent) + _body_wrap(body), accent)
+    tip = "❤️ ¡Gracias por confiar en nosotros! Estaremos aquí para tu próxima carga." if is_es else "❤️ Thank you for trusting us! We'll be here for your next load."
+    status_label = "Entregado" if is_es else "Delivered"
+    body = (
+        '<div class="body">'
+        + _order_chip(order_number, is_es)
+        + f'<h2 class="heading">{heading}</h2>'
+        + f'<p class="subtext">{subtext}</p>'
+        + _total_row(order_total, is_es)
+        + _tip_box(tip, accent)
+        + '</div>'
+    )
+    return _html_base(body, accent, status_label, lang)
 
 
 def _html_completed(name, order_number, order_total, is_es):
@@ -538,24 +590,124 @@ def _html_completed(name, order_number, order_total, is_es):
 
 def _html_cancelled(name, order_number, is_es):
     accent = VFL_DANGER
-    body = (
-        _order_number_box("Orden", order_number) + _spacer(22)
-        + f'<p style="font-size:22px;font-weight:700">{"Orden cancelada" if is_es else "Order cancelled"}</p>'
-        + f'<p>{"Hola " + name + ", tu orden fue cancelada." if is_es else "Hi " + name + ", your order was cancelled."}</p>'
-        + _spacer(16) + _tip_box("Si fue un error, contáctanos." if is_es else "If this was a mistake, contact us.", accent)
+    lang = "es" if is_es else "en"
+    heading = "Orden cancelada" if is_es else "Order cancelled"
+    subtext = (
+        f"Hola <strong>{name}</strong>, tu orden <strong>#{order_number}</strong> fue cancelada. "
+        "Si fue un error o deseas reagendar, contáctanos."
+        if is_es else
+        f"Hi <strong>{name}</strong>, your order <strong>#{order_number}</strong> was cancelled. "
+        "If this was a mistake or you'd like to reschedule, please reach out."
     )
-    return _html_base(_status_band("Cancelada" if is_es else "Cancelled", accent) + _body_wrap(body), accent)
+    tip = "📞 Estamos para ayudarte." if is_es else "📞 We're here to help."
+    status_label = "Cancelada" if is_es else "Cancelled"
+    body = (
+        '<div class="body">'
+        + _order_chip(order_number, is_es)
+        + f'<h2 class="heading">{heading}</h2>'
+        + f'<p class="subtext">{subtext}</p>'
+        + _tip_box(tip, accent)
+        + '</div>'
+    )
+    return _html_base(body, accent, status_label, lang)
 
 
 def _html_store_order(name, order_number, order_total, shipping_fee, is_es):
     accent = VFL_BLUE
-    body = (
-        _order_number_box("Orden", order_number) + _spacer(22)
-        + f'<p style="font-size:22px;font-weight:700">{"Compra confirmada" if is_es else "Purchase confirmed"}</p>'
-        + f'<p>{"Hola " + name + ", recibimos tu orden." if is_es else "Hi " + name + ", we received your order."}</p>'
-        + _spacer(16) + _tip_box("Te notificaremos cuando esté lista." if is_es else "We'll notify you when ready.", accent)
+    lang = "es" if is_es else "en"
+    heading = f"¡Compra confirmada, {name}! 🛍️" if is_es else f"Purchase confirmed, {name}! 🛍️"
+    subtext = (
+        f"Recibimos tu orden <strong>#{order_number}</strong>. "
+        "Te avisaremos cuando esté lista para envío."
+        if is_es else
+        f"We received your order <strong>#{order_number}</strong>. "
+        "You'll hear from us when it's ready to ship."
     )
-    return _html_base(_status_band("Orden de Tienda" if is_es else "Store Order", accent) + _body_wrap(body), accent)
+    tip = "📦 Preparando tu pedido con cuidado." if is_es else "📦 Preparing your order with care."
+    status_label = "Orden de Tienda" if is_es else "Store Order"
+    body = (
+        '<div class="body">'
+        + _order_chip(order_number, is_es)
+        + f'<h2 class="heading">{heading}</h2>'
+        + f'<p class="subtext">{subtext}</p>'
+        + _total_row(order_total, is_es)
+        + _tip_box(tip, accent)
+        + '</div>'
+    )
+    return _html_base(body, accent, status_label, lang)
+
+
+def _html_payment_request(name, order_number, order_total, payment_url, is_es):
+    accent = VFL_SUCCESS
+    lang = "es" if is_es else "en"
+    heading = "Tienes un pago pendiente 💳" if is_es else "Payment required 💳"
+    subtext = (
+        f"Hola <strong>{name}</strong>, tu servicio <strong>#{order_number}</strong> está listo. "
+        "Completa tu pago de forma segura a través del siguiente enlace."
+        if is_es else
+        f"Hi <strong>{name}</strong>, your service <strong>#{order_number}</strong> is complete. "
+        "Securely complete your payment using the button below."
+    )
+    btn_label = "Pagar ahora" if is_es else "Pay now"
+    tip = "🔒 Enlace seguro · expira en 24 horas." if is_es else "🔒 Secure link · expires in 24 hours."
+    status_label = "Pago Pendiente" if is_es else "Payment Required"
+    body = (
+        '<div class="body">'
+        + _order_chip(order_number, is_es)
+        + f'<h2 class="heading">{heading}</h2>'
+        + f'<p class="subtext">{subtext}</p>'
+        + _total_row(order_total, is_es)
+        + _cta_button(payment_url, btn_label, accent)
+        + f'<div class="pay-link"><a href="{payment_url}">{payment_url}</a></div>'
+        + '<div style="margin-top:16px">' + _tip_box(tip, accent) + '</div>'
+        + '</div>'
+    )
+    return _html_base(body, accent, status_label, lang)
+
+
+def _html_order_received(name, order_number, pickup_date, pickup_window, is_es):
+    """Wash & fold variant of order_created."""
+    accent = VFL_BLUE
+    lang = "es" if is_es else "en"
+    heading = f"¡Recibimos tu ropa, {name}! 🧺" if is_es else f"We received your laundry, {name}! 🧺"
+    subtext = (
+        f"Tu orden <strong>#{order_number}</strong> fue ingresada al sistema. "
+        "La procesamos con cuidado y te avisamos cuando esté lista."
+        if is_es else
+        f"Your order <strong>#{order_number}</strong> has been logged. "
+        "We'll process it with care and let you know when it's ready."
+    )
+    tip = "👕 Tiempo estimado: 24–48 horas." if is_es else "👕 Estimated turnaround: 24–48 hours."
+    status_label = "Orden Recibida" if is_es else "Order Received"
+    body = (
+        '<div class="body">'
+        + _order_chip(order_number, is_es)
+        + f'<h2 class="heading">{heading}</h2>'
+        + f'<p class="subtext">{subtext}</p>'
+        + _tip_box(tip, accent)
+        + '</div>'
+    )
+    return _html_base(body, accent, status_label, lang)
+
+
+def _html_generic(name, is_es, title=None, body_text=None):
+    accent = VFL_BLUE
+    lang = "es" if is_es else "en"
+    heading = title or ("Actualización de servicio" if is_es else "Service update")
+    subtext = body_text or (
+        f"Hola {name}, tienes una actualización en tu servicio."
+        if is_es else
+        f"Hi {name}, you have an update on your service."
+    )
+    tip = "Gracias por elegir Ventura Fresh Laundry." if is_es else "Thank you for choosing Ventura Fresh Laundry."
+    body = (
+        '<div class="body">'
+        + f'<h2 class="heading">{heading}</h2>'
+        + f'<p class="subtext">{subtext}</p>'
+        + _tip_box(tip, accent)
+        + '</div>'
+    )
+    return _html_base(body, accent, heading, lang)
 
 
 # ── SMS copy ──────────────────────────────────────────────────────────
@@ -628,50 +780,97 @@ def _sms_sync(
     return es_msg if is_es else en_msg
 
 
-# ── Voice TwiML ───────────────────────────────────────────────────────
+# ── Voice TwiML (v3.4: clean — no order numbers spoken) ───────────────
+#
+# Problem in v3.3: Twilio's <Say> reads "order 12345" as "one two three
+# four five", which sounds robotic. Fix: never include numeric order IDs
+# in voice scripts. Use natural, human phrasing instead.
+#
 def _voice(event: str, name: str, order_number: str, language: str) -> str:
+    """
+    Returns clean TwiML-ready text for voice calls.
+
+    Rules:
+    - NEVER include the raw order number — Twilio reads it digit by digit.
+    - Keep sentences short (Twilio has a ~30 s limit per <Say> by default).
+    - Use natural, conversational language.
+    - The caller ID already shows the business number, so no need to
+      repeat the business name excessively.
+    """
     is_es = str(language).lower().startswith("es")
     biz = BUSINESS_NAME
     n = name or ("estimado cliente" if is_es else "valued customer")
 
     scripts = {
         "order_created": (
-            f"Hola {n}, llamamos de {biz} para confirmar tu orden número {order_number}. ¡Hasta luego!",
-            f"Hi {n}, this is {biz} calling to confirm order {order_number}. Goodbye!"
+            f"Hola {n}, llamamos de {biz} para confirmar que recibimos tu solicitud. "
+            "Te avisaremos sobre cada actualización. ¡Hasta pronto!",
+            f"Hi {n}, this is {biz} calling to confirm we received your request. "
+            "We'll keep you updated. Goodbye!"
         ),
         "pickup_confirmed": (
-            f"Hola {n}, tu recolección con {biz} fue confirmada. Estaremos en tu domicilio en el horario acordado. ¡Gracias!",
-            f"Hi {n}, your pickup with {biz} has been confirmed. We will arrive during the scheduled time. Thank you!"
+            f"Hola {n}, te llamamos de {biz}. Tu recolección fue confirmada. "
+            "Estaremos en tu domicilio en el horario acordado. ¡Gracias!",
+            f"Hi {n}, this is {biz}. Your pickup has been confirmed. "
+            "We'll be there at the scheduled time. Thank you!"
         ),
         "processing": (
-            f"Hola {n}, de {biz}. Tenemos tu ropa y está en proceso. Pronto te avisamos cuando esté lista. ¡Gracias!",
-            f"Hi {n}, this is {biz}. Your laundry is being processed. We'll notify you when ready. Thank you!"
+            f"Hola {n}, de {biz}. Ya tenemos tu ropa y la estamos procesando. "
+            "Te avisamos cuando esté lista. ¡Gracias!",
+            f"Hi {n}, this is {biz}. We have your laundry and it's being processed. "
+            "We'll let you know when it's ready. Thank you!"
         ),
         "ready": (
-            f"Hola {n}, tu ropa con {biz} está lista. Pronto estará en camino. ¡Gracias!",
-            f"Hi {n}, your laundry with {biz} is ready and will be on its way shortly. Thank you!"
+            f"Hola {n}, de {biz}. Tu ropa está lista y pronto estará en camino. "
+            "Por favor mantente disponible. ¡Gracias!",
+            f"Hi {n}, this is {biz}. Your laundry is ready and will be on its way shortly. "
+            "Please be available to receive it. Thank you!"
+        ),
+        "ready_for_pickup": (
+            f"Hola {n}, de {biz}. Tu ropa está lista para recoger en nuestra tienda. "
+            "¡Te esperamos! ¡Hasta luego!",
+            f"Hi {n}, this is {biz}. Your laundry is ready for pickup at our store. "
+            "We look forward to seeing you. Goodbye!"
         ),
         "out_for_delivery": (
-            f"Hola {n}, tu entrega de {biz} está en camino. Llegaremos en breve. ¡Gracias!",
-            f"Hi {n}, your {biz} delivery is on the way. We'll be arriving shortly. Thank you!"
+            f"Hola {n}, de {biz}. Tu entrega está en camino ahora mismo. "
+            "Por favor, estate atento. ¡Gracias!",
+            f"Hi {n}, this is {biz}. Your delivery is on the way right now. "
+            "Please be ready to receive it. Thank you!"
         ),
         "delivered": (
-            f"Hola {n}, {biz} completó tu entrega. ¡Gracias y hasta pronto!",
-            f"Hi {n}, {biz} has completed your delivery. Thank you!"
+            f"Hola {n}, de {biz}. Tu entrega fue completada con éxito. "
+            "¡Gracias por confiar en nosotros y hasta la próxima!",
+            f"Hi {n}, this is {biz}. Your delivery has been completed. "
+            "Thank you for choosing us, and we hope to see you again soon!"
+        ),
+        "completed": (
+            f"Hola {n}, de {biz}. Tu servicio ha sido completado. "
+            "¡Fue un placer atenderte! ¡Hasta pronto!",
+            f"Hi {n}, this is {biz}. Your service has been completed. "
+            "It was a pleasure serving you. Goodbye!"
         ),
         "cancelled": (
-            f"Hola {n}, tu orden {order_number} con {biz} fue cancelada. Llámanos si tienes preguntas. ¡Hasta luego!",
-            f"Hi {n}, your order {order_number} with {biz} was cancelled. Call us if you have questions. Goodbye!"
+            f"Hola {n}, de {biz}. Te informamos que tu orden fue cancelada. "
+            "Si tienes preguntas o deseas reagendar, llámanos. ¡Hasta luego!",
+            f"Hi {n}, this is {biz}. We're letting you know your order was cancelled. "
+            "If you have questions or would like to reschedule, please call us. Goodbye!"
         ),
         "payment_request": (
-            f"Hola {n}, de {biz}. Tiene un pago pendiente. Revise su mensaje o correo para el enlace de pago. ¡Gracias!",
-            f"Hi {n}, this is {biz}. You have a pending payment. Please check your text or email for the link. Thank you!"
+            f"Hola {n}, de {biz}. Tienes un pago pendiente por tu servicio. "
+            "Por favor, revisa el mensaje de texto o el correo electrónico que te enviamos "
+            "para completar tu pago. ¡Gracias!",
+            f"Hi {n}, this is {biz}. You have a pending payment for your service. "
+            "Please check the text message or email we sent you to complete your payment. "
+            "Thank you!"
         ),
     }
 
     es_s, en_s = scripts.get(event, (
-        f"Hola {n}, tienes una actualización de tu servicio con {biz}. ¡Hasta luego!",
-        f"Hi {n}, you have a service update from {biz}. Goodbye!"
+        f"Hola {n}, de {biz}. Tienes una actualización en tu servicio. "
+        "Revisa tu mensaje de texto para más detalles. ¡Hasta luego!",
+        f"Hi {n}, this is {biz}. You have a service update. "
+        "Please check your text message for details. Goodbye!"
     ))
     return es_s if is_es else en_s
 
@@ -707,7 +906,7 @@ def build_premium_message(
 
     html_builders = {
         "order_created":    lambda: _html_order_created(name, order_number, pickup_date, pickup_window, is_es),
-        "order_received":   lambda: _html_order_created(name, order_number, pickup_date, pickup_window, is_es),
+        "order_received":   lambda: _html_order_received(name, order_number, pickup_date, pickup_window, is_es),
         "pickup_confirmed": lambda: _html_pickup_confirmed(name, order_number, pickup_date, pickup_window, is_es),
         "processing":       lambda: _html_processing(name, order_number, is_es),
         "ready":            lambda: _html_ready(name, order_number, svc, is_es),
@@ -735,18 +934,13 @@ async def build_premium_message_async(
     pickup_date: Optional[str] = None, pickup_window: Optional[str] = None,
     order_total: Optional[float] = None, shipping_fee: Optional[float] = None,
     service_type: Optional[str] = None, payment_url: Optional[str] = None,
-    order: Optional[Dict] = None,           # FIX 3: pass full order for URL generation
+    order: Optional[Dict] = None,
 ) -> dict:
-    """
-    FIX 3: If event is payment_request and payment_url is blank,
-    generate one from the order document instead of falling back to /account.
-    """
     final_payment_url = payment_url
     if event == "payment_request":
         if not final_payment_url and order:
             final_payment_url = _generate_internal_payment_url(order)
         if not final_payment_url:
-            # Last resort generic account page
             final_payment_url = f"{BUSINESS_WEBSITE.rstrip('/')}/account"
         logger.info(f"payment_request URL resolved to: {final_payment_url}")
 
@@ -837,7 +1031,13 @@ async def send_voice_call(to_phone: str, message: str, language: str) -> bool:
         return False
     lang_code = "es-MX" if str(language).lower().startswith("es") else "en-US"
     safe_msg = xml.sax.saxutils.escape(message)
-    twiml = f'<Response><Say language="{lang_code}" voice="alice">{safe_msg}</Say></Response>'
+    # v3.4: use a slightly slower rate and a pause at the end for clarity
+    twiml = (
+        f'<Response>'
+        f'<Say language="{lang_code}" voice="alice" rate="90%">{safe_msg}</Say>'
+        f'<Pause length="1"/>'
+        f'</Response>'
+    )
 
     async def _send():
         return await asyncio.to_thread(
@@ -925,7 +1125,6 @@ async def send_preferred_notification(
     service_type = normalize_status_value(order.get("service_type") or "pickup_delivery")
     flow = "wash_fold" if service_type in ["wash_fold", "self_service"] else "pickup_delivery"
 
-    # ── Event mapping ──────────────────────────────────────────────────
     mapped_event = event
     if event == "status_changed":
         status_norm = normalize_status_value(status)
@@ -949,7 +1148,6 @@ async def send_preferred_notification(
         logger.info(f"Event {mapped_event} not a milestone for {flow}, skipping.")
         return False
 
-    # FIX 5: centralised guard — skip unmapped status_changed events only
     if mapped_event == "status_changed":
         logger.info(f"Status {status} has no mapped event, skipping notification.")
         return False
@@ -958,7 +1156,6 @@ async def send_preferred_notification(
     phone = customer.get("phone")
     email = customer.get("email")
 
-    # FIX 2: language resolved HERE, before building content
     language = detect_language(customer, phone)
     logger.debug(f"Resolved language={language} for order {order_number}, phone={phone}")
 
@@ -990,11 +1187,11 @@ async def send_preferred_notification(
         language=language, pickup_date=pickup_date, pickup_window=pickup_window,
         order_total=order_total, shipping_fee=shipping_fee,
         service_type=service_type, payment_url=payment_url,
-        order=order,    # FIX 3
+        order=order,
     )
-    message   = content["message"]
-    html_body = content["html"]
-    subject   = content["subject"]
+    message    = content["message"]
+    html_body  = content["html"]
+    subject    = content["subject"]
     voice_text = content["voice_text"]
 
     if GROQ_API_KEY and USE_ULTRA_PREMIUM:
@@ -1020,7 +1217,6 @@ async def send_preferred_notification(
     if detect_country(phone) == "mx" and preference == "sms" and TWILIO_WHATSAPP_NUMBER:
         preference = "whatsapp"
 
-    # FIX 1: DB-backed deduplication
     dedupe_key = f"{order.get('id')}:{mapped_event}:{preference}:{language}"
     if await _is_already_sent_db(dedupe_key):
         logger.info(f"Duplicate notification skipped (DB): {dedupe_key}")

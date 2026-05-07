@@ -231,6 +231,56 @@ async def root():
 async def health_check():
     return {"status": "healthy", "timestamp": datetime.now(timezone.utc).isoformat()}
 
+
+# ═══════════════════════════════════════════════════════════════════════
+# NUEVO ENDPOINT: TRANSACCIONES REALES (store/transactions)
+# ═══════════════════════════════════════════════════════════════════════
+@api_router.get("/store/transactions")
+async def get_store_transactions(current_user: dict = Depends(get_current_user)):
+    """Devuelve transacciones de órdenes de servicio y membresías pagadas (últimos 30 días)."""
+    from database import db
+    from datetime import datetime, timezone, timedelta
+
+    thirty_days_ago = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+
+    orders = await db.orders.find(
+        {"payment_status": "paid", "created_at": {"$gte": thirty_days_ago}},
+        {"_id": 0, "order_number": 1, "customer_name": 1, "total_amount": 1, "payment_method": 1, "created_at": 1}
+    ).sort("created_at", -1).to_list(100)
+
+    memberships = await db.membership_signups.find(
+        {"payment_status": "paid", "created_at": {"$gte": thirty_days_ago}},
+        {"_id": 0, "id": 1, "first_name": 1, "amount": 1, "created_at": 1}
+    ).sort("created_at", -1).to_list(100)
+
+    transactions = []
+    for o in orders:
+        transactions.append({
+            "id": f"order_{o.get('order_number', '')}",
+            "created_at": o["created_at"],
+            "payment_type": "service",
+            "order_number": o.get("order_number"),
+            "customer_name": o.get("customer_name"),
+            "amount": float(o.get("total_amount", 0)),
+            "payment_status": "paid",
+            "payment_method": o.get("payment_method", "card"),
+        })
+    for m in memberships:
+        transactions.append({
+            "id": f"mem_{m['id']}",
+            "created_at": m["created_at"],
+            "payment_type": "membership",
+            "order_number": f"MEM-{m['id'][:8]}",
+            "customer_name": m.get("first_name", ""),
+            "amount": float(m.get("amount", 0)),
+            "payment_status": "paid",
+            "payment_method": "stripe",
+        })
+
+    transactions.sort(key=lambda x: x["created_at"], reverse=True)
+    return transactions
+
+
 # ==================== EXPORT ENDPOINTS (Extracted → routes/exports.py) ====================
 
 # ==================== CALENDAR ENDPOINTS (Extracted → routes/calendar.py) ====================

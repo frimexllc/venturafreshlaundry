@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { User, Mail, Lock, ArrowRight, Eye, EyeOff, Phone, MapPin, Building2, Hash, ShieldCheck, X, CheckCircle } from "lucide-react";
 import PublicNav from "../components/PublicNav";
 import { useLocale } from "../context/LocaleContext";
+import AddressAutocomplete from "../components/AddressAutocomplete";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -174,24 +175,28 @@ const Field = ({ label, hint, icon: Icon, rightEl, type = "text", placeholder, v
 
 // ─── Page ──────────────────────────────────────────────────────────────────────
 export default function CustomerLogin() {
-  const { t }    = useLocale();
+  const { t } = useLocale();
   const navigate = useNavigate();
   const { ring, dot } = useCursor();
 
-  const [mode,             setMode]             = useState("login");
-  const [loading,          setLoading]          = useState(false);
-  const [showPass,         setShowPass]         = useState(false);
+  const [mode, setMode] = useState("login");
+  const [loading, setLoading] = useState(false);
+  const [showPass, setShowPass] = useState(false);
   const [acceptedPolicies, setAcceptedPolicies] = useState(false);
-  const [regStep,          setRegStep]          = useState(1);
-  const [showTermsModal,   setShowTermsModal]   = useState(false);
-  const [forgotMode,       setForgotMode]       = useState(false);
-  const [forgotEmail,      setForgotEmail]      = useState("");
-  const [forgotSent,       setForgotSent]       = useState(false);
-  const [resetToken,       setResetToken]       = useState(null);
-  const [resetPassword,    setResetPassword]    = useState("");
-  const [resetConfirm,     setResetConfirm]     = useState("");
+  const [regStep, setRegStep] = useState(1);
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [forgotMode, setForgotMode] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotSent, setForgotSent] = useState(false);
+  const [resetToken, setResetToken] = useState(null);
+  const [resetPassword, setResetPassword] = useState("");
+  const [resetConfirm, setResetConfirm] = useState("");
   const [form, setForm] = useState({ name: "", email: "", password: "", phone: "", address: "", city: "", state: "", zip_code: "" });
   const setF = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+  // Estado para validación de dirección
+  const [addressValid, setAddressValid] = useState(null);
+  const [checkingAddress, setCheckingAddress] = useState(false);
 
   // Get redirect path and reset token from URL
   const redirectRef = useRef(new URLSearchParams(window.location.search).get("redirect") || "/account");
@@ -218,6 +223,32 @@ export default function CustomerLogin() {
     setRegStep(1);
     setForm(p => ({ name: "", email: p.email, password: "", phone: "", address: "", city: "", state: "", zip_code: "" }));
     setShowPass(false);
+    setAddressValid(null);
+  };
+
+  // Validar dirección contra el backend
+  const validateAddressDistance = async (fullAddress) => {
+    if (!fullAddress || fullAddress.length < 5) {
+      setAddressValid(null);
+      return;
+    }
+    setCheckingAddress(true);
+    try {
+      const res = await axios.post(`${API}/store/check-address`, { address: fullAddress });
+      if (res.data.valid) {
+        setAddressValid({ valid: true, distance: res.data.distance_km, zone: res.data.zone_name });
+        toast.success(t(`Address within service area (${res.data.distance_km.toFixed(1)} km)`, `Dirección dentro del área de servicio (${res.data.distance_km.toFixed(1)} km)`));
+      } else {
+        setAddressValid({ valid: false, error: res.data.error });
+        toast.error(res.data.error || t("Address outside service area", "Dirección fuera del área de servicio"));
+      }
+    } catch (err) {
+      const errorMsg = err.response?.data?.detail || "Could not verify address";
+      setAddressValid({ valid: false, error: errorMsg });
+      toast.error(t("Could not verify address", "No se pudo verificar la dirección"));
+    } finally {
+      setCheckingAddress(false);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -249,7 +280,15 @@ export default function CustomerLogin() {
         if (!form.phone.trim()) { toast.error(t("Enter your phone number", "Ingresa tu número de teléfono")); setLoading(false); return; }
         if (!form.address.trim()) { toast.error(t("Enter your address", "Ingresa tu dirección")); setLoading(false); return; }
         if (!form.city.trim()) { toast.error(t("Enter your city", "Ingresa tu ciudad")); setLoading(false); return; }
+        if (!form.state.trim()) { toast.error(t("Enter your state", "Ingresa tu estado")); setLoading(false); return; }
         if (!form.zip_code.trim()) { toast.error(t("Enter your zip code", "Ingresa tu código postal")); setLoading(false); return; }
+
+        // Validar que la dirección esté dentro del área de servicio
+        if (!addressValid || !addressValid.valid) {
+          toast.error(t("Please select a valid address within our service area", "Selecciona una dirección válida dentro de nuestra zona de servicio"));
+          setLoading(false);
+          return;
+        }
 
         const res = await axios.post(`${API}/customer/auth/register`, {
           name: form.name,
@@ -263,7 +302,6 @@ export default function CustomerLogin() {
         });
         localStorage.setItem("customer_token", res.data.access_token);
         localStorage.setItem("customer_data", JSON.stringify(res.data.customer));
-        // Show privacy/terms modal after registration
         setShowTermsModal(true);
       }
     } catch (err) {
@@ -308,8 +346,6 @@ export default function CustomerLogin() {
   };
 
   const isLogin = mode === "login";
-
-  // Nav height: logo h-40 (160px) + py-4 top (16px) = 176px safe clearance
   const NAV_CLEARANCE = "11rem";
 
   return (
@@ -321,14 +357,9 @@ export default function CustomerLogin() {
       {/* Custom cursor — desktop only */}
       <div className="pointer-events-none fixed inset-0 z-[9999] hidden lg:block">
         <div ref={ring} className="absolute w-8 h-8 rounded-full border-2 border-sky-400/40 will-change-transform" style={{ top: 0, left: 0 }} />
-        <div ref={dot}  className="absolute w-[6px] h-[6px] rounded-full bg-sky-400 will-change-transform"         style={{ top: 0, left: 0 }} />
+        <div ref={dot}  className="absolute w-[6px] h-[6px] rounded-full bg-sky-400 will-change-transform" style={{ top: 0, left: 0 }} />
       </div>
 
-      {/*
-        The whole page is one dark container so PublicNav (position:absolute)
-        floats over the correct dark background.
-        paddingTop pushes content below the floating nav.
-      */}
       <div
         className="relative min-h-screen"
         style={{
@@ -336,10 +367,8 @@ export default function CustomerLogin() {
           paddingTop: NAV_CLEARANCE,
         }}
       >
-        {/* Floating nav with dark variant */}
         <PublicNav dark />
 
-        {/* Subtle dot grid over the whole dark bg */}
         <div
           className="absolute inset-0 pointer-events-none"
           style={{
@@ -348,19 +377,13 @@ export default function CustomerLogin() {
           }}
         />
 
-        {/* Split layout */}
         <div className="flex" style={{ minHeight: `calc(100vh - ${NAV_CLEARANCE})` }}>
-
-          {/* ══ LEFT — brand panel ══════════════════════════════════════ */}
+          {/* LEFT — brand panel */}
           <div className="relative hidden lg:flex lg:w-[44%] flex-col justify-between pb-8 overflow-hidden">
-
-            {/* Glow orbs */}
             <div className="absolute -top-20 -left-16 w-80 h-80 rounded-full pointer-events-none"
               style={{ background: "radial-gradient(circle,rgba(14,165,233,0.15) 0%,transparent 65%)", filter: "blur(40px)" }} />
             <div className="absolute -bottom-16 -right-10 w-60 h-60 rounded-full pointer-events-none"
               style={{ background: "radial-gradient(circle,rgba(56,189,248,0.08) 0%,transparent 65%)", filter: "blur(30px)" }} />
-
-            {/* Live badge */}
             <div className="relative z-10 pt-6 px-10">
               <div className="inline-flex items-center gap-2.5 border border-white/10 rounded-full px-4 py-1.5"
                 style={{ background: "rgba(255,255,255,0.05)" }}>
@@ -371,8 +394,6 @@ export default function CustomerLogin() {
                 </span>
               </div>
             </div>
-
-            {/* Machine + headline */}
             <div className="relative z-10 flex flex-col items-center flex-1 justify-center px-10 py-4">
               <div style={{ transform: "perspective(900px) rotateY(2deg) rotateX(1deg)", width: "100%", maxWidth: 360 }}>
                 <WashingMachineSVG />
@@ -383,27 +404,18 @@ export default function CustomerLogin() {
                   <span className="text-sky-400">{t("Our care.", "Nuestro cuidado.")}</span>
                 </h2>
                 <p className="mt-2.5 text-[13px] text-white/45 leading-relaxed font-medium">
-                  {t(
-                    "Preferences, orders, and pickups — all in one place.",
-                    "Preferencias, órdenes y recogidas — todo en un lugar."
-                  )}
+                  {t("Preferences, orders, and pickups — all in one place.", "Preferencias, órdenes y recogidas — todo en un lugar.")}
                 </p>
               </div>
             </div>
-
-            {/* Stats footer */}
             <div className="relative z-10 px-10">
-              <div
-                className="grid grid-cols-3 rounded-2xl overflow-hidden"
-                style={{ border: "1px solid rgba(255,255,255,0.07)", background: "rgba(255,255,255,0.03)" }}
-              >
+              <div className="grid grid-cols-3 rounded-2xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.07)", background: "rgba(255,255,255,0.03)" }}>
                 {[
                   { val: "10K+", label: t("Clients", "Clientes")     },
                   { val: "4.9★", label: t("Rating",  "Calificación") },
                   { val: "5+",   label: t("Years",   "Años")         },
                 ].map((s, i) => (
-                  <div key={i} className={`py-4 text-center ${i < 2 ? "border-r" : ""}`}
-                    style={{ borderColor: "rgba(255,255,255,0.07)" }}>
+                  <div key={i} className={`py-4 text-center ${i < 2 ? "border-r" : ""}`} style={{ borderColor: "rgba(255,255,255,0.07)" }}>
                     <p className="text-white font-extrabold text-[17px] leading-none tracking-tight">{s.val}</p>
                     <p className="mt-1.5 text-[9px] font-bold uppercase tracking-[0.16em] text-white/30">{s.label}</p>
                   </div>
@@ -412,19 +424,12 @@ export default function CustomerLogin() {
             </div>
           </div>
 
-          {/* ══ RIGHT — form panel ════════════════════════════════════ */}
-          <div
-            className="flex-1 flex flex-col items-center justify-center px-6 py-10 relative"
-            style={{ background: "hsl(var(--background))" }}
-          >
-            {/* Dot texture */}
+          {/* RIGHT — form panel */}
+          <div className="flex-1 flex flex-col items-center justify-center px-6 py-10 relative" style={{ background: "hsl(var(--background))" }}>
             <div className="absolute inset-0 pointer-events-none opacity-50"
               style={{ backgroundImage: "radial-gradient(rgba(14,165,233,0.07) 1px,transparent 1px)", backgroundSize: "22px 22px" }} />
 
-            {/* Form container — uses project's slideUp animation */}
             <div className="relative w-full max-w-[360px] animate-slide-up">
-
-              {/* Divider label */}
               <div className="flex items-center gap-3 mb-6">
                 <div className="h-px flex-1 bg-border" />
                 <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">
@@ -433,7 +438,6 @@ export default function CustomerLogin() {
                 <div className="h-px flex-1 bg-border" />
               </div>
 
-              {/* Mode tabs */}
               <div className="flex bg-secondary border border-border rounded-2xl p-1 mb-5 shadow-[var(--shadow-xs)]">
                 {["login", "register"].map(m => (
                   <button
@@ -451,7 +455,6 @@ export default function CustomerLogin() {
                 ))}
               </div>
 
-              {/* Heading — Manrope from project fonts */}
               <div className="mb-5">
                 <h1 className="text-[26px] font-extrabold text-foreground leading-[1.15] tracking-tight">
                   {isLogin
@@ -461,25 +464,14 @@ export default function CustomerLogin() {
                 </h1>
               </div>
 
-              {/* Card with tilt effect */}
               <Tilt>
-                <div
-                  className="bg-card rounded-2xl overflow-hidden"
-                  style={{
-                    border: "1px solid hsl(var(--border))",
-                    boxShadow: "var(--shadow-md)",
-                  }}
-                >
-                  {/* Top accent */}
+                <div className="bg-card rounded-2xl overflow-hidden" style={{ border: "1px solid hsl(var(--border))", boxShadow: "var(--shadow-md)" }}>
                   <div className="h-[3px]" style={{ background: "linear-gradient(90deg,hsl(var(--primary)),#38bdf8,#2563eb)" }} />
 
-                  {/* ─── RESET PASSWORD VIEW (from email link) ──── */}
                   {resetToken ? (
                     <form onSubmit={handleResetPassword} className="p-6 flex flex-col gap-4">
                       <div className="text-center mb-2">
-                        <div className="w-12 h-12 bg-sky-50 rounded-2xl flex items-center justify-center mx-auto mb-3">
-                          <Lock className="w-6 h-6 text-sky-500" />
-                        </div>
+                        <div className="w-12 h-12 bg-sky-50 rounded-2xl flex items-center justify-center mx-auto mb-3"><Lock className="w-6 h-6 text-sky-500" /></div>
                         <h2 className="text-lg font-bold text-slate-800">{t("New Password", "Nueva Contraseña")}</h2>
                         <p className="text-xs text-slate-400 mt-1">{t("Enter your new password below", "Ingresa tu nueva contraseña")}</p>
                       </div>
@@ -502,14 +494,10 @@ export default function CustomerLogin() {
                         ← {t("Back to login", "Volver al login")}
                       </button>
                     </form>
-
-                  /* ─── FORGOT PASSWORD VIEW ──── */
                   ) : forgotMode ? (
                     <form onSubmit={handleForgotPassword} className="p-6 flex flex-col gap-4">
                       <div className="text-center mb-2">
-                        <div className="w-12 h-12 bg-sky-50 rounded-2xl flex items-center justify-center mx-auto mb-3">
-                          <Mail className="w-6 h-6 text-sky-500" />
-                        </div>
+                        <div className="w-12 h-12 bg-sky-50 rounded-2xl flex items-center justify-center mx-auto mb-3"><Mail className="w-6 h-6 text-sky-500" /></div>
                         <h2 className="text-lg font-bold text-slate-800">{t("Forgot Password?", "¿Olvidaste tu contraseña?")}</h2>
                         <p className="text-xs text-slate-400 mt-1">{t("We'll send you a reset link", "Te enviaremos un enlace de recuperación")}</p>
                       </div>
@@ -536,160 +524,173 @@ export default function CustomerLogin() {
                         ← {t("Back to login", "Volver al login")}
                       </button>
                     </form>
-
-                  /* ─── NORMAL LOGIN / REGISTER FORM ──── */
                   ) : (
-                  <form onSubmit={handleSubmit} className="p-6 flex flex-col gap-4">
-
-                    {/* ─── LOGIN FIELDS ──────────────────── */}
-                    {isLogin && (<>
-                      <Field label={t("Email Address", "Correo electrónico")} icon={Mail} type="email"
-                        value={form.email} onChange={e => setF("email", e.target.value)} required
-                        placeholder="you@example.com" testId="customer-email-input" autoComplete="email" />
-                      <Field label={t("Password", "Contraseña")} icon={Lock}
-                        type={showPass ? "text" : "password"} value={form.password}
-                        onChange={e => setF("password", e.target.value)} required placeholder="••••••••"
-                        testId="customer-password-input" autoComplete="current-password"
-                        rightEl={<button type="button" onClick={() => setShowPass(p => !p)} className="text-slate-400 hover:text-slate-600 transition-colors duration-100 focus:outline-none">{showPass ? <EyeOff className="w-[15px] h-[15px]" /> : <Eye className="w-[15px] h-[15px]" />}</button>} />
-                      <button type="button" onClick={() => { setForgotMode(true); setForgotEmail(form.email); }}
-                        className="text-xs text-sky-500 font-semibold hover:underline text-right -mt-2" data-testid="forgot-password-link">
-                        {t("Forgot your password?", "¿Olvidaste tu contraseña?")}
-                      </button>
-                    </>)}
-
-                    {/* ─── REGISTER STEP 1: Basic info ──── */}
-                    {!isLogin && regStep === 1 && (<>
-                      <Field label={t("Full Name", "Nombre completo")} icon={User}
-                        value={form.name} onChange={e => setF("name", e.target.value)} required
-                        placeholder={t("John Smith", "Juan García")} testId="customer-name-input" autoComplete="name" />
-                      <Field label={t("Email Address", "Correo electrónico")} icon={Mail} type="email"
-                        value={form.email} onChange={e => setF("email", e.target.value)} required
-                        placeholder="you@example.com" testId="customer-email-input" autoComplete="email" />
-                      <Field label={t("Password", "Contraseña")} icon={Lock}
-                        type={showPass ? "text" : "password"} value={form.password}
-                        onChange={e => setF("password", e.target.value)} required placeholder="••••••••"
-                        testId="customer-password-input" autoComplete="new-password"
-                        rightEl={<button type="button" onClick={() => setShowPass(p => !p)} className="text-slate-400 hover:text-slate-600 transition-colors duration-100 focus:outline-none">{showPass ? <EyeOff className="w-[15px] h-[15px]" /> : <Eye className="w-[15px] h-[15px]" />}</button>} />
-                    </>)}
-
-                    {/* ─── REGISTER STEP 2: Contact + Address ──── */}
-                    {!isLogin && regStep === 2 && (<>
-                      <div className="flex items-center gap-2 mb-1">
-                        <button type="button" onClick={() => setRegStep(1)} className="text-[10px] font-bold text-sky-500 hover:text-sky-600 transition-colors" data-testid="reg-back-btn">
-                          ← {t("Back", "Atrás")}
-                        </button>
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                          {t("Step 2 of 2 — Contact & Address", "Paso 2 de 2 — Contacto y Dirección")}
-                        </span>
-                      </div>
-                      <Field label={t("Phone Number", "Número de teléfono")} icon={Phone}
-                        type="tel" value={form.phone} onChange={e => setF("phone", e.target.value)}
-                        required placeholder="(805) 555-1234" testId="customer-phone-input" autoComplete="tel" />
-                      <Field label={t("Street Address", "Dirección")} icon={MapPin}
-                        value={form.address} onChange={e => setF("address", e.target.value)}
-                        required placeholder={t("1120 Main St, Apt 2B", "1120 Calle Principal, Apt 2B")}
-                        testId="customer-address-input" autoComplete="street-address" />
-                      <div className="grid grid-cols-2 gap-3">
-                        <Field label={t("City", "Ciudad")} icon={Building2}
-                          value={form.city} onChange={e => setF("city", e.target.value)}
-                          required placeholder="Ventura" testId="customer-city-input" autoComplete="address-level2" />
-                        <Field label={t("State", "Estado")} icon={Building2}
-                          value={form.state} onChange={e => setF("state", e.target.value)}
-                          placeholder="CA" testId="customer-state-input" autoComplete="address-level1" />
-                      </div>
-                      <Field label={t("Zip Code", "Código Postal")} icon={Hash}
-                        value={form.zip_code} onChange={e => setF("zip_code", e.target.value)}
-                        required placeholder="93003" testId="customer-zip-input" autoComplete="postal-code" />
-                    </>)}
-
-                    {/* Divider */}
-                    <div className="h-px bg-border" />
-
-                    {/* Terms */}
-                    <label className="flex items-start gap-3 cursor-pointer group" data-testid="customer-acceptance">
-                      <div className="mt-0.5 flex-shrink-0 relative">
-                        <input
-                          type="checkbox"
-                          checked={acceptedPolicies}
-                          onChange={e => setAcceptedPolicies(e.target.checked)}
-                          className="sr-only peer"
-                          data-testid="customer-accept-checkbox"
-                        />
-                        <div className="w-[18px] h-[18px] rounded-md border-2 border-slate-300 peer-checked:bg-sky-500 peer-checked:border-sky-500 flex items-center justify-center transition-all duration-150 group-hover:border-sky-400">
-                          {acceptedPolicies && (
-                            <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" strokeWidth="3.5" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                            </svg>
-                          )}
-                        </div>
-                      </div>
-                      <p className="text-[12px] text-muted-foreground leading-relaxed font-medium">
-                        {t("I accept the", "Acepto los")}{" "}
-                        <Link
-                          to="/terms-and-conditions"
-                          onClick={e => e.stopPropagation()}
-                          className="text-sky-500 font-semibold hover:underline"
-                          data-testid="customer-terms-link"
-                        >
-                          {t("Terms", "Términos")}
-                        </Link>
-                        {" & "}
-                        <Link
-                          to="/privacy-policy"
-                          onClick={e => e.stopPropagation()}
-                          className="text-sky-500 font-semibold hover:underline"
-                          data-testid="customer-privacy-link"
-                        >
-                          {t("Privacy Policy", "Privacidad")}
-                        </Link>
-                      </p>
-                    </label>
-
-                    {/* Submit — uses project's btn-primary class */}
-                    <button
-                      type="submit"
-                      disabled={loading || !acceptedPolicies}
-                      data-testid="customer-submit-btn"
-                      className="btn-primary w-full flex items-center justify-center gap-2.5 py-3 text-[12px] font-bold uppercase tracking-[0.12em] group relative overflow-hidden disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-sky-500 disabled:transform-none"
-                    >
-                      {loading ? (
+                    <form onSubmit={handleSubmit} className="p-6 flex flex-col gap-4">
+                      {isLogin && (
                         <>
-                          <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          {t("Please wait...", "Un momento...")}
-                        </>
-                      ) : (
-                        <>
-                          {isLogin
-                            ? t("Sign In", "Iniciar sesión")
-                            : regStep === 1
-                              ? t("Continue", "Continuar")
-                              : t("Create Account", "Crear cuenta")
-                          }
-                          <ArrowRight className="w-3.5 h-3.5 transition-transform duration-150 group-hover:translate-x-0.5" />
+                          <Field label={t("Email Address", "Correo electrónico")} icon={Mail} type="email"
+                            value={form.email} onChange={e => setF("email", e.target.value)} required
+                            placeholder="you@example.com" testId="customer-email-input" autoComplete="email" />
+                          <Field label={t("Password", "Contraseña")} icon={Lock}
+                            type={showPass ? "text" : "password"} value={form.password}
+                            onChange={e => setF("password", e.target.value)} required placeholder="••••••••"
+                            testId="customer-password-input" autoComplete="current-password"
+                            rightEl={<button type="button" onClick={() => setShowPass(p => !p)} className="text-slate-400 hover:text-slate-600 transition-colors duration-100 focus:outline-none">{showPass ? <EyeOff className="w-[15px] h-[15px]" /> : <Eye className="w-[15px] h-[15px]" />}</button>} />
+                          <button type="button" onClick={() => { setForgotMode(true); setForgotEmail(form.email); }}
+                            className="text-xs text-sky-500 font-semibold hover:underline text-right -mt-2" data-testid="forgot-password-link">
+                            {t("Forgot your password?", "¿Olvidaste tu contraseña?")}
+                          </button>
                         </>
                       )}
-                      {/* Shimmer sweep */}
-                      <span className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-500 bg-gradient-to-r from-transparent via-white/10 to-transparent pointer-events-none" />
-                    </button>
 
-                    {/* Switch mode */}
-                    <p className="text-center text-[12px] text-muted-foreground font-medium">
-                      {isLogin ? t("No account?", "¿Sin cuenta?") : t("Already registered?", "¿Ya tienes cuenta?")}{" "}
+                      {!isLogin && regStep === 1 && (
+                        <>
+                          <Field label={t("Full Name", "Nombre completo")} icon={User}
+                            value={form.name} onChange={e => setF("name", e.target.value)} required
+                            placeholder={t("John Smith", "Juan García")} testId="customer-name-input" autoComplete="name" />
+                          <Field label={t("Email Address", "Correo electrónico")} icon={Mail} type="email"
+                            value={form.email} onChange={e => setF("email", e.target.value)} required
+                            placeholder="you@example.com" testId="customer-email-input" autoComplete="email" />
+                          <Field label={t("Password", "Contraseña")} icon={Lock}
+                            type={showPass ? "text" : "password"} value={form.password}
+                            onChange={e => setF("password", e.target.value)} required placeholder="••••••••"
+                            testId="customer-password-input" autoComplete="new-password"
+                            rightEl={<button type="button" onClick={() => setShowPass(p => !p)} className="text-slate-400 hover:text-slate-600 transition-colors">{showPass ? <EyeOff className="w-[15px] h-[15px]" /> : <Eye className="w-[15px] h-[15px]" />}</button>} />
+                        </>
+                      )}
+
+                      {!isLogin && regStep === 2 && (
+                        <>
+                          <div className="flex items-center gap-2 mb-1">
+                            <button type="button" onClick={() => setRegStep(1)} className="text-[10px] font-bold text-sky-500 hover:text-sky-600 transition-colors" data-testid="reg-back-btn">
+                              ← {t("Back", "Atrás")}
+                            </button>
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                              {t("Step 2 of 2 — Contact & Address", "Paso 2 de 2 — Contacto y Dirección")}
+                            </span>
+                          </div>
+
+                          <Field label={t("Phone Number", "Número de teléfono")} icon={Phone}
+                            type="tel" value={form.phone} onChange={e => setF("phone", e.target.value)}
+                            required placeholder="(805) 555-1234" testId="customer-phone-input" autoComplete="tel" />
+
+                          {/* AddressAutocomplete integrado */}
+                          <div>
+                            <label className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500 mb-1.5 block">
+                              {t("Full Address", "Dirección completa")}
+                            </label>
+                            <AddressAutocomplete
+                              value={form.address}
+                              onChange={(val) => setF("address", val)}
+                              onSelect={(parsed) => {
+                                setF("address", parsed.display);
+                                setF("city", parsed.city);
+                                setF("state", parsed.state);
+                                setF("zip_code", parsed.zip);
+                                validateAddressDistance(parsed.display);
+                              }}
+                              placeholder={t("Start typing your address…", "Escribe tu dirección…")}
+                              inputClassName="input-default w-full pl-10 pr-10 text-[13px] font-medium text-slate-800 placeholder-slate-400"
+                              countryCode="us"
+                            />
+                            {checkingAddress && (
+                              <div className="mt-2 text-xs text-sky-600 flex items-center gap-1">
+                                <div className="w-3 h-3 border-2 border-sky-300 border-t-sky-600 rounded-full animate-spin" />
+                                {t("Verifying address...", "Verificando dirección...")}
+                              </div>
+                            )}
+                            {addressValid && !addressValid.valid && !checkingAddress && (
+                              <div className="mt-2 text-xs text-red-600 flex items-center gap-1">
+                                <X className="w-3 h-3" />
+                                {addressValid.error || t("Address not in service area", "Dirección fuera del área de servicio")}
+                              </div>
+                            )}
+                            {addressValid && addressValid.valid && !checkingAddress && (
+                              <div className="mt-2 text-xs text-green-600 flex items-center gap-1">
+                                <CheckCircle className="w-3 h-3" />
+                                {t("Valid address ✓", "Dirección válida ✓")}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Campos ocultos que se llenan automáticamente */}
+                          <input type="hidden" value={form.city} />
+                          <input type="hidden" value={form.state} />
+                          <input type="hidden" value={form.zip_code} />
+                        </>
+                      )}
+
+                      <div className="h-px bg-border" />
+
+                      <label className="flex items-start gap-3 cursor-pointer group" data-testid="customer-acceptance">
+                        <div className="mt-0.5 flex-shrink-0 relative">
+                          <input
+                            type="checkbox"
+                            checked={acceptedPolicies}
+                            onChange={e => setAcceptedPolicies(e.target.checked)}
+                            className="sr-only peer"
+                            data-testid="customer-accept-checkbox"
+                          />
+                          <div className="w-[18px] h-[18px] rounded-md border-2 border-slate-300 peer-checked:bg-sky-500 peer-checked:border-sky-500 flex items-center justify-center transition-all duration-150 group-hover:border-sky-400">
+                            {acceptedPolicies && (
+                              <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" strokeWidth="3.5" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                              </svg>
+                            )}
+                          </div>
+                        </div>
+                        <p className="text-[12px] text-muted-foreground leading-relaxed font-medium">
+                          {t("I accept the", "Acepto los")}{" "}
+                          <Link to="/terms-and-conditions" onClick={e => e.stopPropagation()} className="text-sky-500 font-semibold hover:underline" data-testid="customer-terms-link">
+                            {t("Terms", "Términos")}
+                          </Link>
+                          {" & "}
+                          <Link to="/privacy-policy" onClick={e => e.stopPropagation()} className="text-sky-500 font-semibold hover:underline" data-testid="customer-privacy-link">
+                            {t("Privacy Policy", "Privacidad")}
+                          </Link>
+                        </p>
+                      </label>
+
                       <button
-                        type="button"
-                        onClick={() => switchMode(isLogin ? "register" : "login")}
-                        className="text-sky-500 font-bold hover:underline transition-colors duration-100"
+                        type="submit"
+                        disabled={loading || !acceptedPolicies || (mode === "register" && regStep === 2 && (!addressValid || !addressValid.valid))}
+                        data-testid="customer-submit-btn"
+                        className="btn-primary w-full flex items-center justify-center gap-2.5 py-3 text-[12px] font-bold uppercase tracking-[0.12em] group relative overflow-hidden disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        {isLogin ? t("Create one →", "Crear una →") : t("Sign in →", "Inicia sesión →")}
+                        {loading ? (
+                          <>
+                            <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            {t("Please wait...", "Un momento...")}
+                          </>
+                        ) : (
+                          <>
+                            {isLogin
+                              ? t("Sign In", "Iniciar sesión")
+                              : regStep === 1
+                                ? t("Continue", "Continuar")
+                                : t("Create Account", "Crear cuenta")
+                            }
+                            <ArrowRight className="w-3.5 h-3.5 transition-transform duration-150 group-hover:translate-x-0.5" />
+                          </>
+                        )}
+                        <span className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-500 bg-gradient-to-r from-transparent via-white/10 to-transparent pointer-events-none" />
                       </button>
-                    </p>
 
-                  </form>
+                      <p className="text-center text-[12px] text-muted-foreground font-medium">
+                        {isLogin ? t("No account?", "¿Sin cuenta?") : t("Already registered?", "¿Ya tienes cuenta?")}{" "}
+                        <button
+                          type="button"
+                          onClick={() => switchMode(isLogin ? "register" : "login")}
+                          className="text-sky-500 font-bold hover:underline transition-colors duration-100"
+                        >
+                          {isLogin ? t("Create one →", "Crear una →") : t("Sign in →", "Inicia sesión →")}
+                        </button>
+                      </p>
+                    </form>
                   )}
                 </div>
               </Tilt>
 
-              {/* Quick links */}
               <div className="mt-5 text-center">
                 <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400 mb-3">
                   {t("Explore our services", "Explora nuestros servicios")}
@@ -703,18 +704,14 @@ export default function CustomerLogin() {
                   </button>
                 </Link>
               </div>
-
             </div>
           </div>
-
         </div>
       </div>
 
-      {/* ══ POST-REGISTRATION TERMS & DATA STORAGE MODAL ══════════════ */}
       {showTermsModal && (
         <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/60 backdrop-blur-sm" data-testid="terms-modal-overlay">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 overflow-hidden animate-slide-up" data-testid="terms-modal">
-            {/* Header */}
             <div className="bg-gradient-to-r from-sky-600 to-sky-500 px-6 py-5">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
@@ -730,8 +727,6 @@ export default function CustomerLogin() {
                 </div>
               </div>
             </div>
-
-            {/* Body */}
             <div className="px-6 py-5 space-y-4">
               <p className="text-sm text-slate-600 leading-relaxed">
                 {t(
@@ -739,7 +734,6 @@ export default function CustomerLogin() {
                   "Tu información personal (nombre, teléfono, dirección) será almacenada de forma segura con el único propósito de mejorar tu experiencia de servicio:"
                 )}
               </p>
-
               <ul className="space-y-2.5">
                 {[
                   t("Auto-fill your pickup and delivery forms for faster orders.", "Autocompletar tus formularios de recogida y entrega para órdenes más rápidas."),
@@ -757,7 +751,6 @@ export default function CustomerLogin() {
                   </li>
                 ))}
               </ul>
-
               <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
                 <p className="text-xs text-slate-500 leading-relaxed">
                   {t(
@@ -771,8 +764,6 @@ export default function CustomerLogin() {
                 </p>
               </div>
             </div>
-
-            {/* Footer */}
             <div className="px-6 pb-5">
               <button
                 onClick={handleAcceptTermsModal}

@@ -18,8 +18,10 @@ import requests
 from motor.motor_asyncio import AsyncIOMotorClient
 from utils import normalize_email, normalize_phone, normalize_spaces, normalize_preference_dict
 from notifications import notify_store_order
+
 UPLOAD_DIR = Path("uploads/products")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
 class ProductData(BaseModel):
     name: str
     description: Optional[str] = None
@@ -28,6 +30,7 @@ class ProductData(BaseModel):
     stock: int = 0
     is_active: bool = True
     # image_url se generará en el backend
+
 # Stripe integration
 try:
     from emergentintegrations.payments.stripe.checkout import (
@@ -821,6 +824,8 @@ async def clear_cart(cart_id: str):
     return {"message": "Cart cleared successfully"}
 
 
+# ==================== SHIPPING & ADDRESS VALIDATION ====================
+
 @store_router.post("/shipping/quote", response_model=ShippingQuoteResponse)
 async def get_shipping_quote(payload: ShippingQuoteRequest):
     """Calculate shipping fee based on address"""
@@ -828,6 +833,31 @@ async def get_shipping_quote(payload: ShippingQuoteRequest):
         raise HTTPException(status_code=400, detail="Address required")
     result = await calculate_shipping_fee(payload.address)
     return result
+
+
+# --- NUEVO ENDPOINT PARA VALIDAR DIRECCIÓN EN REGISTRO ---
+class AddressCheckRequest(BaseModel):
+    address: str
+
+@store_router.post("/check-address")
+async def check_address(request: AddressCheckRequest):
+    """
+    Verifica si una dirección está dentro del área de servicio (zonas de delivery).
+    Útil para validar direcciones durante el registro de clientes.
+    """
+    try:
+        result = await calculate_shipping_fee(request.address)
+        return {
+            "valid": True,
+            "distance_km": result["distance_km"],
+            "zone_id": result["zone_id"],
+            "zone_name": result["zone_name"]
+        }
+    except HTTPException as e:
+        return {
+            "valid": False,
+            "error": e.detail
+        }
 
 
 @store_router.get("/delivery-zones")

@@ -1,3 +1,4 @@
+# routes/customer.py
 """Customer-facing endpoints — public order lookup and Stripe checkout"""
 import os
 import logging
@@ -132,7 +133,6 @@ async def confirm_customer_payment(order_id: str):
             },
         },
     )
-    # Notify operator dashboard in real-time
     await emit_realtime("order_status", {
         "order_id": order_id,
         "order_number": order.get("order_number"),
@@ -863,3 +863,96 @@ async def get_customer_delivery_image(
             "Cache-Control": "private, max-age=86400",
         }
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RECURRENCIA — autenticado con token de cliente (con soporte para días específicos)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/orders/{order_id}/recurrence")
+async def get_order_recurrence_customer(
+    order_id: str,
+    current_customer: dict = Depends(get_current_customer),
+):
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if not await _customer_owns_order(order, current_customer):
+        raise HTTPException(status_code=403, detail="Not your order")
+
+    # Órdenes futuras hijas (pickups generados automáticamente por recurrencia)
+    upcoming = await db.orders.find(
+        {
+            "recurrence_parent_id": order_id,
+            "status": {"$nin": ["cancelled", "completed"]},
+        },
+        {"_id": 0, "id": 1, "order_number": 1, "pickup_date": 1, "status": 1},
+    ).sort("pickup_date", 1).to_list(10)
+
+    return {
+        "is_recurring": order.get("is_recurring", False),
+        "recurrence": order.get("recurrence", "once"),
+        "recurrence_days": order.get("recurrence_days", []),   # ← nuevo campo
+        "recurrence_end_date": order.get("recurrence_end_date"),
+        "upcoming_pickups": upcoming,
+    }
+
+
+@router.patch("/orders/{order_id}/recurrence")
+async def update_order_recurrence_customer(
+    order_id: str,
+    body: dict,
+    current_customer: dict = Depends(get_current_customer),
+):
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if not await _customer_owns_order(order, current_customer):
+        raise HTTPException(status_code=403, detail="Not your order")
+
+    recurrence = body.get("recurrence", order.get("recurrence", "once"))
+    recurrence_days = body.get("recurrence_days")        # ← nuevo campo (lista de strings)
+    end_date = body.get("recurrence_end_date")
+    cancel_future = bool(body.get("cancel_future", False))
+
+    now = datetime.now(timezone.utc).isoformat()
+    updates = {
+        "recurrence": recurrence,
+        "is_recurring": recurrence != "once",
+        "recurrence_end_date": end_date,
+        "updated_at": now,
+    }
+    if recurrence_days is not None:
+        updates["recurrence_days"] = recurrence_days
+
+    await db.orders.update_one({"id": order_id}, {"$set": updates})
+
+    if cancel_future:
+        await db.orders.update_many(
+            {
+                "recurrence_parent_id": order_id,
+                "status": {"$nin": ["cancelled", "completed", "delivered"]},
+            },
+            {
+                "$set": {
+                    "status": "cancelled",
+                    "cancelled_at": now,
+                    "cancellation_reason": "Customer cancelled recurring schedule",
+                }
+            },
+        )
+
+    await emit_realtime("order_status", {
+        "order_id": order_id,
+        "order_number": order.get("order_number"),
+        "recurrence": recurrence,
+        "recurrence_days": recurrence_days,
+        "updated_at": now,
+    })
+
+    return {
+        "ok": True,
+        "recurrence": recurrence,
+        "recurrence_days": recurrence_days,
+        "recurrence_end_date": end_date,
+    }

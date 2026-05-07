@@ -59,6 +59,8 @@ import StripeSyncPage from "./pages/StripeSyncPage";
 import NotificationMetricsPage from "./pages/NotificationMetricsPage";
 import PaymentSuccessPage from "./pages/PaymentSuccessPage";
 import CustomerPaymentPage from "./pages/CustomerPaymentPage";
+import RefundForm from "./pages/RefundForm";
+import SuggestionForm from "./pages/SuggestionForm";
 
 // Pre-carga de rutas críticas
 const preloadCriticalRoutes = () => {
@@ -134,6 +136,8 @@ function AppRoutes() {
       <Route path="/home" element={<LandingPage />} />
       <Route path="/services" element={<ServicesPage />} />
       <Route path="/about" element={<AboutPage />} />
+      <Route path="/SuggestionForm" element={<SuggestionForm />} />
+      <Route path="/RefundForm" element={<RefundForm />} />
       <Route path="/contact" element={<ContactPage />} />
       <Route path="/store" element={<StorePage />} />
       <Route path="/blog" element={<BlogPage />} />

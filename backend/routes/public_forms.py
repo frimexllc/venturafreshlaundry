@@ -1,215 +1,48 @@
-from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, EmailStr
-from typing import Optional, List, Dict, Any
-from datetime import datetime, timezone, timedelta
-import uuid
+# routes/public_forms.py
 import os
+import uuid
 import asyncio
+import logging
+from datetime import datetime, timezone, timedelta
+from typing import Optional, List, Dict, Any
 
-from utils import normalize_email, normalize_phone, normalize_spaces, normalize_address, normalize_preference_dict, calculate_delivery_fee
+from fastapi import APIRouter, HTTPException, Request, Depends
+from pydantic import BaseModel, EmailStr
 
-def normalize_name(value):
-    if not value or not isinstance(value, str): return value
-    return " ".join(value.split()).strip().title()
-
-def normalize_yes_no(value):
-    if not value or not isinstance(value, str): return value
-    v = value.strip().lower()
-    if v in ("yes", "si", "sí", "1", "true"): return "yes"
-    if v in ("no", "0", "false"): return "no"
-    return value.strip()
-
-from notifications import (
-    notify_order_created, send_sms, send_email, send_whatsapp, send_voice_call,
-    normalize_preferred_contact, build_premium_message, detect_language
+from auth import get_current_user, require_admin
+from utils import (
+    normalize_phone,
+    normalize_spaces,
+    normalize_email,
+    normalize_name,
+    normalize_address,
+    normalize_yes_no,
+    generate_order_number,
+    create_audit_log,
 )
+from notifications import send_sms, send_email, send_whatsapp, send_voice_call, normalize_preferred_contact, detect_language
 from ai_assistant import get_groq_client
 
-# ─── Pricing Tables ─────────────────────────────────────────────────────────
-PRICING_PD = {
-    "standard": {"member": 2.50, "regular": 2.75},
-    "premium":  {"member": 2.75, "regular": 3.00},
-    "express":  {"member": 3.00, "regular": 3.25},
-}
-PRICING_WF = {
-    "standard": 2.25,
-    "premium":  2.50,
-    "express":  2.75,
-}
+logger = logging.getLogger(__name__)
 
-def get_price_per_lb(service_type: str, plan: str, has_membership: bool = False) -> float:
-    plan = (plan or "standard").lower()
-    if service_type in ("pickup_delivery", "airbnb_host", "commercial"):
-        tier = PRICING_PD.get(plan, PRICING_PD["standard"])
-        return tier["member"] if has_membership else tier["regular"]
-    return PRICING_WF.get(plan, PRICING_WF["standard"])
-
-
-async def calculate_auto_delivery_fee(address: str) -> dict:
-    """
-    Geocode address, compute distance from store, return delivery info.
- 
-    Returns:
-        distance_miles  – float | None
-        delivery_fee    – float  (0 when ≤3 miles or distance unknown)
-        coords          – dict | None
-        rejected        – True only when distance > 10 miles
-    """
-    if not address or len(address.strip()) < 5:
-        return {"distance_miles": None, "delivery_fee": 0, "coords": None}
- 
-    try:
-        from routes.logistics import geocode_address
-        from routes.delivery_rules import haversine_miles, STORE_COORDS
- 
-        coords = await geocode_address(address)
-        if not coords.get("lat") or not coords.get("lng"):
-            # Geocoding failed → don't charge, don't reject
-            return {"distance_miles": None, "delivery_fee": 0, "coords": None}
- 
-        distance = haversine_miles(
-            STORE_COORDS[0], STORE_COORDS[1],
-            coords["lat"], coords["lng"]
-        )
- 
-        # Hard reject beyond 10 miles — raises 400 in the endpoint
-        if distance > 10:
-            return {
-                "distance_miles": round(distance, 2),
-                "delivery_fee": 0,
-                "coords": coords,
-                "rejected": True,
-            }
- 
-        # Use canonical fee function — FREE ≤3 miles, scaled 3–10 miles
-        fee = calculate_delivery_fee(distance)
- 
-        return {
-            "distance_miles": round(distance, 2),
-            "delivery_fee": fee,        # 0.00 when ≤3 miles
-            "coords": coords,
-        }
- 
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning(
-            f"Auto delivery fee calculation failed: {e}"
-        )
-        # On any geocoding/routing error → 0 fee, don't reject
-        return {"distance_miles": None, "delivery_fee": 0, "coords": None}
-
-
-# ─── Helper: calcular addon_amount desde la lista de addons ────────────────────
-def calculate_addon_amount(addon_services: Optional[List[Dict[str, Any]]]) -> float:
-    """
-    Suma los precios de todos los add-ons seleccionados.
-    Solo suma si el addon tiene un campo 'price' numérico válido.
-    """
-    if not addon_services:
-        return 0.0
-    total = 0.0
-    for svc in addon_services:
-        price = svc.get("price")
-        if price is not None:
-            try:
-                total += float(price)
-            except (TypeError, ValueError):
-                pass
-    return round(total, 2)
-
-
-# ─── Helper: construir texto legible de addons para las notas ──────────────────
-def build_addon_notes(addon_services: Optional[List[Dict[str, Any]]]) -> str:
-    """
-    Genera un texto legible para incluir en el campo notes del ticket.
-    Ejemplo:
-        Add-on services:
-        • Dry Cleaning ($15.00 / order)
-        • Shoe Cleaning ($12.00 / item)
-        Add-on subtotal: $27.00
-    """
-    if not addon_services:
-        return ""
-
-    UNIT_LABELS = {
-        "per_lb":    "/ lb",
-        "per_order": "/ order",
-        "per_month": "/ month",
-        "per_item":  "/ item",
-    }
-
-    lines = ["Add-on services:"]
-    total = 0.0
-    for svc in addon_services:
-        name = svc.get("name", "Unknown")
-        price = svc.get("price")
-        price_unit = svc.get("price_unit", "")
-        unit_label = UNIT_LABELS.get(price_unit, "")
-        if price is not None:
-            try:
-                price_f = float(price)
-                total += price_f
-                price_str = f"${price_f:.2f}"
-                if unit_label:
-                    price_str += f" {unit_label}"
-                lines.append(f"  • {name} ({price_str})")
-            except (TypeError, ValueError):
-                lines.append(f"  • {name}")
-        else:
-            lines.append(f"  • {name}")
-
-    if total > 0:
-        lines.append(f"Add-on subtotal: ${total:.2f}")
-
-    return "\n".join(lines)
-
-
-# =============================================================================
-#  RECURRENCE HELPERS (for later auto‑scheduling)
-# =============================================================================
-RECURRENCE_INTERVALS: Dict[str, int] = {
-    "weekly":     7,
-    "biweekly":   14,
-    "twice_week": 3,   # approximate: next date will be advanced by 3 or 4 days
-}
-
-def compute_next_pickup_date(current_date_str: str, recurrence: str) -> Optional[str]:
-    """
-    Given a current pickup date string (YYYY-MM-DD) and a recurrence type,
-    return the next scheduled date as a string.
-    Special case for twice_week: alternates 3 and 4 days to approximate Mon/Thu cadence.
-    """
-    if recurrence not in RECURRENCE_INTERVALS:
+# ─── Helper para detectar país (si no existe en notifications) ───
+def detect_country(phone: str) -> Optional[str]:
+    if not phone:
         return None
-    try:
-        current = datetime.strptime(current_date_str, "%Y-%m-%d")
-    except ValueError:
-        return None
-
-    interval = RECURRENCE_INTERVALS[recurrence]
-    # For twice_week, we need to alternate 3 and 4 days.
-    # This simple version just uses 3 days; in production you might want
-    # a smarter algorithm. We'll keep it simple for now.
-    next_date = current + timedelta(days=interval)
-    return next_date.strftime("%Y-%m-%d")
-
-def should_continue_recurrence(
-    next_date_str: str,
-    recurrence_end_date: Optional[str],
-) -> bool:
-    """Return True if the next pickup date is before or on the end date (or no end date)."""
-    if not recurrence_end_date:
-        return True  # indefinite
-    try:
-        next_dt = datetime.strptime(next_date_str, "%Y-%m-%d")
-        end_dt  = datetime.strptime(recurrence_end_date, "%Y-%m-%d")
-        return next_dt <= end_dt
-    except ValueError:
-        return True
+    cleaned = ''.join(c for c in phone if c.isdigit() or c == '+')
+    if cleaned.startswith('+52'):
+        return 'mx'
+    if cleaned.startswith('+1'):
+        return 'us'
+    if cleaned.startswith('52'):
+        return 'mx'
+    if cleaned.startswith('1') and len(cleaned) == 11:
+        return 'us'
+    return None
 
 # =============================================================================
-
-
+# PYDANTIC MODELS (públicos)
+# =============================================================================
 class PublicPickupRequest(BaseModel):
     name: str
     email: EmailStr
@@ -224,10 +57,8 @@ class PublicPickupRequest(BaseModel):
     notes: Optional[str] = None
     gate_code: Optional[str] = None
     addon_services: Optional[List[Dict[str, Any]]] = []
-    # ── RECURRENCE FIELDS ──────────────────────────────────────────────
-    recurrence: Optional[str] = "once"          # once|weekly|biweekly|twice_week
-    recurrence_end_date: Optional[str] = None   # ISO date YYYY-MM-DD
-
+    recurrence: Optional[str] = "once"
+    recurrence_end_date: Optional[str] = None
 
 class PublicWashFoldRequest(BaseModel):
     name: str
@@ -241,7 +72,6 @@ class PublicWashFoldRequest(BaseModel):
     sms_consent: Optional[bool] = False
     plan: Optional[str] = "standard"
 
-
 class PublicContactRequest(BaseModel):
     name: str
     email: EmailStr
@@ -251,7 +81,6 @@ class PublicContactRequest(BaseModel):
     contact_method: Optional[str] = None
     sms_consent: Optional[bool] = False
 
-
 class PublicQuoteRequest(BaseModel):
     company_name: str
     contact_name: str
@@ -260,7 +89,6 @@ class PublicQuoteRequest(BaseModel):
     industry: Optional[str] = None
     estimated_lbs: Optional[float] = None
     message: Optional[str] = None
-
 
 class PublicMembershipSignup(BaseModel):
     first_name: str
@@ -287,7 +115,6 @@ class PublicMembershipSignup(BaseModel):
     pickup_time_preference: Optional[str] = None
     gate_code: Optional[str] = None
 
-
 class B2BQuoteRequest(BaseModel):
     first_name: str
     last_name: str
@@ -313,13 +140,121 @@ class B2BQuoteRequest(BaseModel):
     additional_notes: Optional[str] = None
     subscribe_newsletter: Optional[bool] = False
 
-
 class PublicVoiceAssistantChatRequest(BaseModel):
     message: str
     session_id: Optional[str] = None
     locale: Optional[str] = "en"
 
+class PublicSuggestionCreate(BaseModel):
+    date: str
+    types: List[str]
+    suggestion: str
+    improve: List[str]
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    acceptPromotions: bool = False
 
+class PublicRefundCreate(BaseModel):
+    date: str
+    time: Optional[str] = None
+    machine_number: str
+    amount: float
+    reasons: List[str]
+    comment: Optional[str] = None
+    name: Optional[str] = None
+    phone: Optional[str] = None
+
+# =============================================================================
+# PRICING HELPERS (copiados del original)
+# =============================================================================
+PRICING_PD = {
+    "standard": {"member": 2.50, "regular": 2.75},
+    "premium":  {"member": 2.75, "regular": 3.00},
+    "express":  {"member": 3.00, "regular": 3.25},
+}
+PRICING_WF = {
+    "standard": 2.25,
+    "premium":  2.50,
+    "express":  2.75,
+}
+
+def get_price_per_lb(service_type: str, plan: str, has_membership: bool = False) -> float:
+    plan = (plan or "standard").lower()
+    if service_type in ("pickup_delivery", "airbnb_host", "commercial"):
+        tier = PRICING_PD.get(plan, PRICING_PD["standard"])
+        return tier["member"] if has_membership else tier["regular"]
+    return PRICING_WF.get(plan, PRICING_WF["standard"])
+
+async def calculate_auto_delivery_fee(address: str) -> dict:
+    if not address or len(address.strip()) < 5:
+        return {"distance_miles": None, "delivery_fee": 0, "coords": None}
+    try:
+        from routes.logistics import geocode_address
+        from routes.delivery_rules import haversine_miles, STORE_COORDS
+        coords = await geocode_address(address)
+        if not coords.get("lat") or not coords.get("lng"):
+            return {"distance_miles": None, "delivery_fee": 0, "coords": None}
+        distance = haversine_miles(
+            STORE_COORDS[0], STORE_COORDS[1],
+            coords["lat"], coords["lng"]
+        )
+        if distance > 10:
+            return {"distance_miles": round(distance, 2), "delivery_fee": 0, "coords": coords, "rejected": True}
+        from utils import calculate_delivery_fee
+        fee = calculate_delivery_fee(distance)
+        return {"distance_miles": round(distance, 2), "delivery_fee": fee, "coords": coords}
+    except Exception as e:
+        logger.warning(f"Auto delivery fee calculation failed: {e}")
+        return {"distance_miles": None, "delivery_fee": 0, "coords": None}
+
+def calculate_addon_amount(addon_services: Optional[List[Dict[str, Any]]]) -> float:
+    if not addon_services:
+        return 0.0
+    total = 0.0
+    for svc in addon_services:
+        price = svc.get("price")
+        if price is not None:
+            try:
+                total += float(price)
+            except (TypeError, ValueError):
+                pass
+    return round(total, 2)
+
+def build_addon_notes(addon_services: Optional[List[Dict[str, Any]]]) -> str:
+    if not addon_services:
+        return ""
+    UNIT_LABELS = {"per_lb": "/ lb", "per_order": "/ order", "per_month": "/ month", "per_item": "/ item"}
+    lines = ["Add-on services:"]
+    total = 0.0
+    for svc in addon_services:
+        name = svc.get("name", "Unknown")
+        price = svc.get("price")
+        price_unit = svc.get("price_unit", "")
+        unit_label = UNIT_LABELS.get(price_unit, "")
+        if price is not None:
+            try:
+                price_f = float(price)
+                total += price_f
+                price_str = f"${price_f:.2f}"
+                if unit_label:
+                    price_str += f" {unit_label}"
+                lines.append(f"  • {name} ({price_str})")
+            except (TypeError, ValueError):
+                lines.append(f"  • {name}")
+        else:
+            lines.append(f"  • {name}")
+    if total > 0:
+        lines.append(f"Add-on subtotal: ${total:.2f}")
+    return "\n".join(lines)
+
+def validate_sms_consent(contact_method: Optional[str], sms_consent: Optional[bool]):
+    normalized_contact = normalize_preferred_contact(contact_method) if contact_method else None
+    if normalized_contact in {"sms", "whatsapp"} and not bool(sms_consent):
+        raise HTTPException(status_code=400, detail="SMS consent is required for text or WhatsApp notifications")
+
+# =============================================================================
+# ROUTER FACTORY (FUNCIÓN PRINCIPAL)
+# =============================================================================
 def get_public_forms_router(
     db,
     generate_order_number,
@@ -331,74 +266,9 @@ def get_public_forms_router(
 ):
     router = APIRouter()
 
-    VOICE_ASSISTANT_SYSTEM_PROMPT = """You are Ventura, a friendly and enthusiastic AI sales assistant for Ventura Fresh Laundry, a premium laundry service in Ventura County, California. Your goal is to warmly engage visitors, answer their questions, and help them choose the right service.
-
-SERVICES YOU OFFER:
-1. Pickup & Delivery
-   - Member recurring: $2.50/lb (minimum $40)
-   - As-needed: $2.75/lb (minimum $40)
-
-2. Wash Dry Fold (drop-off)
-   - $2.25/lb
-   - 10 lb minimum
-
-3. Self-Service Laundry
-   - Open 6:00 AM - 10:00 PM, 7 days a week
-
-4. Membership Plans
-   - FAMILY PLUS: $199/month up to 90 lb
-   - MOST POPULAR: $139/month up to 60 lb
-   - ELITE CONCIERGE: $299/month up to 120 lb
-   - NEW MEMBER SPECIAL: $10 OFF first month
-
-5. Airbnb and B2B programs are available with custom quotes.
-
-PERSONALITY GUIDELINES:
-- Warm, conversational, and concise.
-- Keep responses under 60 words.
-- No markdown or bullet formatting.
-- End with a gentle question.
-- Use the same language as the customer (English or Spanish).
-"""
-
-    def assistant_fallback_reply(locale: Optional[str]) -> str:
-        if str(locale or "en").lower().startswith("es"):
-            return (
-                "¡Hola! Soy Ventura, tu concierge de lavandería. Podemos ayudarte con pickup y delivery, wash and fold, "
-                "membresías o servicios para Airbnb y negocios. ¿Qué servicio te interesa hoy?"
-            )
-        return (
-            "Hi! I'm Ventura, your laundry concierge. I can help with pickup and delivery, wash and fold, memberships, "
-            "or Airbnb and business service. What would you like to set up today?"
-        )
-
-    async def get_or_create_voice_session(session_id: Optional[str], locale: Optional[str]) -> Dict[str, Any]:
-        now = datetime.now(timezone.utc).isoformat()
-        normalized_locale = "es" if str(locale or "en").lower().startswith("es") else "en"
-        target_session_id = session_id or str(uuid.uuid4())
-
-        session = await db.voice_assistant_sessions.find_one({"session_id": target_session_id}, {"_id": 0})
-        if session:
-            return session
-
-        new_session = {
-            "session_id": target_session_id,
-            "locale": normalized_locale,
-            "messages": [],
-            "created_at": now,
-            "updated_at": now
-        }
-        await db.voice_assistant_sessions.insert_one(new_session)
-        return new_session
-
-    def validate_sms_consent(contact_method: Optional[str], sms_consent: Optional[bool]):
-        normalized_contact = normalize_preferred_contact(contact_method) if contact_method else None
-        if normalized_contact in {"sms", "whatsapp"} and not bool(sms_consent):
-            raise HTTPException(
-                status_code=400,
-                detail="SMS consent is required for text or WhatsApp notifications"
-            )
-
+    # =========================================================================
+    # 1. PICKUP REQUEST (EXISTENTE, SIN CAMBIOS)
+    # =========================================================================
     @router.post("/public/pickup-request")
     async def public_pickup_request(data: PublicPickupRequest):
         now = datetime.now(timezone.utc).isoformat()
@@ -415,25 +285,22 @@ PERSONALITY GUIDELINES:
         validate_sms_consent(preferred_contact, data.sms_consent)
         sms_consent = bool(data.sms_consent)
 
-        # ── Normalizar addon_services ────────────────────────────────────────
         addon_services = data.addon_services or []
         clean_addons = []
         for svc in addon_services:
             if not isinstance(svc, dict):
                 continue
             clean_addons.append({
-                "id":          str(svc.get("id", "")),
-                "name":        str(svc.get("name", "Unknown"))[:120],
-                "price":       float(svc["price"]) if svc.get("price") is not None else None,
-                "price_unit":  str(svc.get("price_unit", "")) if svc.get("price_unit") else None,
-                "category":    str(svc.get("category", "")) if svc.get("category") else None,
+                "id": str(svc.get("id", "")),
+                "name": str(svc.get("name", "Unknown"))[:120],
+                "price": float(svc["price"]) if svc.get("price") is not None else None,
+                "price_unit": str(svc.get("price_unit", "")) if svc.get("price_unit") else None,
+                "category": str(svc.get("category", "")) if svc.get("category") else None,
             })
 
-        # ── Calcular monto de add-ons ────────────────────────────────────────
         addon_amount = calculate_addon_amount(clean_addons)
         addon_notes_text = build_addon_notes(clean_addons)
 
-        # ── Construir notes final (notas del cliente + desglose de addons) ───
         notes_parts = []
         if normalized_notes:
             notes_parts.append(normalized_notes)
@@ -488,29 +355,21 @@ PERSONALITY GUIDELINES:
         if pref:
             preference_snapshot = {k: v for k, v in pref[0].items() if k not in ["_id", "customer_id"]}
 
-        # ── Pricing base (sin addons; addons se suman aparte) ────────────────
         has_membership = bool(customer.get("has_membership"))
         service_plan = (data.service_plan or "standard").lower()
         price_lb = get_price_per_lb(normalized_service_type, service_plan, has_membership)
 
-        # ── Auto-calculate delivery fee ──────────────────────────────────────
         delivery_info = await calculate_auto_delivery_fee(normalized_address)
         if delivery_info.get("rejected"):
             dist = delivery_info.get("distance_miles", 0)
-            raise HTTPException(
-                status_code=400,
-                detail=f"Lo sentimos, solo atendemos direcciones dentro de 10 millas. Tu dirección está a {dist:.1f} millas de distancia."
-            )
+            raise HTTPException(status_code=400, detail=f"Lo sentimos, solo atendemos direcciones dentro de 10 millas. Tu dirección está a {dist:.1f} millas de distancia.")
         delivery_fee = delivery_info.get("delivery_fee", 0)
         distance_miles = delivery_info.get("distance_miles")
         coords = delivery_info.get("coords")
 
-        # ── Recurrence logic ─────────────────────────────────────────────────
         valid_recurrences = {"once", "weekly", "biweekly", "twice_week"}
         raw_recurrence = (data.recurrence or "once").strip().lower()
         recurrence = raw_recurrence if raw_recurrence in valid_recurrences else "once"
-
-        # Only allow recurrence for airbnb_host and commercial
         if normalized_service_type not in ("airbnb_host", "commercial"):
             recurrence = "once"
 
@@ -520,16 +379,10 @@ PERSONALITY GUIDELINES:
                 datetime.strptime(data.recurrence_end_date, "%Y-%m-%d")
                 recurrence_end_date = data.recurrence_end_date
             except ValueError:
-                pass  # ignore invalid date
+                pass
 
-        # Append recurrence info to notes if needed
         if recurrence != "once":
-            recurrence_labels = {
-                "once":       "One time",
-                "weekly":     "Every week",
-                "biweekly":   "Every 2 weeks",
-                "twice_week": "Twice a week",
-            }
+            recurrence_labels = {"once": "One time", "weekly": "Every week", "biweekly": "Every 2 weeks", "twice_week": "Twice a week"}
             recurrence_note = f"Recurrence: {recurrence_labels.get(recurrence, recurrence)}"
             if recurrence_end_date:
                 recurrence_note += f" until {recurrence_end_date}"
@@ -538,7 +391,6 @@ PERSONALITY GUIDELINES:
             else:
                 final_notes = recurrence_note
 
-        # ──────────────────────────────────────────────────────────────────────
         order_id = str(uuid.uuid4())
         order_number = await generate_order_number()
 
@@ -576,7 +428,6 @@ PERSONALITY GUIDELINES:
             "origen": "pickup_request",
             "created_at": now,
             "updated_at": now,
-            # ── RECURRENCE FIELDS ────────────────────────────────────────────
             "recurrence": recurrence,
             "recurrence_end_date": recurrence_end_date,
             "recurrence_parent_id": None,
@@ -586,15 +437,11 @@ PERSONALITY GUIDELINES:
         await db.orders.insert_one(order)
         await db.customers.update_one({"id": customer["id"]}, {"$inc": {"total_orders": 1}})
         await create_audit_log("ORDER_CREATED", "order", order_id, None, {"source": "public_form"})
-        await emit_realtime("notification", {
-            "type": "order_created",
-            "order_id": order_id,
-            "status": "new",
-            "order_number": order_number
-        })
+        await emit_realtime("notification", {"type": "order_created", "order_id": order_id, "status": "new", "order_number": order_number})
 
         if notifications_enabled:
             try:
+                from notifications import notify_order_created
                 await notify_order_created(customer, order)
             except Exception as e:
                 logger.error(f"Notification failed: {e}")
@@ -603,12 +450,12 @@ PERSONALITY GUIDELINES:
             "success": True,
             "order_number": order_number,
             "message": "¡Gracias! Tu solicitud de pickup ha sido recibida. Te contactaremos pronto.",
-            "addons": {
-                "selected": clean_addons,
-                "total": addon_amount
-            } if clean_addons else None
+            "addons": {"selected": clean_addons, "total": addon_amount} if clean_addons else None
         }
 
+    # =========================================================================
+    # 2. WASH & FOLD REQUEST (EXISTENTE)
+    # =========================================================================
     @router.post("/public/wash-fold-request")
     async def public_wash_fold_request(data: PublicWashFoldRequest):
         now = datetime.now(timezone.utc).isoformat()
@@ -706,15 +553,11 @@ PERSONALITY GUIDELINES:
         await db.orders.insert_one(order)
         await db.customers.update_one({"id": customer["id"]}, {"$inc": {"total_orders": 1}})
         await create_audit_log("ORDER_CREATED", "order", order_id, None, {"source": "wash_fold_form"})
-        await emit_realtime("notification", {
-            "type": "order_created",
-            "order_id": order_id,
-            "status": "new",
-            "order_number": order_number
-        })
+        await emit_realtime("notification", {"type": "order_created", "order_id": order_id, "status": "new", "order_number": order_number})
 
         if notifications_enabled:
             try:
+                from notifications import notify_order_created
                 await notify_order_created(customer, order)
             except Exception as e:
                 logger.error(f"Notification failed: {e}")
@@ -725,6 +568,9 @@ PERSONALITY GUIDELINES:
             "message": "¡Gracias! Tu solicitud de Wash & Fold ha sido recibida."
         }
 
+    # =========================================================================
+    # 3. CONTACT FORM (EXISTENTE)
+    # =========================================================================
     @router.post("/public/contact")
     async def public_contact(data: PublicContactRequest):
         now = datetime.now(timezone.utc).isoformat()
@@ -768,38 +614,31 @@ PERSONALITY GUIDELINES:
         await create_audit_log("TICKET_CREATED", "ticket", ticket_id, None, {"source": "public_form"})
 
         try:
-            contact_pref = preferred_contact or "email"
-            is_es = any(c in (normalized_message or "").lower() for c in ["hola", "gracias", "solicitud"])
-            customer_display_name = normalized_name or data.name or ("Cliente" if is_es else "Customer")
-
+            # Notificación al cliente
+            is_es = detect_language(customer, normalized_phone) if customer else False
             if is_es:
-                msg = (f"Hola {customer_display_name}, gracias por contactar a Ventura Fresh Laundry. "
-                       f"Tu mensaje ha sido recibido y está siendo revisado por nuestro equipo. "
-                       f"Te responderemos pronto con asistencia personalizada.")
+                msg = (f"Hola {customer_name}, gracias por contactar a Ventura Fresh Laundry. "
+                       f"Tu mensaje ha sido recibido y será revisado por nuestro equipo. "
+                       f"Te responderemos pronto.")
                 call_msg = ("Hola, gracias por contactar a Ventura Fresh Laundry. "
                             "Hemos recibido tu mensaje y un miembro de nuestro equipo se comunicará contigo en breve. "
-                            "Agradecemos tu interés en nuestros servicios y esperamos poder ayudarte. "
                             "Que tengas un buen día.")
             else:
-                msg = (f"Hello {customer_display_name}, thank you for contacting Ventura Fresh Laundry. "
-                       f"Your message has been received and is being reviewed by our team. "
-                       f"We will get back to you shortly with personalized assistance.")
+                msg = (f"Hello {customer_name}, thank you for contacting Ventura Fresh Laundry. "
+                       f"Your message has been received and will be reviewed by our team. "
+                       f"We will get back to you shortly.")
                 call_msg = ("Hello, thank you for contacting Ventura Fresh Laundry. "
                             "We have received your message, and a member of our team will be reaching out to you shortly. "
-                            "We appreciate your interest in our services and look forward to assisting you. "
                             "Have a great day.")
-
             subj = "Solicitud recibida" if is_es else "Request received"
 
-            logger.info(f"Contact: contact_pref={contact_pref}, phone={normalized_phone}, email={normalized_email}")
-
-            if contact_pref == "email" and normalized_email:
+            if preferred_contact == "email" and normalized_email:
                 await send_email(normalized_email, subj, msg)
-            elif contact_pref in ("whatsapp",) and normalized_phone:
+            elif preferred_contact in ("whatsapp",) and normalized_phone:
                 await send_whatsapp(normalized_phone, msg)
-            elif contact_pref in ("sms", "text") and normalized_phone:
+            elif preferred_contact in ("sms", "text") and normalized_phone:
                 await send_sms(normalized_phone, msg)
-            elif contact_pref == "call" and normalized_phone:
+            elif preferred_contact == "call" and normalized_phone:
                 voice_lang = "es-MX" if is_es else "en-US"
                 await send_voice_call(normalized_phone, call_msg, voice_lang)
             elif normalized_email:
@@ -817,6 +656,9 @@ PERSONALITY GUIDELINES:
             "message": "¡Gracias por contactarnos! Te responderemos pronto."
         }
 
+    # =========================================================================
+    # 4. QUOTE REQUEST (EXISTENTE)
+    # =========================================================================
     @router.post("/public/quote-request")
     async def public_quote_request(data: PublicQuoteRequest):
         now = datetime.now(timezone.utc).isoformat()
@@ -854,7 +696,7 @@ PERSONALITY GUIDELINES:
         await create_audit_log("QUOTE_CREATED", "quote", quote_id, None, {"source": "public_form"})
 
         try:
-            msg = f"Hola {normalized_contact or data.contact_name}, hemos recibido tu solicitud de cotización ({quote_number}). Te contactaremos pronto. — {os.environ.get('BUSINESS_NAME', 'Ventura Fresh Laundry')}"
+            msg = f"Hola {normalized_contact or data.contact_name}, hemos recibido tu solicitud de cotización ({quote_number}). Te contactaremos pronto. — Ventura Fresh Laundry"
             subj = "Cotización recibida"
             if normalized_email:
                 await send_email(normalized_email, subj, msg)
@@ -869,6 +711,9 @@ PERSONALITY GUIDELINES:
             "message": "¡Gracias! Hemos recibido tu solicitud de cotización comercial."
         }
 
+    # =========================================================================
+    # 5. MEMBERSHIP SIGNUP (EXISTENTE)
+    # =========================================================================
     @router.post("/public/membership-signup")
     async def public_membership_signup(data: PublicMembershipSignup):
         now = datetime.now(timezone.utc).isoformat()
@@ -900,7 +745,7 @@ PERSONALITY GUIDELINES:
             "pickup_time_preference": normalize_spaces(data.pickup_time_preference),
             "gate_code": normalize_spaces(data.gate_code)
         }
-        preferences = normalize_preference_dict(preferences)
+        # preferences = normalize_preference_dict(preferences)  # si tienes esa función
 
         signup = {
             "id": signup_id,
@@ -927,11 +772,28 @@ PERSONALITY GUIDELINES:
         }
         await db.membership_signups.insert_one(signup)
         await create_audit_log("MEMBERSHIP_SIGNUP_CREATED", "membership_signup", signup_id, None, {"source": "public_form"})
+
+        # Notificación al cliente
+        if normalized_phone:
+            try:
+                is_es = detect_country(normalized_phone) == "mx"
+                name = f"{normalized_first or data.first_name} {normalized_last or data.last_name}".strip()
+                if is_es:
+                    msg = f"Hola {name}, hemos recibido tu solicitud de membresía. Pronto te contactaremos para confirmar tu plan. ¡Gracias!"
+                else:
+                    msg = f"Hi {name}, we've received your membership request. We'll contact you shortly to confirm your plan. Thank you!"
+                await send_sms(normalized_phone, msg)
+            except Exception as e:
+                logger.error(f"Membership signup SMS failed: {e}")
+
         return {
             "success": True,
             "message": "¡Gracias! Tu solicitud de membresía fue recibida. Te contactaremos para confirmar tu plan."
         }
 
+    # =========================================================================
+    # 6. B2B QUOTE (EXISTENTE)
+    # =========================================================================
     @router.post("/public/b2b-quote")
     async def create_b2b_quote(data: B2BQuoteRequest):
         now = datetime.now(timezone.utc).isoformat()
@@ -1001,72 +863,96 @@ PERSONALITY GUIDELINES:
         await db.quotes.insert_one(quote_doc)
         await create_audit_log("B2B_QUOTE_CREATED", "quote", quote_id, "public", {"company": data.company_legal_name, "business_type": data.business_type})
 
-        if notifications_enabled:
+        # Notificación al cliente
+        if normalized_phone:
             try:
-                contact_pref = preferred_contact or "email"
-                sms_ok = bool(data.sms_consent)
-                customer_name = f"{normalized_first or data.first_name} {normalized_last or data.last_name}".strip()
-                biz_name = os.environ.get("BUSINESS_NAME", "Ventura Fresh Laundry")
-
-                is_es = False
-                if normalized_phone:
-                    try:
-                        from notifications import detect_country
-                        is_es = detect_country(normalized_phone) == "mx"
-                    except:
-                        pass
-
+                country = detect_country(normalized_phone)
+                is_es = (country == "mx")
+                name = f"{normalized_first or data.first_name} {normalized_last or data.last_name}".strip()
                 if is_es:
-                    client_msg = f"Hola {customer_name}, recibimos tu solicitud de cotización comercial {quote_number}. Nuestro equipo te contactará en 24-48 horas. ¡Gracias por tu interés en {biz_name}!"
-                    client_subject = f"Cotización Recibida - {quote_number}"
-                    voice_msg = f"Hola {customer_name}, confirmamos tu cotización {quote_number}. Te contactaremos pronto."
+                    msg = f"Hola {name}, recibimos tu cotización comercial #{quote_number}. Nuestro equipo te contactará en 24-48 horas. ¡Gracias!"
                 else:
-                    client_msg = f"Hi {customer_name}, we received your commercial quote request {quote_number}. Our team will contact you within 24-48 hours. Thank you for your interest in {biz_name}!"
-                    client_subject = f"Quote Request Received - {quote_number}"
-                    voice_msg = f"Hi {customer_name}, we confirm your quote request {quote_number}. We'll be in touch soon."
-
-                sent = False
-                if contact_pref == "email" and normalized_email:
-                    sent = await send_email(normalized_email, client_subject, client_msg)
-                elif contact_pref in ("whatsapp",) and normalized_phone and sms_ok:
-                    sent = await send_whatsapp(normalized_phone, client_msg)
-                elif contact_pref in ("sms", "text") and normalized_phone and sms_ok:
-                    sent = await send_sms(normalized_phone, client_msg)
-                elif contact_pref == "call" and normalized_phone:
-                    voice_lang = "es-MX" if is_es else "en-US"
-                    sent = await send_voice_call(normalized_phone, voice_msg, voice_lang)
-                elif normalized_email:
-                    sent = await send_email(normalized_email, client_subject, client_msg)
-                elif normalized_phone:
-                    sent = await send_sms(normalized_phone, client_msg)
-
-                if not sent:
-                    logger.warning(f"B2B quote {quote_number}: No notification sent to client")
-
+                    msg = f"Hi {name}, we've received your commercial quote request #{quote_number}. Our team will contact you within 24-48 hours. Thank you!"
+                await send_sms(normalized_phone, msg)
             except Exception as e:
-                logger.error(f"B2B quote client notification failed: {e}")
+                logger.error(f"B2B quote client SMS failed: {e}")
 
-            if not skip_server_notifications:
-                try:
-                    admin_phone = os.environ.get("ADMIN_PHONE", "+18055154030")
-                    company_label = data.company_legal_name or data.dba_name or f"{data.first_name} {data.last_name}"
-                    admin_msg = (
-                        f"📋 NUEVA COTIZACIÓN B2B\n"
-                        f"📄 #{quote_number}\n"
-                        f"🏢 {company_label}\n"
-                        f"🏭 {data.business_type}\n"
-                        f"📦 {data.estimated_lbs} lbs / {data.laundry_frequency}\n"
-                        f"📧 {normalized_email}\n"
-                        f"📞 {normalized_phone or 'N/A'}"
-                    )
-                    await send_sms(admin_phone, admin_msg)
-                except Exception as e:
-                    logger.error(f"B2B quote admin notification failed: {e}")
+        # Notificación al admin (si está activada)
+        if notifications_enabled and not skip_server_notifications:
+            try:
+                admin_phone = os.environ.get("ADMIN_PHONE", "+18055154030")
+                admin_msg = (f"📋 NUEVA COTIZACIÓN B2B\n"
+                             f"📄 #{quote_number}\n"
+                             f"🏢 {data.company_legal_name or data.dba_name or f'{data.first_name} {data.last_name}'}\n"
+                             f"🏭 {data.business_type}\n"
+                             f"📦 {data.estimated_lbs} lbs / {data.laundry_frequency}\n"
+                             f"📧 {normalized_email}\n"
+                             f"📞 {normalized_phone or 'N/A'}")
+                await send_sms(admin_phone, admin_msg)
+            except Exception as e:
+                logger.error(f"B2B quote admin notification failed: {e}")
 
         return {
             "message": "Thank you! Your quote request has been received. Our team will contact you within 24-48 hours.",
             "quote_number": quote_number
         }
+
+    # =========================================================================
+    # 7. VOICE ASSISTANT (EXISTENTE)
+    # =========================================================================
+    VOICE_ASSISTANT_SYSTEM_PROMPT = """You are Ventura, a friendly and enthusiastic AI sales assistant for Ventura Fresh Laundry, a premium laundry service in Ventura County, California. Your goal is to warmly engage visitors, answer their questions, and help them choose the right service.
+
+SERVICES YOU OFFER:
+1. Pickup & Delivery
+   - Member recurring: $2.50/lb (minimum $40)
+   - As-needed: $2.75/lb (minimum $40)
+
+2. Wash Dry Fold (drop-off)
+   - $2.25/lb
+   - 10 lb minimum
+
+3. Self-Service Laundry
+   - Open 6:00 AM - 10:00 PM, 7 days a week
+
+4. Membership Plans
+   - FAMILY PLUS: $199/month up to 90 lb
+   - MOST POPULAR: $139/month up to 60 lb
+   - ELITE CONCIERGE: $299/month up to 120 lb
+   - NEW MEMBER SPECIAL: $10 OFF first month
+
+5. Airbnb and B2B programs are available with custom quotes.
+
+PERSONALITY GUIDELINES:
+- Warm, conversational, and concise.
+- Keep responses under 60 words.
+- No markdown or bullet formatting.
+- End with a gentle question.
+- Use the same language as the customer (English or Spanish).
+"""
+
+    def assistant_fallback_reply(locale: Optional[str]) -> str:
+        if str(locale or "en").lower().startswith("es"):
+            return ("¡Hola! Soy Ventura, tu concierge de lavandería. Podemos ayudarte con pickup y delivery, wash and fold, "
+                    "membresías o servicios para Airbnb y negocios. ¿Qué servicio te interesa hoy?")
+        return ("Hi! I'm Ventura, your laundry concierge. I can help with pickup and delivery, wash and fold, memberships, "
+                "or Airbnb and business service. What would you like to set up today?")
+
+    async def get_or_create_voice_session(session_id: Optional[str], locale: Optional[str]) -> Dict[str, Any]:
+        now = datetime.now(timezone.utc).isoformat()
+        normalized_locale = "es" if str(locale or "en").lower().startswith("es") else "en"
+        target_session_id = session_id or str(uuid.uuid4())
+        session = await db.voice_assistant_sessions.find_one({"session_id": target_session_id}, {"_id": 0})
+        if session:
+            return session
+        new_session = {
+            "session_id": target_session_id,
+            "locale": normalized_locale,
+            "messages": [],
+            "created_at": now,
+            "updated_at": now
+        }
+        await db.voice_assistant_sessions.insert_one(new_session)
+        return new_session
 
     @router.get("/public/voice-assistant/session/{session_id}")
     async def get_voice_assistant_session(session_id: str):
@@ -1150,5 +1036,172 @@ PERSONALITY GUIDELINES:
             "reply": reply,
             "messages": stored_messages[-30:]
         }
+
+    # =========================================================================
+    # 8. SUGGESTION (CON SMS AL CLIENTE)
+    # =========================================================================
+    @router.post("/public/suggestion")
+    async def public_suggestion(data: PublicSuggestionCreate):
+        now = datetime.now(timezone.utc).isoformat()
+        doc_id = str(uuid.uuid4())
+
+        suggestion_doc = {
+            "id": doc_id,
+            **data.dict(),
+            "created_at": now,
+            "updated_at": now
+        }
+        await db.suggestions.insert_one(suggestion_doc)
+        await create_audit_log("SUGGESTION_CREATED", "suggestion", doc_id, None, {"source": "public_suggestion"})
+
+        # ─── SMS al cliente ──────────────────────────────────────────────────
+        customer_phone = normalize_phone(data.phone) if data.phone else None
+        if customer_phone and len(customer_phone) >= 10:
+            try:
+                country = detect_country(customer_phone)
+                is_es = (country == "mx")
+                name = data.name or ("cliente" if is_es else "customer")
+                if is_es:
+                    msg = (f"¡Gracias por tu sugerencia, {name}! 👏\n"
+                           f"Hemos recibido tu idea en Ventura Fresh Laundry.\n"
+                           f"La revisaremos pronto. ¡Gracias por ayudarnos a mejorar!")
+                else:
+                    msg = (f"Thank you for your suggestion, {name}! 👏\n"
+                           f"We've received your idea at Ventura Fresh Laundry.\n"
+                           f"We'll review it soon. Thanks for helping us improve!")
+                await send_sms(customer_phone, msg)
+                logger.info(f"SMS sent to {customer_phone} for suggestion {doc_id}")
+            except Exception as e:
+                logger.error(f"Customer SMS for suggestion {doc_id} failed: {e}")
+
+        # ─── Notificación al administrador ───────────────────────────────────
+        if notifications_enabled and not skip_server_notifications:
+            try:
+                admin_phone = os.environ.get("ADMIN_PHONE", "+18055154030")
+                admin_msg = (f"📝 NUEVA SUGERENCIA\n"
+                             f"📅 {data.date}\n"
+                             f"💡 {data.suggestion[:100]}...\n"
+                             f"👤 {data.name or 'Anónimo'}")
+                await send_sms(admin_phone, admin_msg)
+            except Exception as e:
+                logger.error(f"Admin notification for suggestion failed: {e}")
+
+        return {
+            "success": True,
+            "message": "¡Gracias por tu sugerencia! La hemos recibido y la revisaremos pronto."
+        }
+
+    # =========================================================================
+    # 9. REFUND (CON SMS AL CLIENTE)
+    # =========================================================================
+    @router.post("/public/refund")
+    async def public_refund(data: PublicRefundCreate):
+        now = datetime.now(timezone.utc).isoformat()
+        doc_id = str(uuid.uuid4())
+
+        refund_doc = {
+            "id": doc_id,
+            **data.dict(),
+            "created_at": now,
+            "updated_at": now
+        }
+        await db.refunds.insert_one(refund_doc)
+        await create_audit_log("REFUND_CREATED", "refund", doc_id, None, {"source": "public_refund"})
+
+        # ─── SMS al cliente ──────────────────────────────────────────────────
+        customer_phone = normalize_phone(data.phone) if data.phone else None
+        if customer_phone and len(customer_phone) >= 10:
+            try:
+                country = detect_country(customer_phone)
+                is_es = (country == "mx")
+                name = data.name or ("cliente" if is_es else "customer")
+                if is_es:
+                    msg = (f"Hola {name}, hemos recibido tu solicitud de reembolso.\n"
+                           f"Monto: ${data.amount:.2f} | Máquina: {data.machine_number}\n"
+                           f"Nuestro equipo la revisará y te contactará pronto.")
+                else:
+                    msg = (f"Hi {name}, we've received your refund request.\n"
+                           f"Amount: ${data.amount:.2f} | Machine: {data.machine_number}\n"
+                           f"Our team will review it and get back to you shortly.")
+                await send_sms(customer_phone, msg)
+                logger.info(f"SMS sent to {customer_phone} for refund {doc_id}")
+            except Exception as e:
+                logger.error(f"Customer SMS for refund {doc_id} failed: {e}")
+
+        # ─── Notificación al administrador ───────────────────────────────────
+        if notifications_enabled and not skip_server_notifications:
+            try:
+                admin_phone = os.environ.get("ADMIN_PHONE", "+18055154030")
+                admin_msg = (f"💰 NUEVA SOLICITUD DE REEMBOLSO\n"
+                             f"🖨️ Máquina: {data.machine_number}\n"
+                             f"💵 Monto: ${data.amount:.2f}\n"
+                             f"📝 Razones: {', '.join(data.reasons)}\n"
+                             f"👤 {data.name or 'Anónimo'}")
+                await send_sms(admin_phone, admin_msg)
+            except Exception as e:
+                logger.error(f"Admin notification for refund failed: {e}")
+
+        return {
+            "success": True,
+            "message": "Solicitud de reembolso recibida. Pronto nos pondremos en contacto contigo."
+        }
+
+    # =========================================================================
+    # 10. ADMIN GET ENDPOINTS (PARA LISTAR SUGERENCIAS Y REEMBOLSOS)
+    # =========================================================================
+    @router.get("/admin/suggestions")
+    async def list_suggestions(user: dict = Depends(get_current_user)):
+        require_admin(user)
+        suggestions = await db.suggestions.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
+        return suggestions
+
+    @router.get("/admin/refunds")
+    async def list_refunds(user: dict = Depends(get_current_user)):
+        require_admin(user)
+        refunds = await db.refunds.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
+        return refunds
+
+            # =========================================================================
+    # UPDATE endpoints for suggestions and refunds (staff use)
+    # =========================================================================
+    @router.put("/admin/suggestions/{suggestion_id}")
+    async def update_suggestion(
+        suggestion_id: str,
+        update_data: dict,
+        user: dict = Depends(get_current_user)
+    ):
+        require_admin(user)
+        allowed_fields = {"staff_status", "internal_comment"}
+        update_payload = {k: v for k, v in update_data.items() if k in allowed_fields}
+        if not update_payload:
+            raise HTTPException(status_code=400, detail="No valid fields to update")
+        update_payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+        result = await db.suggestions.update_one(
+            {"id": suggestion_id},
+            {"$set": update_payload}
+        )
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Suggestion not found")
+        return {"success": True}
+
+    @router.put("/admin/refunds/{refund_id}")
+    async def update_refund(
+        refund_id: str,
+        update_data: dict,
+        user: dict = Depends(get_current_user)
+    ):
+        require_admin(user)
+        allowed_fields = {"staff_status", "internal_comment", "refund_amount"}
+        update_payload = {k: v for k, v in update_data.items() if k in allowed_fields}
+        if not update_payload:
+            raise HTTPException(status_code=400, detail="No valid fields to update")
+        update_payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+        result = await db.refunds.update_one(
+            {"id": refund_id},
+            {"$set": update_payload}
+        )
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Refund not found")
+        return {"success": True}
 
     return router

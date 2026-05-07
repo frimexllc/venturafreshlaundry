@@ -1,10 +1,11 @@
+# routes/finances.py
 """
-Finances module — Expenses, Receipts, Mileage, Vehicles, Vendors, Categories.
+Finances module — Expenses, Receipts, Mileage, Vehicles, Vendors, Categories, Machines.
 Full ERP-lite financial management for Ventura Fresh Laundry.
 """
 import uuid
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
@@ -16,21 +17,58 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/finances", tags=["finances"])
 
 
-# ── Models ────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────
+# MODELS
+# ──────────────────────────────────────────────────────────────────────────
+
+class MachineCreate(BaseModel):
+    name: str
+    cycle_price: float = 2.0
+    maintenance_threshold: int = 500
+
+class MachineResponse(BaseModel):
+    id: str
+    name: str
+    cycle_price: float
+    maintenance_threshold: int
+    total_cycles: int = 0
+    total_income: float = 0
+    created_at: str
+    updated_at: Optional[str] = None
+
+class MachineIncomeCreate(BaseModel):
+    machine_id: str
+    date: str
+    amount: float
+
+class MachineIncomeResponse(BaseModel):
+    id: str
+    machine_id: str
+    date: str
+    amount: float
+    created_at: str
+
+class MachineBulkIncomeCreate(BaseModel):
+    date: str
+    amount: float
+
+class MachineBulkRangeCreate(BaseModel):
+    start_date: str
+    end_date: str
+    amount: float
 
 class ExpenseCreate(BaseModel):
     date: str
     category: str
     description: str
     amount: float
-    expense_type: str = "variable"  # fixed, variable, subscription
+    expense_type: str = "variable"
     vendor: Optional[str] = ""
     payment_method: Optional[str] = "card"
     receipt_url: Optional[str] = ""
     notes: Optional[str] = ""
     recurring: Optional[bool] = False
-    recurring_frequency: Optional[str] = ""  # monthly, weekly, yearly
-
+    recurring_frequency: Optional[str] = ""
 
 class ExpenseResponse(BaseModel):
     id: str
@@ -49,7 +87,6 @@ class ExpenseResponse(BaseModel):
     created_at: str = ""
     updated_at: str = ""
 
-
 class MileageCreate(BaseModel):
     date: str
     vehicle_id: Optional[str] = ""
@@ -58,7 +95,6 @@ class MileageCreate(BaseModel):
     end_odometer: float
     purpose: Optional[str] = ""
     notes: Optional[str] = ""
-
 
 class MileageResponse(BaseModel):
     id: str
@@ -73,7 +109,6 @@ class MileageResponse(BaseModel):
     notes: str = ""
     created_at: str = ""
 
-
 class VehicleCreate(BaseModel):
     name: str
     plate: Optional[str] = ""
@@ -81,7 +116,6 @@ class VehicleCreate(BaseModel):
     model: Optional[str] = ""
     year: Optional[int] = None
     status: Optional[str] = "active"
-
 
 class VehicleResponse(BaseModel):
     id: str
@@ -94,12 +128,10 @@ class VehicleResponse(BaseModel):
     total_miles: float = 0
     created_at: str = ""
 
-
 class CategoryCreate(BaseModel):
     name: str
-    type: str = "expense"  # expense, income
+    type: str = "expense"
     color: Optional[str] = "#6b7280"
-
 
 EXPENSE_CATEGORIES = [
     {"name": "Suministros de Lavado", "type": "expense", "color": "#3b82f6"},
@@ -117,10 +149,215 @@ EXPENSE_CATEGORIES = [
     {"name": "Otros", "type": "expense", "color": "#6b7280"},
 ]
 
-IRS_MILEAGE_RATE = 0.70  # 2025/2026 IRS standard mileage rate
+IRS_MILEAGE_RATE = 0.70
 
 
-# ── Expense Endpoints ────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────
+# MACHINES CRUD
+# ──────────────────────────────────────────────────────────────────────────
+
+@router.post("/machines", response_model=MachineResponse)
+async def create_machine(data: MachineCreate, user: dict = Depends(get_current_user)):
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "id": str(uuid.uuid4()),
+        **data.dict(),
+        "total_cycles": 0,
+        "total_income": 0,
+        "created_at": now,
+        "updated_at": now,
+    }
+    await db.machines.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+@router.get("/machines", response_model=List[MachineResponse])
+async def list_machines(user: dict = Depends(get_current_user)):
+    return await db.machines.find({}, {"_id": 0}).sort("name", 1).to_list(100)
+
+@router.put("/machines/{machine_id}", response_model=MachineResponse)
+async def update_machine(machine_id: str, data: MachineCreate, user: dict = Depends(get_current_user)):
+    now = datetime.now(timezone.utc).isoformat()
+    update_data = data.dict()
+    update_data["updated_at"] = now
+    result = await db.machines.update_one({"id": machine_id}, {"$set": update_data})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Machine not found")
+    doc = await db.machines.find_one({"id": machine_id}, {"_id": 0})
+    return doc
+
+@router.delete("/machines/{machine_id}")
+async def delete_machine(machine_id: str, user: dict = Depends(get_current_user)):
+    await db.machine_income.delete_many({"machine_id": machine_id})
+    result = await db.machines.delete_one({"id": machine_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Machine not found")
+    return {"ok": True}
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# MACHINE INCOME (individual, bulk, list, delete)
+# ──────────────────────────────────────────────────────────────────────────
+
+@router.post("/machine-income", response_model=MachineIncomeResponse)
+async def create_machine_income(data: MachineIncomeCreate, user: dict = Depends(get_current_user)):
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "id": str(uuid.uuid4()),
+        **data.dict(),
+        "created_at": now,
+    }
+    await db.machine_income.insert_one(doc)
+
+    machine = await db.machines.find_one({"id": data.machine_id})
+    if machine:
+        price = machine.get("cycle_price", 2.0)
+        agg = await db.machine_income.aggregate([
+            {"$match": {"machine_id": data.machine_id}},
+            {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+        ]).to_list(1)
+        total_income = agg[0]["total"] if agg else data.amount
+        cycles = int(total_income / price) if price > 0 else 0
+        await db.machines.update_one(
+            {"id": data.machine_id},
+            {"$set": {"total_income": total_income, "total_cycles": cycles, "updated_at": now}}
+        )
+    doc.pop("_id", None)
+    return doc
+
+@router.post("/machine-income/bulk")
+async def create_bulk_machine_income(data: MachineBulkIncomeCreate, user: dict = Depends(get_current_user)):
+    machines = await db.machines.find({}, {"_id": 0, "id": 1}).to_list(100)
+    if not machines:
+        raise HTTPException(status_code=404, detail="No hay máquinas registradas")
+    now = datetime.now(timezone.utc).isoformat()
+    inserted = []
+    for m in machines:
+        income_doc = {
+            "id": str(uuid.uuid4()),
+            "machine_id": m["id"],
+            "date": data.date,
+            "amount": data.amount,
+            "created_at": now,
+        }
+        await db.machine_income.insert_one(income_doc)
+        inserted.append(income_doc["id"])
+
+        machine = await db.machines.find_one({"id": m["id"]})
+        price = machine.get("cycle_price", 2.0) if machine else 2.0
+        agg = await db.machine_income.aggregate([
+            {"$match": {"machine_id": m["id"]}},
+            {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+        ]).to_list(1)
+        total_income = agg[0]["total"] if agg else 0
+        cycles = int(total_income / price) if price > 0 else 0
+        await db.machines.update_one(
+            {"id": m["id"]},
+            {"$set": {"total_income": total_income, "total_cycles": cycles, "updated_at": now}}
+        )
+    return {"ok": True, "inserted": len(inserted), "machines": len(machines)}
+
+@router.post("/machine-income/bulk-range")
+async def create_bulk_machine_income_range(data: MachineBulkRangeCreate, user: dict = Depends(get_current_user)):
+    machines = await db.machines.find({}, {"_id": 0, "id": 1}).to_list(100)
+    if not machines:
+        raise HTTPException(status_code=404, detail="No hay máquinas registradas")
+    
+    start = datetime.strptime(data.start_date, "%Y-%m-%d")
+    end = datetime.strptime(data.end_date, "%Y-%m-%d")
+    days_diff = (end - start).days + 1
+    
+    now = datetime.now(timezone.utc).isoformat()
+    total_inserted = 0
+    machines_updated = set()
+    
+    for i in range(days_diff):
+        current_date = start + timedelta(days=i)
+        date_str = current_date.strftime("%Y-%m-%d")
+        for machine in machines:
+            income_doc = {
+                "id": str(uuid.uuid4()),
+                "machine_id": machine["id"],
+                "date": date_str,
+                "amount": data.amount,
+                "created_at": now,
+            }
+            await db.machine_income.insert_one(income_doc)
+            total_inserted += 1
+            machines_updated.add(machine["id"])
+    
+    for machine_id in machines_updated:
+        agg = await db.machine_income.aggregate([
+            {"$match": {"machine_id": machine_id}},
+            {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+        ]).to_list(1)
+        total_income = agg[0]["total"] if agg else 0
+        machine = await db.machines.find_one({"id": machine_id})
+        price = machine.get("cycle_price", 2.0) if machine else 2.0
+        cycles = int(total_income / price) if price > 0 else 0
+        await db.machines.update_one(
+            {"id": machine_id},
+            {"$set": {
+                "total_income": total_income,
+                "total_cycles": cycles,
+                "updated_at": now
+            }}
+        )
+    
+    return {
+        "ok": True,
+        "inserted": total_inserted,
+        "machines": len(machines_updated),
+        "days": days_diff,
+        "start_date": data.start_date,
+        "end_date": data.end_date
+    }
+
+@router.get("/machine-income", response_model=List[MachineIncomeResponse])
+async def list_machine_income(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    machine_id: Optional[str] = None,
+    user: dict = Depends(get_current_user)
+):
+    query = {}
+    if start_date or end_date:
+        date_q = {}
+        if start_date:
+            date_q["$gte"] = start_date
+        if end_date:
+            date_q["$lte"] = end_date
+        query["date"] = date_q
+    if machine_id:
+        query["machine_id"] = machine_id
+    result = await db.machine_income.find(query, {"_id": 0}).sort("date", -1).to_list(2000)
+    return result
+
+@router.delete("/machine-income/{income_id}")
+async def delete_machine_income(income_id: str, user: dict = Depends(get_current_user)):
+    doc = await db.machine_income.find_one({"id": income_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Income record not found")
+    await db.machine_income.delete_one({"id": income_id})
+    machine_id = doc["machine_id"]
+    agg = await db.machine_income.aggregate([
+        {"$match": {"machine_id": machine_id}},
+        {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+    ]).to_list(1)
+    total_income = agg[0]["total"] if agg else 0
+    machine = await db.machines.find_one({"id": machine_id})
+    price = machine.get("cycle_price", 2.0) if machine else 2.0
+    cycles = int(total_income / price) if price > 0 else 0
+    await db.machines.update_one(
+        {"id": machine_id},
+        {"$set": {"total_income": total_income, "total_cycles": cycles}}
+    )
+    return {"ok": True}
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# EXPENSES (CRUD + list)
+# ──────────────────────────────────────────────────────────────────────────
 
 @router.post("/expenses", response_model=ExpenseResponse)
 async def create_expense(data: ExpenseCreate, user: dict = Depends(get_current_user)):
@@ -135,7 +372,6 @@ async def create_expense(data: ExpenseCreate, user: dict = Depends(get_current_u
     await db.expenses.insert_one(doc)
     doc.pop("_id", None)
     return doc
-
 
 @router.get("/expenses", response_model=List[ExpenseResponse])
 async def list_expenses(
@@ -166,14 +402,12 @@ async def list_expenses(
     expenses = await db.expenses.find(query, {"_id": 0}).sort("date", -1).to_list(500)
     return expenses
 
-
 @router.get("/expenses/{expense_id}", response_model=ExpenseResponse)
 async def get_expense(expense_id: str, user: dict = Depends(get_current_user)):
     doc = await db.expenses.find_one({"id": expense_id}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Expense not found")
     return doc
-
 
 @router.put("/expenses/{expense_id}", response_model=ExpenseResponse)
 async def update_expense(expense_id: str, data: ExpenseCreate, user: dict = Depends(get_current_user)):
@@ -184,7 +418,6 @@ async def update_expense(expense_id: str, data: ExpenseCreate, user: dict = Depe
     doc = await db.expenses.find_one({"id": expense_id}, {"_id": 0})
     return doc
 
-
 @router.delete("/expenses/{expense_id}")
 async def delete_expense(expense_id: str, user: dict = Depends(get_current_user)):
     result = await db.expenses.delete_one({"id": expense_id})
@@ -193,7 +426,9 @@ async def delete_expense(expense_id: str, user: dict = Depends(get_current_user)
     return {"ok": True}
 
 
-# ── Categories ────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────
+# CATEGORIES
+# ──────────────────────────────────────────────────────────────────────────
 
 @router.get("/categories")
 async def get_expense_categories(user: dict = Depends(get_current_user)):
@@ -201,7 +436,6 @@ async def get_expense_categories(user: dict = Depends(get_current_user)):
     if custom:
         return custom
     return EXPENSE_CATEGORIES
-
 
 @router.post("/categories")
 async def create_category(data: CategoryCreate, user: dict = Depends(get_current_user)):
@@ -211,7 +445,9 @@ async def create_category(data: CategoryCreate, user: dict = Depends(get_current
     return doc
 
 
-# ── Mileage ──────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────
+# MILEAGE
+# ──────────────────────────────────────────────────────────────────────────
 
 @router.post("/mileage", response_model=MileageResponse)
 async def create_mileage(data: MileageCreate, user: dict = Depends(get_current_user)):
@@ -225,12 +461,10 @@ async def create_mileage(data: MileageCreate, user: dict = Depends(get_current_u
         "created_at": now,
     }
     await db.mileage_logs.insert_one(doc)
-    # Update vehicle total miles
     if data.vehicle_id:
         await db.vehicles.update_one({"id": data.vehicle_id}, {"$inc": {"total_miles": miles}})
     doc.pop("_id", None)
     return doc
-
 
 @router.get("/mileage", response_model=List[MileageResponse])
 async def list_mileage(
@@ -252,7 +486,6 @@ async def list_mileage(
     logs = await db.mileage_logs.find(query, {"_id": 0}).sort("date", -1).to_list(500)
     return logs
 
-
 @router.delete("/mileage/{mileage_id}")
 async def delete_mileage(mileage_id: str, user: dict = Depends(get_current_user)):
     result = await db.mileage_logs.delete_one({"id": mileage_id})
@@ -261,7 +494,9 @@ async def delete_mileage(mileage_id: str, user: dict = Depends(get_current_user)
     return {"ok": True}
 
 
-# ── Vehicles ─────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────
+# VEHICLES
+# ──────────────────────────────────────────────────────────────────────────
 
 @router.post("/vehicles", response_model=VehicleResponse)
 async def create_vehicle(data: VehicleCreate, user: dict = Depends(get_current_user)):
@@ -271,20 +506,18 @@ async def create_vehicle(data: VehicleCreate, user: dict = Depends(get_current_u
     doc.pop("_id", None)
     return doc
 
-
 @router.get("/vehicles", response_model=List[VehicleResponse])
 async def list_vehicles(user: dict = Depends(get_current_user)):
     return await db.vehicles.find({}, {"_id": 0}).sort("name", 1).to_list(50)
 
-
 @router.put("/vehicles/{vehicle_id}", response_model=VehicleResponse)
 async def update_vehicle(vehicle_id: str, data: VehicleCreate, user: dict = Depends(get_current_user)):
-    result = await db.vehicles.update_one({"id": vehicle_id}, {"$set": {**data.dict(), "updated_at": datetime.now(timezone.utc).isoformat()}})
+    now = datetime.now(timezone.utc).isoformat()
+    result = await db.vehicles.update_one({"id": vehicle_id}, {"$set": {**data.dict(), "updated_at": now}})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Vehicle not found")
     doc = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0})
     return doc
-
 
 @router.delete("/vehicles/{vehicle_id}")
 async def delete_vehicle(vehicle_id: str, user: dict = Depends(get_current_user)):
@@ -294,7 +527,9 @@ async def delete_vehicle(vehicle_id: str, user: dict = Depends(get_current_user)
     return {"ok": True}
 
 
-# ── Financial Summary ────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────
+# FINANCIAL DASHBOARD
+# ──────────────────────────────────────────────────────────────────────────
 
 @router.get("/dashboard")
 async def get_financial_dashboard(
@@ -305,68 +540,68 @@ async def get_financial_dashboard(
     if period == "day":
         date_from = now.strftime("%Y-%m-%d")
     elif period == "week":
-        from datetime import timedelta
         date_from = (now - timedelta(days=7)).strftime("%Y-%m-%d")
     elif period == "year":
         date_from = f"{now.year}-01-01"
     else:
         date_from = now.strftime("%Y-%m-01")
 
-    # Expenses
     expenses = await db.expenses.find({"date": {"$gte": date_from}}, {"_id": 0}).to_list(1000)
     total_expenses = sum(e.get("amount", 0) for e in expenses)
     by_category = {}
     for e in expenses:
         cat = e.get("category", "Otros")
         by_category[cat] = by_category.get(cat, 0) + e.get("amount", 0)
-    fixed = sum(e.get("amount", 0) for e in expenses if e.get("expense_type") == "fixed")
-    variable = sum(e.get("amount", 0) for e in expenses if e.get("expense_type") == "variable")
 
-    # Revenue (from finances collection + paid orders)
-    finance_income = await db.finances.find(
-        {"type": "income", "created_at": {"$gte": date_from}}, {"_id": 0, "amount": 1}
+    orders = await db.orders.find(
+        {"payment_status": "paid", "created_at": {"$gte": date_from}},
+        {"_id": 0, "total_amount": 1}
     ).to_list(2000)
-    
-    if finance_income:
-        total_revenue = sum(f.get("amount", 0) or 0 for f in finance_income)
-    else:
-        # Fallback: from paid orders
-        revenue_query = {"payment_status": "paid"}
-        if period != "year":
-            revenue_query["$or"] = [
-                {"paid_at": {"$gte": date_from}},
-                {"created_at": {"$gte": date_from}}
-            ]
-        orders = await db.orders.find(revenue_query, {"_id": 0, "total_amount": 1}).to_list(2000)
-        store_orders = await db.store_orders.find(
-            {"payment_status": "paid"}, {"_id": 0, "total": 1}
-        ).to_list(500)
-        total_revenue = sum(o.get("total_amount", 0) or 0 for o in orders) + sum(o.get("total", 0) or 0 for o in store_orders)
+    store_orders = await db.store_orders.find(
+        {"payment_status": "paid", "created_at": {"$gte": date_from}},
+        {"_id": 0, "total": 1}
+    ).to_list(500)
+    order_revenue = sum(o.get("total_amount", 0) or 0 for o in orders) + sum(o.get("total", 0) or 0 for o in store_orders)
 
-    # Mileage
+    membership_signups = await db.membership_signups.find(
+        {"payment_status": "paid", "created_at": {"$gte": date_from}},
+        {"_id": 0, "amount": 1}
+    ).to_list(2000)
+    membership_revenue = sum(s.get("amount", 0) or 0 for s in membership_signups)
+
+    machine_income_data = await db.machine_income.find(
+        {"date": {"$gte": date_from}},
+        {"_id": 0, "amount": 1}
+    ).to_list(2000)
+    machine_revenue = sum(m.get("amount", 0) for m in machine_income_data)
+
+    total_revenue = order_revenue + membership_revenue + machine_revenue
+    net_income = total_revenue - total_expenses
+
     mileage = await db.mileage_logs.find({"date": {"$gte": date_from}}, {"_id": 0}).to_list(500)
     total_miles = sum(m.get("miles", 0) for m in mileage)
-    total_reimbursement = sum(m.get("reimbursement", 0) for m in mileage)
 
     return {
         "period": period,
         "date_from": date_from,
-        "revenue": round(total_revenue, 2),
+        "total_revenue": round(total_revenue, 2),
+        "order_revenue": round(order_revenue, 2),
+        "membership_revenue": round(membership_revenue, 2),
+        "machine_revenue": round(machine_revenue, 2),
         "total_expenses": round(total_expenses, 2),
-        "fixed_expenses": round(fixed, 2),
-        "variable_expenses": round(variable, 2),
-        "net_income": round(total_revenue - total_expenses, 2),
+        "net_income": round(net_income, 2),
         "by_category": {k: round(v, 2) for k, v in sorted(by_category.items(), key=lambda x: -x[1])},
         "expense_count": len(expenses),
         "mileage": {
             "total_miles": round(total_miles, 1),
-            "total_reimbursement": round(total_reimbursement, 2),
             "entries": len(mileage),
         },
     }
 
 
-# ── Revenue Summary (Moved from server_core.py) ──────────────────────
+# ──────────────────────────────────────────────────────────────────────────
+# REVENUE SUMMARY
+# ──────────────────────────────────────────────────────────────────────────
 
 @router.get("/summary")
 async def get_finances_summary(
@@ -414,7 +649,6 @@ async def get_finances_summary(
     orders = await db.orders.find(order_query, {"_id": 0}).to_list(5000)
     paid_orders = [o for o in orders if (o.get("payment_status") or "").lower() == "paid"]
     pending_orders = [o for o in orders if (o.get("payment_status") or "").lower() != "paid"]
-
     order_revenue = sum(parse_amount(o.get("total_amount")) for o in paid_orders)
     avg_order_value = order_revenue / len(paid_orders) if paid_orders else 0
 
@@ -458,3 +692,4 @@ async def get_finances_summary(
         "total_memberships": len(paid_signups),
         "payment_methods": payment_methods,
     }
+

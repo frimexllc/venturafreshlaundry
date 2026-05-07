@@ -168,16 +168,7 @@ export default function Login() {
           </form>
 
           <div className="mt-6 text-center">
-            <button
-              type="button"
-              onClick={() => setIsLogin(!isLogin)}
-              className="text-sm text-sky-600 hover:text-sky-700 font-medium"
-              data-testid="toggle-auth-mode"
-            >
-              {isLogin
-                ? t("Don't have an account? Sign up", "¿No tienes cuenta? Regístrate")
-                : t("Already have an account? Sign in", "¿Ya tienes cuenta? Inicia sesión")}
-            </button>
+           
           </div>
         </div>
       </div>

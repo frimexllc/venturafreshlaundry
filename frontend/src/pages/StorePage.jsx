@@ -262,9 +262,29 @@ export default function StorePage() {
     if (status === "cancelled") toast.error(t("Payment was cancelled", "El pago fue cancelado"));
   }, [pollCheckoutStatus, searchParams, t]);
 
+  // ✅ FIX: ensure products is always an array
   useEffect(() => {
     fetch(`${API_URL}/api/store/products`)
-      .then(r => r.json()).then(setProducts).catch(console.error).finally(() => setLoading(false));
+      .then(r => r.json())
+      .then(data => {
+        let productsArray = [];
+        if (Array.isArray(data)) {
+          productsArray = data;
+        } else if (data && Array.isArray(data.products)) {
+          productsArray = data.products;
+        } else if (data && Array.isArray(data.data)) {
+          productsArray = data.data;
+        } else if (data && typeof data === 'object') {
+          console.warn('Unexpected products response shape:', data);
+          productsArray = [];
+        }
+        setProducts(productsArray);
+      })
+      .catch(err => {
+        console.error('Failed to load products:', err);
+        setProducts([]);
+      })
+      .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
@@ -332,9 +352,7 @@ export default function StorePage() {
     if (shippingError) { toast.error(shippingError); return; }
     if (!shippingQuote.fee) { toast.error(t("Enter full address (street, city, state, ZIP)", "Ingresa dirección completa")); return; }
 
-    // Inline Stripe Payment (tap/Apple Pay/Google Pay/Card)
     if (checkoutForm.payment_method === "card") {
-      // First create the order via manual checkout, then open Stripe Payment modal
       setCheckingOut(true);
       try {
         const payload = { cart_id: cart.id, origin_url: window.location.origin, customer_name: checkoutForm.name, customer_email: checkoutForm.email, customer_phone: checkoutForm.phone, shipping_address: checkoutForm.address, shipping_apt: checkoutForm.apt, delivery_instructions: checkoutForm.instructions, notes: checkoutForm.notes, preferred_contact: checkoutForm.preferred_contact, fulfillment_type: "delivery", payment_method: "card" };
@@ -350,7 +368,6 @@ export default function StorePage() {
       return;
     }
 
-    // Manual payment (cash, zelle, etc.)
     setCheckingOut(true);
     try {
       const payload = { cart_id: cart.id, origin_url: window.location.origin, customer_name: checkoutForm.name, customer_email: checkoutForm.email, customer_phone: checkoutForm.phone, shipping_address: checkoutForm.address, shipping_apt: checkoutForm.apt, delivery_instructions: checkoutForm.instructions, notes: checkoutForm.notes, preferred_contact: checkoutForm.preferred_contact, fulfillment_type: "delivery", payment_method: checkoutForm.payment_method };
@@ -409,7 +426,6 @@ export default function StorePage() {
             </span>
           </div>
 
-          {/* Solid white + solid primary — no italic, no stroke */}
           <h1 className="font-bold text-white leading-[1.08] mb-4 tracking-tight not-italic
             text-3xl xs:text-4xl sm:text-5xl md:text-6xl lg:text-7xl"
             style={{ animation: "fadeUp 0.5s 0.12s both ease-out" }}>
@@ -462,7 +478,7 @@ export default function StorePage() {
             <div className="flex justify-center py-20">
               <div className="w-12 h-12 rounded-full border-2 border-primary/20 border-t-primary animate-spin" />
             </div>
-          ) : products.length === 0 ? (
+          ) : (!Array.isArray(products) || products.length === 0) ? (
             <Reveal dir="scale">
               <div className="text-center py-14 sm:py-20">
                 <div className="w-16 h-16 sm:w-20 sm:h-20 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto mb-5">
@@ -477,7 +493,6 @@ export default function StorePage() {
               </div>
             </Reveal>
           ) : (
-            /* 2 cols mobile → 3 cols md → 4 cols xl */
             <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 lg:gap-5">
               {products.map((product, i) => (
                 <Reveal key={product.id} delay={i * 40} dir="up" dur={350}>
@@ -507,10 +522,8 @@ export default function StorePage() {
         <div className="fixed inset-0 z-50 flex justify-end">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setCartOpen(false)} />
 
-          {/* Full screen on mobile, fixed width on sm+ */}
           <div className="relative w-full sm:max-w-md bg-white h-full shadow-2xl overflow-y-auto flex flex-col" data-testid="cart-sidebar">
 
-            {/* Header */}
             <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-md border-b border-slate-100 px-4 sm:px-6 py-3.5 sm:py-4 flex items-center justify-between">
               <div className="flex items-center gap-2 sm:gap-3">
                 <div className="w-7 h-7 sm:w-8 sm:h-8 bg-primary/10 rounded-xl flex items-center justify-center">
@@ -528,7 +541,6 @@ export default function StorePage() {
 
             <div className="flex-1 px-4 sm:px-6 py-4 sm:py-5 space-y-5 sm:space-y-6">
 
-              {/* Empty state */}
               {(!cart || cart.items.length === 0) ? (
                 <div className="text-center py-12 sm:py-16">
                   <div className="w-14 h-14 sm:w-16 sm:h-16 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
@@ -539,7 +551,6 @@ export default function StorePage() {
                 </div>
               ) : (<>
 
-                {/* Cart Items */}
                 <div className="space-y-2 sm:space-y-3">
                   {cart.items.map((item) => (
                     <div key={item.product_id}
@@ -570,7 +581,6 @@ export default function StorePage() {
 
                 <div className="border-t border-slate-100" />
 
-                {/* Checkout Details */}
                 <div>
                   <h3 className="text-sm font-bold text-slate-900 mb-1 not-italic">{t("Checkout details", "Detalles de compra")}</h3>
                   <p className="text-xs text-slate-400 mb-4 not-italic">{t("Add shipping and contact info to continue", "Agrega datos de envío y contacto para continuar")}</p>
@@ -631,7 +641,6 @@ export default function StorePage() {
                   </div>
                 </div>
 
-                {/* Summary */}
                 <div className="bg-slate-50 rounded-2xl p-3.5 sm:p-4 border border-slate-100 space-y-2" data-testid="checkout-summary">
                   <div className="flex justify-between text-sm text-slate-500">
                     <span className="not-italic">{t("Subtotal", "Subtotal")}</span>
@@ -654,7 +663,6 @@ export default function StorePage() {
                   </div>
                 </div>
 
-                {/* Checkout CTA */}
                 <button
                   onClick={checkout}
                   disabled={checkingOut}
