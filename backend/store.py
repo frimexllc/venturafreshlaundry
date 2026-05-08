@@ -18,7 +18,7 @@ import requests
 from motor.motor_asyncio import AsyncIOMotorClient
 from utils import normalize_email, normalize_phone, normalize_spaces, normalize_preference_dict
 from notifications import notify_store_order
-
+from auth import get_current_user, require_admin
 UPLOAD_DIR = Path("uploads/products")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -2376,7 +2376,9 @@ async def create_service_checkout(checkout: ServiceCheckoutRequest, request: Req
 
 
 @store_router.get("/transactions")
-async def get_transactions():
-    """Get payment transactions"""
+async def get_transactions(current_user: dict = Depends(get_current_user)):
+    """Get payment transactions (admin only)"""
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
     transactions = await db.payment_transactions.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
     return transactions

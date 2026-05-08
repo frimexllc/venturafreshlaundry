@@ -451,6 +451,18 @@ class DashboardStats(BaseModel):
     new_leads: int
     orders_today: int
     revenue_this_month: float
+    # Campos adicionales que el frontend puede usar (opcionales)
+    total_revenue: Optional[float] = 0
+    membership_revenue: Optional[float] = 0
+    store_revenue: Optional[float] = 0
+    machine_revenue: Optional[float] = 0
+    total_expenses: Optional[float] = 0
+    net_income: Optional[float] = 0
+    avg_order_value: Optional[float] = 0
+    active_members: Optional[int] = 0
+    expenses_by_category: Optional[dict] = {}
+    fuel_expenses: Optional[float] = 0
+    total_miles_driven: Optional[float] = 0
 
 
 # ============================================================

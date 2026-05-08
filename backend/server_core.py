@@ -389,7 +389,7 @@ except Exception as e:
 # Include Logistics router (unified order feed for operator map)
 try:
     from routes.logistics import router as logistics_router
-    app.include_router(logistics_router)
+    app.include_router(logistics_router, prefix="/api")
     logger.info("Logistics router enabled at /api/logistics/*")
 except Exception as e:
     logger.warning(f"Logistics router not loaded: {e}")

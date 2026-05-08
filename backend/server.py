@@ -4,18 +4,49 @@ Heavy imports (socketio, server_core) run in a background thread AFTER
 the port is already open and responding to health checks.
 """
 import asyncio
+import logging
 
 from shared import fastapi_app
 
 # Re-export for backward compat (other modules may import from server)
-# But the canonical source is now shared.py
 import shared
+
+logger = logging.getLogger(__name__)
 
 # ── Health-check available before any heavy import ───────────────────
 @fastapi_app.get("/api/health")
 @fastapi_app.get("/health")
 async def health_check():
     return {"status": "ok"}
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# IMPORTAR ROUTERS ESENCIALES DE FORMA SÍNCRONA (disponibles inmediatamente)
+# ═══════════════════════════════════════════════════════════════════════
+
+# 1. LOGISTICS ROUTER - DEBE ESTAR DISPONIBLE INMEDIATAMENTE
+try:
+    from routes.logistics import router as logistics_router
+    fastapi_app.include_router(logistics_router, prefix="/api")
+    logger.info("✓ Logistics router enabled (synchronous)")
+except Exception as e:
+    logger.warning(f"✗ Logistics router not loaded: {e}")
+
+# 2. AUTH ROUTER
+try:
+    from routes.auth_routes import router as auth_router
+    fastapi_app.include_router(auth_router)
+    logger.info("✓ Auth router enabled (synchronous)")
+except Exception as e:
+    logger.warning(f"✗ Auth router not loaded: {e}")
+
+# 3. FINANCES ROUTER
+try:
+    from routes.finances import router as finances_router
+    fastapi_app.include_router(finances_router)
+    logger.info("✓ Finances router enabled (synchronous)")
+except Exception as e:
+    logger.warning(f"✗ Finances router not loaded: {e}")
 
 
 # ── Lazy ASGI wrapper ────────────────────────────────────────────────

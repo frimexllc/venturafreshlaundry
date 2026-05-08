@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { useLocale } from "../context/LocaleContext";
 
-const API = process.env.REACT_APP_BACKEND_URL;
+const API = process.env.REACT_APP_BACKEND_URL || "http://localhost:8001";
 const getAuth = () => ({
   "Content-Type": "application/json",
   Authorization: `Bearer ${localStorage.getItem("token")}`,
@@ -389,8 +389,34 @@ export default function Finances() {
 
   const fetchMileage   = useCallback(async () => { try { const r = await axios.get(`${API}/api/finances/mileage`, { headers: getAuth() }); setMileage(r.data); } catch {} }, []);
   const fetchVehicles  = useCallback(async () => { try { const r = await axios.get(`${API}/api/finances/vehicles`, { headers: getAuth() }); setVehicles(r.data); } catch {} }, []);
+  
+  // CORREGIDO: URL con /api/ y manejo de error silencioso
   const fetchTransactions = useCallback(async () => {
-    try { const r = await axios.get(`${API}/store/transactions`, { headers: getAuth() }); setTransactions(Array.isArray(r.data) ? r.data : []); } catch {}
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        console.warn("No token found, skipping transactions fetch");
+        return;
+      }
+      const response = await fetch(`${API}/api/store/transactions`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setTransactions(Array.isArray(data) ? data : []);
+      } else if (response.status === 401 || response.status === 403) {
+        console.warn("Unauthorized to fetch transactions");
+        setTransactions([]);
+      } else {
+        console.error("Error fetching transactions:", response.status);
+        setTransactions([]);
+      }
+    } catch (err) {
+      console.error("Error loading transactions:", err);
+      setTransactions([]);
+    }
   }, []);
 
   // ─── File helpers ─────────────────────────────────────────────────────────
@@ -608,7 +634,6 @@ export default function Finances() {
 
   const computeCycles = (totalIncome, price) => (!price || price <= 0) ? 0 : Math.floor(totalIncome / price);
 
-  // Actualizar una sola máquina (recalcula ciclos desde sus ingresos)
   const updateMachineCycles = async (id) => {
     const machine = machines.find(m => m.id === id);
     if (!machine) return;
@@ -630,7 +655,6 @@ export default function Finances() {
     }
   };
 
-  // Actualizar todas las máquinas (se usa después de ingreso masivo)
   const updateAllMachinesCycles = async () => {
     toast.info("Actualizando ciclos de todas las máquinas...");
     for (const machine of machines) {
@@ -684,7 +708,7 @@ export default function Finances() {
       fetchMachineIncome();
       fetchMachines();
       fetchSummary();
-      await updateAllMachinesCycles(); // recalcula ciclos de todas
+      await updateAllMachinesCycles();
     } catch (err) {
       console.error("Bulk income error:", err);
       toast.error("Error en ingreso masivo");
@@ -712,13 +736,13 @@ export default function Finances() {
   };
 
   // ─── Derived data ─────────────────────────────────────────────────────────
-const kpis = [
-  { key: "rev",     label: "Ingresos totales",   icon: DollarSign,   color: "emerald", value: fmtCurrency(summary.total_revenue),    sub: "Suma de todas las fuentes" },
-  { key: "exp",     label: "Gastos",              icon: TrendingDown, color: "red",     value: fmtCurrency(summary.total_expenses),   sub: "Operativos + administrativos" },
-  { key: "net",     label: "Utilidad neta",       icon: TrendingUp,   color: "sky",     value: fmtCurrency(summary.net_income),       sub: summary.net_income >= 0 ? "Ganancia" : "Pérdida" },
-  { key: "mach",    label: "Ingresos máquinas",   icon: Zap,          color: "amber",   value: fmtCurrency(summary.machine_revenue || 0), sub: "Registro manual" },
-  { key: "ticket",  label: "Ticket promedio",     icon: Award,        color: "violet",  value: fmtCurrency(summary.avg_order_value),  sub: `${summary.total_orders} órdenes` },
-];
+  const kpis = [
+    { key: "rev",     label: "Ingresos totales",   icon: DollarSign,   color: "emerald", value: fmtCurrency(summary.total_revenue),    sub: "Suma de todas las fuentes" },
+    { key: "exp",     label: "Gastos",              icon: TrendingDown, color: "red",     value: fmtCurrency(summary.total_expenses),   sub: "Operativos + administrativos" },
+    { key: "net",     label: "Utilidad neta",       icon: TrendingUp,   color: "sky",     value: fmtCurrency(summary.net_income),       sub: summary.net_income >= 0 ? "Ganancia" : "Pérdida" },
+    { key: "mach",    label: "Ingresos máquinas",   icon: Zap,          color: "amber",   value: fmtCurrency(summary.machine_revenue || 0), sub: "Registro manual" },
+    { key: "ticket",  label: "Ticket promedio",     icon: Award,        color: "violet",  value: fmtCurrency(summary.avg_order_value),  sub: `${summary.total_orders} órdenes` },
+  ];
 
   const filteredExpenses = expenses.filter(e => {
     if (expenseFilters.search && !e.description?.toLowerCase().includes(expenseFilters.search.toLowerCase()) && !(e.vendor || "").toLowerCase().includes(expenseFilters.search.toLowerCase())) return false;
@@ -868,16 +892,16 @@ const kpis = [
           </div>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 14 }}>
-           {statOrder.map((idx) => (
-  <KPICard
-    key={kpis[idx].key}
-    index={idx}
-    {...kpis[idx]}
-    onDragStart={onStatDragStart}
-    onDragEnter={onStatDragEnter}
-    onDragEnd={onStatDragEnd}
-  />
-))}
+            {statOrder.map((idx) => (
+              <KPICard
+                key={kpis.key}
+                index={idx}
+                {...kpis[idx]}
+                onDragStart={onStatDragStart}
+                onDragEnter={onStatDragEnter}
+                onDragEnd={onStatDragEnd}
+              />
+            ))}
           </div>
         )}
 
@@ -909,7 +933,6 @@ const kpis = [
         {/* ════════════ TAB: DASHBOARD ════════════ */}
         {activeTab === "dashboard" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-            {/* Revenue breakdown */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14 }}>
               {[
                 { label: "Órdenes de servicio", val: summary.order_revenue },
@@ -925,7 +948,6 @@ const kpis = [
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-              {/* Gastos por categoría */}
               {Object.keys(summary.by_category).length > 0 && (
                 <div style={card}>
                   <div style={{ padding: "18px 20px 14px", borderBottom: "1.5px solid #f1f5f9" }}>
@@ -951,7 +973,6 @@ const kpis = [
                 </div>
               )}
 
-              {/* Últimas transacciones */}
               <div style={card}>
                 <div style={{ padding: "18px 20px 14px", borderBottom: "1.5px solid #f1f5f9", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#0f172a" }}>Últimas transacciones</p>
@@ -975,7 +996,6 @@ const kpis = [
               </div>
             </div>
 
-            {/* Máquinas resumen */}
             {machines.length > 0 && (
               <div style={card}>
                 <div style={{ padding: "18px 20px 14px", borderBottom: "1.5px solid #f1f5f9", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -1027,7 +1047,6 @@ const kpis = [
         {/* ════════════ TAB: EXPENSES ════════════ */}
         {activeTab === "expenses" && (
           <div style={card}>
-            {/* Toolbar */}
             <div style={{ padding: "14px 16px", borderBottom: "1.5px solid #f1f5f9", display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", background: "#fafafa" }}>
               <div style={{ position: "relative", flex: "1 1 200px" }}>
                 <Search size={14} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#94a3b8" }} />
@@ -1062,7 +1081,6 @@ const kpis = [
               </div>
             </div>
 
-            {/* Table */}
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
@@ -1114,7 +1132,6 @@ const kpis = [
               </table>
             </div>
 
-            {/* Pagination */}
             {expenseTotalPages > 1 && (
               <div style={{ padding: "12px 16px", borderTop: "1.5px solid #f1f5f9", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span style={{ fontSize: 13, color: "#64748b" }}>Página {expensePage} de {expenseTotalPages}</span>
@@ -1130,9 +1147,7 @@ const kpis = [
         {/* ════════════ TAB: MACHINES ════════════ */}
         {activeTab === "machines" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-            {/* Controls bar + income form */}
             <div style={{ ...card, padding: "0" }}>
-              {/* Top row: filtros de período + acciones */}
               <div style={{
                 padding: "14px 20px",
                 borderBottom: "1.5px solid #f1f5f9",
@@ -1154,7 +1169,6 @@ const kpis = [
                 </div>
               </div>
 
-              {/* Bottom row: registrar ingreso */}
               <div style={{ padding: "16px 20px" }}>
                 <p style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", margin: "0 0 12px", display: "flex", alignItems: "center", gap: 6 }}>
                   <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#10b981", display: "inline-block" }} />
@@ -1183,7 +1197,6 @@ const kpis = [
               </div>
             </div>
 
-            {/* Machines table */}
             <div style={card}>
               <div style={{ padding: "16px 20px", borderBottom: "1.5px solid #f1f5f9" }}>
                 <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#0f172a" }}>Máquinas registradas</p>
@@ -1238,7 +1251,6 @@ const kpis = [
               </div>
             </div>
 
-            {/* Income history */}
             {machineIncomeRecords.length > 0 && (
               <div style={card}>
                 <div style={{ padding: "16px 20px", borderBottom: "1.5px solid #f1f5f9" }}>
@@ -1323,7 +1335,12 @@ const kpis = [
             <div style={{ padding: "14px 16px", borderBottom: "1.5px solid #f1f5f9", display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", background: "#fafafa" }}>
               <div style={{ position: "relative", flex: "1 1 200px" }}>
                 <Search size={14} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#94a3b8" }} />
-                <input placeholder="Buscar por cliente o referencia..." value={txFilters.search} onChange={e => setTxFilters(f => ({ ...f, search: e.target.value }))} style={{ ...inputStyle, paddingLeft: 32 }} />
+                <input
+                  placeholder="Buscar por cliente o referencia..."
+                  value={txFilters.search}
+                  onChange={e => setTxFilters(f => ({ ...f, search: e.target.value }))}
+                  style={{ ...inputStyle, paddingLeft: 32 }}
+                />
               </div>
               <select value={txFilters.status} onChange={e => setTxFilters(f => ({ ...f, status: e.target.value }))} style={{ ...inputStyle, width: 130 }}>
                 <option value="all">Todos</option><option value="paid">Pagados</option><option value="pending">Pendientes</option>
