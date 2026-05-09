@@ -10,6 +10,7 @@ FIXES vs original:
 import logging
 import uuid
 import base64
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -37,6 +38,7 @@ except ImportError:
     def should_notify_customer(status: str) -> bool:
         return True
 
+# Router con prefix /api (ya que se montará en app con prefix /api)
 router = APIRouter(prefix="/api", tags=["Operator"])
 
 # ── File upload constants ─────────────────────────────────────────────
@@ -90,6 +92,7 @@ class StatusUpdate(BaseModel):
 
 
 # ── Shared helpers ────────────────────────────────────────────────────
+
 async def _record_status_history(order_id: str, old_status: str, new_status: str, user_id: str):
     entry = {
         "from": old_status, "to": new_status,
@@ -136,7 +139,6 @@ async def _do_status_update(order: dict, new_status: str, user_id: str, role_lab
     # Driver SMS on confirm (P&D only)
     # FIX C: ADMIN_PHONE from env, no hardcoded number
     if new_status == "confirmed" and NOTIFICATIONS_ENABLED and send_sms:
-        import os
         st = normalize_spaces(order.get("service_type") or "").lower()
         is_pd = "pickup" in st or "delivery" in st
         driver_id = order.get("assigned_driver_id") or order.get("driver_id")
@@ -155,17 +157,22 @@ async def _do_status_update(order: dict, new_status: str, user_id: str, role_lab
 
 
 # ── Operator endpoints ────────────────────────────────────────────────
+
 @router.get("/operator/orders")
 async def operator_get_orders(
     status: Optional[str] = None,
+    limit: int = 500,
     current_user: dict = Depends(get_current_user),
 ):
+    """Get orders for operator dashboard"""
     if not has_permission(current_user, "orders:read"):
         raise HTTPException(status_code=403, detail="Permission denied")
+    
     query = {}
     if status:
         query["status"] = status
-    orders = await db.orders.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
+    
+    orders = await db.orders.find(query, {"_id": 0}).sort("created_at", -1).to_list(limit)
     return orders
 
 
@@ -175,6 +182,7 @@ async def operator_update_order_status(
     body: StatusUpdate,
     current_user: dict = Depends(get_current_user),
 ):
+    """Update order status (operator only)"""
     if not has_permission(current_user, "orders:update_status"):
         raise HTTPException(status_code=403, detail="Permission denied")
 
@@ -192,13 +200,18 @@ async def operator_update_order_status(
 
 
 # ── Driver endpoints ──────────────────────────────────────────────────
+
 @router.get("/driver/orders")
-async def driver_get_orders(current_user: dict = Depends(get_current_user)):
+async def driver_get_orders(
+    current_user: dict = Depends(get_current_user)
+):
+    """Get orders assigned to driver"""
     role = current_user.get("role", "")
-    if role not in ("admin", "driver"):
+    if role not in ("admin", "driver", "operator"):
         raise HTTPException(status_code=403, detail="Permission denied")
+    
     user_id = current_user["id"]
-    query = {} if role == "admin" else {
+    query = {} if role in ("admin", "operator") else {
         "$or": [{"assigned_driver_id": user_id}, {"driver_id": user_id}]
     }
     orders = await db.orders.find(query, {"_id": 0}).sort("created_at", -1).to_list(200)
@@ -211,6 +224,7 @@ async def driver_update_order_status(
     body: StatusUpdate,
     current_user: dict = Depends(get_current_user),
 ):
+    """Update order status (driver only)"""
     role = current_user.get("role", "")
     if role not in ("admin", "driver"):
         raise HTTPException(status_code=403, detail="Solo drivers pueden usar este endpoint")
@@ -229,24 +243,34 @@ async def driver_update_order_status(
 
 
 # ── Debug ─────────────────────────────────────────────────────────────
+
 @router.get("/debug/order-lookup/{identifier}")
 async def debug_order_lookup(identifier: str):
+    """Debug endpoint to lookup order by ID or number"""
     order = await db.orders.find_one({
         "$or": [{"id": identifier}, {"order_id": identifier}, {"order_number": identifier}]
     }, {"_id": 0})
     if order:
-        return {"found": True, "id": order.get("id"), "order_number": order.get("order_number"), "status": order.get("status")}
+        return {
+            "found": True, 
+            "id": order.get("id"), 
+            "order_number": order.get("order_number"), 
+            "status": order.get("status")
+        }
     return {"found": False, "searched_for": identifier}
 
 
 # ── Image helpers ─────────────────────────────────────────────────────
+
 async def _find_order(order_id: str) -> Optional[dict]:
+    """Find order by ID or order number"""
     return await db.orders.find_one({
         "$or": [{"id": order_id}, {"order_id": order_id}, {"order_number": order_id}]
     }, {"_id": 0})
 
 
 async def _save_image_to_disk(data: bytes, filename: str) -> Optional[Path]:
+    """Save image to disk and return path"""
     file_path = UPLOAD_DIR / filename
     try:
         with open(file_path, "wb") as f:
@@ -306,12 +330,14 @@ def _validate_upload(file: UploadFile) -> str:
 
 
 # ── Pickup image ──────────────────────────────────────────────────────
+
 @router.post("/driver/orders/{order_id}/pickup-image")
 async def upload_pickup_image(
     order_id: str,
     file: UploadFile = File(...),
     current_user: dict = Depends(get_current_user),
 ):
+    """Upload pickup proof image"""
     role = current_user.get("role", "")
     if role not in ("admin", "driver", "operator"):
         raise HTTPException(status_code=403, detail="Permiso denegado")
@@ -391,6 +417,7 @@ async def upload_pickup_image(
 
 @router.get("/driver/orders/{order_id}/pickup-image/view")
 async def get_pickup_image(order_id: str, current_user: dict = Depends(get_current_user)):
+    """Get pickup image as file"""
     role = current_user.get("role", "")
     if role not in ("admin", "driver", "operator"):
         raise HTTPException(status_code=403, detail="Permiso denegado")
@@ -444,6 +471,7 @@ async def get_pickup_image(order_id: str, current_user: dict = Depends(get_curre
 
 @router.get("/driver/orders/{order_id}/pickup-image")
 async def get_pickup_image_info(order_id: str, current_user: dict = Depends(get_current_user)):
+    """Get pickup image metadata"""
     role = current_user.get("role", "")
     if role not in ("admin", "driver", "operator"):
         raise HTTPException(status_code=403, detail="Permiso denegado")
@@ -472,12 +500,14 @@ async def get_pickup_image_info(order_id: str, current_user: dict = Depends(get_
 
 
 # ── Delivery image ────────────────────────────────────────────────────
+
 @router.post("/driver/orders/{order_id}/delivery-image")
 async def upload_delivery_image(
     order_id: str,
     file: UploadFile = File(...),
     current_user: dict = Depends(get_current_user),
 ):
+    """Upload delivery proof image"""
     role = current_user.get("role", "")
     if role not in ("admin", "driver", "operator"):
         raise HTTPException(status_code=403, detail="Permiso denegado")
@@ -547,6 +577,7 @@ async def upload_delivery_image(
 
 @router.get("/driver/orders/{order_id}/delivery-image/view")
 async def get_delivery_image(order_id: str, current_user: dict = Depends(get_current_user)):
+    """Get delivery image as file"""
     role = current_user.get("role", "")
     if role not in ("admin", "driver", "operator"):
         raise HTTPException(status_code=403, detail="Permiso denegado")
@@ -597,6 +628,7 @@ async def get_delivery_image(order_id: str, current_user: dict = Depends(get_cur
 
 @router.get("/driver/orders/{order_id}/delivery-image")
 async def get_delivery_image_info(order_id: str, current_user: dict = Depends(get_current_user)):
+    """Get delivery image metadata"""
     role = current_user.get("role", "")
     if role not in ("admin", "driver", "operator"):
         raise HTTPException(status_code=403, detail="Permiso denegado")
@@ -630,6 +662,7 @@ async def link_delivery_image(
     body: dict,
     current_user: dict = Depends(get_current_user),
 ):
+    """Link an existing pickup image as delivery proof"""
     role = current_user.get("role", "")
     if role not in ("admin", "driver", "operator"):
         raise HTTPException(status_code=403, detail="Permiso denegado")

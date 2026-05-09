@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { Plus, Search, Calendar, Truck, MoreHorizontal, Eye, CheckCircle, Download } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "../components/ui/dropdown-menu";
 import { useLocale } from "../context/LocaleContext";
+import { formatShortDatePT } from "../utils/dateUtils"; // ← CORREGIDO: usamos la función que ya tiene ensureLocalNoon
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -140,7 +141,6 @@ export default function Orders() {
     }
   };
 
-  // Función auxiliar para obtener la fecha local en formato YYYY-MM-DD
   const getLocalDate = () => {
     const d = new Date();
     const year = d.getFullYear();
@@ -149,48 +149,45 @@ export default function Orders() {
     return `${year}-${month}-${day}`;
   };
 
-const handleSubmit = async (e) => {
-  e.preventDefault();
-  
-  // 🔧 Forzar corrección de time_window
-  let correctedTimeWindow = form.pickup_time_window;
-  if (correctedTimeWindow === "8am-12am") correctedTimeWindow = "8-12";
-  if (correctedTimeWindow === "2pm-6pm") correctedTimeWindow = "14-18";
-  
-  // 🔧 Forzar fecha sin offset de zona horaria
-  let correctedPickupDate = form.pickup_date;
-  if (correctedPickupDate) {
-    // Asegurar que la fecha se envía tal cual sin conversión
-    const [year, month, day] = correctedPickupDate.split('-');
-    correctedPickupDate = `${year}-${month}-${day}`;
-  }
-  
-  const today = getLocalDate();
-  if (correctedPickupDate && correctedPickupDate < today) {
-    toast.error(t("Pickup date cannot be in the past", "La fecha de recogida no puede ser anterior a hoy"));
-    return;
-  }
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    let correctedTimeWindow = form.pickup_time_window;
+    if (correctedTimeWindow === "8am-12am") correctedTimeWindow = "8-12";
+    if (correctedTimeWindow === "2pm-6pm") correctedTimeWindow = "14-18";
+    
+    let correctedPickupDate = form.pickup_date;
+    if (correctedPickupDate) {
+      const [year, month, day] = correctedPickupDate.split('-');
+      correctedPickupDate = `${year}-${month}-${day}`;
+    }
+    
+    const today = getLocalDate();
+    if (correctedPickupDate && correctedPickupDate < today) {
+      toast.error(t("Pickup date cannot be in the past", "La fecha de recogida no puede ser anterior a hoy"));
+      return;
+    }
 
-  setSubmitting(true);
-  try {
-    const data = {
-      ...form,
-      pickup_time_window: correctedTimeWindow,
-      pickup_date: correctedPickupDate,
-      estimated_lbs: form.estimated_lbs ? parseFloat(form.estimated_lbs) : null
-    };
-    console.log("Enviando orden:", data); // 👈 verifica en consola
-    await axios.post(`${API}/orders`, data);
-    toast.success(t("Order created", "Orden creada"));
-    setDialogOpen(false);
-    setForm(emptyForm);
-    fetchOrders();
-  } catch (error) {
-    toast.error(error.response?.data?.detail || t("Error creating order", "Error creando orden"));
-  } finally {
-    setSubmitting(false);
-  }
-};
+    setSubmitting(true);
+    try {
+      const data = {
+        ...form,
+        pickup_time_window: correctedTimeWindow,
+        pickup_date: correctedPickupDate,
+        estimated_lbs: form.estimated_lbs ? parseFloat(form.estimated_lbs) : null
+      };
+      console.log("Enviando orden:", data);
+      await axios.post(`${API}/orders`, data);
+      toast.success(t("Order created", "Orden creada"));
+      setDialogOpen(false);
+      setForm(emptyForm);
+      fetchOrders();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || t("Error creating order", "Error creando orden"));
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const updateStatus = async (orderId, newStatus) => {
     try {
@@ -277,18 +274,17 @@ const handleSubmit = async (e) => {
     }
   };
 
+  // ─── CORREGIDO: se usa formatShortDatePT (ya arreglada con ensureLocalNoon) ───
   const formatDate = (dateStr) => {
     if (!dateStr) return "-";
-    return new Date(dateStr).toLocaleDateString(locale === "es" ? "es-ES" : "en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric"
-    });
+    return formatShortDatePT(dateStr);
   };
 
   const buildDateSlug = (dateStr) => {
     if (!dateStr) return new Date().toISOString().slice(0, 10).replace(/-/g, "");
-    const d = new Date(dateStr);
+    // Usamos la misma lógica que ensureLocalNoon para evitar desfase
+    const safeStr = dateStr.includes("T") ? dateStr : dateStr + "T12:00:00";
+    const d = new Date(safeStr);
     if (isNaN(d.getTime())) return new Date().toISOString().slice(0, 10).replace(/-/g, "");
     const year = d.getFullYear();
     const month = String(d.getMonth() + 1).padStart(2, "0");
@@ -385,7 +381,6 @@ const handleSubmit = async (e) => {
                       <SelectValue placeholder={t("Select", "Seleccionar")} />
                     </SelectTrigger>
                     <SelectContent>
-                      {/* ✅ VALORES CORRECTOS para el backend: "8-12" y "14-18" */}
                       <SelectItem value="8-12">8am - 12am</SelectItem>
                       <SelectItem value="14-18">2pm - 6pm</SelectItem>
                     </SelectContent>

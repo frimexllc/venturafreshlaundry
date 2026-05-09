@@ -15,10 +15,20 @@ from models import (
     PreferenceCreate,
 )
 from auth import get_current_user, require_admin
-from utils import create_audit_log
+from utils import (
+    create_audit_log,
+    calculate_final_amount_with_membership,
+    should_skip_payment_notification,
+    get_remaining_membership_allowance,
+    is_active_member,
+    normalize_spaces,
+    get_customer_cycle_usage,  
+)
 from routes.customers import normalize_preference_payload
 
 logger = logging.getLogger(__name__)
+
+# Router con prefix /api (ya que se montará en app con prefix /api o directamente)
 router = APIRouter(prefix="/api", tags=["Services"])
 
 
@@ -26,6 +36,8 @@ router = APIRouter(prefix="/api", tags=["Services"])
 
 @router.post("/services", response_model=ServiceResponse)
 async def create_service(data: ServiceCreate, current_user: dict = Depends(get_current_user)):
+    """Create a new service (admin only)"""
+    require_admin(current_user)
     service_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
     service = {
@@ -51,6 +63,7 @@ async def get_services(
     search: Optional[str] = None,
     current_user: dict = Depends(get_current_user),
 ):
+    """Get all services (authenticated users)"""
     query = {}
     if active_only:
         query["is_active"] = True
@@ -65,6 +78,7 @@ async def get_services(
 
 @router.get("/services/{service_id}", response_model=ServiceResponse)
 async def get_service(service_id: str, current_user: dict = Depends(get_current_user)):
+    """Get a single service by ID"""
     service = await db.services.find_one({"id": service_id}, {"_id": 0})
     if not service:
         raise HTTPException(status_code=404, detail="Service not found")
@@ -73,6 +87,8 @@ async def get_service(service_id: str, current_user: dict = Depends(get_current_
 
 @router.put("/services/{service_id}", response_model=ServiceResponse)
 async def update_service(service_id: str, data: ServiceCreate, current_user: dict = Depends(get_current_user)):
+    """Update a service (admin only)"""
+    require_admin(current_user)
     update_data = data.model_dump(exclude_unset=True)
     update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
     update_data["sort_order"] = update_data.get("sort_order", 0) or 0
@@ -86,6 +102,8 @@ async def update_service(service_id: str, data: ServiceCreate, current_user: dic
 
 @router.delete("/services/{service_id}")
 async def delete_service(service_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete a service (admin only)"""
+    require_admin(current_user)
     result = await db.services.delete_one({"id": service_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Service not found")
@@ -95,6 +113,7 @@ async def delete_service(service_id: str, current_user: dict = Depends(get_curre
 
 @router.get("/public/services", response_model=List[ServiceResponse])
 async def get_public_services(active_only: bool = True):
+    """Get public services (no authentication required)"""
     query = {}
     if active_only:
         query["is_active"] = True
@@ -106,6 +125,7 @@ async def get_public_services(active_only: bool = True):
 
 @router.get("/services/membership-section", response_model=MembershipSectionResponse)
 async def get_membership_section(current_user: dict = Depends(get_current_user)):
+    """Get membership section configuration (authenticated)"""
     section = await db.membership_section.find_one({"id": "default"}, {"_id": 0})
     if not section:
         section = _default_membership_section()
@@ -115,6 +135,8 @@ async def get_membership_section(current_user: dict = Depends(get_current_user))
 
 @router.put("/services/membership-section", response_model=MembershipSectionResponse)
 async def update_membership_section(data: MembershipSectionUpdate, current_user: dict = Depends(get_current_user)):
+    """Update membership section configuration (admin only)"""
+    require_admin(current_user)
     now = datetime.now(timezone.utc).isoformat()
     update_data = data.model_dump(exclude_unset=True)
     update_data["updated_at"] = now
@@ -130,6 +152,8 @@ async def update_membership_section(data: MembershipSectionUpdate, current_user:
 
 @router.post("/services/membership-plans", response_model=MembershipPlanResponse)
 async def create_membership_plan(data: MembershipPlanCreate, current_user: dict = Depends(get_current_user)):
+    """Create a new membership plan (admin only)"""
+    require_admin(current_user)
     plan_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
     plan = {
@@ -151,6 +175,7 @@ async def create_membership_plan(data: MembershipPlanCreate, current_user: dict 
 
 @router.get("/services/membership-plans", response_model=List[MembershipPlanResponse])
 async def get_membership_plans(active_only: bool = True, current_user: dict = Depends(get_current_user)):
+    """Get all membership plans (authenticated)"""
     query = {}
     if active_only:
         query["is_active"] = True
@@ -163,6 +188,8 @@ async def get_membership_plans(active_only: bool = True, current_user: dict = De
 
 @router.put("/services/membership-plans/{plan_id}", response_model=MembershipPlanResponse)
 async def update_membership_plan(plan_id: str, data: MembershipPlanCreate, current_user: dict = Depends(get_current_user)):
+    """Update a membership plan (admin only)"""
+    require_admin(current_user)
     update_data = data.model_dump(exclude_unset=True)
     update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
     update_data["sort_order"] = update_data.get("sort_order", 0) or 0
@@ -176,6 +203,8 @@ async def update_membership_plan(plan_id: str, data: MembershipPlanCreate, curre
 
 @router.delete("/services/membership-plans/{plan_id}")
 async def delete_membership_plan(plan_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete a membership plan (admin only)"""
+    require_admin(current_user)
     result = await db.membership_plans.delete_one({"id": plan_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Plan not found")
@@ -187,6 +216,7 @@ async def delete_membership_plan(plan_id: str, current_user: dict = Depends(get_
 
 @router.get("/memberships/section", response_model=MembershipSectionResponse)
 async def get_membership_section_admin(current_user: dict = Depends(get_current_user)):
+    """Get membership section configuration (admin)"""
     section = await db.membership_section.find_one({"id": "default"}, {"_id": 0})
     if not section:
         section = _default_membership_section()
@@ -196,6 +226,8 @@ async def get_membership_section_admin(current_user: dict = Depends(get_current_
 
 @router.put("/memberships/section", response_model=MembershipSectionResponse)
 async def update_membership_section_admin(data: MembershipSectionUpdate, current_user: dict = Depends(get_current_user)):
+    """Update membership section configuration (admin only)"""
+    require_admin(current_user)
     now = datetime.now(timezone.utc).isoformat()
     update_data = data.model_dump(exclude_unset=True)
     update_data["updated_at"] = now
@@ -211,6 +243,8 @@ async def update_membership_section_admin(data: MembershipSectionUpdate, current
 
 @router.post("/memberships/plans", response_model=MembershipPlanResponse)
 async def create_membership_plan_admin(data: MembershipPlanCreate, current_user: dict = Depends(get_current_user)):
+    """Create a new membership plan (admin only)"""
+    require_admin(current_user)
     plan_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
     plan = {
@@ -232,6 +266,7 @@ async def create_membership_plan_admin(data: MembershipPlanCreate, current_user:
 
 @router.get("/memberships/plans", response_model=List[MembershipPlanResponse])
 async def get_membership_plans_admin(active_only: bool = True, current_user: dict = Depends(get_current_user)):
+    """Get all membership plans (admin)"""
     query = {}
     if active_only:
         query["is_active"] = True
@@ -244,6 +279,8 @@ async def get_membership_plans_admin(active_only: bool = True, current_user: dic
 
 @router.put("/memberships/plans/{plan_id}", response_model=MembershipPlanResponse)
 async def update_membership_plan_admin(plan_id: str, data: MembershipPlanCreate, current_user: dict = Depends(get_current_user)):
+    """Update a membership plan (admin only)"""
+    require_admin(current_user)
     update_data = data.model_dump(exclude_unset=True)
     update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
     update_data["sort_order"] = update_data.get("sort_order", 0) or 0
@@ -257,6 +294,8 @@ async def update_membership_plan_admin(plan_id: str, data: MembershipPlanCreate,
 
 @router.delete("/memberships/plans/{plan_id}")
 async def delete_membership_plan_admin(plan_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete a membership plan (admin only)"""
+    require_admin(current_user)
     result = await db.membership_plans.delete_one({"id": plan_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Plan not found")
@@ -266,6 +305,7 @@ async def delete_membership_plan_admin(plan_id: str, current_user: dict = Depend
 
 @router.get("/memberships/signups", response_model=List[MembershipSignupResponse])
 async def get_membership_signups(status: Optional[str] = None, current_user: dict = Depends(get_current_user)):
+    """Get membership signups (admin only)"""
     require_admin(current_user)
     query = {}
     if status:
@@ -312,6 +352,7 @@ async def get_membership_signups(status: Optional[str] = None, current_user: dic
 
 @router.put("/memberships/signups/{signup_id}", response_model=MembershipSignupResponse)
 async def update_membership_signup(signup_id: str, data: MembershipSignupUpdate, current_user: dict = Depends(get_current_user)):
+    """Update a membership signup (admin only)"""
     require_admin(current_user)
     update_data = data.model_dump(exclude_unset=True)
     update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
@@ -325,17 +366,23 @@ async def update_membership_signup(signup_id: str, data: MembershipSignupUpdate,
 
 @router.post("/memberships/signups/{signup_id}/convert", response_model=CustomerResponse)
 async def convert_membership_signup(signup_id: str, current_user: dict = Depends(get_current_user)):
+    """Convert a membership signup to a customer (admin only)"""
     require_admin(current_user)
     signup = await db.membership_signups.find_one({"id": signup_id}, {"_id": 0})
     if not signup:
         raise HTTPException(status_code=404, detail="Signup not found")
+
     now = datetime.now(timezone.utc).isoformat()
+    membership_start = signup.get("created_at")
+    if not membership_start:
+        membership_start = now
+
     customer = await db.customers.find_one({"email": signup["email"]}, {"_id": 0})
     if customer:
         update_data = {
             "membership_plan": signup["membership_plan"],
             "membership_status": "active",
-            "membership_start_date": now,
+            "membership_start_date": membership_start,
             "updated_at": now,
         }
         await db.customers.update_one({"id": customer["id"]}, {"$set": update_data})
@@ -354,7 +401,7 @@ async def convert_membership_signup(signup_id: str, current_user: dict = Depends
             "total_orders": 0,
             "membership_plan": signup["membership_plan"],
             "membership_status": "active",
-            "membership_start_date": now,
+            "membership_start_date": membership_start,
             "created_at": now,
             "updated_at": now,
         }
@@ -377,6 +424,7 @@ async def convert_membership_signup(signup_id: str, current_user: dict = Depends
         }
         await db.preferences.insert_one(pref_doc)
         await db.customers.update_one({"id": customer["id"]}, {"$set": {"preferences_id": pref_id, "updated_at": now}})
+
     await db.membership_signups.update_one(
         {"id": signup_id},
         {"$set": {"status": "converted", "customer_id": customer["id"], "updated_at": now}},
@@ -385,22 +433,45 @@ async def convert_membership_signup(signup_id: str, current_user: dict = Depends
     return CustomerResponse(**customer)
 
 
+# ==================== Endpoints para clientes con membresía ====================
+
 @router.get("/memberships/customers", response_model=List[CustomerResponse])
 async def get_membership_customers(search: Optional[str] = None, current_user: dict = Depends(get_current_user)):
+    """Get customers with active membership (admin only)"""
     require_admin(current_user)
-    query: Dict[str, Any] = {"membership_plan": {"$ne": None}}
+
+    query: Dict[str, Any] = {
+        "membership_status": "active",
+        "membership_plan": {"$ne": None},
+        "id": {"$exists": True, "$ne": None}
+    }
     if search:
         query["$or"] = [
             {"name": {"$regex": search, "$options": "i"}},
             {"email": {"$regex": search, "$options": "i"}},
             {"phone": {"$regex": search, "$options": "i"}},
         ]
+
     customers = await db.customers.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
-    return [CustomerResponse(**c) for c in customers]
+
+    result = []
+    for c in customers:
+        try:
+            if "id" not in c:
+                logger.warning(f"Cliente omitido por falta de 'id': {c}")
+                continue
+            usage = await get_customer_cycle_usage(c["id"])
+            c["cycle_usage"] = usage
+            result.append(CustomerResponse(**c))
+        except Exception as e:
+            logger.error(f"Error procesando cliente {c.get('id', 'desconocido')}: {e}")
+            continue
+    return result
 
 
 @router.put("/memberships/customers/{customer_id}", response_model=CustomerResponse)
 async def update_membership_customer(customer_id: str, data: MembershipCustomerUpdate, current_user: dict = Depends(get_current_user)):
+    """Update a membership customer (admin only)"""
     require_admin(current_user)
     update_data = data.model_dump(exclude_unset=True)
     update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
@@ -412,10 +483,33 @@ async def update_membership_customer(customer_id: str, data: MembershipCustomerU
     return CustomerResponse(**customer)
 
 
-# ==================== PUBLIC MEMBERSHIP ROUTES ====================
+# ==================== Endpoint público para ciclo de uso ====================
+
+@router.get("/customers/{customer_id}/cycle-usage")
+async def get_customer_cycle_usage_endpoint(
+    customer_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Obtiene el ciclo de uso de la membresía de un cliente específico.
+    Accesible para admin/operator o el propio cliente.
+    """
+    # Verificar permisos: admin o el propio cliente
+    if current_user.get("role") not in ["admin", "operator"]:
+        if current_user.get("id") != customer_id and current_user.get("customer_id") != customer_id:
+            raise HTTPException(status_code=403, detail="Not authorized to view this customer's usage")
+    
+    usage = await get_customer_cycle_usage(customer_id)
+    if usage is None:
+        return {"ok": False, "detail": "No active membership or plan not recognized"}
+    return {"ok": True, "data": usage}
+
+
+# ==================== Rutas públicas ====================
 
 @router.get("/public/membership-section", response_model=MembershipSectionResponse)
 async def get_public_membership_section():
+    """Get membership section configuration (public)"""
     section = await db.membership_section.find_one({"id": "default"}, {"_id": 0})
     if not section:
         section = _default_membership_section()
@@ -425,6 +519,7 @@ async def get_public_membership_section():
 
 @router.get("/public/membership-plans", response_model=List[MembershipPlanResponse])
 async def get_public_membership_plans():
+    """Get public membership plans (no authentication required)"""
     query = {"is_active": True}
     plans = await db.membership_plans.find(query, {"_id": 0}).sort([("sort_order", 1), ("created_at", -1)]).to_list(200)
     if len(plans) == 0:
@@ -433,7 +528,7 @@ async def get_public_membership_plans():
     return [MembershipPlanResponse(**p) for p in plans]
 
 
-# ── Helpers ───────────────────────────────────────────────────────────
+# ==================== Funciones internas (defaults y seed) ====================
 
 def _default_membership_section() -> dict:
     now = datetime.now(timezone.utc).isoformat()

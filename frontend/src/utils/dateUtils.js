@@ -3,11 +3,22 @@
  */
 const TZ = "America/Los_Angeles";
 
+/**
+ * Si el string no contiene hora, le agrega "T12:00:00" para evitar
+ * que new Date() lo interprete como UTC y desplace la fecha.
+ */
+function ensureLocalNoon(isoStr) {
+  if (!isoStr) return isoStr;
+  // Si ya incluye 'T', asumimos que tiene hora y no lo tocamos
+  if (isoStr.includes("T")) return isoStr;
+  return isoStr + "T12:00:00";
+}
+
 /** Format ISO string to Pacific display: "Mar 28, 2026 6:30 PM PT" */
 export function formatDatePT(isoStr, opts = {}) {
   if (!isoStr) return "--";
   try {
-    const d = new Date(isoStr);
+    const d = new Date(ensureLocalNoon(isoStr));
     if (isNaN(d.getTime())) return isoStr;
     const options = {
       timeZone: TZ,
@@ -29,7 +40,7 @@ export function formatDatePT(isoStr, opts = {}) {
 export function formatShortDatePT(isoStr) {
   if (!isoStr) return "--";
   try {
-    const d = new Date(isoStr);
+    const d = new Date(ensureLocalNoon(isoStr));
     if (isNaN(d.getTime())) return isoStr;
     return d.toLocaleDateString("en-US", { timeZone: TZ, month: "2-digit", day: "2-digit", year: "numeric" });
   } catch {
@@ -53,7 +64,7 @@ export function formatTimePT(isoStr) {
 export function formatRelative(isoStr, locale = "en") {
   if (!isoStr) return "--";
   try {
-    const d = new Date(isoStr);
+    const d = new Date(ensureLocalNoon(isoStr));
     const now = new Date();
     const diffMs = now - d;
     const diffMin = Math.floor(diffMs / 60000);

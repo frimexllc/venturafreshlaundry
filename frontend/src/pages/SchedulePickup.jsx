@@ -54,9 +54,9 @@ const WASH_PHASES = ["Pre-wash", "Washing", "Rinse", "Spin", "Done!"];
 // ─── Recurrence options ────────────────────────────────────────────────────────
 const RECURRENCE_OPTIONS = [
   { val: "once",      icon: "1️⃣",  en: "One time",           es: "Una sola vez" },
+  { val: "twice_week",icon: "🔄",  en: "Twice a week",       es: "Dos veces por semana" },
   { val: "weekly",    icon: "📅",  en: "Every week",         es: "Cada semana" },
   { val: "biweekly",  icon: "📆",  en: "Every 2 weeks",      es: "Cada 2 semanas" },
-  { val: "twice_week",icon: "🔄",  en: "Twice a week",       es: "Dos veces por semana" },
 ];
 
 const RECURRENCE_LABELS = {

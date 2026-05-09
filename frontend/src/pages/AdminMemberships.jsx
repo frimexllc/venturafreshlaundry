@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
-import axios from "axios";
+import adminAxios from "../api/adminClient"; 
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -15,8 +15,7 @@ import {
   Download, RefreshCw
 } from "lucide-react";
 import { useLocale } from "../context/LocaleContext";
-
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+import { useAuth } from "../context/AuthContext";
 
 const emptyPlan = {
   name: "",
@@ -55,13 +54,27 @@ const StatusBadge = ({ status, type = "signup" }) => {
   );
 };
 
+// SkeletonRow SOLO para tablas (nunca para settings)
 const SkeletonRow = ({ cols }) => (
-  <div className="animate-pulse">
-    <div className="flex items-center gap-4 px-4 py-3">
-      {Array(cols).fill().map((_, i) => (
-        <div key={i} className="h-4 bg-slate-200 rounded flex-1"></div>
-      ))}
-    </div>
+  <tr className="animate-pulse">
+    <td colSpan={cols} className="px-4 py-3">
+      <div className="flex items-center gap-4">
+        {Array(cols).fill().map((_, i) => (
+          <div key={i} className="h-4 bg-slate-200 rounded flex-1"></div>
+        ))}
+      </div>
+    </td>
+  </tr>
+);
+
+// Esqueleto genérico (sin <tr>) para settings
+const SkeletonSettings = () => (
+  <div className="space-y-4">
+    <div className="h-10 bg-slate-200 rounded animate-pulse"></div>
+    <div className="h-10 bg-slate-200 rounded animate-pulse"></div>
+    <div className="h-20 bg-slate-200 rounded animate-pulse"></div>
+    <div className="h-10 bg-slate-200 rounded animate-pulse"></div>
+    <div className="h-10 bg-slate-200 rounded animate-pulse"></div>
   </div>
 );
 
@@ -162,6 +175,7 @@ const ConfirmDialog = ({ isOpen, onClose, onConfirm, title, message }) => {
 
 // Componente principal
 export default function AdminMemberships() {
+  const { user } = useAuth(); // ✅ Obtenemos el usuario autenticado
   const { t } = useLocale();
   const [activeTab, setActiveTab] = useState("plans");
   const [section, setSection] = useState(null);
@@ -224,29 +238,45 @@ export default function AdminMemberships() {
     cancelledMembers: membershipCustomers.filter(c => c.membership_status === "cancelled").length
   };
 
-  // Carga de datos
+  // Carga de datos - Clientes
   const loadCustomers = useCallback(async (searchValue = "") => {
+    // ✅ No cargamos clientes si el usuario no tiene ID
+    if (!user?.id) {
+      setLoading(prev => ({ ...prev, customers: false }));
+      return;
+    }
+
     setLoading(prev => ({ ...prev, customers: true }));
     try {
-      const customersRes = await axios.get(`${API}/memberships/customers`, { 
-        params: { search: searchValue || undefined } 
+      const customersRes = await adminAxios.get("/memberships/customers", { 
+        params: { 
+          search: searchValue || undefined,
+          user_id: user.id // ✅ Pasamos el user_id al backend
+        } 
       });
       setMembershipCustomers(customersRes.data);
       setCustomerPage(1);
     } catch (error) {
-      toast.error("Error cargando clientes con membresía");
+      console.error("Error en loadCustomers:", error.response?.data || error.message);
+      toast.error(error.response?.data?.detail || "Error cargando clientes con membresía");
     } finally {
       setLoading(prev => ({ ...prev, customers: false }));
     }
-  }, []);
+  }, [user?.id]); // ✅ Dependencia en user.id
 
+  // Carga de datos principal
   const loadData = useCallback(async () => {
+    // Si el token es válido pero el usuario no está cargado, esperamos
+    if (!user?.id) {
+      return;
+    }
+
     setLoading({ section: true, plans: true, signups: true, customers: true });
     try {
       const [sectionRes, plansRes, signupsRes] = await Promise.all([
-        axios.get(`${API}/memberships/section`),
-        axios.get(`${API}/memberships/plans`, { params: { active_only: false } }),
-        axios.get(`${API}/memberships/signups`)
+        adminAxios.get("/memberships/section"),
+        adminAxios.get("/memberships/plans", { params: { active_only: false } }),
+        adminAxios.get("/memberships/signups")
       ]);
       setSection(sectionRes.data);
       setPlans(plansRes.data);
@@ -257,20 +287,26 @@ export default function AdminMemberships() {
     } finally {
       setLoading({ section: false, plans: false, signups: false, customers: false });
     }
-  }, [customerSearch, loadCustomers]);
+  }, [customerSearch, loadCustomers, user?.id]); // ✅ Espera a que user.id esté disponible
 
   useEffect(() => {
-    loadData();
-  }, []);
+    // Solo cargamos datos cuando el usuario esté autenticado y tenga ID
+    if (user?.id) {
+      loadData();
+    }
+  }, [user?.id, loadData]);
 
+  // Actualizar campos de la sección
   const updateSectionField = (key, value) => {
     setSection((prev) => ({ ...prev, [key]: value }));
   };
 
+  // Guardar sección
   const saveSection = async () => {
+    if (!user?.id) return;
     setSavingSection(true);
     try {
-      await axios.put(`${API}/memberships/section`, {
+      await adminAxios.put("/memberships/section", {
         heading: section.heading,
         subheading: section.subheading || null,
         special_title: section.special_title || null,
@@ -312,6 +348,7 @@ export default function AdminMemberships() {
 
   const handlePlanSubmit = async (e) => {
     e.preventDefault();
+    if (!user?.id) return;
     const payload = {
       name: planForm.name,
       price: planForm.price,
@@ -326,10 +363,10 @@ export default function AdminMemberships() {
     };
     try {
       if (editingPlan) {
-        await axios.put(`${API}/memberships/plans/${editingPlan.id}`, payload);
+        await adminAxios.put(`/memberships/plans/${editingPlan.id}`, payload);
         toast.success("Plan actualizado");
       } else {
-        await axios.post(`${API}/memberships/plans`, payload);
+        await adminAxios.post("/memberships/plans", payload);
         toast.success("Plan creado");
       }
       setPlanDialogOpen(false);
@@ -342,13 +379,14 @@ export default function AdminMemberships() {
   };
 
   const deletePlan = async (id) => {
+    if (!user?.id) return;
     setConfirmDialog({
       open: true,
       title: "Eliminar plan",
       message: "¿Estás seguro de que quieres eliminar este plan? Esta acción no se puede deshacer.",
       onConfirm: async () => {
         try {
-          await axios.delete(`${API}/memberships/plans/${id}`);
+          await adminAxios.delete(`/memberships/plans/${id}`);
           toast.success("Plan eliminado");
           loadData();
           setConfirmDialog({ open: false });
@@ -360,8 +398,9 @@ export default function AdminMemberships() {
   };
 
   const updateSignupStatus = async (signupId, status) => {
+    if (!user?.id) return;
     try {
-      await axios.put(`${API}/memberships/signups/${signupId}`, { status });
+      await adminAxios.put(`/memberships/signups/${signupId}`, { status });
       toast.success("Solicitud actualizada");
       loadData();
     } catch (error) {
@@ -370,13 +409,14 @@ export default function AdminMemberships() {
   };
 
   const convertSignup = async (signupId) => {
+    if (!user?.id) return;
     setConfirmDialog({
       open: true,
       title: "Convertir solicitud",
       message: "¿Convertir esta solicitud en cliente? Se creará o actualizará el cliente en el sistema.",
       onConfirm: async () => {
         try {
-          await axios.post(`${API}/memberships/signups/${signupId}/convert`);
+          await adminAxios.post(`/memberships/signups/${signupId}/convert`);
           toast.success("Cliente creado/actualizado");
           loadData();
           setConfirmDialog({ open: false });
@@ -388,8 +428,9 @@ export default function AdminMemberships() {
   };
 
   const updateMembershipCustomer = async (customerId, payload) => {
+    if (!user?.id) return;
     try {
-      await axios.put(`${API}/memberships/customers/${customerId}`, payload);
+      await adminAxios.put(`/memberships/customers/${customerId}`, payload);
       toast.success("Cliente actualizado");
       loadData();
     } catch (error) {
@@ -763,6 +804,9 @@ export default function AdminMemberships() {
                       <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Plan</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Estado</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Fecha inicio</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">
+                        Ciclo Actual
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
@@ -770,7 +814,7 @@ export default function AdminMemberships() {
                       Array(5).fill().map((_, i) => <SkeletonRow key={i} cols={5} />)
                     ) : paginatedCustomers.length === 0 ? (
                       <tr>
-                        <td colSpan="4" className="px-4 py-12 text-center">
+                        <td colSpan="5" className="px-4 py-12 text-center">
                           <div className="flex flex-col items-center gap-2">
                             <CreditCard className="h-12 w-12 text-slate-300" />
                             <p className="text-slate-500">
@@ -820,6 +864,36 @@ export default function AdminMemberships() {
                               </div>
                             ) : "—"}
                           </td>
+                          {/* Nueva celda: Ciclo Actual */}
+                          <td className="px-4 py-3">
+                            {customer.cycle_usage ? (
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                  <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden" style={{ minWidth: 80 }}>
+                                    <div
+                                      className="h-full rounded-full transition-all"
+                                      style={{
+                                        width: `${Math.min(customer.cycle_usage.pct_used, 100)}%`,
+                                        background: customer.cycle_usage.lbs_remaining === 0
+                                          ? "#dc2626"
+                                          : customer.cycle_usage.pct_used >= 85
+                                          ? "#f59e0b"
+                                          : "#10b981",
+                                      }}
+                                    />
+                                  </div>
+                                  <span className="text-xs font-semibold text-slate-700 whitespace-nowrap">
+                                    {customer.cycle_usage.lbs_used}/{customer.cycle_usage.lbs_allowance} lbs
+                                  </span>
+                                </div>
+                                <span className="text-[10px] text-slate-400">
+                                  {customer.cycle_usage.lbs_remaining} lbs restantes
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 text-xs">—</span>
+                            )}
+                          </td>
                         </tr>
                       ))
                     )}
@@ -835,10 +909,7 @@ export default function AdminMemberships() {
         {activeTab === "settings" && (
           <div className="bg-white rounded-xl border border-slate-200 p-6">
             {loading.section || !section ? (
-              <div className="space-y-4">
-                <SkeletonRow cols={2} />
-                <SkeletonRow cols={2} />
-              </div>
+              <SkeletonSettings /> // ✅ Reemplazado por el esqueleto sin <tr>
             ) : (
               <div className="space-y-6">
                 <h3 className="text-lg font-semibold text-slate-900">Configuración de la sección de membresías</h3>

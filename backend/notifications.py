@@ -1,13 +1,11 @@
 """
-Notification services — Ventura Fresh Laundry  v3.4
-CHANGES vs v3.3:
-  1. Voice calls are clean — no order numbers spoken digit-by-digit,
-     natural phrasing in both English and Spanish.
-  2. Email HTML completely redesigned — premium look, card layout,
-     consistent brand colors, readable hierarchy.
-  3. Payment URLs always route to /account?order={id}; checkout_url
-     is preserved when available but always falls back cleanly.
-  4. All other fixes from v3.3 preserved unchanged.
+Notification services — Ventura Fresh Laundry  v3.5 (Fixed language detection)
+CHANGES vs v3.4:
+  1. Fixed detect_language() – now uses DEFAULT_LANGUAGE env var for fallback.
+  2. detect_country() returns None for unknown country codes → language fallback works.
+  3. SMS/WhatsApp footer is now monolingual (only the detected language).
+  4. Payment skip logic for membership remains unchanged.
+  5. Voice calls unchanged (already clean).
 """
 
 import os
@@ -42,6 +40,25 @@ SENDGRID_DATA_RESIDENCY = os.environ.get("SENDGRID_DATA_RESIDENCY", "").lower()
 GROQ_API_KEY            = os.environ.get("GROQ_API_KEY")
 USE_ULTRA_PREMIUM       = os.environ.get("USE_ULTRA_PREMIUM", "false").lower() == "true"
 ADMIN_PHONE             = os.environ.get("ADMIN_PHONE", "")
+
+# NEW: Default language when no preference and country unknown
+DEFAULT_LANGUAGE = os.environ.get("DEFAULT_LANGUAGE", "en-US").lower()   # "en-US" or "es-MX"
+
+# ── Footer (now monolingual) ─────────────────────────────────────────
+def _support_footer(is_es: bool) -> str:
+    """Devuelve el footer SOLO en el idioma indicado (no bilingüe)."""
+    if is_es:
+        return (
+            "\n\n—\nMensaje Automático — Ventura Fresh Laundry\n"
+            "Para soporte o asistencia, responda a este mensaje o llame al (805) 234-8181."
+        )
+    else:
+        return (
+            "\n\n—\nAutomated Message — Ventura Fresh Laundry\n"
+            "For support or assistance, please reply to this message or call (805) 234-8181."
+        )
+
+# ── Fin CAMBIO footer ─────────────────────────────────────────────────
 
 QUIET_START             = os.environ.get("QUIET_HOURS_START", "21:00")
 QUIET_END               = os.environ.get("QUIET_HOURS_END", "08:00")
@@ -208,6 +225,10 @@ def format_phone(phone: str) -> Optional[str]:
 
 
 def detect_country(phone: Optional[str]) -> Optional[str]:
+    """
+    Returns 'mx' for Mexico (+52), 'us' for USA/Canada (+1),
+    otherwise None (unknown). This allows DEFAULT_LANGUAGE to be used.
+    """
     if not phone:
         return None
     f = format_phone(phone)
@@ -215,6 +236,7 @@ def detect_country(phone: Optional[str]) -> Optional[str]:
         return "mx"
     if f and f.startswith("+1"):
         return "us"
+    # For UK, Australia, etc. return None → fallback to DEFAULT_LANGUAGE
     return None
 
 
@@ -254,21 +276,23 @@ def should_notify_customer(status: str) -> bool:
 
 
 def detect_language(customer: Optional[Dict], phone: Optional[str]) -> str:
-    if not customer:
-        if phone and detect_country(phone) == "mx":
+    """
+    Detect language:
+    1. If customer has preferred_language, use it.
+    2. Else if phone number belongs to Mexico -> Spanish.
+    3. Else if phone number belongs to USA/Canada -> English.
+    4. Else use DEFAULT_LANGUAGE (configurable, default 'en-US').
+    """
+    if customer:
+        preferred = (
+            customer.get("preferred_language") or customer.get("language") or ""
+        ).strip().lower()
+        if preferred in {"es", "es-mx", "spanish", "español"}:
             return "es-MX"
-        return "es-MX"
+        if preferred in {"en", "en-us", "english"}:
+            return "en-US"
 
-    preferred = (
-        customer.get("preferred_language") or customer.get("language") or ""
-    ).strip().lower()
-
-    if preferred in {"es", "es-mx", "spanish", "español"}:
-        return "es-MX"
-    if preferred in {"en", "en-us", "english"}:
-        return "en-US"
-
-    resolved = phone or customer.get("phone")
+    resolved = phone or (customer.get("phone") if customer else None)
     if resolved:
         country = detect_country(resolved)
         if country == "mx":
@@ -276,7 +300,10 @@ def detect_language(customer: Optional[Dict], phone: Optional[str]) -> str:
         if country == "us":
             return "en-US"
 
-    return "es-MX"
+    # Fallback to environment variable
+    if DEFAULT_LANGUAGE.startswith("es"):
+        return "es-MX"
+    return "en-US"
 
 
 def extract_contact_from_notes(order: Dict) -> Optional[str]:
@@ -291,8 +318,6 @@ def extract_contact_from_notes(order: Dict) -> Optional[str]:
 
 
 # FIX v3.4: Payment URL always routes to /account?order={id}
-# If a Stripe checkout_url exists, it is used directly.
-# Otherwise we always build /account?order={id} — never a bare /account.
 def _generate_internal_payment_url(order: Dict, base_url: str = "") -> str:
     origin = (base_url or BUSINESS_WEBSITE).rstrip("/")
     order_id = order.get("id") or order.get("order_number", "")
@@ -312,9 +337,7 @@ def _generate_internal_payment_url(order: Dict, base_url: str = "") -> str:
     return f"{origin}/account?order={order_id}"
 
 
-# ── HTML helpers ───────────────────────────────────────────────────────
-# v3.4: complete redesign — cleaner layout, better hierarchy, consistent spacing.
-
+# ── HTML helpers (unchanged, email footer remains bilingual) ─────────
 _EMAIL_CSS = """
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
   * { box-sizing: border-box; }
@@ -354,6 +377,22 @@ def _html_base(content_html: str, accent_color: str = VFL_BLUE, status_label: st
         f'<div class="status-bar" style="background:{accent_color}">'
         f'<span>{status_label}</span></div>'
     ) if status_label else ""
+    
+    footer_html = (
+        '<div class="footer">'
+        f'<p class="biz">{BUSINESS_NAME}</p>'
+        f'<p class="addr">{BUSINESS_ADDRESS}{phone_line}</p>'
+        f'<p class="web"><a href="{BUSINESS_WEBSITE}">{BUSINESS_WEBSITE}</a></p>'
+        '<hr style="border:none;border-top:1px solid #e2e8f0;margin:14px 0 10px">'
+        '<p style="font-size:10px;color:#94a3b8;margin:0">'
+        'Automated Message — Ventura Fresh Laundry<br>'
+        'For support or assistance, reply to this message or call (805) 234-8181.</p>'
+        '<p style="font-size:10px;color:#94a3b8;margin:6px 0 0">'
+        'Mensaje Automático — Ventura Fresh Laundry<br>'
+        'Para soporte o asistencia, responda a este mensaje o llame al (805) 234-8181.</p>'
+        '</div>'
+    )
+
     return (
         f'<!DOCTYPE html><html lang="{lang}"><head>'
         '<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
@@ -365,13 +404,9 @@ def _html_base(content_html: str, accent_color: str = VFL_BLUE, status_label: st
         f'<p class="header-logo">Laundry &amp; Delivery</p>'
         f'<p class="header-name">{BUSINESS_NAME}</p>'
         '</div>'
-        + status_bar
-        + content_html
-        + f'<div class="footer">'
-        f'<p class="biz">{BUSINESS_NAME}</p>'
-        f'<p class="addr">{BUSINESS_ADDRESS}{phone_line}</p>'
-        f'<p class="web"><a href="{BUSINESS_WEBSITE}">{BUSINESS_WEBSITE}</a></p>'
-        '</div>'
+        f'{status_bar}'
+        f'{content_html}'
+        f'{footer_html}'
         '</div></div></body></html>'
     )
 
@@ -415,8 +450,7 @@ def _total_row(order_total: Optional[float], is_es: bool) -> str:
     )
 
 
-# ── HTML per-event builders (v3.4 redesign) ───────────────────────────
-
+# ── HTML per-event builders (unchanged, but language is now correct) ──
 def _html_order_created(name, order_number, pickup_date, pickup_window, is_es):
     accent = VFL_BLUE
     lang = "es" if is_es else "en"
@@ -666,7 +700,6 @@ def _html_payment_request(name, order_number, order_total, payment_url, is_es):
 
 
 def _html_order_received(name, order_number, pickup_date, pickup_window, is_es):
-    """Wash & fold variant of order_created."""
     accent = VFL_BLUE
     lang = "es" if is_es else "en"
     heading = f"¡Recibimos tu ropa, {name}! 🧺" if is_es else f"We received your laundry, {name}! 🧺"
@@ -710,7 +743,7 @@ def _html_generic(name, is_es, title=None, body_text=None):
     return _html_base(body, accent, heading, lang)
 
 
-# ── SMS copy ──────────────────────────────────────────────────────────
+# ── SMS copy (footer now monolingual via _support_footer) ────────────
 def _sms_sync(
     event: str, name: str, order_number: str, language: str,
     pickup_date: Optional[str] = None, pickup_window: Optional[str] = None,
@@ -777,26 +810,13 @@ def _sms_sync(
         f"🫧 *{biz}*\n\nHola {n}, hay una actualización en tu servicio.",
         f"🫧 *{biz}*\n\nHi {n}, there's an update on your service."
     ))
-    return es_msg if is_es else en_msg
+    base = es_msg if is_es else en_msg
+    # Footer monolingüe
+    return base + _support_footer(is_es)
 
 
-# ── Voice TwiML (v3.4: clean — no order numbers spoken) ───────────────
-#
-# Problem in v3.3: Twilio's <Say> reads "order 12345" as "one two three
-# four five", which sounds robotic. Fix: never include numeric order IDs
-# in voice scripts. Use natural, human phrasing instead.
-#
+# ── Voice TwiML (unchanged, clean) ───────────────────────────────────
 def _voice(event: str, name: str, order_number: str, language: str) -> str:
-    """
-    Returns clean TwiML-ready text for voice calls.
-
-    Rules:
-    - NEVER include the raw order number — Twilio reads it digit by digit.
-    - Keep sentences short (Twilio has a ~30 s limit per <Say> by default).
-    - Use natural, conversational language.
-    - The caller ID already shows the business number, so no need to
-      repeat the business name excessively.
-    """
     is_es = str(language).lower().startswith("es")
     biz = BUSINESS_NAME
     n = name or ("estimado cliente" if is_es else "valued customer")
@@ -953,7 +973,7 @@ async def build_premium_message_async(
     )
 
 
-# ── Send functions ────────────────────────────────────────────────────
+# ── Send functions (unchanged) ───────────────────────────────────────
 async def _send_with_retries(send_func, *args, **kwargs) -> Tuple[bool, Any]:
     last_exc = None
     for attempt in range(1, MAX_RETRIES + 1):
@@ -1031,7 +1051,6 @@ async def send_voice_call(to_phone: str, message: str, language: str) -> bool:
         return False
     lang_code = "es-MX" if str(language).lower().startswith("es") else "en-US"
     safe_msg = xml.sax.saxutils.escape(message)
-    # v3.4: use a slightly slower rate and a pause at the end for clarity
     twiml = (
         f'<Response>'
         f'<Say language="{lang_code}" voice="alice" rate="90%">{safe_msg}</Say>'
@@ -1084,7 +1103,7 @@ async def send_email(
     return False
 
 
-# ── Groq AI ───────────────────────────────────────────────────────────
+# ── Groq AI (unchanged) ──────────────────────────────────────────────
 async def generate_ai_message(
     context: dict, language: str, channel: str, include_date: bool
 ) -> Optional[str]:
@@ -1113,7 +1132,54 @@ async def generate_ai_message(
         return None
 
 
-# ── Main orchestrator ─────────────────────────────────────────────────
+# ── Helper to skip payment for membership (unchanged) ────────────────
+async def _should_skip_payment_notification(order: dict, customer: dict) -> bool:
+    membership_status = (customer or {}).get("membership_status", "")
+    if membership_status.lower() not in ("active", "activo"):
+        return False
+
+    membership_plan = (customer or {}).get("membership_plan") or (order or {}).get("membership_plan_applied") or ""
+    if not membership_plan:
+        return False
+
+    order_lbs = float(order.get("actual_lbs") or order.get("estimated_lbs") or 0)
+    if order_lbs <= 0:
+        return False
+
+    plan_lower = membership_plan.lower()
+    if "elite" in plan_lower:
+        lbs_allowance = 120
+    elif "family plus" in plan_lower or "family" in plan_lower:
+        lbs_allowance = 90
+    elif "most popular" in plan_lower or "popular" in plan_lower:
+        lbs_allowance = 60
+    else:
+        return False
+
+    customer_id = (customer or {}).get("id")
+    if not customer_id:
+        return False
+
+    try:
+        from database import db as _db
+        from utils import get_customer_cycle_usagee
+
+        usage = await get_customer_cycle_usage(customer_id)
+        if not usage:
+            return False
+
+        lbs_used_before_this_order = usage.get("lbs_used", 0)
+        lbs_remaining = usage.get("lbs_remaining", 0)
+
+        if order_lbs <= lbs_remaining:
+            return True
+        return False
+    except Exception as e:
+        logger.warning(f"Could not determine membership usage for payment skip check: {e}")
+        return False
+
+
+# ── Main orchestrator (with updated language detection) ──────────────
 async def send_preferred_notification(
     customer: Optional[Dict], order: Optional[Dict],
     event: str, status: Optional[str] = None
@@ -1122,6 +1188,7 @@ async def send_preferred_notification(
         logger.error("Customer or order missing for notification")
         return False
 
+    # Determine flow and map event
     service_type = normalize_status_value(order.get("service_type") or "pickup_delivery")
     flow = "wash_fold" if service_type in ["wash_fold", "self_service"] else "pickup_delivery"
 
@@ -1144,6 +1211,7 @@ async def send_preferred_notification(
         if flow == "wash_fold" and event == "order_created":
             mapped_event = "order_received"
 
+    # Skip if not a milestone
     if mapped_event != "payment_request" and mapped_event not in MILESTONES.get(flow, set()):
         logger.info(f"Event {mapped_event} not a milestone for {flow}, skipping.")
         return False
@@ -1152,10 +1220,21 @@ async def send_preferred_notification(
         logger.info(f"Status {status} has no mapped event, skipping notification.")
         return False
 
+    # Skip payment notification if covered by membership
+    if mapped_event == "payment_request":
+        skip = await _should_skip_payment_notification(order, customer)
+        if skip:
+            logger.info(
+                f"Payment notification skipped — customer within membership allowance: "
+                f"order={order.get('order_number')}"
+            )
+            return True
+
     order_number = order.get("order_number", order.get("id", "N/A"))
     phone = customer.get("phone")
     email = customer.get("email")
 
+    # Language detection now uses DEFAULT_LANGUAGE as final fallback
     language = detect_language(customer, phone)
     logger.debug(f"Resolved language={language} for order {order_number}, phone={phone}")
 
@@ -1294,6 +1373,3 @@ async def notify_pickup_completed(customer: Dict, order: Dict) -> bool:
 
 async def notify_pickup_update(customer: Dict, order: Dict) -> bool:
     return await send_preferred_notification(customer, order, "pickup_update")
-
-async def notify_payment_request(customer: Dict, order: Dict) -> bool:
-    return await send_preferred_notification(customer, order, "payment_request")

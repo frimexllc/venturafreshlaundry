@@ -1,7 +1,6 @@
 """Pydantic models and role constants shared across the backend."""
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field, EmailStr, ConfigDict
 from typing import List, Optional, Dict, Any
-
 
 # Role-based access control constants
 ROLE_ADMIN = "admin"
@@ -67,6 +66,7 @@ class CustomerResponse(BaseModel):
     id: str
     name: Optional[str] = ""
     email: Optional[str] = None
+    cycle_usage: Optional[Dict[str, Any]] = None
     phone: Optional[str] = None
     address: Optional[str] = None
     preferred_contact: Optional[str] = "email"
@@ -79,6 +79,7 @@ class CustomerResponse(BaseModel):
     preferences_id: Optional[str] = None
     created_at: Optional[str] = ""
     updated_at: Optional[str] = ""
+    model_config = ConfigDict(extra='ignore')   # ← AÑADE ESTA LÍNEA
 
 
 class PreferenceCreate(BaseModel):

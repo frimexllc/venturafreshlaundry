@@ -33,6 +33,8 @@ from utils import (
     build_ticket_svg,
     calculate_delivery_fee,
     calculate_service_amount,
+    calculate_final_amount_with_membership,
+    should_skip_payment_notification,
     create_audit_log,
     generate_order_number,
     normalize_address,
@@ -42,6 +44,8 @@ from utils import (
     parse_qr_payload,
     should_notify_order_status,
     validate_order_payload,
+    is_active_member,
+    get_customer_cycle_usage,
 )
 
 PT_TZ = ZoneInfo("America/Los_Angeles")
@@ -98,8 +102,74 @@ except ImportError:
 router = APIRouter(prefix="/api", tags=["Orders"])
 
 
-# ==================== ORDERS CRUD ====================
+# ==================== Helper para recalcular total con membresía ====================
+async def _recalculate_order_total(order_id: str, order_data: dict, customer_data: dict) -> Optional[Dict]:
+    """
+    Recalcula el total final de la orden usando la membresía activa.
+    Actualiza el documento de la orden con el desglose y los campos extra.
+    Retorna el desglose o None si no se pudo calcular.
+    """
+    if not order_data:
+        order_data = await db.orders.find_one({"id": order_id}, {"_id": 0})
+        if not order_data:
+            return None
 
+    if not customer_data and order_data.get("customer_id"):
+        customer_data = await db.customers.find_one({"id": order_data["customer_id"]}, {"_id": 0})
+
+    # Si no hay actual_lbs, no podemos calcular
+    if not order_data.get("actual_lbs"):
+        return None
+
+    # Calcular con membresía
+    breakdown = await calculate_final_amount_with_membership(order_data, customer_data)
+    if not breakdown:
+        return None
+
+    new_total = breakdown["total"]
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    # Calcular lbs cubiertas y extra (necesario para campos de desglose)
+    lbs_total = float(order_data.get("actual_lbs", 0))
+    remaining = 0
+    if customer_data and is_active_member(order_data, customer_data):
+        plan = customer_data.get("membership_plan")
+        if plan:
+            # Importar localmente para evitar circularidad
+            usage = await get_customer_cycle_usage(customer_data["id"])
+            remaining = usage.get("lbs_remaining", 0) if usage else 0
+    lbs_covered = min(lbs_total, remaining) if remaining > 0 else 0
+    lbs_extra = max(0, lbs_total - lbs_covered)
+
+    update_fields = {
+        "total_amount": new_total,
+        "updated_at": now_iso,
+        "extra_charge": new_total,
+        "lbs_from_allowance": lbs_covered,
+        "extra_lbs_billed": lbs_extra,
+        "membership_discount": breakdown["membership_discount"],
+    }
+
+    # Si el total final es 0 (totalmente cubierto por membresía), marcar como pagado
+    if new_total <= 0.50:
+        update_fields["payment_status"] = "paid"
+        update_fields["paid_at"] = now_iso
+        update_fields["payment_method"] = "membership_covered"
+        update_fields["amount_paid"] = 0.0
+        update_fields["processing_fee"] = 0.0
+        update_fields["change_due"] = 0.0
+    else:
+        # Si estaba marcado como pagado por membresía pero ahora hay saldo (ej. se modificó peso)
+        if order_data.get("payment_status") == "paid" and order_data.get("payment_method") == "membership_covered":
+            update_fields["payment_status"] = "pending"
+            update_fields.pop("paid_at", None)
+            update_fields.pop("payment_method", None)
+
+    await db.orders.update_one({"id": order_id}, {"$set": update_fields})
+    return breakdown
+
+
+# ==================== ORDERS CRUD ====================
 
 @router.post("/orders", response_model=OrderResponse)
 async def create_order(
@@ -115,14 +185,12 @@ async def create_order(
     if not data.pickup_date:
         raise HTTPException(status_code=400, detail="pickup_date es obligatorio")
 
-    # ✅ VALIDACIÓN: Fecha de pickup no puede ser anterior a hoy
     today_local = datetime.now(TZ_PACIFIC).date()
     try:
         pickup_date_obj = datetime.strptime(data.pickup_date, "%Y-%m-%d").date()
     except ValueError:
         raise HTTPException(status_code=400, detail="pickup_date must be YYYY-MM-DD")
 
-    # Solo permitir fechas pasadas si el usuario es admin (opcional)
     if current_user.get("role") != "admin" and pickup_date_obj < today_local:
         raise HTTPException(
             status_code=400,
@@ -213,6 +281,11 @@ async def create_order(
         "qr_token": str(uuid.uuid4()),
         "created_at": now,
         "updated_at": now,
+        # Campos de membresía (iniciales)
+        "extra_charge": 0.0,
+        "lbs_from_allowance": 0,
+        "extra_lbs_billed": 0,
+        "membership_discount": 0.0,
     }
     await db.orders.insert_one(order)
     await db.customers.update_one(
@@ -281,8 +354,11 @@ async def get_order(
     order_id: str,
     current_user: dict = Depends(get_current_user),
 ) -> OrderResponse:
-    """Get a single order by ID."""
+    # Primero buscar por id (UUID)
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        # Si no existe, buscar por order_number (formato VFL-...)
+        order = await db.orders.find_one({"order_number": order_id}, {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     return OrderResponse(**order)
@@ -500,24 +576,49 @@ async def update_order(
     data: dict,
     current_user: dict = Depends(get_current_user),
 ) -> OrderResponse:
-    """Update an order."""
-    data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    """Update an order (partial update)."""
+    update_data = data.copy()
+    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
 
-    if "actual_lbs" in data or "addon_services" in data:
-        order_snapshot = await db.orders.find_one({"id": order_id}, {"_id": 0})
-        if order_snapshot:
-            customer_snapshot = None
-            if order_snapshot.get("customer_id"):
-                customer_snapshot = await db.customers.find_one(
-                    {"id": order_snapshot.get("customer_id")},
-                    {"_id": 0}
-                )
-            temp_order = {**order_snapshot, **data}
-            total_amount = calculate_service_amount(temp_order, customer_snapshot)
-            if total_amount is not None:
-                data["total_amount"] = total_amount
+    # Recalcular total si cambian actual_lbs o addon_services
+    recalc_needed = any(field in update_data for field in ["actual_lbs", "addon_services"])
+    if recalc_needed:
+        current_order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+        if current_order:
+            customer = None
+            if current_order.get("customer_id"):
+                customer = await db.customers.find_one({"id": current_order["customer_id"]}, {"_id": 0})
+            merged = {**current_order, **update_data}
+            breakdown = await calculate_final_amount_with_membership(merged, customer)
+            if breakdown:
+                new_total = breakdown["total"]
+                update_data["total_amount"] = new_total
+                update_data["extra_charge"] = new_total
+                update_data["membership_discount"] = breakdown["membership_discount"]
 
-    result = await db.orders.update_one({"id": order_id}, {"$set": data})
+                # Calcular lbs cubiertas y extra
+                lbs_total = float(merged.get("actual_lbs", 0))
+                remaining = 0
+                if customer and is_active_member(merged, customer):
+                    usage = await get_customer_cycle_usage(customer["id"])
+                    remaining = usage.get("lbs_remaining", 0) if usage else 0
+                lbs_covered = min(lbs_total, remaining) if remaining > 0 else 0
+                lbs_extra = max(0, lbs_total - lbs_covered)
+                update_data["lbs_from_allowance"] = lbs_covered
+                update_data["extra_lbs_billed"] = lbs_extra
+
+                if new_total <= 0.50:
+                    update_data["payment_status"] = "paid"
+                    update_data["paid_at"] = update_data["updated_at"]
+                    update_data["payment_method"] = "membership_covered"
+                    update_data["amount_paid"] = 0.0
+                else:
+                    if current_order.get("payment_status") == "paid" and current_order.get("payment_method") == "membership_covered":
+                        update_data["payment_status"] = "pending"
+                        update_data.pop("paid_at", None)
+                        update_data.pop("payment_method", None)
+
+    result = await db.orders.update_one({"id": order_id}, {"$set": update_data})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Order not found")
 
@@ -526,7 +627,7 @@ async def update_order(
         "order",
         order_id,
         current_user["id"],
-        {"changes": list(data.keys())}
+        {"changes": list(update_data.keys())}
     )
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
 
@@ -796,10 +897,7 @@ async def capture_order_payment(
         "id": str(uuid.uuid4()),
         "type": "income",
         "category": "service_payment",
-        "description": (
-            f"Pago orden {order.get('order_number', order_id)} - "
-            f"{order.get('service_type', 'service')}"
-        ),
+        "description": f"Pago orden {order.get('order_number', order_id)} - {order.get('service_type', 'service')}",
         "amount": float(amount_received or total_amount or 0),
         "payment_method": method,
         "order_id": order.get("id"),
@@ -958,11 +1056,18 @@ async def create_order_stripe_checkout(
             {"_id": 0}
         )
 
-    amount = calculate_service_amount(order, customer)
-    if amount is None:
+    breakdown = await calculate_final_amount_with_membership(order, customer)
+    if not breakdown:
         raise HTTPException(
             status_code=400,
             detail="Actual lbs required to calculate payment"
+        )
+
+    amount = breakdown["total"]
+    if amount <= 0.50:
+        raise HTTPException(
+            status_code=400,
+            detail="Order is fully covered by membership; no payment required"
         )
 
     stripe_api_key = os.environ.get("STRIPE_API_KEY")
@@ -974,14 +1079,8 @@ async def create_order_stripe_checkout(
 
     host_url = str(request.base_url).rstrip("/")
     webhook_url = f"{host_url}/api/webhook/stripe"
-    success_url = (
-        f"{data.origin_url}/admin/operator?session_id={{CHECKOUT_SESSION_ID}}"
-        f"&order_id={order.get('id')}"
-    )
-    cancel_url = (
-        f"{data.origin_url}/admin/operator?order_id={order.get('id')}"
-        "&status=cancelled"
-    )
+    success_url = f"{data.origin_url}/admin/operator?session_id={{CHECKOUT_SESSION_ID}}&order_id={order.get('id')}"
+    cancel_url = f"{data.origin_url}/admin/operator?order_id={order.get('id')}&status=cancelled"
 
     stripe_checkout = StripeCheckout(api_key=stripe_api_key, webhook_url=webhook_url)
     session_request = CheckoutSessionRequest(
@@ -995,9 +1094,7 @@ async def create_order_stripe_checkout(
             "type": "service_order",
         },
     )
-    session: CheckoutSessionResponse = await stripe_checkout.create_checkout_session(
-        session_request
-    )
+    session: CheckoutSessionResponse = await stripe_checkout.create_checkout_session(session_request)
 
     now = datetime.now(timezone.utc).isoformat()
     payment_doc = {
@@ -1058,14 +1155,9 @@ async def get_order_stripe_status(
     host_url = str(request.base_url).rstrip("/")
     webhook_url = f"{host_url}/api/webhook/stripe"
     stripe_checkout = StripeCheckout(api_key=stripe_api_key, webhook_url=webhook_url)
-    status_resp: CheckoutStatusResponse = await stripe_checkout.get_checkout_status(
-        session_id
-    )
+    status_resp: CheckoutStatusResponse = await stripe_checkout.get_checkout_status(session_id)
 
-    transaction = await db.payment_transactions.find_one(
-        {"session_id": session_id},
-        {"_id": 0}
-    )
+    transaction = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
     if not transaction:
         raise HTTPException(status_code=404, detail="Payment session not found")
 
@@ -1074,15 +1166,9 @@ async def get_order_stripe_status(
         "payment_status": status_resp.payment_status,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
-    await db.payment_transactions.update_one(
-        {"session_id": session_id},
-        {"$set": update_fields}
-    )
+    await db.payment_transactions.update_one({"session_id": session_id}, {"$set": update_fields})
 
-    if (
-        status_resp.payment_status == "paid"
-        and transaction.get("payment_status") != "paid"
-    ):
+    if status_resp.payment_status == "paid" and transaction.get("payment_status") != "paid":
         order_id = transaction.get("order_id") or status_resp.metadata.get("order_id")
         if order_id:
             now_str = datetime.now(timezone.utc).isoformat()
@@ -1105,10 +1191,7 @@ async def get_order_stripe_status(
                 "id": str(uuid.uuid4()),
                 "type": "income",
                 "category": "service_payment",
-                "description": (
-                    f"Pago Stripe orden "
-                    f"{(order_doc or {}).get('order_number', order_id)}"
-                ),
+                "description": f"Pago Stripe orden {(order_doc or {}).get('order_number', order_id)}",
                 "amount": float(transaction.get("amount") or 0),
                 "payment_method": "card",
                 "order_id": order_id,
@@ -1130,17 +1213,84 @@ async def get_order_stripe_status(
     }
 
 
-# ==================== RECURRENCE ENDPOINTS (nuevos, para clientes y admin) ====================
+# ==================== APPLY MEMBERSHIP (para operadores) ====================
+@router.post("/orders/{order_id}/apply-membership")
+async def apply_membership_to_order(
+    order_id: str,
+    current_user: dict = Depends(require_role([ROLE_OPERATOR])),
+) -> dict:
+    """
+    Aplica la membresía a una orden pendiente: la marca como pagada (membership_covered)
+    y descuenta las libras correspondientes del allowance restante.
+    Endpoint para operadores/admin. Para clientes, usar el endpoint en routes/customer.py
+    """
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    if order.get("payment_status") == "paid":
+        raise HTTPException(status_code=400, detail="Order already paid")
+
+    customer = None
+    if order.get("customer_id"):
+        customer = await db.customers.find_one({"id": order["customer_id"]}, {"_id": 0})
+    if not customer:
+        raise HTTPException(status_code=400, detail="Customer not found")
+
+    if not is_active_member(order, customer):
+        raise HTTPException(status_code=403, detail="Customer has no active membership")
+
+    breakdown = await calculate_final_amount_with_membership(order, customer)
+    if not breakdown:
+        raise HTTPException(status_code=400, detail="Cannot calculate membership coverage")
+
+    if breakdown["total"] > 0.50:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Order not fully covered. Extra amount due: ${breakdown['total']:.2f}"
+        )
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    update_data = {
+        "payment_status": "paid",
+        "payment_method": "membership_covered",
+        "amount_paid": 0.0,
+        "processing_fee": 0.0,
+        "change_due": 0.0,
+        "paid_at": now_iso,
+        "updated_at": now_iso,
+        "membership_breakdown": breakdown,
+        "extra_charge": breakdown["total"],
+        "lbs_from_allowance": breakdown.get("lbs_covered", 0),
+        "extra_lbs_billed": breakdown.get("lbs_extra", 0),
+        "membership_discount": breakdown["membership_discount"],
+    }
+    await db.orders.update_one({"id": order_id}, {"$set": update_data})
+
+    await create_audit_log(
+        "MEMBERSHIP_APPLIED_TO_ORDER",
+        "order",
+        order_id,
+        current_user["id"],
+        {"order_number": order.get("order_number")}
+    )
+
+    return {
+        "ok": True,
+        "message": "Order covered by membership",
+        "order_id": order_id,
+        "breakdown": breakdown
+    }
 
 
+# ==================== RECURRENCE ENDPOINTS ====================
 class RecurrenceUpdateRequest(BaseModel):
-    recurrence: str  # once, weekly, biweekly, twice_week
+    recurrence: str
     recurrence_end_date: Optional[str] = None
     cancel_future: Optional[bool] = False
 
 
 async def _order_belongs_to_customer(order: dict, customer: dict) -> bool:
-    """Verifica si la orden pertenece al cliente (por ID o email)."""
     if not customer:
         return False
     if order.get("customer_id") == customer.get("id"):
@@ -1153,7 +1303,6 @@ async def _order_belongs_to_customer(order: dict, customer: dict) -> bool:
 
 
 async def _get_customer_ids_by_email(email: str) -> set:
-    """Obtiene todos los IDs de clientes con el mismo email (para duplicados)."""
     if not email:
         return set()
     customers = await db.customers.find(
@@ -1166,12 +1315,9 @@ async def _get_customer_ids_by_email(email: str) -> set:
 @router.get("/orders/{order_id}/recurrence")
 async def get_order_recurrence(
     order_id: str,
-    # La autenticación puede venir de admin o de cliente
-    admin_user: Optional[dict] = Depends(get_current_user),  # para admin/operator
-    customer_user: Optional[dict] = Depends(get_current_customer),  # para cliente
+    admin_user: Optional[dict] = Depends(get_current_user),
+    customer_user: Optional[dict] = Depends(get_current_customer),
 ) -> dict:
-    """Devuelve la configuración de recurrencia y los próximos pickups programados."""
-    # Permitir acceso si es admin o si es el cliente dueño de la orden
     user = admin_user or customer_user
     if not user:
         raise HTTPException(status_code=401, detail="Authentication required")
@@ -1180,7 +1326,6 @@ async def get_order_recurrence(
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    # Si es admin (tiene "role" en el token), permitir; si no, verificar propiedad
     is_admin = admin_user is not None and admin_user.get("role") in ("admin", "operator")
     if not is_admin:
         if not customer_user:
@@ -1188,7 +1333,6 @@ async def get_order_recurrence(
         if not await _order_belongs_to_customer(order, customer_user):
             raise HTTPException(status_code=403, detail="Not your order")
 
-    # Obtener órdenes hijas (futuros pickups para esta recurrencia)
     upcoming = []
     if order.get("is_recurring") and order.get("recurrence") not in (None, "once"):
         child_orders = await db.orders.find({
@@ -1196,11 +1340,7 @@ async def get_order_recurrence(
             "status": {"$in": ["new", "confirmed"]}
         }, {"_id": 0, "id": 1, "order_number": 1, "pickup_date": 1}).sort("pickup_date", 1).to_list(10)
         upcoming = [
-            {
-                "id": o["id"],
-                "order_number": o.get("order_number"),
-                "pickup_date": o.get("pickup_date"),
-            }
+            {"id": o["id"], "order_number": o.get("order_number"), "pickup_date": o.get("pickup_date")}
             for o in child_orders
         ]
 
@@ -1219,7 +1359,6 @@ async def update_order_recurrence(
     admin_user: Optional[dict] = Depends(get_current_user),
     customer_user: Optional[dict] = Depends(get_current_customer),
 ) -> dict:
-    """Actualiza la configuración de recurrencia de una orden."""
     user = admin_user or customer_user
     if not user:
         raise HTTPException(status_code=401, detail="Authentication required")
@@ -1243,7 +1382,6 @@ async def update_order_recurrence(
         "updated_at": now,
     }
 
-    # Si se cancela la recurrencia futura, eliminar órdenes hijas pendientes
     if data.cancel_future:
         deleted = await db.orders.delete_many({
             "recurrence_parent_id": order_id,
@@ -1253,15 +1391,10 @@ async def update_order_recurrence(
 
     await db.orders.update_one({"id": order_id}, {"$set": update_data})
 
-    # Si la nueva frecuencia es distinta de "once", aquí se podrían regenerar automáticamente
-    # los próximos pickups. Se omite por ahora para evitar complejidad.
-
     return {"ok": True, "updated": update_data}
 
 
 # ==================== PRINT TICKET ====================
-
-
 @router.get("/orders/{order_id}/ticket")
 async def get_order_ticket(
     order_id: str,
@@ -1271,10 +1404,10 @@ async def get_order_ticket(
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    order_num     = order.get("order_number", order_id[:8])
-    name          = order.get("customer_name") or "Cliente"
-    phone         = order.get("customer_phone") or ""
-    pickup_addr   = order.get("pickup_address") or order.get("address") or ""
+    order_num = order.get("order_number", order_id[:8])
+    name = order.get("customer_name") or "Cliente"
+    phone = order.get("customer_phone") or ""
+    pickup_addr = order.get("pickup_address") or order.get("address") or ""
     delivery_addr = order.get("delivery_address") or ""
 
     created_raw = order.get("created_at", "")
@@ -1284,33 +1417,30 @@ async def get_order_ticket(
     except Exception:
         created = created_raw[:10] if created_raw else ""
 
-    service  = order.get("service_type") or "wash_fold"
-    lbs      = float(order.get("actual_lbs") or order.get("estimated_lbs") or 0)
-    rate     = float(order.get("price_per_lb") or order.get("rate") or 2.75)
+    service = order.get("service_type") or "wash_fold"
+    lbs = float(order.get("actual_lbs") or order.get("estimated_lbs") or 0)
+    rate = float(order.get("price_per_lb") or order.get("rate") or 2.75)
     subtotal = round(lbs * rate, 2) if lbs > 0 else float(order.get("total_amount") or 0)
 
     distance_miles = order.get("distance_miles")
-    delivery_fee   = calculate_delivery_fee(distance_miles)
+    delivery_fee = calculate_delivery_fee(distance_miles)
 
     payment_method = (order.get("payment_method") or "").lower()
     addon_services = order.get("addon_services", [])
-    addon_total    = float(order.get("addon_amount") or 0)
+    addon_total = float(order.get("addon_amount") or 0)
 
     subtotal_with_addons = subtotal + delivery_fee + addon_total
-    processing_fee = (
-        round(subtotal_with_addons * 0.03, 2)
-        if payment_method in ("card", "stripe", "tarjeta") else 0
-    )
+    processing_fee = round(subtotal_with_addons * 0.03, 2) if payment_method in ("card", "stripe", "tarjeta") else 0
     total = order.get("total_amount") or (subtotal_with_addons + processing_fee)
     total = float(total)
 
     pay_status = (order.get("payment_status") or "pending").lower()
-    pay_label  = "PAGADO" if pay_status == "paid" else "PENDIENTE"
+    pay_label = "PAGADO" if pay_status == "paid" else "PENDIENTE"
     method_label = {
-        "cash":     "Efectivo",
-        "card":     "Tarjeta",
-        "stripe":   "Tarjeta",
-        "zelle":    "Zelle",
+        "cash": "Efectivo",
+        "card": "Tarjeta",
+        "stripe": "Tarjeta",
+        "zelle": "Zelle",
         "transfer": "Transferencia",
     }.get(payment_method, payment_method.capitalize() or "-")
 
@@ -1325,7 +1455,7 @@ async def get_order_ticket(
         items_html += f'<tr><td>Delivery Fee</td><td class="r">${delivery_fee:.2f}</td></tr>'
 
     for addon in addon_services:
-        addon_name  = addon.get("name", "Add-on")
+        addon_name = addon.get("name", "Add-on")
         addon_price = float(addon.get("price") or 0)
         if addon_price > 0:
             items_html += f'<tr><td>{addon_name}</td><td class="r">${addon_price:.2f}</td></tr>'
@@ -1391,7 +1521,7 @@ td:first-child{{
 </div>
 <hr>
 <p class="order-num">#{order_num}</p>
-<tr>
+<table>
   <tr><td>Fecha</td><td class="r">{created}</td></tr>
   <tr><td>Cliente</td><td class="r">{name}</td></tr>
   {phone_html}
@@ -1399,7 +1529,7 @@ td:first-child{{
   {addr_html}
 </table>
 <hr>
-<tr>
+<table>
   {items_html}
   <tr class="total-row"><td>TOTAL</td><td class="r">${total:.2f}</td></tr>
 </table>
@@ -1411,7 +1541,7 @@ td:first-child{{
       <span class="badge {'badge-paid' if pay_status == 'paid' else 'badge-pending'}">{pay_label}</span>
     </td>
   </tr>
-  <tr><td>Metodo</td><td class="r">{method_label}</td></tr>
+  <tr>了一样Metodo</td><td class="r">{method_label}</td></tr>
 </table>
 <hr>
 <div class="footer">
@@ -1420,13 +1550,10 @@ td:first-child{{
 </div>
 <script>window.onload=function(){{window.print();}};</script>
 </body></html>"""
-
     return HTMLResponse(content=html)
 
 
 # ==================== NOTIFICACIÓN AL CLIENTE ====================
-
-
 class NotifyCustomerRequest(BaseModel):
     channel: str = "sms"
     message: Optional[str] = None
@@ -1439,64 +1566,49 @@ async def _shorten_url(url: str) -> str:
 async def _generate_payment_url(order: dict, request: Request) -> str:
     total = float(order.get("total_amount") or order.get("total") or 0)
     pay_status = (order.get("payment_status") or "pending").lower()
-
     if pay_status == "paid" or total < 0.50:
         return ""
-
     origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
     return f"{origin}/account"
 
 
-def _build_paid_email_html(
-    name: str,
-    order_num: str,
-    total_text: str,
-    method: str,
-) -> str:
+def _build_paid_email_html(name: str, order_num: str, total_text: str, method: str) -> str:
     method_name = (method or "").capitalize() or "Card"
-
     return f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
 <body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:30px 0;">
   <tr><td align="center">
-<table width="100%" style="max-width:520px;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.06);" cellpadding="0" cellspacing="0">
-  <tr><td style="background:linear-gradient(135deg,#059669,#10b981);padding:28px 30px;text-align:center;">
-    <h1 style="margin:0;color:#fff;font-size:20px;">Ventura Fresh Laundry</h1>
-    <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Payment Confirmed</p>
-    </td></tr>
-  <tr><td style="padding:30px;text-align:center;">
-    <div style="width:64px;height:64px;background:#dcfce7;border-radius:50%;margin:0 auto 16px;line-height:64px;font-size:32px;">✓</div>
-    <p style="margin:0;font-size:15px;color:#334155;">Hello <strong>{name}</strong>,</p>
-    <p style="margin:10px 0 0;font-size:14px;color:#64748b;">We confirm payment for your order.</p>
-    <table style="margin:20px auto;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;" cellpadding="12" cellspacing="0">
-      <tr><td style="font-size:13px;color:#64748b;border-bottom:1px solid #e2e8f0;">Order</td><td style="font-weight:700;color:#0f172a;border-bottom:1px solid #e2e8f0;">{order_num}</td></tr>
-      <tr><td style="font-size:13px;color:#64748b;border-bottom:1px solid #e2e8f0;">Total</td><td style="font-weight:800;font-size:18px;color:#059669;border-bottom:1px solid #e2e8f0;">{total_text}</td></tr>
-      <tr><td style="font-size:13px;color:#64748b;">Method</td><td style="font-weight:600;color:#0f172a;">{method_name}</td></tr>
-    </table>
-    <p style="margin:20px 0 0;font-size:13px;color:#64748b;">Thank you for trusting us!</p>
-    </td></tr>
-  <tr><td style="padding:0 30px 28px;">
-    <hr style="border:none;border-top:1px solid #e2e8f0;margin:0 0 16px;">
-    <p style="margin:0;font-size:11px;color:#94a3b8;text-align:center;">Ventura Fresh Laundry · 5722 Telephone Rd Suite 5, Ventura CA 93003 · (805) 515-4030</p>
-    </td></tr>
-</table>
-    </td></tr>
-</table>
+  <table width="100%" style="max-width:520px;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.06);" cellpadding="0" cellspacing="0">
+    <tr><td style="background:linear-gradient(135deg,#059669,#10b981);padding:28px 30px;text-align:center;">
+      <h1 style="margin:0;color:#fff;font-size:20px;">Ventura Fresh Laundry</h1>
+      <p style="margin:6px 0 0;color:rgba(255,255,255,.85);font-size:14px;">Payment Confirmed</p>
+     </td>
+    </tr>
+    <tr><td style="padding:30px;text-align:center;">
+      <div style="width:64px;height:64px;background:#dcfce7;border-radius:50%;margin:0 auto 16px;line-height:64px;font-size:32px;">✓</div>
+      <p style="margin:0;font-size:15px;color:#334155;">Hello <strong>{name}</strong>,</p>
+      <p style="margin:10px 0 0;font-size:14px;color:#64748b;">We confirm payment for your order.</p>
+      <table style="margin:20px auto;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;" cellpadding="12" cellspacing="0">
+        <tr><td style="font-size:13px;color:#64748b;border-bottom:1px solid #e2e8f0;">Order</td><td style="font-weight:700;color:#0f172a;border-bottom:1px solid #e2e8f0;">{order_num}</td></tr>
+        <tr><td style="font-size:13px;color:#64748b;border-bottom:1px solid #e2e8f0;">Total</td><td style="font-weight:800;font-size:18px;color:#059669;border-bottom:1px solid #e2e8f0;">{total_text}</td></tr>
+        <tr><td style="font-size:13px;color:#64748b;">Method</td><td style="font-weight:600;color:#0f172a;">{method_name}</td></tr>
+      </table>
+      <p style="margin:20px 0 0;font-size:13px;color:#64748b;">Thank you for trusting us!</p>
+     </td>
+    </tr>
+    <tr><td style="padding:0 30px 28px;">
+      <hr style="border:none;border-top:1px solid #e2e8f0;margin:0 0 16px;">
+      <p style="margin:0;font-size:11px;color:#94a3b8;text-align:center;">Ventura Fresh Laundry · 5722 Telephone Rd Suite 5, Ventura CA 93003 · (805) 515-4030</p>
+     </td>
+    </tr>
+  </table>
+  <tr></td>
+ </table>
 </body></html>"""
 
 
-def _build_unpaid_email_html(
-    name: str,
-    order_num: str,
-    lbs: float,
-    rate: float,
-    subtotal: float,
-    delivery_fee: float,
-    total: float,
-    total_text: str,
-    payment_url: str,
-) -> str:
+def _build_unpaid_email_html(name: str, order_num: str, lbs: float, rate: float, subtotal: float, delivery_fee: float, total: float, total_text: str, payment_url: str) -> str:
     breakdown_rows = ""
     if lbs > 0:
         breakdown_rows = f"""
@@ -1505,60 +1617,66 @@ def _build_unpaid_email_html(
         if delivery_fee > 0:
             breakdown_rows += f"""
       <tr><td style="font-size:13px;color:#64748b;padding:10px 16px;border-bottom:1px solid #e2e8f0;">Delivery</td><td style="font-weight:600;color:#0f172a;padding:10px 16px;border-bottom:1px solid #e2e8f0;text-align:right;">${delivery_fee:.2f}</td></tr>"""
-
     pay_btn = ""
     if payment_url:
         pay_btn = f"""
   <tr><td style="padding:24px 30px 0;text-align:center;">
     <a href="{payment_url}" style="display:inline-block;padding:16px 48px;background:#0891b2;color:#fff;text-decoration:none;font-weight:700;font-size:16px;border-radius:12px;">Pay {total_text} Now</a>
     <p style="margin:10px 0 0;font-size:11px;color:#94a3b8;">Secure link · Card, Apple Pay, Google Pay</p>
-    </td></tr>"""
-
+   </td>
+   </td>"""
     return f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
 <body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:30px 0;">
   <tr><td align="center">
-<table width="100%" style="max-width:520px;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.06);" cellpadding="0" cellspacing="0">
-  <tr><td style="background:linear-gradient(135deg,#0e7490,#0891b2);padding:28px 30px;">
-    <h1 style="margin:0;color:#fff;font-size:20px;">Ventura Fresh Laundry</h1>
-    <p style="margin:4px 0 0;color:rgba(255,255,255,.8);font-size:13px;">Your order is ready for payment</p>
-    </td></tr>
-  <tr><td style="padding:28px 30px 0;">
-    <p style="margin:0;font-size:15px;color:#334155;">Hello <strong>{name}</strong>,</p>
-    <p style="margin:8px 0 0;font-size:14px;color:#64748b;">Your order <strong>#{order_num}</strong> is ready. Here are your payment options:</p>
-    </td></tr>
-  <tr><td style="padding:20px 30px 0;">
-    <table width="100%" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;" cellpadding="0" cellspacing="0">
-      {breakdown_rows}
-      <tr><td style="font-size:14px;font-weight:700;color:#0f172a;padding:14px 16px;background:#f0f9ff;">TOTAL</td><td style="font-size:20px;font-weight:800;color:#0891b2;padding:14px 16px;background:#f0f9ff;text-align:right;">{total_text}</td></tr>
-    </table>
-    </td></tr>
-  {pay_btn}
-  <tr><td style="padding:20px 30px 0;">
-    <table width="100%" style="border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;" cellpadding="0" cellspacing="0">
-      <tr><td style="padding:14px 16px;border-bottom:1px solid #e2e8f0;background:#fefce8;">
-        <p style="margin:0;font-size:13px;font-weight:700;color:#854d0e;">Zelle / Venmo / Cash App</p>
-        <p style="margin:4px 0 0;font-size:12px;color:#713f12;">Zelle: <strong>VFLaundry</strong></p>
-        <p style="margin:2px 0 0;font-size:12px;color:#713f12;">Venmo: <strong>@VFLaundry</strong></p>
-        <p style="margin:2px 0 0;font-size:12px;color:#713f12;">Cash App: <strong>$@VFLaundry</strong></p>
-        <p style="margin:4px 0 0;font-size:11px;color:#a16207;">Note: Please include your order number {order_num}</p>
-        </td></tr>
-      <tr><td style="padding:14px 16px;background:#f0fdf4;">
-        <p style="margin:0;font-size:13px;font-weight:700;color:#166534;">Cash</p>
-        <p style="margin:4px 0 0;font-size:12px;color:#15803d;">Pay upon pickup or delivery</p>
-        </td></tr>
-    </table>
-    </td></tr>
-  <tr><td style="padding:24px 30px;">
-    <p style="margin:0;font-size:13px;color:#64748b;">Once payment is completed, your order will continue processing.</p>
-    <p style="margin:6px 0 0;font-size:13px;color:#64748b;">Thank you for trusting Ventura Fresh Laundry!</p>
-    <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0;">
-    <p style="margin:0;font-size:11px;color:#94a3b8;text-align:center;">Ventura Fresh Laundry · 5722 Telephone Rd Suite 5, Ventura CA 93003 · (805) 515-4030</p>
-    </td></tr>
-</table>
-    </td></tr>
-</table>
+  <table width="100%" style="max-width:520px;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.06);" cellpadding="0" cellspacing="0">
+    <tr><td style="background:linear-gradient(135deg,#0e7490,#0891b2);padding:28px 30px;">
+      <h1 style="margin:0;color:#fff;font-size:20px;">Ventura Fresh Laundry</h1>
+      <p style="margin:4px 0 0;color:rgba(255,255,255,.8);font-size:13px;">Your order is ready for payment</p>
+     </td>
+    </tr>
+    <tr><td style="padding:28px 30px 0;">
+      <p style="margin:0;font-size:15px;color:#334155;">Hello <strong>{name}</strong>,</p>
+      <p style="margin:8px 0 0;font-size:14px;color:#64748b;">Your order <strong>#{order_num}</strong> is ready. Here are your payment options:</p>
+     </td>
+    </tr>
+    <tr><td style="padding:20px 30px 0;">
+      <table width="100%" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;" cellpadding="0" cellspacing="0">
+        {breakdown_rows}
+        <tr><td style="font-size:14px;font-weight:700;color:#0f172a;padding:14px 16px;background:#f0f9ff;">TOTAL</td><td style="font-size:20px;font-weight:800;color:#0891b2;padding:14px 16px;background:#f0f9ff;text-align:right;">{total_text}</td></tr>
+      </table>
+     </td>
+    </tr>
+    {pay_btn}
+    <tr><td style="padding:20px 30px 0;">
+      <table width="100%" style="border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;" cellpadding="0" cellspacing="0">
+        <tr><td style="padding:14px 16px;border-bottom:1px solid #e2e8f0;background:#fefce8;">
+          <p style="margin:0;font-size:13px;font-weight:700;color:#854d0e;">Zelle / Venmo / Cash App</p>
+          <p style="margin:4px 0 0;font-size:12px;color:#713f12;">Zelle: <strong>VFLaundry</strong></p>
+          <p style="margin:2px 0 0;font-size:12px;color:#713f12;">Venmo: <strong>@VFLaundry</strong></p>
+          <p style="margin:2px 0 0;font-size:12px;color:#713f12;">Cash App: <strong>$@VFLaundry</strong></p>
+          <p style="margin:4px 0 0;font-size:11px;color:#a16207;">Note: Please include your order number {order_num}</p>
+         </td>
+        </tr>
+        <tr><td style="padding:14px 16px;background:#f0fdf4;">
+          <p style="margin:0;font-size:13px;font-weight:700;color:#166534;">Cash</p>
+          <p style="margin:4px 0 0;font-size:12px;color:#15803d;">Pay upon pickup or delivery</p>
+         </td>
+        </tr>
+      </table>
+     </td>
+    </tr>
+    <tr><td style="padding:24px 30px;">
+      <p style="margin:0;font-size:13px;color:#64748b;">Once payment is completed, your order will continue processing.</p>
+      <p style="margin:6px 0 0;font-size:13px;color:#64748b;">Thank you for trusting Ventura Fresh Laundry!</p>
+      <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0;">
+      <p style="margin:0;font-size:11px;color:#94a3b8;text-align:center;">Ventura Fresh Laundry · 5722 Telephone Rd Suite 5, Ventura CA 93003 · (805) 515-4030</p>
+     </td>
+    </tr>
+  <tr>
+  </td></td>
+ </table>
 </body></html>"""
 
 
@@ -1569,113 +1687,84 @@ async def notify_customer_direct(
     request: Request,
     current_user: dict = Depends(get_current_user),
 ) -> dict:
-    """Send a professional multi-payment notification."""
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
     customer_id = order.get("customer_id")
-    customer = (
-        await db.customers.find_one({"id": customer_id}, {"_id": 0})
-        if customer_id
-        else None
-    )
+    customer = (await db.customers.find_one({"id": customer_id}, {"_id": 0}) if customer_id else None)
     if not customer and order.get("customer_email"):
-        customer = await db.customers.find_one(
-            {"email": {"$regex": f'^{order["customer_email"]}$', "$options": "i"}},
-            {"_id": 0},
-        )
+        customer = await db.customers.find_one({"email": {"$regex": f'^{order["customer_email"]}$', "$options": "i"}}, {"_id": 0})
 
-    phone      = (customer or {}).get("phone") or order.get("customer_phone") or ""
+    from notifications import send_email, send_sms, send_whatsapp, send_voice_call, detect_language, _support_footer
+    from notifications import _should_skip_payment_notification
+
+    phone = (customer or {}).get("phone") or order.get("customer_phone") or ""
     email_addr = (customer or {}).get("email") or order.get("customer_email") or ""
-    name       = (customer or {}).get("name") or order.get("customer_name") or "Cliente"
+    name = (customer or {}).get("name") or order.get("customer_name") or "Cliente"
 
-    order_num      = order.get("order_number", order_id)
-    total          = float(order.get("total_amount") or order.get("total") or 0)
-    pay_status     = (order.get("payment_status") or "pending").lower()
-    actual_lbs     = order.get("actual_lbs")
-    estimated_lbs  = order.get("estimated_lbs")
-    rate           = float(order.get("price_per_lb") or order.get("rate") or 2.75)
-    lbs            = float(actual_lbs or estimated_lbs or 0)
-    subtotal       = round(lbs * rate, 2) if lbs > 0 else total
+    order_num = order.get("order_number", order_id)
+    total = float(order.get("total_amount") or order.get("total") or 0)
+    pay_status = (order.get("payment_status") or "pending").lower()
+    actual_lbs = order.get("actual_lbs")
+    estimated_lbs = order.get("estimated_lbs")
+    rate = float(order.get("price_per_lb") or order.get("rate") or 2.75)
+    lbs = float(actual_lbs or estimated_lbs or 0)
+    subtotal = round(lbs * rate, 2) if lbs > 0 else total
 
     distance_miles = order.get("distance_miles")
-    delivery_fee   = calculate_delivery_fee(distance_miles)
+    delivery_fee = calculate_delivery_fee(distance_miles)
 
     total_text = f"${total:.2f}" if total else ""
 
     payment_url = await _generate_payment_url(order, request)
-    short_url   = payment_url
+    short_url = payment_url
+
+    _lang = detect_language(customer, phone) if customer else "es-MX"
+    _is_es = _lang.lower().startswith("es")
+
+    if pay_status != "paid" and customer:
+        try:
+            _skip = await _should_skip_payment_notification(order, customer)
+            if _skip:
+                return {"ok": True, "channel": payload.channel, "detail": "Payment notification skipped — order covered by membership allowance", "membership_covered": True}
+        except Exception as _skip_exc:
+            logger.warning(f"Membership skip check failed: {_skip_exc}")
+
+    _footer = _support_footer(_is_es)
 
     if pay_status == "paid":
         method_name = (order.get("payment_method") or "").capitalize() or "Tarjeta"
-        msg = (
-            f"🧼 Ventura Fresh Laundry\n\n"
-            f"Hola {name} 👋\n"
-            f"Confirmamos el pago de tu orden #{order_num}.\n\n"
-            f"✅ Total: {total_text}\n"
-            f"✅ Metodo: {method_name}\n"
-            f"✅ Estado: Pagado\n\n"
-            f"Gracias por confiar en Ventura Fresh Laundry 🧼✨"
-        )
+        msg = (f"🧼 Ventura Fresh Laundry\n\nHola {name} 👋\nConfirmamos el pago de tu orden #{order_num}.\n\n✅ Total: {total_text}\n✅ Metodo: {method_name}\n✅ Estado: Pagado\n\nGracias por confiar en Ventura Fresh Laundry 🧼✨") + _footer
     elif payload.message:
         msg = payload.message
         if short_url and short_url not in msg:
             msg += f"\n\nPaga aqui: {short_url}"
+        msg += _footer
     else:
         breakdown = ""
         if lbs > 0:
-            breakdown = (
-                f"\n📊 Desglose:\n"
-                f"• {lbs} lbs x ${rate:.2f}/lb = ${subtotal:.2f}\n"
-            )
+            breakdown = f"\n📊 Desglose:\n• {lbs} lbs x ${rate:.2f}/lb = ${subtotal:.2f}\n"
             if delivery_fee > 0:
                 breakdown += f"• Delivery: ${delivery_fee:.2f}\n"
             breakdown += f"• Total: {total_text}\n"
-
-        msg = (
-            f"🧼 Ventura Fresh Laundry\n\n"
-            f"Hi {name} 👋\n"
-            f"Your order #{order_num} is ready for payment.\n"
-            f"{breakdown}\n\n"
-            f"💳 Complete your payment securely through your customer portal\n"
-            f"👉 Please click the link below to access your account:\n"
-            f"{short_url or 'Link not available'}\n\n"
-            f"⚡ Fast, secure, and easy process\n\n"
-            f"If you have any questions, feel free to contact us at (805) 234-8181\n\n"
-            f"Thank you for choosing Ventura Fresh Laundry 🧼✨"
-        )
+        msg = (f"🧼 Ventura Fresh Laundry\n\nHi {name} 👋\nYour order #{order_num} is ready for payment.\n{breakdown}\n\n💳 Complete your payment securely through your customer portal\n👉 Please click the link below to access your account:\n{short_url or 'Link not available'}\n\n⚡ Fast, secure, and easy process\n\nIf you have any questions, feel free to contact us at (805) 234-8181") + _footer
 
     if pay_status == "paid":
-        email_html = _build_paid_email_html(
-            name, order_num, total_text, order.get("payment_method")
-        )
+        email_html = _build_paid_email_html(name, order_num, total_text, order.get("payment_method"))
     else:
-        email_html = _build_unpaid_email_html(
-            name, order_num, lbs, rate, subtotal,
-            delivery_fee, total, total_text, payment_url
-        )
+        email_html = _build_unpaid_email_html(name, order_num, lbs, rate, subtotal, delivery_fee, total, total_text, payment_url)
 
     if not NOTIFICATIONS_ENABLED:
-        return {
-            "ok": False,
-            "detail": "Notifications not configured",
-            "message_preview": msg,
-            "payment_url": payment_url,
-        }
+        return {"ok": False, "detail": "Notifications not configured", "message_preview": msg, "payment_url": payment_url}
 
-    from notifications import send_email, send_sms, send_whatsapp, send_voice_call
-
-    channel      = payload.channel.lower()
-    sent         = False
+    channel = payload.channel.lower()
+    sent = False
     error_detail = ""
 
     try:
         if channel == "email" and email_addr:
-            subject = (
-                f"{'Pago Confirmado' if pay_status == 'paid' else 'Pago Pendiente'} - "
-                f"Orden {order_num}"
-            )
+            subject = f"{'Pago Confirmado' if pay_status == 'paid' else 'Pago Pendiente'} - Orden {order_num}"
             sent = await send_email(email_addr, subject, msg, email_html)
         elif channel == "whatsapp" and phone:
             sent = await send_whatsapp(phone, msg)
@@ -1692,30 +1781,11 @@ async def notify_customer_direct(
             if not available:
                 error_detail = "No phone or email on file for this customer"
             else:
-                error_detail = (
-                    f"Channel '{channel}' not available. "
-                    f"Try: {', '.join(available)}"
-                )
+                error_detail = f"Channel '{channel}' not available. Try: {', '.join(available)}"
     except Exception as e:
         error_detail = str(e)
 
     if sent:
-        await create_audit_log(
-            "CUSTOMER_NOTIFIED_DIRECT",
-            "order",
-            order_id,
-            current_user["id"],
-            {
-                "channel": channel,
-                "message": msg[:200],
-                "payment_url": payment_url[:200] if payment_url else "",
-            }
-        )
+        await create_audit_log("CUSTOMER_NOTIFIED_DIRECT", "order", order_id, current_user["id"], {"channel": channel, "message": msg[:200], "payment_url": payment_url[:200] if payment_url else ""})
 
-    return {
-        "ok": sent,
-        "channel": channel,
-        "message_preview": msg[:500],
-        "payment_url": payment_url,
-        "detail": error_detail if not sent else f"Sent via {channel}",
-    }
+    return {"ok": sent, "channel": channel, "message_preview": msg[:500], "payment_url": payment_url, "detail": error_detail if not sent else f"Sent via {channel}"}

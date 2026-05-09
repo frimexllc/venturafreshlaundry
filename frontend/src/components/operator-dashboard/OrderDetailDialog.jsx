@@ -9,30 +9,25 @@ import {
   Printer, X, ImageIcon, CheckCircle2, AlertTriangle, Eye,
   ShieldCheck, ShieldX, Clock, FileDown, Package, Truck,
   ChevronDown, ChevronUp, User, MapPin, Calendar, StickyNote,
-  Zap, Hash,
+  Zap, Hash, Award,
 } from "lucide-react";
 import { toast } from "sonner";
-import { safeString, formatCurrency, formatOrderNumber, isWashFoldService } from "./utils";
+import { safeString, formatCurrency, formatOrderNumber, isWashFoldService, calcDeliveryFee } from "./utils";
 import { useLocale } from "../../context/LocaleContext";
-import { formatShortDatePT } from "../../utils/dateUtils";
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
+const parseLocalDate = (dateStr) => {
+  if (!dateStr) return null;
+  if (dateStr.includes("T")) return new Date(dateStr);
+  return new Date(dateStr + "T12:00:00");
+};
+
+const API_URL = process.env.REACT_APP_BACKEND_URL || "";
 const token = () => localStorage.getItem("token");
 const authHeaders = () => ({
   "Content-Type": "application/json",
   Authorization: `Bearer ${token()}`,
 });
 
-function calcDeliveryFee(distanceMiles) {
-  if (distanceMiles == null || isNaN(Number(distanceMiles))) return 0;
-  const d = Number(distanceMiles);
-  if (d <= 3) return 0;
-  if (d > 10) return 5.99;
-  const raw = (d - 3) * 1.5;
-  return Math.round(Math.max(2.99, Math.min(raw, 5.99)) * 100) / 100;
-}
-
-// ── Section wrapper ────────────────────────────────────────────────
 function Section({ icon, title, badge, children, collapsible = false, defaultOpen = true }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
@@ -55,7 +50,6 @@ function Section({ icon, title, badge, children, collapsible = false, defaultOpe
   );
 }
 
-// ── Data row ───────────────────────────────────────────────────────
 function DataRow({ label, value, className = "" }) {
   if (!value) return null;
   return (
@@ -66,7 +60,6 @@ function DataRow({ label, value, className = "" }) {
   );
 }
 
-// ── Receipt Card ───────────────────────────────────────────────────
 function ReceiptCard({ receipt, onValidate, validating }) {
   const { t } = useLocale();
   const [expanded, setExpanded] = useState(false);
@@ -117,7 +110,6 @@ function ReceiptCard({ receipt, onValidate, validating }) {
 
   return (
     <div className="rounded-xl border border-slate-200 overflow-hidden bg-white">
-      {/* Header row */}
       <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 border-b border-slate-100">
         <ImageIcon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
         <span className="text-xs font-medium text-slate-600 truncate flex-1">
@@ -127,8 +119,6 @@ function ReceiptCard({ receipt, onValidate, validating }) {
           {receipt.created_at ? new Date(receipt.created_at).toLocaleString() : ""}
         </span>
       </div>
-
-      {/* Image */}
       <div
         className={`relative bg-slate-100 cursor-pointer transition-all duration-300 ${expanded ? "min-h-[200px]" : "min-h-[120px]"}`}
         onClick={() => !imgLoading && !imgError && setExpanded(v => !v)}
@@ -160,8 +150,6 @@ function ReceiptCard({ receipt, onValidate, validating }) {
           </button>
         )}
       </div>
-
-      {/* Status */}
       <div className={`px-3 py-2.5 flex items-start gap-2.5 border-t border-slate-100 ${st.cls}`}>
         <span className="shrink-0 mt-0.5">{st.icon}</span>
         <div className="flex-1 min-w-0">
@@ -192,7 +180,6 @@ function ReceiptCard({ receipt, onValidate, validating }) {
   );
 }
 
-// ── Payment method button ──────────────────────────────────────────
 function PayMethodBtn({ val, label, icon, active, onClick }) {
   return (
     <button
@@ -209,7 +196,6 @@ function PayMethodBtn({ val, label, icon, active, onClick }) {
   );
 }
 
-// ── Main component ─────────────────────────────────────────────────
 export default function OrderDetailDialog({ order, onClose, onRefresh }) {
   const { t } = useLocale();
   const [lbs, setLbs] = useState("");
@@ -256,11 +242,11 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
     }
   }, [order]);
 
-  const loadReceipts = useCallback(async (orderId) => {
-    if (!orderId) return;
+  const loadReceipts = useCallback(async (order_Id) => {
+    if (!order_Id) return;
     setReceiptsLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/files/receipts-by-order/${orderId}`, {
+      const res = await fetch(`${API_URL}/api/files/receipts-by-order/${order_Id}`, {
         headers: { Authorization: `Bearer ${token()}` },
       });
       if (res.ok) setReceipts(await res.json() || []);
@@ -273,21 +259,40 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
     else setReceipts([]);
   }, [order, loadReceipts]);
 
+  // --- Si no hay orden, no renderizar ---
   if (!localOrder) return null;
 
-  const orderId           = localOrder.id || localOrder.order_id;
-  const isPaid            = (localOrder.payment_status || "").toLowerCase() === "paid";
-  const totalAmount       = localOrder.total_amount || localOrder.total || 0;
-  const isWF              = isWashFoldService(localOrder.service_type);
-  const effectiveDeliveryFee = calcDeliveryFee(localOrder.distance_miles);
-  const storedDeliveryFee    = Number(localOrder.delivery_fee || 0);
-  const deliveryFeeMismatch  =
-    Math.abs(effectiveDeliveryFee - storedDeliveryFee) > 0.01 && localOrder.distance_miles != null;
-  const verifiedReceipts     = receipts.filter(r => r.ai_validation_status === "verified_paid");
-  const hasVerifiedReceipt   = verifiedReceipts.length > 0;
-  const addonTotal           = addons.reduce((s, a) => s + (Number(a.price) || 0) * (Number(a.qty) || 1), 0);
+  const orderId = localOrder.id;
+  if (!orderId) {
+    toast.error("ID de orden inválido. Cierra y vuelve a abrir el diálogo.");
+    return null;
+  }
 
-  // ── Handlers (logic unchanged) ──────────────────────────────────
+  // --- Datos de membresía ---
+  const extraCharge = localOrder.extra_charge ?? localOrder.total_amount ?? 0;
+  const membershipDiscount = localOrder.membership_discount ?? 0;
+  const lbsFromAllowance = localOrder.lbs_from_allowance ?? 0;
+  const extraLbsBilled = localOrder.extra_lbs_billed ?? 0;
+
+  const isPaid = (localOrder.payment_status || "").toLowerCase() === "paid";
+  const isFullyCovered = !isPaid && extraCharge <= 0.50 && localOrder.membership_plan;
+
+  const isWF = isWashFoldService(localOrder.service_type);
+  const effectiveDeliveryFee = calcDeliveryFee(localOrder.distance_miles);
+  const storedDeliveryFee = Number(localOrder.delivery_fee || 0);
+  const deliveryFeeMismatch =
+    Math.abs(effectiveDeliveryFee - storedDeliveryFee) > 0.01 && localOrder.distance_miles != null;
+  const verifiedReceipts = receipts.filter(r => r.ai_validation_status === "verified_paid");
+  const hasVerifiedReceipt = verifiedReceipts.length > 0;
+  const addonTotal = addons.reduce((s, a) => s + (Number(a.price) || 0) * (Number(a.qty) || 1), 0);
+
+  // Cálculo del subtotal antes del descuento (para breakdown)
+  const lbsValue = Number(localOrder.actual_lbs || 0);
+  const rate = localOrder.price_per_lb ? Number(localOrder.price_per_lb) : 2.75;
+  const subtotalWithoutDiscount = lbsValue * rate;
+  const subtotalDisplay = subtotalWithoutDiscount > 0 ? subtotalWithoutDiscount : null;
+
+  // Handlers
   const handleValidateReceipt = async (fileId) => {
     setValidatingId(fileId);
     try {
@@ -316,68 +321,105 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
     finally { setValidatingId(null); }
   };
 
+  // ✅ CORREGIDO: usar orderId en lugar de order_Id
   const handleSaveLbs = async () => {
     if (!lbs || isNaN(Number(lbs)) || Number(lbs) <= 0) {
-      toast.error(t("Enter valid lbs", "Ingresa libras válidas")); return;
+      toast.error(t("Enter valid lbs", "Ingresa libras válidas")); 
+      return;
     }
     setSaving(true);
     try {
-      const res = await fetch(`${API_URL}/api/orders/${orderId}`, {
-        method: "PUT", headers: authHeaders(),
+      const res = await fetch(`${API_URL}/api/orders/${orderId}`, {  // ✅ orderId (no order_Id)
+        method: "PUT", 
+        headers: authHeaders(),
         body: JSON.stringify({ actual_lbs: Number(lbs) }),
       });
       if (res.ok) {
         const updated = await res.json();
-        setLocalOrder(prev => ({ ...prev, actual_lbs: Number(lbs), total_amount: updated.total_amount || prev.total_amount }));
+        setLocalOrder(prev => ({ 
+          ...prev, 
+          actual_lbs: Number(lbs), 
+          extra_charge: updated.extra_charge, 
+          total_amount: updated.total_amount 
+        }));
         toast.success(t("Lbs saved & total recalculated", "Libras guardadas y total recalculado"));
         onRefresh?.();
+        
+        // Auto-notificar al cliente
         try {
           const preferred = localOrder.preferred_contact || "sms";
           const autoChannel = preferred === "email" ? "email" : "sms";
           const nr = await fetch(`${API_URL}/api/orders/${orderId}/notify-customer`, {
-            method: "POST", headers: authHeaders(),
+            method: "POST", 
+            headers: authHeaders(),
             body: JSON.stringify({ channel: autoChannel }),
           });
           const nd = await nr.json();
           if (nr.ok && nd.ok)
             toast.success(t(`Notification sent via ${autoChannel.toUpperCase()}`, `Notificación enviada vía ${autoChannel.toUpperCase()}`));
-        } catch (err) { console.error("Auto-notify error:", err); }
+        } catch (err) { 
+          console.error("Auto-notify error:", err); 
+        }
       } else {
         const err = await res.json().catch(() => ({}));
         toast.error(err.detail || t("Error saving lbs", "Error al guardar libras"));
       }
-    } catch { toast.error(t("Connection error", "Error de conexión")); }
-    finally { setSaving(false); }
+    } catch { 
+      toast.error(t("Connection error", "Error de conexión")); 
+    }
+    finally { 
+      setSaving(false); 
+    }
   };
 
+  // ✅ CORREGIDO: usar orderId
   const handlePayment = async () => {
     if (payMethod === "card") {
       setProcessing(true);
       try {
         const res = await fetch(`${API_URL}/api/orders/${orderId}/stripe-checkout`, {
-          method: "POST", headers: authHeaders(),
+          method: "POST", 
+          headers: authHeaders(),
           body: JSON.stringify({ origin_url: window.location.origin }),
         });
-        if (res.ok) { const d = await res.json(); window.location.href = d.url || d.checkout_url; return; }
+        if (res.ok) { 
+          const d = await res.json(); 
+          window.location.href = d.url || d.checkout_url; 
+          return; 
+        }
         const err = await res.json().catch(() => ({}));
         toast.error(err.detail || t("Stripe error", "Error de Stripe"));
-      } catch { toast.error(t("Connection error", "Error de conexión")); }
-      finally { setProcessing(false); }
+      } catch { 
+        toast.error(t("Connection error", "Error de conexión")); 
+      }
+      finally { 
+        setProcessing(false); 
+      }
       return;
     }
-    const amt = payMethod === "cash" ? Number(amountReceived) : totalAmount;
-    if (payMethod === "cash" && (!amt || amt < totalAmount)) {
-      toast.error(t("Amount must be >= total", "Monto debe ser >= total")); return;
+    
+    const amt = payMethod === "cash" ? Number(amountReceived) : extraCharge;
+    if (payMethod === "cash" && (!amt || amt < extraCharge)) {
+      toast.error(t("Amount must be >= total", "Monto debe ser >= total")); 
+      return;
     }
+    
     setProcessing(true);
     try {
       const res = await fetch(`${API_URL}/api/orders/${orderId}/payment`, {
-        method: "POST", headers: authHeaders(),
+        method: "POST", 
+        headers: authHeaders(),
         body: JSON.stringify({ payment_method: payMethod, amount_received: amt }),
       });
       if (res.ok) {
         const data = await res.json();
-        setLocalOrder(prev => ({ ...prev, payment_status: "paid", payment_method: payMethod, amount_paid: amt, change_due: data.change_due }));
+        setLocalOrder(prev => ({ 
+          ...prev, 
+          payment_status: "paid", 
+          payment_method: payMethod, 
+          amount_paid: amt, 
+          change_due: data.change_due 
+        }));
         toast.success(payMethod === "cash" && data.change_due > 0
           ? `${t("Paid!", "¡Pagado!")} ${t("Change", "Cambio")}: ${formatCurrency(data.change_due)}`
           : t("Payment registered", "Pago registrado"));
@@ -386,15 +428,21 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
         const err = await res.json().catch(() => ({}));
         toast.error(err.detail || t("Payment error", "Error de pago"));
       }
-    } catch { toast.error(t("Connection error", "Error de conexión")); }
-    finally { setProcessing(false); }
+    } catch { 
+      toast.error(t("Connection error", "Error de conexión")); 
+    }
+    finally { 
+      setProcessing(false); 
+    }
   };
 
+  // ✅ CORREGIDO: usar orderId
   const handleSendNotification = async () => {
     setNotifySending(true);
     try {
       const res = await fetch(`${API_URL}/api/orders/${orderId}/notify-customer`, {
-        method: "POST", headers: authHeaders(),
+        method: "POST", 
+        headers: authHeaders(),
         body: JSON.stringify({ channel: notifyChannel }),
       });
       const data = await res.json();
@@ -402,25 +450,41 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
         toast.success(t(`Notification sent via ${notifyChannel.toUpperCase()}`, `Notificación enviada por ${notifyChannel.toUpperCase()}`));
       else
         toast.error(data.detail || t("Could not send notification", "No se pudo enviar notificación"));
-    } catch { toast.error(t("Connection error", "Error de conexión")); }
-    finally { setNotifySending(false); }
+    } catch { 
+      toast.error(t("Connection error", "Error de conexión")); 
+    }
+    finally { 
+      setNotifySending(false); 
+    }
   };
 
+  // ✅ CORREGIDO: usar orderId
   const handlePrintTicket = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/orders/${orderId}/ticket`, { headers: authHeaders() });
+      const res = await fetch(`${API_URL}/api/orders/${orderId}/ticket`, { 
+        headers: authHeaders() 
+      });
       if (!res.ok) throw new Error();
       const html = await res.text();
       const pw = window.open("", "_blank", "width=350,height=600");
-      if (!pw) { toast.error(t("Allow pop-ups", "Permite pop-ups")); return; }
-      pw.document.write(html); pw.document.close();
-    } catch { toast.error(t("Could not print ticket", "No se pudo imprimir ticket")); }
+      if (!pw) { 
+        toast.error(t("Allow pop-ups", "Permite pop-ups")); 
+        return; 
+      }
+      pw.document.write(html); 
+      pw.document.close();
+    } catch { 
+      toast.error(t("Could not print ticket", "No se pudo imprimir ticket")); 
+    }
   };
 
+  // ✅ CORREGIDO: usar orderId
   const handleDownloadPDF = async () => {
     try {
       const { default: html2pdf } = await import("html2pdf.js");
-      const res = await fetch(`${API_URL}/api/orders/${orderId}/ticket`, { headers: authHeaders() });
+      const res = await fetch(`${API_URL}/api/orders/${orderId}/ticket`, { 
+        headers: authHeaders() 
+      });
       if (!res.ok) throw new Error();
       const htmlContent = await res.text();
       const container = document.createElement("div");
@@ -428,39 +492,58 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
       container.style.width = "380px";
       document.body.appendChild(container);
       await html2pdf().set({
-        margin: 4, filename: `ticket-${formatOrderNumber(localOrder)}.pdf`,
+        margin: 4, 
+        filename: `ticket-${formatOrderNumber(localOrder)}.pdf`,
         html2canvas: { scale: 2, useCORS: true },
         jsPDF: { unit: "mm", format: [100, 250], orientation: "portrait" },
       }).from(container).save();
       document.body.removeChild(container);
       toast.success(t("PDF downloaded", "PDF descargado"));
-    } catch { toast.error(t("Could not generate PDF", "No se pudo generar el PDF")); }
+    } catch { 
+      toast.error(t("Could not generate PDF", "No se pudo generar el PDF")); 
+    }
   };
 
+  // Add-ons handlers
   const handleAddAddon = (item) => {
     const existing = addons.find(a => a.id === item.id);
-    if (existing) setAddons(prev => prev.map(a => a.id === item.id ? { ...a, qty: (a.qty || 1) + 1 } : a));
-    else setAddons(prev => [...prev, { ...item, qty: 1 }]);
+    if (existing) 
+      setAddons(prev => prev.map(a => a.id === item.id ? { ...a, qty: (a.qty || 1) + 1 } : a));
+    else 
+      setAddons(prev => [...prev, { ...item, qty: 1 }]);
   };
-  const handleRemoveAddon = (id) => setAddons(prev => prev.filter(a => a.id !== id));
+  
+  const handleRemoveAddon = (id) => 
+    setAddons(prev => prev.filter(a => a.id !== id));
+  
+  // ✅ CORREGIDO: usar orderId
   const handleSaveAddons = async () => {
     setSavingAddons(true);
     try {
       const res = await fetch(`${API_URL}/api/orders/${orderId}`, {
-        method: "PUT", headers: authHeaders(),
+        method: "PUT", 
+        headers: authHeaders(),
         body: JSON.stringify({ addon_services: addons }),
       });
       if (res.ok) {
         const updated = await res.json();
-        setLocalOrder(prev => ({ ...prev, addon_services: addons, total_amount: updated.total_amount }));
+        setLocalOrder(prev => ({ 
+          ...prev, 
+          addon_services: addons, 
+          extra_charge: updated.extra_charge, 
+          total_amount: updated.total_amount 
+        }));
         toast.success(t("Add-ons saved", "Extras guardados"));
         onRefresh?.();
       }
-    } catch { toast.error(t("Error saving add-ons", "Error al guardar extras")); }
-    finally { setSavingAddons(false); }
+    } catch { 
+      toast.error(t("Error saving add-ons", "Error al guardar extras")); 
+    }
+    finally { 
+      setSavingAddons(false); 
+    }
   };
 
-  // ── Status pill colour ─────────────────────────────────────────
   const statusPillCls = {
     paid:      "bg-emerald-100 text-emerald-700 border-emerald-200",
     unpaid:    "bg-red-50 text-red-600 border-red-200",
@@ -470,14 +553,13 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
   const rawStatus = (localOrder.status || "").toLowerCase();
   const pillCls   = statusPillCls[rawStatus] ?? "bg-slate-100 text-slate-600 border-slate-200";
 
-  // ── Render ─────────────────────────────────────────────────────
   return (
     <Dialog open={!!order} onOpenChange={() => onClose()}>
       <DialogContent
         className="w-[95vw] max-w-xl max-h-[92vh] overflow-y-auto bg-slate-50 p-0 gap-0 rounded-2xl"
         data-testid="order-detail-dialog"
       >
-        {/* ── Sticky header ── */}
+        {/* Sticky header */}
         <div className="sticky top-0 z-20 flex items-center gap-3 px-5 py-4 bg-white border-b border-slate-200 rounded-t-2xl">
           <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-sky-600 text-white shrink-0">
             <Hash className="w-4 h-4" />
@@ -502,8 +584,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
         </div>
 
         <div className="p-4 space-y-3">
-
-          {/* ── Customer info ── */}
+          {/* Customer info - se mantiene igual */}
           <Section icon={<User className="w-4 h-4" />} title={t("Customer", "Cliente")} data-testid="order-detail-customer">
             <div className="grid grid-cols-2 gap-x-4 gap-y-3">
               <DataRow label={t("Name", "Nombre")}        value={safeString(localOrder.customer_name, "N/A")} />
@@ -526,7 +607,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
             </div>
           </Section>
 
-          {/* ── Distance badge ── */}
+          {/* Distance badge - se mantiene igual */}
           {localOrder.distance_miles != null && (
             <div className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold border ${
               localOrder.distance_miles <= 3
@@ -550,7 +631,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
             </div>
           )}
 
-          {/* ── Addresses ── */}
+          {/* Addresses - se mantiene igual */}
           {(localOrder.pickup_address || localOrder.delivery_address) && (
             <Section icon={<MapPin className="w-4 h-4" />} title={t("Addresses", "Direcciones")} data-testid="order-detail-addresses">
               <div className="space-y-3">
@@ -572,35 +653,45 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
             </Section>
           )}
 
-          {/* ── Schedule ── */}
+          {/* Schedule - se mantiene igual */}
           {(localOrder.pickup_date || localOrder.pickup_time) && (
             <Section icon={<Calendar className="w-4 h-4" />} title={t("Schedule", "Horario")}>
               <div className="flex gap-6">
-                <DataRow label={t("Date", "Fecha")} value={localOrder.pickup_date ? formatShortDatePT(localOrder.pickup_date) : null} />
-                <DataRow label={t("Time", "Hora")}  value={localOrder.pickup_time} />
+                <DataRow
+                  label={t("Date", "Fecha")}
+                  value={
+                    localOrder.pickup_date
+                      ? parseLocalDate(localOrder.pickup_date).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        })
+                      : null
+                  }
+                />
+                <DataRow label={t("Time", "Hora")} value={localOrder.pickup_time} />
               </div>
             </Section>
           )}
 
-         {/* ── Notes — FIX: parse inline list items ── */}
-{notes && (
-  <Section icon={<StickyNote className="w-4 h-4" />} title={t("Notes / Instructions", "Notas / Instrucciones")} data-testid="order-detail-notes">
-    <ul className="space-y-1.5 list-disc pl-5 text-sm text-slate-700">
-      {notes
-        // Detecta patrones como "- item" o divide por espacios seguidos de palabra clave
-        .split(/(?=- [A-Z])|(?<=[a-z]): /)
-        .map((item) => item.trim())
-        .filter((item) => item && item.length > 0)
-        .map((item, i) => (
-          <li key={i} className="leading-relaxed">
-            {item.replace(/^- /, '')} {/* limpia guiones iniciales */}
-          </li>
-        ))}
-    </ul>
-  </Section>
-)}
+          {/* Notes - se mantiene igual */}
+          {notes && (
+            <Section icon={<StickyNote className="w-4 h-4" />} title={t("Notes / Instructions", "Notas / Instrucciones")} data-testid="order-detail-notes">
+              <ul className="space-y-1.5 list-disc pl-5 text-sm text-slate-700">
+                {notes
+                  .split(/(?=- [A-Z])|(?<=[a-z]): /)
+                  .map((item) => item.trim())
+                  .filter((item) => item && item.length > 0)
+                  .map((item, i) => (
+                    <li key={i} className="leading-relaxed">
+                      {item.replace(/^- /, '')}
+                    </li>
+                  ))}
+              </ul>
+            </Section>
+          )}
 
-          {/* ── Preferences snapshot ── */}
+          {/* Preferences snapshot - se mantiene igual */}
           {localOrder.preferences_snapshot && (
             <Section
               icon={<User className="w-4 h-4" />}
@@ -618,7 +709,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
             </Section>
           )}
 
-          {/* ── Receipts ── */}
+          {/* Receipts - se mantiene igual */}
           <Section
             icon={<ImageIcon className="w-4 h-4" />}
             title={t("Payment Receipts", "Comprobantes de Pago")}
@@ -667,7 +758,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
             </div>
           </Section>
 
-          {/* ── Add-ons ── */}
+          {/* Add-ons - se mantiene igual */}
           <Section
             icon={<Package className="w-4 h-4" />}
             title={t("Individual Items / Add-ons", "Artículos / Extras")}
@@ -681,7 +772,6 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
             data-testid="order-detail-addons"
           >
             <div className="space-y-3">
-              {/* Selected addons */}
               {addons.length > 0 && (
                 <div className="space-y-1.5">
                   {addons.map(a => (
@@ -713,8 +803,6 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
                   </Button>
                 </div>
               )}
-
-              {/* Catalog grid */}
               <div className="grid grid-cols-2 gap-1.5 max-h-48 overflow-y-auto">
                 {ADDON_CATALOG.map(item => (
                   <button
@@ -733,14 +821,13 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
             </div>
           </Section>
 
-          {/* ── Lbs + Price breakdown ── */}
+          {/* Weight & Total + Membership Breakdown */}
           <Section
             icon={<Scale className="w-4 h-4" />}
             title={t("Weight & Total", "Peso y Total")}
             data-testid="order-detail-lbs-payment"
           >
             <div className="space-y-4">
-              {/* Lbs input */}
               <div className="flex items-end gap-2">
                 <div className="flex-1">
                   <Label className="text-[10px] font-semibold tracking-widest text-slate-400 uppercase">
@@ -764,15 +851,15 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
                 </Button>
               </div>
 
-              {/* Price breakdown */}
+              {/* Price breakdown with membership discount */}
               <div className="rounded-xl bg-slate-50 border border-slate-200 overflow-hidden text-xs">
-                {localOrder.price_per_lb && localOrder.actual_lbs && (
+                {subtotalDisplay && (
                   <div className="flex justify-between items-center px-3.5 py-2.5 border-b border-slate-100">
                     <span className="text-slate-500">
-                      {Number(localOrder.actual_lbs).toFixed(1)} lbs × ${Number(localOrder.price_per_lb).toFixed(2)}/lb
+                      {lbsValue.toFixed(1)} lbs × ${rate.toFixed(2)}/lb
                     </span>
                     <span className="font-semibold text-slate-700">
-                      {formatCurrency(Number(localOrder.actual_lbs) * Number(localOrder.price_per_lb))}
+                      {formatCurrency(subtotalDisplay)}
                     </span>
                   </div>
                 )}
@@ -785,7 +872,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
                     )}
                   </span>
                   <span className={effectiveDeliveryFee === 0 ? "font-bold text-emerald-600" : "font-semibold text-slate-700"}>
-                    {effectiveDeliveryFee === 0 ? "$0.00" : formatCurrency(effectiveDeliveryFee)}
+                    {formatCurrency(effectiveDeliveryFee)}
                   </span>
                 </div>
                 {addonTotal > 0 && (
@@ -794,15 +881,32 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
                     <span className="font-semibold text-slate-700">{formatCurrency(addonTotal)}</span>
                   </div>
                 )}
+                {membershipDiscount > 0 && (
+                  <div className="flex justify-between items-center px-3.5 py-2.5 border-b border-slate-100 bg-sky-50">
+                    <span className="flex items-center gap-1.5 text-sky-600 font-semibold">
+                      <Award className="w-3.5 h-3.5" />
+                      {t("Membership discount", "Descuento membresía")}
+                    </span>
+                    <span className="font-bold text-sky-700">-{formatCurrency(membershipDiscount)}</span>
+                  </div>
+                )}
                 <div className="flex items-center justify-between px-3.5 py-3 bg-white">
-                  <span className="font-bold text-slate-700">{t("Total", "Total")}</span>
+                  <span className="font-bold text-slate-700">{t("Net total", "Neto a pagar")}</span>
                   <span className="text-2xl font-extrabold text-slate-900 tracking-tight" data-testid="order-detail-total">
-                    {totalAmount ? formatCurrency(totalAmount) : <span className="text-sm font-medium text-slate-400">{t("Pending lbs", "Pendiente lbs")}</span>}
+                    {isPaid ? formatCurrency(extraCharge) : (extraCharge > 0 ? formatCurrency(extraCharge) : <span className="text-sm font-medium text-slate-400">{t("Pending lbs", "Pendiente lbs")}</span>)}
                   </span>
                 </div>
+                {isFullyCovered && (
+                  <div className="flex items-center justify-between px-3.5 py-2.5 bg-emerald-50 border-t border-emerald-100">
+                    <span className="flex items-center gap-1.5 text-emerald-700 font-semibold text-xs">
+                      <CheckCircle2 className="w-4 h-4" />
+                      {t("Covered by membership", "Cubierto por membresía")}
+                    </span>
+                    <span className="text-emerald-700 font-bold">{formatCurrency(0)}</span>
+                  </div>
+                )}
               </div>
 
-              {/* Payment status */}
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-slate-500 uppercase tracking-widest">
                   {t("Payment status", "Estado de pago")}
@@ -810,9 +914,11 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
                 <span className={`text-xs font-bold px-3 py-1.5 rounded-full border ${
                   isPaid
                     ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                    : "bg-red-50 text-red-600 border-red-200"
+                    : isFullyCovered
+                      ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                      : "bg-red-50 text-red-600 border-red-200"
                 }`} data-testid="order-detail-payment-status">
-                  {isPaid ? `✓ ${t("Paid", "Pagado")}` : t("Unpaid", "Sin pagar")}
+                  {isPaid ? `✓ ${t("Paid", "Pagado")}` : isFullyCovered ? t("Covered", "Cubierto") : t("Unpaid", "Sin pagar")}
                 </span>
               </div>
 
@@ -823,8 +929,8 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
                 </div>
               )}
 
-              {/* Pay section */}
-              {!isPaid && (
+              {/* Payment section - only if not paid and not fully covered */}
+              {!isPaid && !isFullyCovered && extraCharge > 0.50 && (
                 <div className="space-y-4 border border-sky-200 bg-sky-50/40 rounded-2xl p-4" data-testid="order-detail-pay-section">
                   <div>
                     <p className="text-[10px] font-bold tracking-widest text-slate-400 uppercase mb-2.5">
@@ -855,8 +961,8 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
                         {t("Amount received", "Monto recibido")}
                       </Label>
                       <Input
-                        type="number" step="0.01" min={totalAmount || 0}
-                        placeholder={totalAmount ? `$${Number(totalAmount).toFixed(2)}` : "0.00"}
+                        type="number" step="0.01" min={extraCharge}
+                        placeholder={extraCharge ? `$${Number(extraCharge).toFixed(2)}` : "0.00"}
                         value={amountReceived} onChange={e => setAmountReceived(e.target.value)}
                         className="mt-1.5 h-10 rounded-xl border-slate-200"
                         data-testid="order-detail-cash-amount"
@@ -877,7 +983,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
                   <Button
                     className="w-full h-11 bg-emerald-600 hover:bg-emerald-700 rounded-xl font-bold text-sm shadow-md shadow-emerald-100 transition-all"
                     onClick={handlePayment}
-                    disabled={processing || !totalAmount}
+                    disabled={processing || !extraCharge}
                     data-testid="order-detail-collect-btn"
                   >
                     {processing
@@ -888,7 +994,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
                       : t("Register payment", "Registrar pago")}
                   </Button>
 
-                  {!totalAmount && (
+                  {!extraCharge && (
                     <p className="text-[11px] text-amber-600 text-center font-medium">
                       {t("Enter lbs first to calculate total", "Ingresa libras primero para calcular total")}
                     </p>
@@ -898,7 +1004,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
             </div>
           </Section>
 
-          {/* ── Actions bar ── */}
+          {/* Actions bar */}
           <div className="flex flex-wrap items-center gap-2 pt-1 pb-2" data-testid="order-detail-actions">
             <Button
               variant="outline" size="sm"
@@ -917,7 +1023,6 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
               <FileDown className="w-3.5 h-3.5" /> PDF
             </Button>
 
-            {/* Notify */}
             <div className="flex items-center gap-1.5 ml-auto" data-testid="order-detail-notify-group">
               <select
                 value={notifyChannel}

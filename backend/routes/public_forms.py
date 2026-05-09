@@ -3,7 +3,7 @@ import os
 import uuid
 import asyncio
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 
 from fastapi import APIRouter, HTTPException, Request, Depends
@@ -266,8 +266,25 @@ def get_public_forms_router(
 ):
     router = APIRouter()
 
+    # ── Helper para membresía activa (consulta la colección memberships) ─────
+    async def get_active_membership(customer_id: str) -> Optional[dict]:
+        """Devuelve la membresía activa del cliente o None."""
+        now = datetime.now(timezone.utc).isoformat()
+        membership = await db.memberships.find_one(
+            {
+                "customer_id": customer_id,
+                "status": "active",
+                "$or": [
+                    {"expires_at": {"$exists": False}},
+                    {"expires_at": {"$gt": now}},
+                ],
+            },
+            {"_id": 0},
+        )
+        return membership
+
     # =========================================================================
-    # 1. PICKUP REQUEST (EXISTENTE, SIN CAMBIOS)
+    # 1. PICKUP REQUEST (CON VALIDACIÓN DE MEMBRESÍA ACTIVA)
     # =========================================================================
     @router.post("/public/pickup-request")
     async def public_pickup_request(data: PublicPickupRequest):
@@ -349,13 +366,25 @@ def get_public_forms_router(
                 **({"sms_consent": True, "sms_consent_at": now} if sms_consent else {})
             }
 
+        # ── Obtener preferencias guardadas (CORREGIDO) ──────────────────────────
         pref = await db.preferences.find({"customer_id": customer["id"]}, {"_id": 0}).sort("version", -1).limit(1).to_list(1)
         preference_id = pref[0].get("id") if pref else None
         preference_snapshot = None
         if pref:
             preference_snapshot = {k: v for k, v in pref[0].items() if k not in ["_id", "customer_id"]}
 
-        has_membership = bool(customer.get("has_membership"))
+        # Determinar membresía activa
+        active_membership = await get_active_membership(customer["id"])
+        has_membership = active_membership is not None
+        membership_plan_name = active_membership.get("plan") if active_membership else None
+
+        # Sincronizar el flag 'has_membership'
+        if customer.get("has_membership") != has_membership:
+            await db.customers.update_one(
+                {"id": customer["id"]},
+                {"$set": {"has_membership": has_membership, "updated_at": now}}
+            )
+
         service_plan = (data.service_plan or "standard").lower()
         price_lb = get_price_per_lb(normalized_service_type, service_plan, has_membership)
 
@@ -402,6 +431,7 @@ def get_public_forms_router(
             "customer_email": normalized_email,
             "service_type": normalized_service_type,
             "service_plan": service_plan,
+            "membership_plan_applied": membership_plan_name,
             "price_per_lb": price_lb,
             "delivery_fee": delivery_fee,
             "distance_miles": distance_miles,
@@ -417,8 +447,8 @@ def get_public_forms_router(
             "preferred_contact": preferred_contact,
             "sms_consent": sms_consent,
             "sms_consent_at": now if sms_consent else None,
-            "preferences_id": preference_id,
-            "preferences_snapshot": preference_snapshot,
+            "preferences_id": preference_id,               # ← AHORA SÍ EXISTE
+            "preferences_snapshot": preference_snapshot,   # ← AHORA SÍ EXISTE
             "status": "new",
             "estado_actual": "new",
             "payment_status": "unpaid",
@@ -454,7 +484,7 @@ def get_public_forms_router(
         }
 
     # =========================================================================
-    # 2. WASH & FOLD REQUEST (EXISTENTE)
+    # 2. WASH & FOLD REQUEST (CON VALIDACIÓN DE MEMBRESÍA ACTIVA)
     # =========================================================================
     @router.post("/public/wash-fold-request")
     async def public_wash_fold_request(data: PublicWashFoldRequest):
@@ -507,13 +537,24 @@ def get_public_forms_router(
                 }}
             )
 
+        # ── Obtener preferencias guardadas ─────────────────────────────────────
         pref = await db.preferences.find({"customer_id": customer["id"]}, {"_id": 0}).sort("version", -1).limit(1).to_list(1)
         preference_id = pref[0].get("id") if pref else None
         preference_snapshot = None
         if pref:
             preference_snapshot = {k: v for k, v in pref[0].items() if k not in ["_id", "customer_id"]}
 
-        has_membership = bool(customer.get("has_membership"))
+        # Verificar membresía activa
+        active_membership = await get_active_membership(customer["id"])
+        has_membership = active_membership is not None
+        membership_plan_name = active_membership.get("plan") if active_membership else None
+
+        if customer.get("has_membership") != has_membership:
+            await db.customers.update_one(
+                {"id": customer["id"]},
+                {"$set": {"has_membership": has_membership, "updated_at": now}}
+            )
+
         wf_plan = (data.plan or "standard").lower()
         price_lb = get_price_per_lb("wash_fold", wf_plan, has_membership)
 
@@ -527,6 +568,7 @@ def get_public_forms_router(
             "customer_email": normalized_email,
             "service_type": "wash_fold",
             "service_plan": wf_plan,
+            "membership_plan_applied": membership_plan_name,
             "price_per_lb": price_lb,
             "preferred_contact": preferred_contact or customer.get("preferred_contact") or "email",
             "sms_consent": sms_consent,
@@ -540,8 +582,8 @@ def get_public_forms_router(
             "actual_lbs": None,
             "notes": notes_payload,
             "gate_code": None,
-            "preferences_id": preference_id,
-            "preferences_snapshot": preference_snapshot,
+            "preferences_id": preference_id,               # ← AHORA SÍ EXISTE
+            "preferences_snapshot": preference_snapshot,   # ← AHORA SÍ EXISTE
             "status": "new",
             "estado_actual": "new",
             "payment_status": "unpaid",
@@ -568,8 +610,8 @@ def get_public_forms_router(
             "message": "¡Gracias! Tu solicitud de Wash & Fold ha sido recibida."
         }
 
-    # =========================================================================
-    # 3. CONTACT FORM (EXISTENTE)
+      # =========================================================================
+    # 3. CONTACT FORM (SIN CAMBIOS)
     # =========================================================================
     @router.post("/public/contact")
     async def public_contact(data: PublicContactRequest):
@@ -657,7 +699,7 @@ def get_public_forms_router(
         }
 
     # =========================================================================
-    # 4. QUOTE REQUEST (EXISTENTE)
+    # 4. QUOTE REQUEST (SIN CAMBIOS)
     # =========================================================================
     @router.post("/public/quote-request")
     async def public_quote_request(data: PublicQuoteRequest):
@@ -712,7 +754,7 @@ def get_public_forms_router(
         }
 
     # =========================================================================
-    # 5. MEMBERSHIP SIGNUP (EXISTENTE)
+    # 5. MEMBERSHIP SIGNUP (SIN CAMBIOS)
     # =========================================================================
     @router.post("/public/membership-signup")
     async def public_membership_signup(data: PublicMembershipSignup):
@@ -745,7 +787,6 @@ def get_public_forms_router(
             "pickup_time_preference": normalize_spaces(data.pickup_time_preference),
             "gate_code": normalize_spaces(data.gate_code)
         }
-        # preferences = normalize_preference_dict(preferences)  # si tienes esa función
 
         signup = {
             "id": signup_id,
@@ -773,7 +814,6 @@ def get_public_forms_router(
         await db.membership_signups.insert_one(signup)
         await create_audit_log("MEMBERSHIP_SIGNUP_CREATED", "membership_signup", signup_id, None, {"source": "public_form"})
 
-        # Notificación al cliente
         if normalized_phone:
             try:
                 is_es = detect_country(normalized_phone) == "mx"
@@ -792,7 +832,7 @@ def get_public_forms_router(
         }
 
     # =========================================================================
-    # 6. B2B QUOTE (EXISTENTE)
+    # 6. B2B QUOTE (SIN CAMBIOS)
     # =========================================================================
     @router.post("/public/b2b-quote")
     async def create_b2b_quote(data: B2BQuoteRequest):
@@ -863,7 +903,6 @@ def get_public_forms_router(
         await db.quotes.insert_one(quote_doc)
         await create_audit_log("B2B_QUOTE_CREATED", "quote", quote_id, "public", {"company": data.company_legal_name, "business_type": data.business_type})
 
-        # Notificación al cliente
         if normalized_phone:
             try:
                 country = detect_country(normalized_phone)
@@ -877,7 +916,6 @@ def get_public_forms_router(
             except Exception as e:
                 logger.error(f"B2B quote client SMS failed: {e}")
 
-        # Notificación al admin (si está activada)
         if notifications_enabled and not skip_server_notifications:
             try:
                 admin_phone = os.environ.get("ADMIN_PHONE", "+18055154030")
@@ -898,7 +936,7 @@ def get_public_forms_router(
         }
 
     # =========================================================================
-    # 7. VOICE ASSISTANT (EXISTENTE)
+    # 7. VOICE ASSISTANT (SIN CAMBIOS)
     # =========================================================================
     VOICE_ASSISTANT_SYSTEM_PROMPT = """You are Ventura, a friendly and enthusiastic AI sales assistant for Ventura Fresh Laundry, a premium laundry service in Ventura County, California. Your goal is to warmly engage visitors, answer their questions, and help them choose the right service.
 
@@ -1038,7 +1076,7 @@ PERSONALITY GUIDELINES:
         }
 
     # =========================================================================
-    # 8. SUGGESTION (CON SMS AL CLIENTE)
+    # 8. SUGGESTION (SIN CAMBIOS)
     # =========================================================================
     @router.post("/public/suggestion")
     async def public_suggestion(data: PublicSuggestionCreate):
@@ -1054,7 +1092,6 @@ PERSONALITY GUIDELINES:
         await db.suggestions.insert_one(suggestion_doc)
         await create_audit_log("SUGGESTION_CREATED", "suggestion", doc_id, None, {"source": "public_suggestion"})
 
-        # ─── SMS al cliente ──────────────────────────────────────────────────
         customer_phone = normalize_phone(data.phone) if data.phone else None
         if customer_phone and len(customer_phone) >= 10:
             try:
@@ -1074,7 +1111,6 @@ PERSONALITY GUIDELINES:
             except Exception as e:
                 logger.error(f"Customer SMS for suggestion {doc_id} failed: {e}")
 
-        # ─── Notificación al administrador ───────────────────────────────────
         if notifications_enabled and not skip_server_notifications:
             try:
                 admin_phone = os.environ.get("ADMIN_PHONE", "+18055154030")
@@ -1092,7 +1128,7 @@ PERSONALITY GUIDELINES:
         }
 
     # =========================================================================
-    # 9. REFUND (CON SMS AL CLIENTE)
+    # 9. REFUND (SIN CAMBIOS)
     # =========================================================================
     @router.post("/public/refund")
     async def public_refund(data: PublicRefundCreate):
@@ -1108,7 +1144,6 @@ PERSONALITY GUIDELINES:
         await db.refunds.insert_one(refund_doc)
         await create_audit_log("REFUND_CREATED", "refund", doc_id, None, {"source": "public_refund"})
 
-        # ─── SMS al cliente ──────────────────────────────────────────────────
         customer_phone = normalize_phone(data.phone) if data.phone else None
         if customer_phone and len(customer_phone) >= 10:
             try:
@@ -1128,7 +1163,6 @@ PERSONALITY GUIDELINES:
             except Exception as e:
                 logger.error(f"Customer SMS for refund {doc_id} failed: {e}")
 
-        # ─── Notificación al administrador ───────────────────────────────────
         if notifications_enabled and not skip_server_notifications:
             try:
                 admin_phone = os.environ.get("ADMIN_PHONE", "+18055154030")
@@ -1147,7 +1181,7 @@ PERSONALITY GUIDELINES:
         }
 
     # =========================================================================
-    # 10. ADMIN GET ENDPOINTS (PARA LISTAR SUGERENCIAS Y REEMBOLSOS)
+    # 10. ADMIN GET ENDPOINTS (SIN CAMBIOS)
     # =========================================================================
     @router.get("/admin/suggestions")
     async def list_suggestions(user: dict = Depends(get_current_user)):
@@ -1161,9 +1195,6 @@ PERSONALITY GUIDELINES:
         refunds = await db.refunds.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
         return refunds
 
-            # =========================================================================
-    # UPDATE endpoints for suggestions and refunds (staff use)
-    # =========================================================================
     @router.put("/admin/suggestions/{suggestion_id}")
     async def update_suggestion(
         suggestion_id: str,

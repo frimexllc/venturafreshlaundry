@@ -19,17 +19,12 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from utils import normalize_email, normalize_phone, normalize_spaces, normalize_preference_dict
 from notifications import notify_store_order
 from auth import get_current_user, require_admin
+import logging
+
+logger = logging.getLogger(__name__)
+
 UPLOAD_DIR = Path("uploads/products")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-
-class ProductData(BaseModel):
-    name: str
-    description: Optional[str] = None
-    price: float = Field(..., gt=0)
-    category: str
-    stock: int = 0
-    is_active: bool = True
-    # image_url se generará en el backend
 
 # Stripe integration
 try:
@@ -56,6 +51,10 @@ except ImportError:
 
     class CheckoutStatusResponse(BaseModel):
         payment_status: str = ""
+        status: str = ""
+        amount_total: int = 0
+        currency: str = ""
+        metadata: Dict[str, str] = {}
 
     class StripeCheckout:
         def __init__(self, api_key: str, webhook_url: str):
@@ -71,9 +70,10 @@ except ImportError:
         async def handle_webhook(self, payload: bytes, signature: str):
             raise RuntimeError("Stripe integration not available")
 
-store_router = APIRouter(prefix="/store", tags=["Store"])
+# IMPORTANTE: prefix es "/api/store" completo
+store_router = APIRouter(prefix="/api/store", tags=["Store"])
 
-# Database reference (set by main app)
+# Database reference
 db = None
 
 def set_database(database):
@@ -317,8 +317,6 @@ async def get_zones_with_defaults(store_center: List[float]) -> List[Dict]:
     return zones
 
 
-
-
 def build_customer_snapshot(payload: dict) -> Dict:
     return {
         "name": payload.get("customer_name"),
@@ -332,7 +330,6 @@ async def apply_stock_deduction(items: List[Dict]):
     for item in items:
         product_id = item.get("product_id")
         if not product_id:
-            # Skip items without product_id (legacy orders or custom items)
             continue
         product = await db.products.find_one({"id": product_id}, {"_id": 0})
         if not product:
@@ -420,7 +417,7 @@ class StoreOrderResponse(BaseModel):
     customer_email: Optional[str] = None
     customer_phone: Optional[str] = None
     preferred_contact: Optional[str] = None
-    items: List[Dict]
+    items: Optional[List[Dict]] = []
     total: float
     subtotal: Optional[float] = 0.0
     shipping_fee: Optional[float] = 0.0
@@ -434,13 +431,13 @@ class StoreOrderResponse(BaseModel):
     shipping_address: Optional[Dict] = None
     notes: Optional[str] = None
     status: str
-    created_at: str
-    updated_at: str
+    created_at: Optional[str] = ""
+    updated_at: Optional[str] = ""
 
 
 class DeliveryZoneCreate(BaseModel):
     name: str
-    type: str  # circle or polygon
+    type: str
     radius_km: Optional[float] = None
     center: Optional[List[float]] = None
     polygon: Optional[List[List[float]]] = None
@@ -461,10 +458,10 @@ class DeliveryZoneResponse(BaseModel):
     created_at: str
     updated_at: str
 
+
 # ==================== SEED PRODUCTS ====================
 
 async def seed_products():
-    """Seed initial products if none exist"""
     count = await db.products.count_documents({})
     if count == 0:
         products = [
@@ -536,23 +533,19 @@ async def seed_products():
 
 @store_router.get("/products", response_model=List[ProductResponse])
 async def list_products(category: Optional[str] = None, active_only: bool = True):
-    """List all products"""
     await seed_products()
-    
     query = {}
     if active_only:
         query["is_active"] = True
         query["stock"] = {"$gt": 0}
     if category:
         query["category"] = category
-    
     products = await db.products.find(query, {"_id": 0}).to_list(100)
     return products
 
 
 @store_router.get("/products/{product_id}", response_model=ProductResponse)
 async def get_product(product_id: str):
-    """Get a single product by ID"""
     product = await db.products.find_one({"id": product_id}, {"_id": 0})
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
@@ -571,22 +564,15 @@ async def create_product(
     image_url: Optional[str] = Form(None),
     image: Optional[UploadFile] = File(None)
 ):
-    """Create a new product (admin only) with optional image upload"""
     now = datetime.now(timezone.utc).isoformat()
-    
-    # Procesar imagen si se subió
     final_image_url = normalize_spaces(image_url)
     if image and image.filename:
-        # Generar nombre único
         ext = Path(image.filename).suffix
         filename = f"{uuid.uuid4()}{ext}"
         file_path = UPLOAD_DIR / filename
-        
-        # Guardar archivo
         try:
             with open(file_path, "wb") as buffer:
                 shutil.copyfileobj(image.file, buffer)
-            # Construir URL (ajusta según tu dominio)
             base_url = resolve_public_base_url(request)
             final_image_url = f"{base_url}/uploads/products/{filename}"
         except Exception as e:
@@ -604,10 +590,10 @@ async def create_product(
         "created_at": now,
         "updated_at": now
     }
-    
     await db.products.insert_one(product_doc)
     del product_doc["_id"]
     return product_doc
+
 
 @store_router.put("/products/{product_id}", response_model=ProductResponse)
 async def update_product(
@@ -622,24 +608,18 @@ async def update_product(
     image_url: Optional[str] = Form(None),
     image: Optional[UploadFile] = File(None)
 ):
-    """Update a product (admin only) with optional new image"""
     existing = await db.products.find_one({"id": product_id})
     if not existing:
         raise HTTPException(status_code=404, detail="Product not found")
     
     now = datetime.now(timezone.utc).isoformat()
-    
-    # Determinar nueva URL de imagen
     final_image_url = normalize_spaces(image_url) or existing.get("image_url")
     if image and image.filename:
-        # Eliminar imagen anterior si existe (opcional)
         if final_image_url and "/uploads/products/" in final_image_url:
             old_filename = Path(final_image_url).name
             old_path = UPLOAD_DIR / old_filename
             if old_path.exists():
                 old_path.unlink()
-        
-        # Guardar nueva imagen
         ext = Path(image.filename).suffix
         filename = f"{uuid.uuid4()}{ext}"
         file_path = UPLOAD_DIR / filename
@@ -661,15 +641,13 @@ async def update_product(
         "is_active": is_active if stock > 0 else False,
         "updated_at": now
     }
-    
     await db.products.update_one({"id": product_id}, {"$set": update_data})
-    
     updated = await db.products.find_one({"id": product_id}, {"_id": 0})
     return updated
 
+
 @store_router.delete("/products/{product_id}")
-async def delete_product(product_id: str):
-    """Delete a product (admin only)"""
+async def delete_product(product_id: str, current_user: dict = Depends(require_admin)):
     result = await db.products.delete_one({"id": product_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Product not found")
@@ -680,7 +658,6 @@ async def delete_product(product_id: str):
 
 @store_router.post("/cart", response_model=CartResponse)
 async def create_cart():
-    """Create a new shopping cart"""
     now = datetime.now(timezone.utc).isoformat()
     cart_doc = {
         "id": str(uuid.uuid4()),
@@ -698,7 +675,6 @@ async def create_cart():
 
 @store_router.get("/cart/{cart_id}", response_model=CartResponse)
 async def get_cart(cart_id: str):
-    """Get cart by ID"""
     cart = await db.carts.find_one({"id": cart_id}, {"_id": 0})
     if not cart:
         raise HTTPException(status_code=404, detail="Cart not found")
@@ -707,12 +683,10 @@ async def get_cart(cart_id: str):
 
 @store_router.post("/cart/{cart_id}/items", response_model=CartResponse)
 async def add_to_cart(cart_id: str, item: CartItem):
-    """Add item to cart"""
     cart = await db.carts.find_one({"id": cart_id})
     if not cart:
         raise HTTPException(status_code=404, detail="Cart not found")
     
-    # Verify product exists and has stock
     product = await db.products.find_one({"id": item.product_id}, {"_id": 0})
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
@@ -721,7 +695,6 @@ async def add_to_cart(cart_id: str, item: CartItem):
     if product["stock"] < item.quantity:
         raise HTTPException(status_code=400, detail="Insufficient stock")
     
-    # Check if product already in cart
     items = cart.get("items", [])
     found = False
     for cart_item in items:
@@ -738,9 +711,7 @@ async def add_to_cart(cart_id: str, item: CartItem):
             "quantity": item.quantity
         })
     
-    # Recalculate total
     total = sum(i["price"] * i["quantity"] for i in items)
-    
     await db.carts.update_one(
         {"id": cart_id},
         {
@@ -751,20 +722,17 @@ async def add_to_cart(cart_id: str, item: CartItem):
             }
         }
     )
-    
     updated_cart = await db.carts.find_one({"id": cart_id}, {"_id": 0})
     return updated_cart
 
 
 @store_router.put("/cart/{cart_id}/items/{product_id}", response_model=CartResponse)
 async def update_cart_item(cart_id: str, product_id: str, quantity: int):
-    """Update quantity of item in cart"""
     cart = await db.carts.find_one({"id": cart_id})
     if not cart:
         raise HTTPException(status_code=404, detail="Cart not found")
     
     items = cart.get("items", [])
-
     if quantity > 0:
         product = await db.products.find_one({"id": product_id}, {"_id": 0})
         if not product:
@@ -773,18 +741,16 @@ async def update_cart_item(cart_id: str, product_id: str, quantity: int):
             raise HTTPException(status_code=400, detail="Product is out of stock")
         if product.get("stock", 0) < quantity:
             raise HTTPException(status_code=400, detail="Insufficient stock")
+    
     if quantity <= 0:
-        # Remove item from cart
         items = [i for i in items if i["product_id"] != product_id]
     else:
-        # Update quantity
         for item in items:
             if item["product_id"] == product_id:
                 item["quantity"] = quantity
                 break
     
     total = sum(i["price"] * i["quantity"] for i in items)
-    
     await db.carts.update_one(
         {"id": cart_id},
         {
@@ -795,20 +761,17 @@ async def update_cart_item(cart_id: str, product_id: str, quantity: int):
             }
         }
     )
-    
     updated_cart = await db.carts.find_one({"id": cart_id}, {"_id": 0})
     return updated_cart
 
 
 @store_router.delete("/cart/{cart_id}/items/{product_id}", response_model=CartResponse)
 async def remove_from_cart(cart_id: str, product_id: str):
-    """Remove item from cart"""
     return await update_cart_item(cart_id, product_id, 0)
 
 
 @store_router.delete("/cart/{cart_id}")
 async def clear_cart(cart_id: str):
-    """Clear all items from cart"""
     result = await db.carts.update_one(
         {"id": cart_id},
         {
@@ -828,23 +791,17 @@ async def clear_cart(cart_id: str):
 
 @store_router.post("/shipping/quote", response_model=ShippingQuoteResponse)
 async def get_shipping_quote(payload: ShippingQuoteRequest):
-    """Calculate shipping fee based on address"""
     if not payload.address:
         raise HTTPException(status_code=400, detail="Address required")
     result = await calculate_shipping_fee(payload.address)
     return result
 
 
-# --- NUEVO ENDPOINT PARA VALIDAR DIRECCIÓN EN REGISTRO ---
 class AddressCheckRequest(BaseModel):
     address: str
 
 @store_router.post("/check-address")
 async def check_address(request: AddressCheckRequest):
-    """
-    Verifica si una dirección está dentro del área de servicio (zonas de delivery).
-    Útil para validar direcciones durante el registro de clientes.
-    """
     try:
         result = await calculate_shipping_fee(request.address)
         return {
@@ -869,7 +826,7 @@ async def list_delivery_zones():
 
 
 @store_router.post("/delivery-zones", response_model=DeliveryZoneResponse)
-async def create_delivery_zone(zone: DeliveryZoneCreate):
+async def create_delivery_zone(zone: DeliveryZoneCreate, current_user: dict = Depends(require_admin)):
     now = datetime.now(timezone.utc).isoformat()
     if zone.type not in ["circle", "polygon"]:
         raise HTTPException(status_code=400, detail="Invalid zone type")
@@ -898,7 +855,7 @@ async def create_delivery_zone(zone: DeliveryZoneCreate):
 
 
 @store_router.put("/delivery-zones/{zone_id}", response_model=DeliveryZoneResponse)
-async def update_delivery_zone(zone_id: str, zone: DeliveryZoneCreate):
+async def update_delivery_zone(zone_id: str, zone: DeliveryZoneCreate, current_user: dict = Depends(require_admin)):
     if zone.type not in ["circle", "polygon"]:
         raise HTTPException(status_code=400, detail="Invalid zone type")
     update_doc = {
@@ -920,7 +877,7 @@ async def update_delivery_zone(zone_id: str, zone: DeliveryZoneCreate):
 
 
 @store_router.delete("/delivery-zones/{zone_id}")
-async def delete_delivery_zone(zone_id: str):
+async def delete_delivery_zone(zone_id: str, current_user: dict = Depends(require_admin)):
     result = await db.delivery_zones.delete_one({"id": zone_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Zone not found")
@@ -931,14 +888,12 @@ async def delete_delivery_zone(zone_id: str):
 
 @store_router.post("/checkout")
 async def create_checkout_session(checkout: CheckoutRequest, request: Request):
-    """Create Stripe checkout session for cart"""
     if not STRIPE_AVAILABLE:
         raise HTTPException(status_code=503, detail="Stripe integration not available")
 
     cart = await db.carts.find_one({"id": checkout.cart_id})
     if not cart:
         raise HTTPException(status_code=404, detail="Cart not found")
-
     if not cart.get("items") or len(cart["items"]) == 0:
         raise HTTPException(status_code=400, detail="Cart is empty")
 
@@ -1070,7 +1025,6 @@ async def create_checkout_session(checkout: CheckoutRequest, request: Request):
 
 @store_router.post("/checkout/manual")
 async def create_manual_checkout(checkout: ManualCheckoutRequest):
-    """Create manual checkout for cash/transfer/other payments"""
     cart = await db.carts.find_one({"id": checkout.cart_id})
     if not cart:
         raise HTTPException(status_code=404, detail="Cart not found")
@@ -1167,7 +1121,6 @@ async def create_manual_checkout(checkout: ManualCheckoutRequest):
     }
     await db.payment_transactions.insert_one(payment_doc)
 
-    # Create finance ledger entry
     finance_entry = {
         "id": str(uuid.uuid4()),
         "type": "income",
@@ -1216,7 +1169,6 @@ async def create_manual_checkout(checkout: ManualCheckoutRequest):
 
 @store_router.get("/checkout/status/{session_id}")
 async def get_checkout_status(session_id: str):
-    """Get the status of a checkout session"""
     if not STRIPE_AVAILABLE:
         raise HTTPException(status_code=503, detail="Stripe integration not available")
     stripe_api_key = os.environ.get("STRIPE_API_KEY")
@@ -1227,7 +1179,6 @@ async def get_checkout_status(session_id: str):
     
     try:
         status: CheckoutStatusResponse = await stripe_checkout.get_checkout_status(session_id)
-
         payment_status = normalize_payment_status(status.payment_status, status.status)
 
         await db.payment_transactions.update_one(
@@ -1243,7 +1194,6 @@ async def get_checkout_status(session_id: str):
         if payment_status == "paid":
             transaction = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
             order_id = transaction.get("order_id") if transaction else None
-
             order = None
             if order_id:
                 order = await db.store_orders.find_one({"id": order_id}, {"_id": 0})
@@ -1281,49 +1231,86 @@ async def get_checkout_status(session_id: str):
         return {
             "status": status.status,
             "payment_status": payment_status,
-            "amount_total": status.amount_total / 100,  # Convert from cents
+            "amount_total": status.amount_total / 100,
             "currency": status.currency,
             "metadata": status.metadata
         }
-        
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get checkout status: {str(e)}")
 
 
-# ==================== STORE ORDERS ENDPOINTS ====================
+# ==================== STORE ORDERS ENDPOINTS (CORREGIDOS) ====================
+
+# En store.py, reemplaza estos endpoints:
 
 @store_router.get("/orders", response_model=List[StoreOrderResponse])
-async def list_store_orders(status: Optional[str] = None, limit: int = 50):
-    """List store orders (admin only)"""
+async def list_store_orders(
+    status: Optional[str] = None, 
+    limit: int = 50,
+    current_user: dict = Depends(get_current_user)   # ← Cambiado
+):
+    """List store orders - admin y operator"""
+    if db is None:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+    
+    # Permitir admin y operator
+    if current_user.get("role") not in ["admin", "operator"]:
+        raise HTTPException(status_code=403, detail="Permission denied")
+    
     query = {}
     if status:
         query["status"] = status
     
-    orders = await db.store_orders.find(query, {"_id": 0}).sort("created_at", -1).to_list(limit)
-    return orders
+    try:
+        orders = await db.store_orders.find(query, {"_id": 0}).sort("created_at", -1).to_list(limit)
+        return orders
+    except Exception as e:
+        logger.error(f"Error fetching store orders: {e}")
+        raise HTTPException(status_code=500, detail=f"Error fetching orders: {str(e)}")
 
 
 @store_router.get("/orders/{order_id}", response_model=StoreOrderResponse)
-async def get_store_order(order_id: str):
+async def get_store_order(order_id: str, current_user: dict = Depends(get_current_user)):
     """Get a store order by ID"""
+    if current_user.get("role") not in ["admin", "operator"]:
+        raise HTTPException(status_code=403, detail="Permission denied")
+    
     order = await db.store_orders.find_one({"id": order_id}, {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
+    
+    # Si es operator, puede ver cualquier orden (o limitar según negocio)
+    return order
+
+
+@store_router.get("/orders/{order_id}", response_model=StoreOrderResponse)
+async def get_store_order(order_id: str, current_user: dict = Depends(get_current_user)):
+    order = await db.store_orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    if current_user.get("role") != "admin":
+        if order.get("customer_email") != current_user.get("email"):
+            raise HTTPException(status_code=403, detail="Not authorized to view this order")
+    
     return order
 
 
 @store_router.get("/orders/by-session/{session_id}", response_model=StoreOrderResponse)
-async def get_order_by_session(session_id: str):
-    """Get order by Stripe session ID"""
+async def get_order_by_session(session_id: str, current_user: dict = Depends(get_current_user)):
     order = await db.store_orders.find_one({"stripe_session_id": session_id}, {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
+    
+    if current_user.get("role") != "admin":
+        if order.get("customer_email") != current_user.get("email"):
+            raise HTTPException(status_code=403, detail="Not authorized")
+    
     return order
 
 
 @store_router.put("/orders/{order_id}/status")
-async def update_order_status(order_id: str, status: str):
-    """Update order status (admin only)"""
+async def update_order_status(order_id: str, status: str, current_user: dict = Depends(require_admin)):
     valid_statuses = ["pending", "confirmed", "processing", "shipped", "delivered", "cancelled"]
     if status not in valid_statuses:
         raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {valid_statuses}")
@@ -1343,8 +1330,9 @@ async def update_order_status(order_id: str, status: str):
     
     return {"message": f"Order status updated to {status}"}
 
+
 @store_router.post("/orders/{order_id}/payment")
-async def register_store_order_payment(order_id: str, payload: StorePaymentRequest):
+async def register_store_order_payment(order_id: str, payload: StorePaymentRequest, current_user: dict = Depends(require_admin)):
     order = await db.store_orders.find_one({"id": order_id}, {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
@@ -1385,7 +1373,6 @@ async def register_store_order_payment(order_id: str, payload: StorePaymentReque
     }
     await db.payment_transactions.insert_one(payment_doc)
 
-    # Create finance ledger entry for store payment
     finance_entry = {
         "id": str(uuid.uuid4()),
         "type": "income",
@@ -1416,7 +1403,7 @@ async def register_store_order_payment(order_id: str, payload: StorePaymentReque
 
 
 @store_router.post("/orders/{order_id}/stripe-checkout")
-async def create_store_order_checkout(order_id: str, payload: StoreStripeCheckoutRequest, request: Request):
+async def create_store_order_checkout(order_id: str, payload: StoreStripeCheckoutRequest, request: Request, current_user: dict = Depends(require_admin)):
     if not STRIPE_AVAILABLE:
         raise HTTPException(status_code=503, detail="Stripe integration not available")
     order = await db.store_orders.find_one({"id": order_id}, {"_id": 0})
@@ -1481,14 +1468,13 @@ async def create_store_order_checkout(order_id: str, payload: StoreStripeCheckou
 
 
 class SendPaymentLinkRequest(BaseModel):
-    channel: str  # "sms" or "email"
+    channel: str
     phone: Optional[str] = None
     email: Optional[str] = None
 
 
 @store_router.post("/orders/{order_id}/send-payment-link")
-async def send_payment_link(order_id: str, payload: SendPaymentLinkRequest, request: Request):
-    """Generate Stripe checkout URL and send via SMS or Email"""
+async def send_payment_link(order_id: str, payload: SendPaymentLinkRequest, request: Request, current_user: dict = Depends(require_admin)):
     if not STRIPE_AVAILABLE:
         raise HTTPException(status_code=503, detail="Stripe integration not available")
     order = await db.store_orders.find_one({"id": order_id}, {"_id": 0})
@@ -1560,15 +1546,14 @@ async def send_payment_link(order_id: str, payload: SendPaymentLinkRequest, requ
             await send_email(payload.email, subject, body)
             await db.store_orders.update_one({"id": order_id}, {"$set": {"customer_email": payload.email}})
     except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning(f"Failed to send payment link via {channel}: {e}")
+        logger.warning(f"Failed to send payment link via {channel}: {e}")
         return {"message": f"Order created but could not send {channel}. Checkout URL: {checkout_url}", "checkout_url": checkout_url, "order_id": order_id}
 
     return {"message": f"Payment link sent via {channel}", "checkout_url": checkout_url, "order_id": order_id}
 
 
 @store_router.post("/orders/{order_id}/refund")
-async def refund_store_order(order_id: str):
+async def refund_store_order(order_id: str, current_user: dict = Depends(require_admin)):
     order = await db.store_orders.find_one({"id": order_id})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
@@ -1614,11 +1599,9 @@ async def refund_store_order(order_id: str):
     return {"message": "Order refunded"}
 
 
-
 # ==================== WEBHOOK ENDPOINT ====================
 
 async def handle_stripe_webhook(request: Request):
-    """Handle Stripe webhook events"""
     if not STRIPE_AVAILABLE:
         raise HTTPException(status_code=503, detail="Stripe integration not available")
     stripe_api_key = os.environ.get("STRIPE_API_KEY")
@@ -1708,7 +1691,7 @@ class MembershipCheckoutRequest(BaseModel):
     customer_name: Optional[str] = None
     customer_phone: Optional[str] = None
     preferences: Optional[dict] = None
-    registration_data: Optional[dict] = None   # ← NUEVO: datos completos del formulario
+    registration_data: Optional[dict] = None
 
 class ServiceCheckoutRequest(BaseModel):
     service_id: str
@@ -1717,25 +1700,16 @@ class ServiceCheckoutRequest(BaseModel):
     customer_email: Optional[str] = None
     estimated_lbs: Optional[float] = None
 
-# Membership plan prices (fixed on backend for security)
-MEMBERSHIP_PRICES = {
-    "most_popular": 139.00,
-    "family_plus": 199.00,
-    "elite_concierge": 299.00
-}
 
 @store_router.post("/membership/checkout")
 async def create_membership_checkout(checkout: MembershipCheckoutRequest, request: Request):
-    """Create Stripe checkout session for membership subscription"""
     if not STRIPE_AVAILABLE:
         raise HTTPException(status_code=503, detail="Stripe integration not available")
     
-    # Get membership plan from database
     plan = await db.membership_plans.find_one({"id": checkout.plan_id}, {"_id": 0})
     if not plan:
         raise HTTPException(status_code=404, detail="Membership plan not found")
     
-    # Parse price from plan (e.g., "$139 / month" -> 139.00)
     price_str = plan.get("price", "$0")
     try:
         price = float(price_str.replace("$", "").replace(",", "").split("/")[0].strip())
@@ -1745,29 +1719,22 @@ async def create_membership_checkout(checkout: MembershipCheckoutRequest, reques
     if price <= 0:
         raise HTTPException(status_code=400, detail="Invalid plan price")
     
-    # Get Stripe API key
     stripe_api_key = os.environ.get("STRIPE_API_KEY")
     if not stripe_api_key:
         raise HTTPException(status_code=500, detail="Payment configuration error")
     
-    # Build URLs
     host_url = resolve_public_base_url(request)
     webhook_url = f"{host_url}/api/webhook/stripe"
     success_url = f"{checkout.origin_url}/membership?session_id={{CHECKOUT_SESSION_ID}}&status=success"
     cancel_url = f"{checkout.origin_url}/membership?status=cancelled"
     
-    # Initialize Stripe checkout
     stripe_checkout = StripeCheckout(api_key=stripe_api_key, webhook_url=webhook_url)
     
-    # Create membership signup record
     now = datetime.now(timezone.utc).isoformat()
     signup_id = str(uuid.uuid4())
-
     normalized_email = normalize_email(checkout.customer_email) if checkout.customer_email else ""
-    normalized_email = normalized_email or (checkout.customer_email.lower() if checkout.customer_email else None)
     normalized_name = normalize_spaces(checkout.customer_name)
     normalized_phone = normalize_phone(checkout.customer_phone)
-
     preferences = normalize_preference_dict(checkout.preferences)
 
     signup_doc = {
@@ -1778,17 +1745,16 @@ async def create_membership_checkout(checkout: MembershipCheckoutRequest, reques
         "customer_name": normalized_name or checkout.customer_name,
         "customer_phone": normalized_phone or checkout.customer_phone,
         "preferences": preferences,
-        "registration_data": checkout.registration_data or {},  # ← NUEVO
+        "registration_data": checkout.registration_data or {},
         "amount": price,
         "payment_status": "pending",
         "stripe_session_id": None,
         "status": "pending",
-        "completed": False,                                      # ← NUEVO
+        "completed": False,
         "created_at": now,
         "updated_at": now
     }
     
-    # Create checkout session
     try:
         checkout_request = CheckoutSessionRequest(
             amount=float(price),
@@ -1805,14 +1771,9 @@ async def create_membership_checkout(checkout: MembershipCheckoutRequest, reques
         )
         
         session: CheckoutSessionResponse = await stripe_checkout.create_checkout_session(checkout_request)
-        
-        # Update signup with session ID
         signup_doc["stripe_session_id"] = session.session_id
-        
-        # Save signup
         await db.membership_signups.insert_one(signup_doc)
         
-        # Create payment transaction record
         payment_doc = {
             "id": str(uuid.uuid4()),
             "session_id": session.session_id,
@@ -1839,14 +1800,12 @@ async def create_membership_checkout(checkout: MembershipCheckoutRequest, reques
             "plan_name": plan.get("name"),
             "amount": price
         }
-        
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to create checkout session: {str(e)}")
 
 
 @store_router.get("/membership/checkout/status/{session_id}")
 async def get_membership_checkout_status(session_id: str):
-    """Get the status of a membership checkout session"""
     if not STRIPE_AVAILABLE:
         raise HTTPException(status_code=503, detail="Stripe integration not available")
     
@@ -1858,8 +1817,6 @@ async def get_membership_checkout_status(session_id: str):
     
     try:
         status: CheckoutStatusResponse = await stripe_checkout.get_checkout_status(session_id)
-        
-        # Update payment transaction
         payment_status = "paid" if status.payment_status == "paid" else status.payment_status
         
         await db.payment_transactions.update_one(
@@ -1872,38 +1829,30 @@ async def get_membership_checkout_status(session_id: str):
             }
         )
         
-        # If paid, update membership signup and create customer membership
         if payment_status == "paid":
             transaction = await db.payment_transactions.find_one({"session_id": session_id})
             if transaction:
                 signup_id = transaction.get("signup_id")
                 if signup_id:
-                    # Check if already processed
                     signup = await db.membership_signups.find_one({"id": signup_id})
                     if signup and signup.get("payment_status") != "paid":
                         now = datetime.now(timezone.utc).isoformat()
-                        
-                        # Update signup status
                         await db.membership_signups.update_one(
                             {"id": signup_id},
                             {
                                 "$set": {
                                     "payment_status": "paid",
-                                    "status": "converted",   # ← CAMBIO: active → converted
+                                    "status": "converted",
                                     "updated_at": now
                                 }
                             }
                         )
                         
-                        # Create or update customer with membership
                         customer_email = signup.get("customer_email")
                         if customer_email:
                             normalized_email = normalize_email(customer_email) or customer_email.lower()
                             existing_customer = await db.customers.find_one({"email": normalized_email})
-                            customer_id = None
                             if existing_customer:
-                                customer_id = existing_customer.get("id")
-                                # Update existing customer
                                 await db.customers.update_one(
                                     {"email": normalized_email},
                                     {
@@ -1916,7 +1865,6 @@ async def get_membership_checkout_status(session_id: str):
                                     }
                                 )
                             else:
-                                # Create new customer
                                 customer_id = str(uuid.uuid4())
                                 customer_doc = {
                                     "id": customer_id,
@@ -1935,32 +1883,6 @@ async def get_membership_checkout_status(session_id: str):
                                     "updated_at": now
                                 }
                                 await db.customers.insert_one(customer_doc)
-
-                            preferences = normalize_preference_dict(signup.get("preferences"))
-                            if preferences and customer_id:
-                                existing_pref = await db.preferences.find({"customer_id": customer_id}).sort("version", -1).limit(1).to_list(1)
-                                version = (existing_pref[0]["version"] + 1) if existing_pref else 1
-                                pref_id = str(uuid.uuid4())
-                                pref_doc = {
-                                    "id": pref_id,
-                                    "customer_id": customer_id,
-                                    "detergent_type": preferences.get("detergent_type") or "standard",
-                                    "water_temperature": preferences.get("water_temperature"),
-                                    "fabric_softener": preferences.get("fabric_softener"),
-                                    "folding_style": preferences.get("folding_style") or "standard",
-                                    "hanging_instructions": preferences.get("hanging_instructions"),
-                                    "allergies": preferences.get("allergies"),
-                                    "special_instructions": preferences.get("special_instructions"),
-                                    "pickup_time_preference": preferences.get("pickup_time_preference"),
-                                    "gate_code": preferences.get("gate_code"),
-                                    "hang_dry_items": preferences.get("hang_dry_items") or [],
-                                    "fragrance_preference": preferences.get("fragrance_preference") or "light",
-                                    "version": version,
-                                    "created_at": now,
-                                    "updated_at": now
-                                }
-                                await db.preferences.insert_one(pref_doc)
-                                await db.customers.update_one({"id": customer_id}, {"$set": {"preferences_id": pref_id, "updated_at": now}})
         
         return {
             "status": status.status,
@@ -1969,32 +1891,17 @@ async def get_membership_checkout_status(session_id: str):
             "currency": status.currency,
             "metadata": status.metadata
         }
-        
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get checkout status: {str(e)}")
 
 
 def _generate_temp_password(length: int = 12) -> str:
-    """Genera contraseña temporal segura."""
     alphabet = string.ascii_letters + string.digits + "!@#$"
     return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
 @store_router.post("/membership/complete-registration/{session_id}")
 async def complete_membership_registration(session_id: str):
-    """
-    Llamado por el frontend después de volver de Stripe con pago exitoso.
-
-    Flujo:
-      1. Verifica el pago en Stripe.
-      2. Busca los datos de registro guardados en membership_signups.
-      3. Crea (o actualiza) cuenta de cliente con contraseña temporal.
-      4. Activa la membresía en db.memberships.
-      5. Guarda preferencias Elite si aplica.
-      6. Envía email de bienvenida con credenciales.
-      7. Devuelve access_token + customer.
-    """
-    # ── Verificar pago ───────────────────────────────────────────────────────
     if not STRIPE_AVAILABLE:
         raise HTTPException(status_code=503, detail="Stripe integration not available")
 
@@ -2012,7 +1919,6 @@ async def complete_membership_registration(session_id: str):
     if payment_status != "paid":
         raise HTTPException(status_code=402, detail="Payment not completed")
 
-    # ── Buscar signup pendiente ──────────────────────────────────────────────
     signup = await db.membership_signups.find_one(
         {"stripe_session_id": session_id}, {"_id": 0}
     )
@@ -2022,9 +1928,7 @@ async def complete_membership_registration(session_id: str):
             detail="Registration data not found for this session. Please contact support.",
         )
 
-    # Evitar procesar dos veces
     if signup.get("completed"):
-        # Ya fue procesado → intentar devolver el token si el customer existe
         cust = await db.customers.find_one(
             {"email": signup.get("customer_email")}, {"_id": 0, "password_hash": 0}
         )
@@ -2034,22 +1938,21 @@ async def complete_membership_registration(session_id: str):
             return {"access_token": token, "token_type": "bearer", "customer": cust}
         raise HTTPException(status_code=409, detail="Already processed")
 
-    # ── Datos del formulario ─────────────────────────────────────────────────
     reg = signup.get("registration_data") or {}
     email = normalize_email(signup.get("customer_email") or reg.get("email") or "")
     if not email:
         raise HTTPException(status_code=400, detail="No email in registration data")
 
     plan_name = signup.get("plan_name", "Membership")
-    plan_id   = signup.get("plan_id")
+    plan_id = signup.get("plan_id")
     preferences = normalize_preference_dict(signup.get("preferences") or {})
 
-    first_name  = reg.get("first_name") or signup.get("customer_name", "").split(" ")[0]
-    last_name   = reg.get("last_name") or " ".join(signup.get("customer_name", "").split(" ")[1:])
-    full_name   = f"{first_name} {last_name}".strip() or signup.get("customer_name", "Member")
-    phone       = normalize_phone(reg.get("phone") or signup.get("customer_phone"))
+    first_name = reg.get("first_name") or signup.get("customer_name", "").split(" ")[0]
+    last_name = reg.get("last_name") or " ".join(signup.get("customer_name", "").split(" ")[1:])
+    full_name = f"{first_name} {last_name}".strip() or signup.get("customer_name", "Member")
+    phone = normalize_phone(reg.get("phone") or signup.get("customer_phone"))
 
-    addr_parts  = [
+    addr_parts = [
         p for p in [
             reg.get("address_line1"), reg.get("address_line2"),
             reg.get("city"), reg.get("state"), reg.get("zip_code"),
@@ -2058,28 +1961,25 @@ async def complete_membership_registration(session_id: str):
     full_address = ", ".join(addr_parts) if addr_parts else None
     now = datetime.now(timezone.utc).isoformat()
 
-    # ── Importar auth helpers ────────────────────────────────────────────────
     from auth import hash_password, create_customer_token
 
-    # ── Crear / actualizar cuenta de cliente ─────────────────────────────────
     existing = await db.customers.find_one({"email": email})
-    temp_password = None   # Solo enviamos email si creamos contraseña nueva
+    temp_password = None
 
     if existing and existing.get("password_hash"):
-        # Ya tiene cuenta → solo actualizamos datos y activamos membresía
         customer_id = existing["id"]
         await db.customers.update_one(
             {"id": customer_id},
             {
                 "$set": {
-                    "name":      full_name or existing.get("name"),
-                    "phone":     phone or existing.get("phone"),
-                    "address":   full_address or existing.get("address"),
-                    "city":      reg.get("city") or existing.get("city"),
-                    "state":     reg.get("state") or existing.get("state"),
-                    "zip_code":  reg.get("zip_code") or existing.get("zip_code"),
+                    "name": full_name or existing.get("name"),
+                    "phone": phone or existing.get("phone"),
+                    "address": full_address or existing.get("address"),
+                    "city": reg.get("city") or existing.get("city"),
+                    "state": reg.get("state") or existing.get("state"),
+                    "zip_code": reg.get("zip_code") or existing.get("zip_code"),
                     "is_member": True,
-                    "membership_plan":   plan_name,
+                    "membership_plan": plan_name,
                     "membership_status": "active",
                     "updated_at": now,
                 }
@@ -2088,78 +1988,73 @@ async def complete_membership_registration(session_id: str):
     else:
         temp_password = _generate_temp_password()
         if existing:
-            # Tiene registro pero sin contraseña (creado por orden anterior)
             customer_id = existing["id"]
             await db.customers.update_one(
                 {"id": customer_id},
                 {
                     "$set": {
-                        "name":          full_name,
-                        "phone":         phone,
-                        "address":       full_address,
-                        "city":          reg.get("city"),
-                        "state":         reg.get("state"),
-                        "zip_code":      reg.get("zip_code"),
+                        "name": full_name,
+                        "phone": phone,
+                        "address": full_address,
+                        "city": reg.get("city"),
+                        "state": reg.get("state"),
+                        "zip_code": reg.get("zip_code"),
                         "password_hash": hash_password(temp_password),
-                        "is_member":     True,
-                        "membership_plan":   plan_name,
+                        "is_member": True,
+                        "membership_plan": plan_name,
                         "membership_status": "active",
                         "updated_at": now,
                     }
                 },
             )
         else:
-            # Cliente completamente nuevo
             customer_id = str(uuid.uuid4())
             customer_doc = {
-                "id":             customer_id,
-                "name":           full_name,
-                "email":          email,
-                "phone":          phone,
-                "address":        full_address,
-                "city":           reg.get("city"),
-                "state":          reg.get("state"),
-                "zip_code":       reg.get("zip_code"),
-                "preferred_contact":   reg.get("contact_method", "email"),
-                "sms_consent":    reg.get("sms_consent", False),
-                "notes":          None,
-                "status":         "active",
-                "is_member":      True,
-                "membership_plan":      plan_name,
-                "membership_status":    "active",
+                "id": customer_id,
+                "name": full_name,
+                "email": email,
+                "phone": phone,
+                "address": full_address,
+                "city": reg.get("city"),
+                "state": reg.get("state"),
+                "zip_code": reg.get("zip_code"),
+                "preferred_contact": reg.get("contact_method", "email"),
+                "sms_consent": reg.get("sms_consent", False),
+                "notes": None,
+                "status": "active",
+                "is_member": True,
+                "membership_plan": plan_name,
+                "membership_status": "active",
                 "membership_start_date": now,
-                "total_orders":   0,
-                "password_hash":  hash_password(temp_password),
-                "created_at":     now,
-                "updated_at":     now,
+                "total_orders": 0,
+                "password_hash": hash_password(temp_password),
+                "created_at": now,
+                "updated_at": now,
             }
             await db.customers.insert_one(customer_doc)
 
-    # ── Crear membresía activa ───────────────────────────────────────────────
-    # Verificar que no exista ya una membresía activa para este signup
     existing_membership = await db.memberships.find_one(
         {"stripe_session_id": session_id}
     )
     if not existing_membership:
         membership_doc = {
-            "id":                  str(uuid.uuid4()),
-            "customer_id":         customer_id,
-            "customer_email":      email,
-            "plan":                plan_name,
-            "plan_id":             plan_id,
-            "stripe_session_id":   session_id,
-            "status":              "active",
-            "laundry_frequency":   reg.get("laundry_frequency"),
-            "estimated_lbs":       reg.get("estimated_lbs"),
-            "sms_consent":         reg.get("sms_consent", False),
-            "contact_method":      reg.get("contact_method"),
-            "preferences":         preferences,
-            "created_at":          now,
-            "updated_at":          now,
+            "id": str(uuid.uuid4()),
+            "customer_id": customer_id,
+            "customer_email": email,
+            "plan": plan_name,
+            "plan_id": plan_id,
+            "stripe_session_id": session_id,
+            "status": "active",
+            "laundry_frequency": reg.get("laundry_frequency"),
+            "estimated_lbs": reg.get("estimated_lbs"),
+            "sms_consent": reg.get("sms_consent", False),
+            "contact_method": reg.get("contact_method"),
+            "preferences": preferences,
+            "created_at": now,
+            "updated_at": now,
         }
         await db.memberships.insert_one(membership_doc)
 
-    # ── Guardar preferencias Elite ───────────────────────────────────────────
     if preferences:
         existing_pref = await db.customer_preferences.find_one(
             {"customer_id": customer_id}
@@ -2168,8 +2063,8 @@ async def complete_membership_registration(session_id: str):
         pref_doc = {
             **preferences,
             "customer_id": customer_id,
-            "updated_at":  now,
-            "version":     version,
+            "updated_at": now,
+            "version": version,
         }
         await db.customer_preferences.update_one(
             {"customer_id": customer_id},
@@ -2177,22 +2072,20 @@ async def complete_membership_registration(session_id: str):
             upsert=True,
         )
 
-    # ── Marcar signup como completado ────────────────────────────────────────
     await db.membership_signups.update_one(
         {"stripe_session_id": session_id},
         {
             "$set": {
                 "payment_status": "paid",
-                "status":         "converted",   # ← CAMBIO: active → converted
-                "completed":      True,
-                "customer_id":    customer_id,
-                "completed_at":   now,
-                "updated_at":     now,
+                "status": "converted",
+                "completed": True,
+                "customer_id": customer_id,
+                "completed_at": now,
+                "updated_at": now,
             }
         },
     )
 
-    # ── Enviar email de bienvenida con credenciales ───────────────────────────
     if temp_password:
         try:
             from notifications import send_email
@@ -2239,10 +2132,8 @@ async def complete_membership_registration(session_id: str):
                 html,
             )
         except Exception as exc:
-            import logging
-            logging.getLogger(__name__).error("Welcome email error: %s", exc)
+            logger.error("Welcome email error: %s", exc)
 
-    # ── Devolver token ───────────────────────────────────────────────────────
     customer_data = await db.customers.find_one(
         {"id": customer_id}, {"_id": 0, "password_hash": 0}
     )
@@ -2250,18 +2141,16 @@ async def complete_membership_registration(session_id: str):
 
     return {
         "access_token": token,
-        "token_type":   "bearer",
-        "customer":     customer_data,
+        "token_type": "bearer",
+        "customer": customer_data,
     }
 
 
 @store_router.post("/service/checkout")
 async def create_service_checkout(checkout: ServiceCheckoutRequest, request: Request):
-    """Create Stripe checkout session for a laundry service"""
     if not STRIPE_AVAILABLE:
         raise HTTPException(status_code=503, detail="Stripe integration not available")
     
-    # Get service from database
     service = await db.services.find_one({"id": checkout.service_id}, {"_id": 0})
     if not service:
         raise HTTPException(status_code=404, detail="Service not found")
@@ -2269,11 +2158,9 @@ async def create_service_checkout(checkout: ServiceCheckoutRequest, request: Req
     if not service.get("is_active"):
         raise HTTPException(status_code=400, detail="Service is not available")
     
-    # Calculate price
     base_price = service.get("price", 0)
     price_unit = service.get("price_unit", "")
     
-    # Calculate total based on unit type
     total_amount = base_price * checkout.quantity
     if "lb" in price_unit.lower() and checkout.estimated_lbs:
         total_amount = base_price * checkout.estimated_lbs
@@ -2281,21 +2168,17 @@ async def create_service_checkout(checkout: ServiceCheckoutRequest, request: Req
     if total_amount <= 0:
         raise HTTPException(status_code=400, detail="Invalid service price")
     
-    # Get Stripe API key
     stripe_api_key = os.environ.get("STRIPE_API_KEY")
     if not stripe_api_key:
         raise HTTPException(status_code=500, detail="Payment configuration error")
     
-    # Build URLs
     host_url = resolve_public_base_url(request)
     webhook_url = f"{host_url}/api/webhook/stripe"
     success_url = f"{checkout.origin_url}/services?session_id={{CHECKOUT_SESSION_ID}}&status=success"
     cancel_url = f"{checkout.origin_url}/services?status=cancelled"
     
-    # Initialize Stripe checkout
     stripe_checkout = StripeCheckout(api_key=stripe_api_key, webhook_url=webhook_url)
     
-    # Create service order record
     now = datetime.now(timezone.utc).isoformat()
     order_id = str(uuid.uuid4())
     order_number = f"SVC-{datetime.now().strftime('%Y%m%d')}-{str(uuid.uuid4())[:8].upper()}"
@@ -2333,14 +2216,9 @@ async def create_service_checkout(checkout: ServiceCheckoutRequest, request: Req
         )
         
         session: CheckoutSessionResponse = await stripe_checkout.create_checkout_session(checkout_request)
-        
-        # Update order with session ID
         order_doc["stripe_session_id"] = session.session_id
-        
-        # Save order
         await db.service_orders.insert_one(order_doc)
         
-        # Create payment transaction record
         payment_doc = {
             "id": str(uuid.uuid4()),
             "session_id": session.session_id,
@@ -2370,15 +2248,33 @@ async def create_service_checkout(checkout: ServiceCheckoutRequest, request: Req
             "service_name": service.get("name"),
             "amount": round(total_amount, 2)
         }
-        
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to create checkout session: {str(e)}")
 
 
 @store_router.get("/transactions")
 async def get_transactions(current_user: dict = Depends(get_current_user)):
-    """Get payment transactions (admin only)"""
     if current_user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
     transactions = await db.payment_transactions.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
     return transactions
+
+
+@store_router.post("/delivery-rules/calculate-fee")
+async def calculate_delivery_fee_legacy(request: Request):
+    try:
+        body = await request.json()
+        address = body.get("address") or body.get("shipping_address")
+        if not address:
+            raise HTTPException(status_code=400, detail="Address required")
+        
+        result = await calculate_shipping_fee(address)
+        return {
+            "fee": result["fee"],
+            "distance_km": result["distance_km"],
+            "zone_id": result.get("zone_id"),
+            "zone_name": result.get("zone_name"),
+            "delivery_fee": result["fee"]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))

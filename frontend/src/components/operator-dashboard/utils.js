@@ -74,9 +74,7 @@ const PRICING_WF = {
 };
 
 export function getRate(order) {
-  // 1st priority: explicit price_per_lb on the order
   if (order.price_per_lb && Number(order.price_per_lb) > 0) return Number(order.price_per_lb);
-  // 2nd: derive from service_plan + service_type
   const plan = (order.service_plan || "standard").toLowerCase();
   const st = (order.service_type || "").toLowerCase();
   if (st === "wash_fold") return PRICING_WF[plan] || PRICING_WF.standard;
@@ -94,18 +92,24 @@ export function calcDeliveryFee(distanceMiles) {
   return Math.round(Math.max(2.99, Math.min(raw, 5.99)) * 100) / 100;
 }
 
-// ─── AHORA calculateServiceCharge usa la distancia, no el delivery_fee almacenado ───
+// ─── calculateServiceCharge usa distancia, no el delivery_fee almacenado ───
 export function calculateServiceCharge(order) {
   if (!order) return null;
   const lbs = Number(order.actual_lbs || order.actual_weight || order.weight || 0);
   const rate = getRate(order);
   if (lbs > 0) {
     const subtotal = lbs * rate;
-    // ✅ Recalcula desde distance_miles (nunca confíes en order.delivery_fee)
     const deliveryFee = calcDeliveryFee(order.distance_miles);
     return subtotal + deliveryFee;
   }
   return order.total_amount || order.total || null;
+}
+
+export function isOrderCoveredByMembership(order) {
+  if (!order) return false;
+  const extraCharge = order.extra_charge ?? order.total_amount ?? 0;
+  const hasMembership = !!order.membership_plan;
+  return hasMembership && extraCharge <= 0.50;
 }
 
 export function dedupeOrders(orders) {

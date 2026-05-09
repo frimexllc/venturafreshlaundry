@@ -1,13 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import axios from "axios";
+import customerAxios from "../api/customerAxios";
 import { toast } from "sonner";
 import { User, Mail, Lock, ArrowRight, Eye, EyeOff, Phone, MapPin, Building2, Hash, ShieldCheck, X, CheckCircle } from "lucide-react";
 import PublicNav from "../components/PublicNav";
 import { useLocale } from "../context/LocaleContext";
 import AddressAutocomplete from "../components/AddressAutocomplete";
-
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 // ─── Washing Machine SVG ───────────────────────────────────────────────────────
 const WashingMachineSVG = () => {
@@ -234,7 +232,7 @@ export default function CustomerLogin() {
     }
     setCheckingAddress(true);
     try {
-      const res = await axios.post(`${API}/store/check-address`, { address: fullAddress });
+      const res = await customerAxios.post("/store/check-address", { address: fullAddress });
       if (res.data.valid) {
         setAddressValid({ valid: true, distance: res.data.distance_km, zone: res.data.zone_name });
         toast.success(t(`Address within service area (${res.data.distance_km.toFixed(1)} km)`, `Dirección dentro del área de servicio (${res.data.distance_km.toFixed(1)} km)`));
@@ -270,7 +268,8 @@ export default function CustomerLogin() {
     setLoading(true);
     try {
       if (mode === "login") {
-        const res = await axios.post(`${API}/customer/auth/login`, { email: form.email, password: form.password });
+        const res = await customerAxios.post("/customer/auth/login", { email: form.email, password: form.password });
+        console.log("Customer login response:", res.data); // ← para depurar
         localStorage.setItem("customer_token", res.data.access_token);
         localStorage.setItem("customer_data", JSON.stringify(res.data.customer));
         toast.success(t("Welcome back!", "¡Bienvenido de nuevo!"));
@@ -290,7 +289,7 @@ export default function CustomerLogin() {
           return;
         }
 
-        const res = await axios.post(`${API}/customer/auth/register`, {
+        const res = await customerAxios.post("/customer/auth/register", {
           name: form.name,
           email: form.email,
           password: form.password,
@@ -320,7 +319,7 @@ export default function CustomerLogin() {
     if (!forgotEmail.includes("@")) { toast.error(t("Enter a valid email", "Correo inválido")); return; }
     setLoading(true);
     try {
-      await axios.post(`${API}/customer/auth/forgot-password`, { email: forgotEmail });
+      await customerAxios.post("/customer/auth/forgot-password", { email: forgotEmail });
       setForgotSent(true);
       toast.success(t("Check your email for a reset link", "Revisa tu correo para el enlace de recuperación"));
     } catch (err) {
@@ -334,7 +333,7 @@ export default function CustomerLogin() {
     if (resetPassword !== resetConfirm) { toast.error(t("Passwords don't match", "Las contraseñas no coinciden")); return; }
     setLoading(true);
     try {
-      await axios.post(`${API}/customer/auth/reset-password`, { token: resetToken, password: resetPassword });
+      await customerAxios.post("/customer/auth/reset-password", { token: resetToken, password: resetPassword });
       toast.success(t("Password reset! You can now login.", "¡Contraseña restablecida! Ya puedes iniciar sesión."));
       setResetToken(null);
       setResetPassword("");

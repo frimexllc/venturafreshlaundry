@@ -542,20 +542,32 @@ export default function OperatorDashboard() {
     }
   }, [t]);
 
-  const loadStoreOrders = useCallback(async () => {
-    if (storeLoadingRef.current) return;
-    storeLoadingRef.current = true;
-    setStoreOrdersLoading(true);
-    try {
-      const res = await fetch(`${API_URL}/api/store/orders`);
-      if (res.ok) setStoreOrders((await res.json()) || []);
-    } catch {
-      toast.error(t("Error loading store orders", "Error cargando órdenes de tienda"));
-    } finally {
-      storeLoadingRef.current = false;
-      setStoreOrdersLoading(false);
+const loadStoreOrders = useCallback(async () => {
+  if (storeLoadingRef.current) return;
+  storeLoadingRef.current = true;
+  setStoreOrdersLoading(true);
+  try {
+    const token = localStorage.getItem("token");
+    const res = await fetch(`${API_URL}/api/store/orders`, {
+      headers: {
+        "Content-Type": "application/json",
+        ...(token && { Authorization: `Bearer ${token}` }),
+      },
+    });
+    if (res.ok) {
+      setStoreOrders((await res.json()) || []);
+    } else {
+      console.error("Store orders error:", res.status);
+      setStoreOrders([]);
     }
-  }, [t]);
+  } catch (err) {
+    console.error("Error loading store orders:", err);
+    setStoreOrders([]);
+  } finally {
+    storeLoadingRef.current = false;
+    setStoreOrdersLoading(false);
+  }
+}, [t]);
 
   useEffect(() => {
     loadDashboard();
@@ -2554,19 +2566,16 @@ const {
         open={storePosOpen}
         onOpenChange={(open) => (!open ? resetStorePos() : setStorePosOpen(true))}
       >
-        <DialogContent className="w-[95vw] max-w-5xl bg-white max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="text-base sm:text-lg">
-              {t("New Store Sale", "Nueva venta en tienda")}
-            </DialogTitle>
-            <DialogDescription className="text-xs sm:text-sm">
-              {t(
-                "Select products and collect payment quickly.",
-                "Selecciona productos y cobra rapido."
-              )}
-            </DialogDescription>
-          </DialogHeader>
-          <div
+<DialogContent className="w-[95vw] max-w-5xl bg-white max-h-[90vh] overflow-y-auto">
+  <DialogHeader>
+    <DialogTitle className="text-base sm:text-lg">
+      {t("New Store Sale", "Nueva venta en tienda")}
+    </DialogTitle>
+    <DialogDescription className="text-xs sm:text-sm">
+      {t("Select products and collect payment quickly.", "Selecciona productos y cobra rapido.")}
+    </DialogDescription>
+  </DialogHeader>
+            <div
             className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6"
             data-testid="store-pos-modal"
           >
@@ -2783,15 +2792,15 @@ const {
         open={!!storePaymentOrder}
         onOpenChange={(open) => !open && setStorePaymentOrder(null)}
       >
-        <DialogContent className="w-[95vw] max-w-lg bg-white">
-          <DialogHeader>
-            <DialogTitle className="text-base sm:text-lg">
-              {t("Request payment", "Solicitar pago")}
-            </DialogTitle>
-            <DialogDescription className="text-xs sm:text-sm">
-              {safeString(storePaymentOrder?.order_number)}
-            </DialogDescription>
-          </DialogHeader>
+       <DialogContent className="w-[95vw] max-w-lg bg-white">
+  <DialogHeader>
+    <DialogTitle className="text-base sm:text-lg">
+      {t("Request payment", "Solicitar pago")}
+    </DialogTitle>
+    <DialogDescription className="text-xs sm:text-sm">
+      {safeString(storePaymentOrder?.order_number)}
+    </DialogDescription>
+  </DialogHeader>
           {storePaymentOrder && (
             <div className="space-y-4" data-testid="store-payment-modal">
               <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">

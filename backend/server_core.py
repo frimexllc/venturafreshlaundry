@@ -153,10 +153,6 @@ except ImportError:
     logger = logging.getLogger(__name__)
     logger.warning("Automation engine not available")
 
-# Stripe sync is now a modular router (routes/stripe_sync.py), no scaffold needed
-
-# MongoDB connection imported from database.py
-
 # Set database for n8n integration
 if N8N_ENABLED:
     set_n8n_db(db)
@@ -194,33 +190,6 @@ if AUTOMATION_ENABLED and set_realtime_emitter:
     set_realtime_emitter(emit_realtime)
 
 
-# ==================== AUTH ENDPOINTS (Extracted → routes/auth_routes.py) ====================
-# ==================== DASHBOARD (Extracted → routes/dashboard.py) ====================
-
-# ==================== CUSTOMERS (Extracted → routes/customers.py) ====================
-# ==================== PREFERENCES (Extracted → routes/customers.py) ====================
-
-# ==================== ORDERS (Extracted → routes/orders.py) ====================
-
-# ==================== QUOTES (Extracted → routes/quotes.py) ====================
-# ==================== LEADS (Extracted → routes/leads.py) ====================
-# ==================== SUPPORT TICKETS (Extracted → routes/tickets.py) ====================
-
-# ==================== SERVICES (Extracted → routes/services.py) ====================
-# ==================== MEMBERSHIPS (Extracted → routes/services.py) ====================
-
-# ==================== AI ASSISTANT (Extracted → routes/ai_assistant.py) ====================
-# ==================== AI METRICS (Extracted → routes/ai_metrics.py) ====================
-# ==================== AI ADMIN (Extracted → routes/ai_admin.py) ====================
-# ==================== AI PATTERNS (Extracted → routes/ai_patterns.py) ====================
-# ==================== ADMIN IMPORT (Extracted → routes/admin_import.py) ====================
-
-# ==================== PUBLIC MEMBERSHIPS (Extracted → routes/services.py) ====================
-
-# ==================== INGEST & ROUTING (Extracted → routes/ingest.py) ====================
-
-# ==================== AUDIT LOG (Extracted → routes/audit.py) ====================
-
 # ==================== HEALTH CHECK ====================
 
 @api_router.get("/")
@@ -233,7 +202,7 @@ async def health_check():
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# NUEVO ENDPOINT: TRANSACCIONES REALES (store/transactions)
+# ENDPOINT: TRANSACCIONES REALES (store/transactions)
 # ═══════════════════════════════════════════════════════════════════════
 @api_router.get("/store/transactions")
 async def get_store_transactions(current_user: dict = Depends(get_current_user)):
@@ -281,19 +250,59 @@ async def get_store_transactions(current_user: dict = Depends(get_current_user))
     return transactions
 
 
-# ==================== EXPORT ENDPOINTS (Extracted → routes/exports.py) ====================
+# ==================== AUTH ENDPOINTS ====================
+# Endpoints de autenticación básicos que deben estar disponibles
 
-# ==================== CALENDAR ENDPOINTS (Extracted → routes/calendar.py) ====================
+class LoginRequest(BaseModel):
+    email: str
+    password: str
 
-# ==================== NOTIFICATION SETTINGS (Extracted → routes/settings.py) ====================
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str
+    user: dict
 
-# ==================== CUSTOMER AUTHENTICATION (Extracted → routes/customer_auth.py) ====================
+@api_router.post("/auth/login", response_model=TokenResponse)
+async def login(login_data: LoginRequest):
+    """Login endpoint for users"""
+    from auth import authenticate_user, create_access_token
+    
+    user = await authenticate_user(login_data.email, login_data.password)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    
+    access_token = create_access_token(
+        data={"sub": user["email"], "role": user.get("role", "customer")}
+    )
+    
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": {
+            "id": user["id"],
+            "email": user["email"],
+            "name": user.get("name"),
+            "role": user.get("role")
+        }
+    }
 
-# ==================== USER MANAGEMENT (Extracted → routes/users.py) ====================
+@api_router.get("/auth/me")
+async def get_me(current_user: dict = Depends(get_current_user)):
+    """Get current user info"""
+    return {
+        "id": current_user.get("id"),
+        "email": current_user.get("email"),
+        "name": current_user.get("name"),
+        "role": current_user.get("role")
+    }
 
-# ==================== OPERATOR-ONLY ENDPOINTS (Extracted → routes/operator.py) ====================
+@api_router.post("/auth/register")
+async def register():
+    """Register endpoint - implementado en routes.auth_routes"""
+    raise HTTPException(status_code=501, detail="Use /api/auth/register from auth routes")
 
-# === External routers (refactored) ===
+
+# ==================== EXTERNAL ROUTERS (refactored) ====================
 
 # Include extracted modular routers
 for _mod, _name in [
@@ -311,7 +320,7 @@ for _mod, _name in [
     ("routes.audit", "Audit"),
     ("routes.settings", "Settings"),
     ("routes.customer_auth", "Customer Auth"),
-    ("routes.operator", "Operator"),
+    ("routes.operator_routes", "Operator"),
     ("routes.orders", "Orders"),
     ("routes.ai_assistant", "AI Assistant"),
     ("routes.ai_metrics", "AI Metrics"),
@@ -324,11 +333,15 @@ for _mod, _name in [
 ]:
     try:
         _m = importlib.import_module(_mod)
-        app.include_router(_m.router)
-        logger.info(f"{_name} router enabled")
+        if hasattr(_m, 'router'):
+            app.include_router(_m.router)
+            logger.info(f"{_name} router enabled")
+        else:
+            logger.warning(f"{_name} module has no 'router' attribute")
     except Exception as e:
         logger.warning(f"{_name} router not loaded: {e}")
 
+# Include public forms router
 if get_public_forms_router:
     public_forms_router = get_public_forms_router(
         db=db,
@@ -341,6 +354,7 @@ if get_public_forms_router:
     )
     api_router.include_router(public_forms_router)
 
+# Include voice router
 if NOTIFICATIONS_ENABLED and get_voice_router:
     voice_router = get_voice_router(
         db=db,
@@ -355,7 +369,7 @@ if NOTIFICATIONS_ENABLED and get_voice_router:
     )
     api_router.include_router(voice_router)
 
-# Include router
+# Include main API router
 app.include_router(api_router)
 
 # Include n8n router
@@ -363,9 +377,9 @@ if N8N_ENABLED and n8n_router:
     app.include_router(n8n_router, prefix="/api")
     logger.info("n8n integration endpoints enabled at /api/n8n/*")
 
-# Include store router
+# Include store router - WITHOUT extra prefix (store_router already has "/api/store")
 if STORE_ENABLED and store_router:
-    app.include_router(store_router, prefix="/api")
+    app.include_router(store_router)
     logger.info("Store endpoints enabled at /api/store/*")
 
 # Include blog router
@@ -394,6 +408,7 @@ try:
 except Exception as e:
     logger.warning(f"Logistics router not loaded: {e}")
 
+# Include Route Planning router
 try:
     from routes.route_planning import router as route_planning_router
     app.include_router(route_planning_router)
@@ -401,7 +416,7 @@ try:
 except Exception as e:
     logger.warning(f"Route planning router not loaded: {e}")
 
-
+# Include Geocode router
 try:
     from routes.geocode import router as geocode_router
     app.include_router(geocode_router, prefix="/api")
@@ -409,9 +424,10 @@ try:
 except Exception as e:
     logger.warning(f"Geocode router not loaded: {e}")
 
+# Include Customer router
 try:
     from routes.customer import router as customer_router
-    app.include_router(customer_router, prefix="/api")
+    app.include_router(customer_router)
     logger.info("Customer router enabled at /api/customer/*")
 except Exception as e:
     logger.warning(f"Customer router not loaded: {e}")
@@ -488,13 +504,16 @@ try:
 except Exception as e:
     logger.warning(f"File uploads router not loaded: {e}")
 
-# Stripe webhook endpoint
+
+# ==================== STRIPE WEBHOOK ====================
+
 @app.post("/api/webhook/stripe")
 async def stripe_webhook(request: Request):
     """Handle Stripe webhook events"""
     if STORE_ENABLED:
         return await handle_stripe_webhook(request)
     raise HTTPException(status_code=503, detail="Store module not available")
+
 
 # ==================== STATIC WEBSITE ROUTES ====================
 # Serve the HTML website files
@@ -504,6 +523,7 @@ UPLOADS_DIR = ROOT_DIR / "uploads"
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
+
 # Mount static files directories for each page's assets
 if WEB_DIR.exists():
     for folder in WEB_DIR.iterdir():
@@ -584,6 +604,54 @@ async def serve_account():
         return HTMLResponse(content=html_file.read_text(encoding='utf-8'))
     raise HTTPException(status_code=404, detail="Page not found")
 
+
+# ==================== SHUTDOWN EVENT ====================
+
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+    
+# ==================== LEGACY ORDER ENDPOINTS (sin /store) ====================
+from store import store_router, get_current_user, db
+
+@api_router.get("/orders/{order_id}")
+async def legacy_get_order(order_id: str, current_user = Depends(get_current_user)):
+    # Reutilizar lógica de store
+    from store import get_store_order
+    return await get_store_order(order_id, current_user)
+
+@api_router.put("/orders/{order_id}")
+async def legacy_update_order(order_id: str, body: dict, current_user = Depends(get_current_user)):
+    # Reutilizar lógica de store
+    from store import update_store_order  # Necesitas crear esa función en store.py o copiar lógica
+    # Por simplicidad, llama directamente al endpoint de store si existe
+    # Pero como store_router tiene prefix /store, necesitas invocar la función interna.
+
+    # Mejor: mover la lógica a una función compartida en utils.py
+    # Por ahora, reimplementa la actualización de lbs/addons
+    order = await db.orders.find_one({"id": order_id})
+    if not order:
+        raise HTTPException(404, "Order not found")
+    # Verificar permisos...
+    if "actual_lbs" in body:
+        update_data = {"actual_lbs": body["actual_lbs"], "updated_at": datetime.now(timezone.utc).isoformat()}
+        # Recalcular total (llamar a función de utils)
+        await db.orders.update_one({"id": order_id}, {"$set": update_data})
+    return {"ok": True}
+
+@api_router.post("/orders/{order_id}/payment")
+async def legacy_order_payment(order_id: str, payload: dict, current_user = Depends(get_current_user)):
+    from store import register_store_order_payment
+    # Adaptar la llamada (necesitas crear una función auxiliar)
+    # ...
+
+@api_router.get("/orders/{order_id}/ticket")
+async def legacy_order_ticket(order_id: str, current_user = Depends(get_current_user)):
+    from store import get_order_ticket  # función que devuelve html
+    return await get_order_ticket(order_id, current_user)
+
+# Endpoint para recibos
+@api_router.get("/files/receipts-by-order/{order_id}")
+async def legacy_receipts_by_order(order_id: str, current_user = Depends(get_current_user)):
+    receipts = await db.files.find({"context": order_id, "type": "receipt"}).to_list(100)
+    return receipts    

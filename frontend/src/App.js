@@ -61,6 +61,7 @@ import PaymentSuccessPage from "./pages/PaymentSuccessPage";
 import CustomerPaymentPage from "./pages/CustomerPaymentPage";
 import RefundForm from "./pages/RefundForm";
 import SuggestionForm from "./pages/SuggestionForm";
+import axios from "axios";
 
 // Pre-carga de rutas críticas
 const preloadCriticalRoutes = () => {

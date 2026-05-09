@@ -7,7 +7,7 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [token, setToken] = useState(localStorage.getItem('token'));
+  const [token, setToken] = useState(localStorage.getItem('access_token'));
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -22,9 +22,16 @@ export const AuthProvider = ({ children }) => {
   const fetchUser = async () => {
     try {
       const response = await axios.get(`${API}/auth/me`);
+      console.log("✅ Usuario autenticado completo:", response.data);
+      
+      // Verifica que el usuario tenga un 'id' o 'customer_id'
+      if (!response.data.id && !response.data.customer_id) {
+        console.warn("⚠️ El usuario autenticado no tiene 'id' ni 'customer_id'. Esto puede causar errores 500 en endpoints que esperan estos campos.");
+      }
+      
       setUser(response.data);
     } catch (error) {
-      console.error('Failed to fetch user:', error);
+      console.error('❌ Error al obtener el usuario:', error);
       logout();
     } finally {
       setLoading(false);
@@ -32,30 +39,47 @@ export const AuthProvider = ({ children }) => {
   };
 
   const login = async (email, password) => {
-    const response = await axios.post(`${API}/auth/login`, { email, password });
-    const { access_token, user: userData } = response.data;
-    localStorage.setItem('token', access_token);
-    axios.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;
-    setToken(access_token);
-    setUser(userData);
-    return userData;
+    try {
+      const response = await axios.post(`${API}/auth/login`, { email, password });
+      const { access_token, user: userData } = response.data;
+      
+      localStorage.setItem('access_token', access_token);
+      axios.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;
+      setToken(access_token);
+      setUser(userData);
+      
+      console.log("✅ Login exitoso. Usuario:", userData);
+      return userData;
+    } catch (error) {
+      console.error('❌ Error en login:', error);
+      throw error;
+    }
   };
 
   const register = async (name, email, password) => {
-    const response = await axios.post(`${API}/auth/register`, { name, email, password });
-    const { access_token, user: userData } = response.data;
-    localStorage.setItem('token', access_token);
-    axios.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;
-    setToken(access_token);
-    setUser(userData);
-    return userData;
+    try {
+      const response = await axios.post(`${API}/auth/register`, { name, email, password });
+      const { access_token, user: userData } = response.data;
+      
+      localStorage.setItem('access_token', access_token);
+      axios.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;
+      setToken(access_token);
+      setUser(userData);
+      
+      console.log("✅ Registro exitoso. Usuario:", userData);
+      return userData;
+    } catch (error) {
+      console.error('❌ Error en registro:', error);
+      throw error;
+    }
   };
 
   const logout = () => {
-    localStorage.removeItem('token');
+    localStorage.removeItem('access_token');
     delete axios.defaults.headers.common['Authorization'];
     setToken(null);
     setUser(null);
+    console.log("✅ Sesión cerrada");
   };
 
   return (
