@@ -556,6 +556,10 @@ const loadStoreOrders = useCallback(async () => {
     });
     if (res.ok) {
       setStoreOrders((await res.json()) || []);
+    } else if (res.status === 401) {
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      window.location.href = "/login";
     } else {
       console.error("Store orders error:", res.status);
       setStoreOrders([]);

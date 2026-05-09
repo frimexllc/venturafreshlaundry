@@ -559,6 +559,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
         className="w-[95vw] max-w-xl max-h-[92vh] overflow-y-auto bg-slate-50 p-0 gap-0 rounded-2xl"
         data-testid="order-detail-dialog"
       >
+        <DialogTitle className="sr-only">{t("Order Details", "Detalles de Orden")}</DialogTitle>
         {/* Sticky header */}
         <div className="sticky top-0 z-20 flex items-center gap-3 px-5 py-4 bg-white border-b border-slate-200 rounded-t-2xl">
           <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-sky-600 text-white shrink-0">
