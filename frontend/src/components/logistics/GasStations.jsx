@@ -1,9 +1,7 @@
 // src/components/logistics/GasStations.jsx
-// FIXES:
-//   1. makeGasStationIcon now defined (was missing → crash in GasStationsLayer)
-//   2. fetchPricesWithFallback never throws → always returns prices (real or regional)
-//   3. GasStationsSidebar shows all stations (regional prices shown with clear indicator)
-//   4. UI dark-theme compatible, cleaner station cards
+// Refactored 2026-02-07: Uses Google Places API (New) via backend
+// (/api/logistics/gas-stations) — eliminates Overpass dependency.
+// Falls back to regional EIA baseline prices if Places API quota/key fails.
 
 import { useState, useEffect, useMemo } from "react";
 import { Marker, Popup } from "react-leaflet";
@@ -57,60 +55,6 @@ function safePrice(price) {
 function formatPrice(price) {
   const n = safePrice(price);
   return n !== null ? `$${n.toFixed(2)}` : "—";
-}
-
-// ── FIX: never throws, always returns enriched stations ─────────────────────
-async function fetchPricesWithFallback(stations) {
-  if (!stations.length) return [];
-
-  const token = localStorage.getItem("token");
-
-  // Try backend endpoint first
-  if (token) {
-    try {
-      const response = await fetch(`${API_URL}/api/logistics/gas-stations/prices`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(
-          stations.map((s) => ({ lat: s.lat, lng: s.lng, name: s.name, brand: s.brand }))
-        ),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        const backendStations = data.stations || [];
-
-        // Merge backend prices into our station list
-        return stations.map((station) => {
-          const match = backendStations.find(
-            (b) =>
-              Math.abs((b.lat || 0) - station.lat) < 0.001 &&
-              Math.abs((b.lng || 0) - station.lng) < 0.001
-          );
-          const price = match ? safePrice(match.price) : null;
-          const priceSource = match?.price_source || "regional";
-
-          return {
-            ...station,
-            price: price ?? getRegionalPrice(station.lat, station.lng, station.brand),
-            price_source: price ? priceSource : "regional",
-          };
-        });
-      }
-    } catch (err) {
-      console.warn("[GasStations] Backend unavailable, using regional prices:", err.message);
-    }
-  }
-
-  // Full regional fallback (no token or request failed)
-  return stations.map((s) => ({
-    ...s,
-    price: getRegionalPrice(s.lat, s.lng, s.brand),
-    price_source: "regional",
-  }));
 }
 
 // ── Cost/benefit analysis ────────────────────────────────────────────────────
@@ -176,7 +120,7 @@ export function makeGasStationIcon(isCheapest = false) {
   });
 }
 
-// ── Main hook ────────────────────────────────────────────────────────────────
+// ── Main hook (Google Places via backend) ───────────────────────────────────
 export function useGasStations(hq, routeWaypoints, enabled = true, vehicleMpg = 12) {
   const [stations, setStations] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -195,61 +139,63 @@ export function useGasStations(hq, routeWaypoints, enabled = true, vehicleMpg = 
     const allPoints = [hq, ...routeWaypoints].filter((p) => p?.lat != null);
     if (!allPoints.length) { setLoading(false); return; }
 
+    // Calcular centro y radio que cubra todos los puntos
     let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
     for (const p of allPoints) {
       minLat = Math.min(minLat, p.lat); maxLat = Math.max(maxLat, p.lat);
       minLng = Math.min(minLng, p.lng); maxLng = Math.max(maxLng, p.lng);
     }
-    const margin = 0.2;
-    minLat -= margin; maxLat += margin; minLng -= margin; maxLng += margin;
+    const centerLat = (minLat + maxLat) / 2;
+    const centerLng = (minLng + maxLng) / 2;
+    const cornerKm = haversineDistance(minLat, minLng, maxLat, maxLng) / 2;
+    // Radio = half-diagonal + 2 km de margen, capeado a 50 km (límite de Places API)
+    const radiusKm = Math.min(Math.max(cornerKm + 2, 2), 50);
 
-    const overpassQuery = `[out:json][timeout:25];(
-      node["amenity"="fuel"](${minLat},${minLng},${maxLat},${maxLng});
-      way["amenity"="fuel"](${minLat},${minLng},${maxLat},${maxLng});
-    );out center;`;
+    const token = localStorage.getItem("token");
+    const fetchFromBackend = async () => {
+      if (!token) {
+        // Sin sesión, no podemos llamar al backend autenticado.
+        setStations([]);
+        setError("Inicia sesión para ver gasolineras con precios reales.");
+        return;
+      }
 
-    fetch("https://overpass-api.de/api/interpreter", {
-      method: "POST",
-      body: overpassQuery,
-      headers: { "Content-Type": "text/plain" },
-    })
-      .then((res) => {
-        if (!res.ok) throw new Error(`Overpass ${res.status}`);
-        return res.json();
-      })
-      .then(async (data) => {
-        if (!isMounted) return;
+      const url = `${API_URL}/api/logistics/gas-stations?lat=${centerLat}&lng=${centerLng}&radius_km=${radiusKm.toFixed(2)}`;
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) throw new Error(`Backend ${res.status}`);
+      const data = await res.json();
+      const raw = Array.isArray(data?.stations) ? data.stations : [];
 
-        const elements = (data.elements || [])
-          .map((el) => {
-            const lat = el.type === "node" ? el.lat : el.center?.lat;
-            const lng = el.type === "node" ? el.lon : el.center?.lon;
-            if (!lat || !lng) return null;
-            const name = el.tags?.name || el.tags?.brand || "Gas Station";
-            const brand = el.tags?.brand || "";
-            return { id: el.id, lat, lng, name: name.slice(0, 40), brand: brand.slice(0, 30) };
-          })
-          .filter(Boolean);
+      // Calcular distancia mínima a la ruta y aplicar fallback regional si falta precio
+      const withDist = raw
+        .map((s) => {
+          const minD = Math.min(
+            ...allPoints.map((p) => haversineDistance(s.lat, s.lng, p.lat, p.lng))
+          );
+          const price =
+            safePrice(s.price) ??
+            getRegionalPrice(s.lat, s.lng, s.brand);
+          return {
+            ...s,
+            distanceToRouteKm: minD,
+            price,
+            price_source: s.price_source || (safePrice(s.price) ? "google_places" : "regional"),
+          };
+        })
+        .sort((a, b) => a.distanceToRouteKm - b.distanceToRouteKm)
+        .slice(0, 30);
 
-        // Deduplicate
-        const unique = [];
-        for (const s of elements) {
-          if (!unique.find((u) => haversineDistance(u.lat, u.lng, s.lat, s.lng) < 0.05))
-            unique.push(s);
+      if (isMounted) {
+        setStations(withDist);
+        if (!withDist.length) {
+          setError("No se encontraron gasolineras en el área.");
         }
+      }
+    };
 
-        // Add route distance
-        const withDist = unique.map((station) => {
-          const minD = Math.min(...allPoints.map((p) => haversineDistance(station.lat, station.lng, p.lat, p.lng)));
-          return { ...station, distanceToRouteKm: minD };
-        });
-        withDist.sort((a, b) => a.distanceToRouteKm - b.distanceToRouteKm);
-
-        // FIX: Use fallback-safe price fetcher (never throws)
-        const enriched = await fetchPricesWithFallback(withDist.slice(0, 30));
-        if (isMounted) setStations(enriched);
-      })
+    fetchFromBackend()
       .catch((err) => {
+        console.warn("[GasStations] backend error:", err.message);
         if (isMounted) {
           setError("No se pudieron cargar gasolineras. Verifica tu conexión.");
           setStations([]);

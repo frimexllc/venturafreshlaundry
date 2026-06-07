@@ -208,6 +208,14 @@ NEW -> CONFIRMED -> PROCESSING -> READY -> COMPLETED
 - `MapFilters.jsx` con chips de servicio/fase/horario
 - Bug fix: `optimizeRouteAdvanced` ahora recibe options object correcto
 
+### Frontend refactor — `GasStations.jsx` (2026-02-07)
+- **Eliminada dependencia de Overpass API** (era causa de 504s intermitentes).
+- `useGasStations` hook ahora llama directamente a `GET /api/logistics/gas-stations?lat=X&lng=Y&radius_km=N` (Google Places API New vía backend).
+- Calcula centro + radio (half-diagonal + 2km, cap 50km Places limit) que cubre HQ + todos los waypoints.
+- Eliminada `fetchPricesWithFallback` (~50 líneas) — el fallback regional ahora se aplica inline solo cuando Places no devuelve precio.
+- Mensaje claro al usuario si Places API no está habilitada: "No se encontraron gasolineras en el área."
+- Verificado: cero errores Overpass en consola, mapa carga correctamente con HQ marker.
+
 ### Pre-requisito que el usuario debe configurar en Google Cloud
 - **Habilitar "Places API (New)"** en https://console.developers.google.com/apis/api/places.googleapis.com/overview?project=86523291175 (mismo project del Maps JS API).
 - El error "Places API (New) has not been used in project... or it is disabled" se resuelve activando esa API.
