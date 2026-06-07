@@ -171,6 +171,14 @@ class OrderResponse(BaseModel):
     paid_at: Optional[str] = None
     total_amount: Optional[float] = None
     delivery_fee: Optional[float] = None
+    # Recurrencia (para indicador en operator panel)
+    is_recurring: Optional[bool] = False
+    recurrence: Optional[str] = "once"  # once | weekly | biweekly | twice_week | monthly
+    recurrence_end_date: Optional[str] = None
+    recurrence_days: Optional[List[str]] = None
+    recurrence_parent_id: Optional[str] = None
+    delivery_date: Optional[str] = None
+    delivery_time: Optional[str] = None
     created_at: Optional[str] = ""
     updated_at: Optional[str] = ""
 

@@ -160,9 +160,22 @@ async def generate_order_number():
     return f"VFL-{today}-{unique}"
 
 def normalize_status(value: Optional[str]) -> str:
+    """
+    Normaliza el status de una orden al canónico.
+    Delega a order_status.normalize_status que maneja:
+      - UPPERCASE / lowercase
+      - hyphens / underscores
+      - alias legacy (pending → new, shipping → out_for_delivery, etc.)
+    """
     if not value:
         return ""
-    return value.strip().lower().replace(" ", "_")
+    try:
+        from order_status import normalize_status as _norm
+        result = _norm(value)
+        return result or ""
+    except ImportError:
+        # Fallback al comportamiento antiguo si el módulo no está disponible
+        return value.strip().lower().replace(" ", "_")
 
 def normalize_payment_method(value: Optional[str]) -> str:
     if not value:

@@ -310,6 +310,29 @@ const OrderRow = ({
               🏢 B2B
             </span>
           )}
+          {(order.is_recurring || (order.recurrence && order.recurrence !== "once")) && (
+            <span
+              className="inline-flex items-center gap-1 text-[10px] font-semibold text-violet-700 bg-violet-50 px-2 py-0.5 rounded-full border border-violet-200"
+              title={
+                order.recurrence_end_date
+                  ? t(`Recurring (${order.recurrence}). Ends ${order.recurrence_end_date}`,
+                      `Recurrente (${order.recurrence}). Termina ${order.recurrence_end_date}`)
+                  : t(`Recurring (${order.recurrence || "weekly"})`, `Recurrente (${order.recurrence || "semanal"})`)
+              }
+              data-testid={`recurring-badge-${order.order_id}`}
+            >
+              🔄 {order.recurrence === "weekly" ? t("Weekly","Semanal")
+                  : order.recurrence === "biweekly" ? t("Biweekly","Quincenal")
+                  : order.recurrence === "twice_week" ? t("2×/wk","2×/sem")
+                  : order.recurrence === "monthly" ? t("Monthly","Mensual")
+                  : t("Recurring","Recurrente")}
+              {order.recurrence_end_date && (
+                <span className="text-violet-500 font-normal ml-0.5">
+                  → {order.recurrence_end_date.slice(5)}
+                </span>
+              )}
+            </span>
+          )}
           {extractCP(order.pickup_address || order.delivery_address) && (
             <span className="inline-flex items-center gap-0.5 px-2 py-0.5 bg-slate-100 text-slate-500 rounded-full text-[10px] font-mono font-medium">
               CP {extractCP(order.pickup_address || order.delivery_address)}

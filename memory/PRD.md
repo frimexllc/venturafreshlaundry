@@ -229,6 +229,33 @@ NEW -> CONFIRMED -> PROCESSING -> READY -> COMPLETED
 - **Sidebar** reconoce `google_places` como precio real (antes solo `fuelapi`).
 - **fitBounds** incluye gasolineras para que sean visibles en pantalla.
 
+### Sincronización Operator Panel ↔ LogisticsMap + Status Unificado (2026-02-07)
+
+#### Backend
+- **Nuevo módulo `/app/backend/order_status.py`** — single source of truth:
+  - `CANONICAL_STATUSES`: 10 estados lowercase canónicos
+  - `STATUS_ALIASES`: 30+ alias (PICKED_UP, picked-up, pending, shipping, in_process, in-process, español, etc.)
+  - `normalize_status()`, `is_valid_status()`, `status_for_query()`, `status_in_query()`
+- **`utils.normalize_status`** delega al módulo nuevo (compatibilidad total)
+- **`PATCH /api/orders/{id}/status`** acepta CUALQUIER alias (UPPERCASE, hyphens, legacy)
+- **`GET /api/orders`** normaliza status en la respuesta + acepta alias en query
+- **`GET /api/orders/{id}`** normaliza status canónico
+- **`GET /api/logistics/orders`** usa `status_in_query()` que cubre todas las variantes legacy
+- **`OrderResponse` model**: añadidos `is_recurring`, `recurrence`, `recurrence_end_date`, `recurrence_days`, `recurrence_parent_id`, `delivery_date`, `delivery_time`
+- **Logistics endpoint** devuelve objeto `recurrence: {is_recurring, frequency, end_date, days, parent_id}`
+
+#### Frontend
+- **`LogisticsMap.jsx`** suscrito a Socket.IO (`notification` + `order_status` events). Cuando llega `order_status_changed`, `order_created` u `order_payment`, recarga órdenes con throttle de 350ms.
+- **`OperatorDashboard.jsx OrderRow`** muestra badge violeta `🔄 Semanal/Quincenal/2×/sem/Mensual → MM-DD` cuando `is_recurring=true` o `recurrence ≠ once`. Tooltip con fecha de finalización completa. `data-testid="recurring-badge-{order_id}"`.
+- **`MapFilters.jsx`** y filtros tabs en `LogisticsMap.jsx` ya compartían `service_type` (single source of truth) desde sesión anterior.
+
+#### Verificación
+- ✅ DB tiene mezcla `PICKED_UP` (legacy uppercase) + `new`/`confirmed` (canonical) — todos se devuelven normalizados a lowercase canonical
+- ✅ Query `?status=PICKED_UP` encuentra órdenes con `picked_up` (y viceversa)
+- ✅ Orden `8ac6cf8a` recurrente (twice_week, end 2026-06-30) ahora visible en `/api/orders` y `/api/logistics/orders`
+- ✅ Operator Dashboard mantiene "Realtime: connected" via Socket.IO
+- ✅ Cuando un operador cambia estado, el LogisticsMap refresca automáticamente
+
 ### Pre-requisito que el usuario debe configurar en Google Cloud
 - **Habilitar "Places API (New)"** en https://console.developers.google.com/apis/api/places.googleapis.com/overview?project=86523291175 (mismo project del Maps JS API).
 - El error "Places API (New) has not been used in project... or it is disabled" se resuelve activando esa API.

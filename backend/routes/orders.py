@@ -300,8 +300,9 @@ async def get_orders(
 ) -> List[OrderResponse]:
     query = {}
     if status:
-        normalized = normalize_status(status)
-        query["status"] = {"$in": [normalized, normalized.upper(), status]}
+        # Cubre TODAS las variantes legacy (UPPERCASE, hyphen, alias)
+        from order_status import status_in_query
+        query["status"] = status_in_query(status)
     if customer_id:
         query["customer_id"] = customer_id
     if date_from:
@@ -313,6 +314,11 @@ async def get_orders(
     orders = await db.orders.find(query, {"_id": 0}).sort(
         "created_at", -1
     ).skip(skip).limit(page_size).to_list(page_size)
+
+    # Normaliza el status canónico de cada orden en la respuesta
+    for o in orders:
+        if o.get("status"):
+            o["status"] = normalize_status(o["status"]) or o["status"]
 
     return [OrderResponse(**order) for order in orders]
 
@@ -327,6 +333,9 @@ async def get_order(
         order = await db.orders.find_one({"order_number": order_id}, {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
+    # Normalizar status canónico
+    if order.get("status"):
+        order["status"] = normalize_status(order["status"]) or order["status"]
     return OrderResponse(**order)
 
 
@@ -550,24 +559,22 @@ async def update_order_status(
     notify:       bool = True,
     current_user: dict = Depends(get_current_user),
 ) -> dict:
-    valid_statuses = [
-        "new", "confirmed", "pickup_scheduled", "picked_up",
-        "processing", "ready", "out_for_delivery", "delivered",
-        "completed", "cancelled",
-    ]
-    normalized_status = status.strip().lower()
+    from order_status import normalize_status, CANONICAL_STATUSES
 
-    if normalized_status not in valid_statuses:
+    # Normaliza alias/legacy/uppercase → canónico
+    normalized_status = normalize_status(status)
+
+    if normalized_status not in CANONICAL_STATUSES:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid status. Must be one of: {valid_statuses}",
+            detail=f"Invalid status '{status}'. Valid: {list(CANONICAL_STATUSES)}",
         )
 
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    current_status = (order.get("status") or "").strip().lower()
+    current_status = normalize_status(order.get("status")) or ""
     service_type   = normalize_spaces(
         order.get("service_type") or "pickup_delivery"
     ).lower().replace(" ", "_")

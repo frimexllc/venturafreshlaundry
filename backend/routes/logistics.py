@@ -642,16 +642,13 @@ async def get_logistics_orders(
     query: Dict[str, Any] = {}
 
     if status:
-        query["status"] = status
+        # Permite alias (e.g. PICKED_UP, picked-up). Usa todas las variantes.
+        from order_status import status_in_query
+        query["status"] = status_in_query(status)
     else:
-        # Estados relevantes para logística (incluye órdenes en proceso aún por entregar)
-        query["status"] = {
-            "$in": [
-                "new", "pending", "confirmed", "pickup_scheduled",
-                "picked_up", "picked-up", "in_process", "in-process",
-                "ready", "out_for_delivery", "shipping",
-            ]
-        }
+        # Estados activos (excluye delivered/completed/cancelled). Cubre todas las variantes legacy.
+        from order_status import status_in_query, LOGISTICS_ACTIVE_STATUSES
+        query["status"] = status_in_query(*LOGISTICS_ACTIVE_STATUSES)
 
     if target_date:
         phase_norm = (phase or "both").lower()
@@ -716,7 +713,7 @@ async def get_logistics_orders(
             "orderNumber": order.get("order_number") or f"VFL-{(order.get('id') or '')[:8]}",
             "type": norm_type,
             "service_type": norm_type,  # alias para compatibilidad con mapper frontend
-            "status": order.get("status", "pending"),
+            "status": (lambda s: __import__('order_status').normalize_status(s) or s)(order.get("status", "new")),
             "service_plan": order.get("service_plan", "standard"),
             "customer": {
                 "name": order.get("customer_name", "Cliente"),
@@ -749,6 +746,14 @@ async def get_logistics_orders(
             "estimatedLbs": order.get("estimated_lbs", 0),
             "actualLbs": order.get("actual_lbs", 0),
             "deliveryFee": order.get("delivery_fee", 0),
+            # Recurrencia (indicador visual + cuándo termina)
+            "recurrence": {
+                "is_recurring": bool(order.get("is_recurring")) or (order.get("recurrence") not in (None, "", "once")),
+                "frequency": order.get("recurrence") or "once",
+                "end_date": order.get("recurrence_end_date"),
+                "days": order.get("recurrence_days") or [],
+                "parent_id": order.get("recurrence_parent_id"),
+            },
         })
 
     return result
