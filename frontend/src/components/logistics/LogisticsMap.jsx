@@ -255,54 +255,6 @@ export function LogisticsMap() {
 
   useEffect(() => { requestNotificationPermission(); }, []);
 
-  // ── Realtime: re-sync con Operator Panel vía Socket.IO ──────────────────
-  // Cuando una orden cambia de estado (desde el OperatorDashboard o del cliente)
-  // el LogisticsMap se entera al instante y recarga.
-  useEffect(() => {
-    let socket;
-    let cancelled = false;
-    (async () => {
-      try {
-        const { createNotificationsSocket } = await import('../../utils/notificationsSocket');
-        socket = createNotificationsSocket();
-        if (!socket || cancelled) return;
-        const handler = (payload) => {
-          const type = payload?.type || '';
-          // Eventos relevantes para refrescar la vista de despacho
-          if (
-            type === 'order_status_changed' ||
-            type === 'order_status' ||
-            type === 'order_created' ||
-            type === 'order_payment'
-          ) {
-            // throttle: si llegan en ráfaga, agrupar 350ms
-            if (window.__logmapReloadTimer) clearTimeout(window.__logmapReloadTimer);
-            window.__logmapReloadTimer = setTimeout(() => {
-              loadOrders();
-            }, 350);
-          }
-        };
-        socket.on('notification', handler);
-        socket.on('order_status', handler);
-        // cleanup
-        socket._logmapHandler = handler;
-      } catch (e) {
-        console.warn('[LogisticsMap] socket sync disabled:', e?.message);
-      }
-    })();
-    return () => {
-      cancelled = true;
-      if (socket && socket._logmapHandler) {
-        socket.off('notification', socket._logmapHandler);
-        socket.off('order_status', socket._logmapHandler);
-      }
-      if (window.__logmapReloadTimer) {
-        clearTimeout(window.__logmapReloadTimer);
-        window.__logmapReloadTimer = null;
-      }
-    };
-  }, [loadOrders]);
-
   useEffect(() => {
     const heavyNow = new Set(trafficEvents.filter(e => e.severity === 'heavy').map(e => e.id));
     const newHeavy = trafficEvents.filter(e => e.severity === 'heavy' && !prevHeavyRef.current.has(e.id));
@@ -354,6 +306,49 @@ export function LogisticsMap() {
   }, [mapFilters]);
 
   useEffect(() => { loadOrders(); }, [loadOrders]);
+
+  // ── Realtime: re-sync con Operator Panel vía Socket.IO ──────────────────
+  // Cuando una orden cambia de estado (desde el OperatorDashboard o del cliente)
+  // el LogisticsMap se entera al instante y recarga.
+  useEffect(() => {
+    let socket;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { createNotificationsSocket } = await import('../../utils/notificationsSocket');
+        socket = createNotificationsSocket();
+        if (!socket || cancelled) return;
+        const handler = (payload) => {
+          const type = payload?.type || '';
+          if (
+            type === 'order_status_changed' ||
+            type === 'order_status' ||
+            type === 'order_created' ||
+            type === 'order_payment'
+          ) {
+            if (window.__logmapReloadTimer) clearTimeout(window.__logmapReloadTimer);
+            window.__logmapReloadTimer = setTimeout(() => { loadOrders(); }, 350);
+          }
+        };
+        socket.on('notification', handler);
+        socket.on('order_status', handler);
+        socket._logmapHandler = handler;
+      } catch (e) {
+        console.warn('[LogisticsMap] socket sync disabled:', e?.message);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (socket && socket._logmapHandler) {
+        socket.off('notification', socket._logmapHandler);
+        socket.off('order_status', socket._logmapHandler);
+      }
+      if (window.__logmapReloadTimer) {
+        clearTimeout(window.__logmapReloadTimer);
+        window.__logmapReloadTimer = null;
+      }
+    };
+  }, [loadOrders]);
 
   // ── Traffic refresh ───────────────────────────────────────────────────
   useEffect(() => {
