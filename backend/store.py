@@ -28,7 +28,7 @@ UPLOAD_DIR = Path("uploads/products")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 # Google Maps API Configuration
-GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY", "")
+GOOGLE_MAPS_API_KEY = os.environ.get("REACT_APP_GOOGLE_MAPS_API_KEY", "") or os.environ.get("GOOGLE_MAPS_API_KEY", "")
 USE_GOOGLE_MAPS = bool(GOOGLE_MAPS_API_KEY)
 
 # Store location (point of origin)

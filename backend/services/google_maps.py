@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
-GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY")
+GOOGLE_MAPS_API_KEY = os.environ.get("REACT_APP_GOOGLE_MAPS_API_KEY") or os.environ.get("GOOGLE_MAPS_API_KEY")
 DEFAULT_MPG = float(os.environ.get("VEHICLE_MPG_DEFAULT", 18.5))
 FUEL_PRICE_FALLBACK = float(os.environ.get("FUEL_PRICE_FALLBACK", 3.50))
 

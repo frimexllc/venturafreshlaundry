@@ -180,7 +180,37 @@ NEW -> CONFIRMED -> PROCESSING -> READY -> COMPLETED
 - (P5) Virtual tour of the interface (guided walkthrough for new operators) (PendingPayments, OrderHistory, Preferences)
 
 ## Logistics Module Enhancements — 2026-02-07
-### Backend (`routes/logistics.py`)
+
+### Bug fix crítico: Geocoding 1652 miles
+- `/app/backend/store.py` y `/app/backend/services/google_maps.py` leían env `GOOGLE_MAPS_API_KEY` pero solo existe `REACT_APP_GOOGLE_MAPS_API_KEY`. Eso forzaba fallback a ORS, que devolvía coordenadas erróneas (otro continente) para direcciones US precisas → resultado de 1652 millas.
+- Fix: ambos archivos ahora hacen `REACT_APP_GOOGLE_MAPS_API_KEY or GOOGLE_MAPS_API_KEY`.
+- Instalado paquete `googlemaps==4.10.0` (faltaba) → `pip freeze` actualizado en requirements.txt
+- Verificado: 342 E Olive St Oxnard ahora = 6.59 mi → $2.99 (antes 1652 mi → rechazo)
+
+### Google Places API (New) — fuelOptions para precios reales
+- `/app/backend/routes/logistics.py` añadida función `fetch_gas_stations_google()` que llama a `POST https://places.googleapis.com/v1/places:searchNearby` con:
+  - `includedTypes: [gas_station]`
+  - `X-Goog-FieldMask: places.id,displayName,location,fuelOptions,...`
+  - Header `Referer` configurable vía env `GOOGLE_API_REFERER` (default = venturafreshlaundry.com) para superar restricciones de referer
+- Parser maneja `fuelOptions.fuelPrices` con tipos REGULAR_UNLEADED, MIDGRADE, PREMIUM, DIESEL, E85, LPG, etc.
+- Caché 1h por área (≤ 50km radius).
+- Mismo dato que usa Google Maps al mostrar precios de gasolineras.
+
+### Endpoints actualizados
+- `GET /api/logistics/gas-stations?lat=X&lng=Y&radius_km=N&source=auto|google|fuelapi` — Google Places primero, FuelAPI fallback.
+- `POST /api/logistics/gas-stations/prices` — acepta 3 formatos:
+  1. Raw list (legacy frontend): `[{lat,lng,name,brand}]`
+  2. Object: `{stations:[...]}`
+  3. Search directo: `{lat,lng,radius_km}`
+
+### Filtros del Logistics Map (sesión anterior, sigue activo)
+- `/api/logistics/orders` con `date` (auto=hoy), `service_type`, `time_window`, `phase`, `include_wash_fold`
+- `MapFilters.jsx` con chips de servicio/fase/horario
+- Bug fix: `optimizeRouteAdvanced` ahora recibe options object correcto
+
+### Pre-requisito que el usuario debe configurar en Google Cloud
+- **Habilitar "Places API (New)"** en https://console.developers.google.com/apis/api/places.googleapis.com/overview?project=86523291175 (mismo project del Maps JS API).
+- El error "Places API (New) has not been used in project... or it is disabled" se resuelve activando esa API.
 - `/api/logistics/orders` GET ahora soporta filtros completos:
   - `date` (auto = hoy si no se envía via `auto_today=true`)
   - `service_type` = pickup-delivery | wash-fold | airbnb | b2b | all

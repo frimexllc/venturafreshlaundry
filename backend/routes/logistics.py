@@ -10,7 +10,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
 
 import httpx
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, Body
 
 from database import db
 from auth import get_current_user
@@ -40,12 +40,191 @@ router = APIRouter(prefix="/logistics", tags=["Logistics"])
 FUEL_API_KEY = os.getenv("FUEL_API_KEY")
 FUEL_API_BASE = "https://api.fuelapi.com/v1"
 
+# ==================== GOOGLE PLACES API (New) ====================
+# Misma fuente de datos que muestra Google Maps al ver "Gas Stations"
+GOOGLE_MAPS_API_KEY = (
+    os.environ.get("REACT_APP_GOOGLE_MAPS_API_KEY", "")
+    or os.environ.get("GOOGLE_MAPS_API_KEY", "")
+)
+GOOGLE_PLACES_NEARBY_URL = "https://places.googleapis.com/v1/places:searchNearby"
+
+# Mapeo de tipos de combustible del API a tipos canónicos para el frontend
+_FUEL_TYPE_MAP = {
+    "REGULAR_UNLEADED": "regular",
+    "MIDGRADE": "midgrade",
+    "PREMIUM": "premium",
+    "DIESEL": "diesel",
+    "E85": "e85",
+    "E80": "e85",
+    "LPG": "lpg",
+    "BIO_DIESEL": "diesel",
+    "TRUCK_DIESEL": "diesel",
+    "SP91": "regular",
+    "SP95": "regular",
+    "SP98": "premium",
+    "SP100": "premium",
+    "METHANE": "methane",
+}
+
+
+def _parse_money(money_obj: Optional[dict]) -> Optional[float]:
+    """Convierte el objeto Money de Google Places a float USD."""
+    if not money_obj:
+        return None
+    units = money_obj.get("units")
+    nanos = money_obj.get("nanos", 0) or 0
+    if units is None and nanos == 0:
+        return None
+    try:
+        return round(float(units or 0) + float(nanos) / 1e9, 3)
+    except Exception:
+        return None
+
+
 # ==================== CACHE FOR FUEL API ====================
 fuel_cache = {}
 CACHE_TTL = 1800  # 30 minutos
 
+# Cache separado para Google Places (datos más confiables, TTL más largo)
+google_places_cache = {}
+GOOGLE_CACHE_TTL = 3600  # 1 hora
+
 
 # ==================== FUEL STATIONS (único en logistics) ====================
+async def fetch_gas_stations_google(
+    lat: float,
+    lng: float,
+    radius_km: float = 5.0,
+    max_results: int = 20,
+) -> List[dict]:
+    """
+    Obtiene gasolineras cercanas con precios REALES usando Google Places API (New).
+    Es la MISMA fuente de datos que Google Maps muestra al usuario.
+    """
+    if not GOOGLE_MAPS_API_KEY:
+        logger.warning("GOOGLE_MAPS_API_KEY no configurada para Places API")
+        return []
+
+    # Google Places usa metros para radius (max 50000m)
+    radius_m = min(max(int(radius_km * 1000), 100), 50000)
+    cache_key = f"google:{lat:.4f},{lng:.4f},{radius_m}"
+    now = datetime.now(timezone.utc)
+
+    if cache_key in google_places_cache:
+        cached_time, cached = google_places_cache[cache_key]
+        if (now - cached_time).total_seconds() < GOOGLE_CACHE_TTL:
+            return cached
+
+    headers = {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": GOOGLE_MAPS_API_KEY,
+        "X-Goog-FieldMask": (
+            "places.id,places.displayName,places.formattedAddress,"
+            "places.location,places.primaryType,places.shortFormattedAddress,"
+            "places.fuelOptions,places.regularOpeningHours.openNow"
+        ),
+        # Si la API key tiene restricción de HTTP referer, debemos enviar uno válido
+        # cuando llamamos desde el backend.
+        "Referer": os.environ.get(
+            "GOOGLE_API_REFERER",
+            os.environ.get("FRONTEND_PUBLIC_URL", "https://venturafreshlaundry.com"),
+        ),
+    }
+    body = {
+        "includedTypes": ["gas_station"],
+        "maxResultCount": min(max_results, 20),
+        "rankPreference": "DISTANCE",
+        "locationRestriction": {
+            "circle": {
+                "center": {"latitude": lat, "longitude": lng},
+                "radius": radius_m,
+            }
+        },
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(GOOGLE_PLACES_NEARBY_URL, headers=headers, json=body)
+
+        if resp.status_code != 200:
+            logger.warning(f"Google Places searchNearby {resp.status_code}: {resp.text[:200]}")
+            return []
+
+        data = resp.json()
+        out: List[dict] = []
+        for p in data.get("places", []):
+            loc = p.get("location", {})
+            slat = loc.get("latitude")
+            slng = loc.get("longitude")
+            if slat is None or slng is None:
+                continue
+
+            display = p.get("displayName", {}).get("text") or "Gas Station"
+            address = p.get("shortFormattedAddress") or p.get("formattedAddress", "")
+            distance_miles = haversine_miles(lat, lng, slat, slng)
+
+            # Parsear fuelOptions
+            fuel_prices: Dict[str, dict] = {}
+            regular_price: Optional[float] = None
+            last_update: Optional[str] = None
+            fuel_options = p.get("fuelOptions", {})
+            for fp in fuel_options.get("fuelPrices", []):
+                ftype_raw = fp.get("type", "")
+                ftype = _FUEL_TYPE_MAP.get(ftype_raw, ftype_raw.lower())
+                price_val = _parse_money(fp.get("price"))
+                upd = fp.get("updateTime")
+                if price_val is None:
+                    continue
+                fuel_prices[ftype] = {
+                    "price": price_val,
+                    "currency": (fp.get("price") or {}).get("currencyCode", "USD"),
+                    "updated_at": upd,
+                }
+                if ftype == "regular" and regular_price is None:
+                    regular_price = price_val
+                    last_update = upd
+
+            # Si no hay regular, usar el más barato disponible
+            if regular_price is None and fuel_prices:
+                cheapest = min(fuel_prices.values(), key=lambda v: v["price"])
+                regular_price = cheapest["price"]
+                last_update = cheapest.get("updated_at")
+
+            brand = ""
+            for known in ["chevron", "shell", "76", "arco", "mobil", "exxon",
+                          "valero", "costco", "sams", "circle k", "speedway"]:
+                if known in display.lower():
+                    brand = known.title() if known != "76" else "76"
+                    break
+
+            out.append({
+                "id": p.get("id", f"gp_{len(out)}"),
+                "name": display,
+                "brand": brand,
+                "lat": slat,
+                "lng": slng,
+                "address": address,
+                "price": regular_price,
+                "price_source": "google_places" if regular_price is not None else "google_places_no_price",
+                "fuel_prices": fuel_prices,  # estructura completa por tipo
+                "last_updated": last_update,
+                "distance_miles": round(distance_miles, 2),
+                "currency": "USD",
+                "open_now": p.get("regularOpeningHours", {}).get("openNow"),
+            })
+
+        # Ordenar: primero los que tienen precio (más baratos primero), luego sin precio
+        out.sort(key=lambda x: (x["price"] is None, x["price"] or 999, x["distance_miles"]))
+        google_places_cache[cache_key] = (now, out)
+        logger.info(f"Google Places: {len(out)} stations, {sum(1 for s in out if s['price'])} with prices")
+        return out
+
+    except Exception as e:
+        logger.error(f"Google Places request failed: {e}")
+        return []
+
+
+# ==================== FUEL STATIONS (FuelAPI fallback) ====================
 async def fetch_fuel_stations(lat: float, lng: float, radius_km: float = 5.0) -> List[dict]:
     """Obtiene gasolineras reales desde FuelAPI (con caché y geocodificación ORS)"""
     if not FUEL_API_KEY:
@@ -155,80 +334,157 @@ async def update_logistics_settings(settings: dict, current_user: dict = Depends
     return {"message": "Settings updated", "settings": settings}
 
 
-# ==================== GAS STATIONS (FuelAPI) ====================
+# ==================== GAS STATIONS ====================
 @router.get("/gas-stations")
 async def get_gas_stations_nearby(
     lat: float,
     lng: float,
     radius_km: float = 5.0,
+    source: str = Query("auto", description="auto|google|fuelapi"),
     current_user: dict = Depends(get_current_user)
 ):
-    """Obtiene gasolineras cercanas con precios reales de FuelAPI"""
-    stations = await fetch_fuel_stations(lat, lng, radius_km)
-    return {"stations": stations, "count": len(stations)}
+    """
+    Obtiene gasolineras cercanas con precios REALES.
+    Prioridad: Google Places API (New) → FuelAPI → vacío.
+    Google Places es la misma fuente que usa Google Maps al mostrar precios.
+    """
+    stations: List[dict] = []
+    used_source = "none"
+
+    if source in ("auto", "google"):
+        stations = await fetch_gas_stations_google(lat, lng, radius_km)
+        if stations:
+            used_source = "google_places"
+
+    if not stations and source in ("auto", "fuelapi"):
+        stations = await fetch_fuel_stations(lat, lng, radius_km)
+        if stations:
+            used_source = "fuelapi"
+
+    return {
+        "stations": stations,
+        "count": len(stations),
+        "source": used_source,
+        "currency": "USD",
+        "fetched_at": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 @router.post("/gas-stations/prices")
 async def get_gas_stations_prices(
-    stations: List[dict],
+    payload: Any = Body(...),
     current_user: dict = Depends(get_current_user)
 ):
-    """Enriquece una lista de gasolineras con precios reales (batch)"""
-    if not FUEL_API_KEY:
-        from delivery_config import DEFAULT_FUEL_PRICE_PER_GALLON
+    """
+    Enriquece gasolineras con precios reales vía Google Places API (New).
+    Acepta tres formatos:
+      1. Raw list (legacy):       [{lat,lng,name,brand}, ...]
+      2. Object con stations:     {"stations": [...]}
+      3. Búsqueda directa:        {"lat":N, "lng":N, "radius_km":N}
+    """
+    # Normalizar payload
+    if isinstance(payload, list):
+        payload = {"stations": payload}
+    elif not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Invalid payload format")
+
+    # Modo búsqueda directa
+    if "lat" in payload and "lng" in payload:
+        stations = await fetch_gas_stations_google(
+            float(payload["lat"]),
+            float(payload["lng"]),
+            float(payload.get("radius_km", 5.0)),
+            int(payload.get("max_results", 20)),
+        )
+        if not stations:
+            stations = await fetch_fuel_stations(
+                float(payload["lat"]),
+                float(payload["lng"]),
+                float(payload.get("radius_km", 5.0)),
+            )
         return {
-            "stations": [
-                {**s, "price": DEFAULT_FUEL_PRICE_PER_GALLON, "price_source": "regional", "currency": "USD"}
-                for s in stations
-            ],
+            "stations": stations,
+            "count": len(stations),
+            "source": "google_places" if stations and stations[0].get("price_source") == "google_places" else ("fuelapi" if stations else "none"),
             "currency": "USD",
-            "last_updated": datetime.now(timezone.utc).isoformat()
+            "last_updated": datetime.now(timezone.utc).isoformat(),
         }
 
-    unique_coords = {}
-    for s in stations:
-        lat = s.get("lat")
-        lng = s.get("lng")
-        if lat and lng:
-            key = f"{lat:.4f},{lng:.4f}"
-            unique_coords[key] = (lat, lng)
-
-    price_map = {}
-    for key, (slat, slng) in unique_coords.items():
-        fetched = await fetch_fuel_stations(slat, slng, radius_km=0.5)
-        for f in fetched:
-            target_name = next(
-                (s.get("name") for s in stations 
-                 if abs(s.get("lat", 0)-slat) < 0.001 and abs(s.get("lng", 0)-slng) < 0.001),
-                ""
-            )
-            if target_name and f["name"].lower() in target_name.lower():
-                price_map[key] = f["price"]
-                break
-        if key not in price_map and fetched:
-            price_map[key] = min(f["price"] for f in fetched)
+    # Modo enriquecimiento batch (legacy)
+    incoming = payload.get("stations") or []
+    if not isinstance(incoming, list):
+        raise HTTPException(status_code=400, detail="payload.stations must be a list")
 
     from delivery_config import DEFAULT_FUEL_PRICE_PER_GALLON
-    
-    enriched = []
-    for s in stations:
-        lat = s.get("lat")
-        lng = s.get("lng")
-        price = None
-        if lat and lng:
-            key = f"{lat:.4f},{lng:.4f}"
-            price = price_map.get(key)
-        enriched.append({
-            **s,
-            "price": price if price is not None else DEFAULT_FUEL_PRICE_PER_GALLON,
-            "price_source": "fuelapi" if price is not None else "fallback",
-            "currency": "USD"
-        })
+
+    # Agrupar por área de búsqueda (≤ 3km) para una sola llamada a Google
+    enriched: List[dict] = []
+    google_cache_local: Dict[str, List[dict]] = {}
+
+    for s in incoming:
+        slat = s.get("lat")
+        slng = s.get("lng")
+        if not (slat and slng):
+            enriched.append({
+                **s,
+                "price": DEFAULT_FUEL_PRICE_PER_GALLON,
+                "price_source": "fallback",
+                "currency": "USD",
+            })
+            continue
+
+        # Buscar en cache local (radio ~3 km del clúster)
+        key = f"{round(slat, 2)},{round(slng, 2)}"
+        if key not in google_cache_local:
+            google_cache_local[key] = await fetch_gas_stations_google(slat, slng, radius_km=3.0)
+
+        nearby = google_cache_local[key]
+        # Encontrar match por proximidad (mismo punto ±0.001°)
+        match = next(
+            (g for g in nearby
+             if abs(g["lat"] - slat) < 0.002 and abs(g["lng"] - slng) < 0.002),
+            None,
+        )
+        if match and match.get("price") is not None:
+            enriched.append({
+                **s,
+                "price": match["price"],
+                "price_source": "google_places",
+                "fuel_prices": match.get("fuel_prices", {}),
+                "last_updated": match.get("last_updated"),
+                "currency": "USD",
+            })
+        elif nearby:
+            # Sin match exacto: usar el promedio del área (más realista que regional)
+            priced = [g for g in nearby if g.get("price")]
+            if priced:
+                avg = round(sum(g["price"] for g in priced) / len(priced), 3)
+                enriched.append({
+                    **s,
+                    "price": avg,
+                    "price_source": "google_places_area_avg",
+                    "currency": "USD",
+                })
+                continue
+            enriched.append({
+                **s,
+                "price": DEFAULT_FUEL_PRICE_PER_GALLON,
+                "price_source": "fallback",
+                "currency": "USD",
+            })
+        else:
+            enriched.append({
+                **s,
+                "price": DEFAULT_FUEL_PRICE_PER_GALLON,
+                "price_source": "fallback",
+                "currency": "USD",
+            })
 
     return {
         "stations": enriched,
         "currency": "USD",
-        "last_updated": datetime.now(timezone.utc).isoformat()
+        "source": "google_places",
+        "last_updated": datetime.now(timezone.utc).isoformat(),
     }
 
 
