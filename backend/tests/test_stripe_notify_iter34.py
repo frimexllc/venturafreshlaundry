@@ -135,7 +135,7 @@ class TestStoreCheckout:
         # Checkout with minimal fields (no customer fields required)
         checkout_payload = {
             "cart_id": cart_id,
-            "origin_url": "https://ventura-deploy-test.preview.emergentagent.com",
+            "origin_url": "https://route-optimize-fresh.preview.emergentagent.com",
             "fulfillment_type": "pickup"  # No shipping address needed for pickup
         }
         res = self.session.post(f"{BASE_URL}/api/store/checkout", json=checkout_payload)
@@ -158,7 +158,7 @@ class TestStoreCheckout:
         # Manual checkout with cash
         checkout_payload = {
             "cart_id": cart_id,
-            "origin_url": "https://ventura-deploy-test.preview.emergentagent.com",
+            "origin_url": "https://route-optimize-fresh.preview.emergentagent.com",
             "payment_method": "cash",
             "fulfillment_type": "pickup"
         }

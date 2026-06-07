@@ -281,44 +281,187 @@ async def calculate_route_plan(
 
 
 # ==================== ORDERS ====================
+# Servicios de Ventura Fresh Laundry → tipos para el mapa de logística
+SERVICE_TYPE_MAP = {
+    # Pickup & Delivery (todas las variantes)
+    "pickup-delivery": "pickup-delivery",
+    "pickup_delivery": "pickup-delivery",
+    "pd": "pickup-delivery",
+    "delivery": "pickup-delivery",
+    # Wash & Fold (drop-off en tienda — no requiere ruta)
+    "wash-fold": "wash-fold",
+    "wash_fold": "wash-fold",
+    "wf": "wash-fold",
+    "wash_dry_fold": "wash-fold",
+    # Airbnb Specialists
+    "airbnb": "airbnb",
+    "airbnb-specialist": "airbnb",
+    "airbnb_specialist": "airbnb",
+    # B2B / Comercial
+    "b2b": "b2b",
+    "commercial": "b2b",
+    "business": "b2b",
+    # Self-service (excluido de logística por defecto)
+    "self-service": "self-service",
+    "self_service": "self-service",
+}
+
+# Servicios que se muestran en el mapa de logística (requieren ruta)
+LOGISTICS_SERVICE_TYPES = {"pickup-delivery", "airbnb", "b2b"}
+
+
+def _normalize_service_type(raw: Optional[str]) -> str:
+    if not raw:
+        return "pickup-delivery"
+    key = str(raw).lower().strip().replace(" ", "-")
+    return SERVICE_TYPE_MAP.get(key, "pickup-delivery")
+
+
+def _parse_time_window(window: str):
+    """Parse formats like '9:00 AM - 11:00 AM' or '09:00-11:00' into (start_min, end_min)."""
+    if not window:
+        return None
+    import re
+    parts = re.split(r"\s*-\s*", str(window).strip())
+    if len(parts) < 2:
+        return None
+
+    def _to_min(token: str):
+        m = re.match(r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)?", token.strip(), re.IGNORECASE)
+        if not m:
+            return None
+        h = int(m.group(1))
+        mins = int(m.group(2)) if m.group(2) else 0
+        mer = (m.group(3) or "").lower()
+        if mer == "pm" and h < 12:
+            h += 12
+        if mer == "am" and h == 12:
+            h = 0
+        return h * 60 + mins
+
+    s, e = _to_min(parts[0]), _to_min(parts[1])
+    if s is None or e is None:
+        return None
+    return (s, e)
+
+
+def _in_time_window(window_str: str, filter_key: str) -> bool:
+    """filter_key: 'morning' (06:00-12:00), 'afternoon' (12:00-18:00), 'evening' (18:00-22:00)."""
+    parsed = _parse_time_window(window_str)
+    if parsed is None:
+        return True  # sin info, no filtrar
+    s, e = parsed
+    ranges = {
+        "morning": (6 * 60, 12 * 60),
+        "afternoon": (12 * 60, 18 * 60),
+        "evening": (18 * 60, 22 * 60),
+    }
+    r = ranges.get(filter_key)
+    if not r:
+        return True
+    # Solapamiento de intervalos
+    return s < r[1] and e > r[0]
+
+
 @router.get("/orders")
 async def get_logistics_orders(
     status: Optional[str] = None,
     date: Optional[str] = None,
+    service_type: Optional[str] = Query(None, description="pickup-delivery|wash-fold|airbnb|b2b|all"),
+    time_window: Optional[str] = Query(None, description="morning|afternoon|evening"),
+    phase: Optional[str] = Query(None, description="pickup|delivery|both"),
+    include_wash_fold: bool = Query(True, description="Incluir órdenes drop-off Wash & Fold"),
+    auto_today: bool = Query(True, description="Si date no se envía, usar hoy por defecto"),
     current_user: dict = Depends(get_current_user)
 ):
-    """Obtiene órdenes para la vista de logística/despacho"""
-    query = {}
+    """Obtiene órdenes para la vista de logística/despacho con filtros completos."""
+    from datetime import date as date_cls
+
+    # ── Fecha por defecto = hoy ───────────────────────────────────────
+    target_date = date
+    if not target_date and auto_today:
+        target_date = date_cls.today().isoformat()  # YYYY-MM-DD
+
+    # ── Construir query Mongo ─────────────────────────────────────────
+    query: Dict[str, Any] = {}
+
     if status:
         query["status"] = status
     else:
-        query["status"] = {"$in": ["pending", "confirmed", "ready", "out_for_delivery"]}
-    if date:
-        query["$or"] = [
-            {"pickup_date": date},
-            {"delivery_date": date}
-        ]
+        # Estados relevantes para logística (incluye órdenes en proceso aún por entregar)
+        query["status"] = {
+            "$in": [
+                "new", "pending", "confirmed", "pickup_scheduled",
+                "picked_up", "picked-up", "in_process", "in-process",
+                "ready", "out_for_delivery", "shipping",
+            ]
+        }
 
-    orders = await db.orders.find(query, {"_id": 0}).to_list(100)
+    if target_date:
+        phase_norm = (phase or "both").lower()
+        if phase_norm == "pickup":
+            query["pickup_date"] = target_date
+        elif phase_norm == "delivery":
+            query["delivery_date"] = target_date
+        else:
+            query["$or"] = [{"pickup_date": target_date}, {"delivery_date": target_date}]
+
+    orders = await db.orders.find(query, {"_id": 0}).to_list(500)
+
+    # ── Post-filtros (en Python para flexibilidad) ────────────────────
+    svc_filter = (service_type or "all").lower()
 
     result = []
     for order in orders:
-        # Usar geocode de delivery_config si es necesario
+        norm_type = _normalize_service_type(order.get("service_type"))
+
+        # Excluir self-service siempre
+        if norm_type == "self-service":
+            continue
+
+        # Excluir wash-fold si no se incluye
+        if norm_type == "wash-fold" and not include_wash_fold:
+            continue
+
+        # Filtro de service_type
+        if svc_filter not in ("all", ""):
+            if norm_type != svc_filter:
+                continue
+
+        # Filtro de time_window
+        pickup_window = order.get("pickup_time_window") or order.get("pickup_time") or ""
+        delivery_window = order.get("delivery_time") or ""
+        if time_window:
+            tw = time_window.lower()
+            # Si fase=delivery, miramos delivery_time; pickup→pickup_window; both→cualquiera
+            phase_norm = (phase or "both").lower()
+            if phase_norm == "pickup":
+                if not _in_time_window(pickup_window, tw):
+                    continue
+            elif phase_norm == "delivery":
+                if not _in_time_window(delivery_window, tw):
+                    continue
+            else:
+                if not (_in_time_window(pickup_window, tw) or _in_time_window(delivery_window, tw)):
+                    continue
+
+        # Coordenadas (geocode si faltan)
         lat = order.get("delivery_lat") or order.get("pickup_lat")
         lng = order.get("delivery_lng") or order.get("pickup_lng")
-        
         if not lat or not lng:
             address = order.get("delivery_address") or order.get("pickup_address")
             if address:
                 coords = geocode_address(address)
                 if coords:
                     lat, lng = coords["lat"], coords["lng"]
-        
+
         result.append({
             "id": order.get("id"),
-            "orderNumber": order.get("order_number", f"ORD-{order.get('id', '')[:8]}"),
-            "type": "pickup-delivery",
+            "orderNumber": order.get("order_number") or f"VFL-{(order.get('id') or '')[:8]}",
+            "type": norm_type,
+            "service_type": norm_type,  # alias para compatibilidad con mapper frontend
             "status": order.get("status", "pending"),
+            "service_plan": order.get("service_plan", "standard"),
             "customer": {
                 "name": order.get("customer_name", "Cliente"),
                 "phone": order.get("customer_phone", ""),
@@ -332,9 +475,9 @@ async def get_logistics_orders(
             },
             "schedule": {
                 "pickupDate": order.get("pickup_date", ""),
-                "pickupTime": order.get("pickup_time", "09:00-12:00"),
+                "pickupTime": pickup_window or "09:00 AM - 12:00 PM",
                 "deliveryDate": order.get("delivery_date", ""),
-                "deliveryTime": order.get("delivery_time", "12:00-15:00")
+                "deliveryTime": delivery_window or "12:00 PM - 03:00 PM",
             },
             "pricing": {
                 "subtotal": order.get("subtotal", 0),
@@ -348,7 +491,8 @@ async def get_logistics_orders(
             "specialInstructions": order.get("notes", ""),
             "priority": order.get("priority", "normal"),
             "estimatedLbs": order.get("estimated_lbs", 0),
-            "actualLbs": order.get("actual_lbs", 0)
+            "actualLbs": order.get("actual_lbs", 0),
+            "deliveryFee": order.get("delivery_fee", 0),
         })
 
     return result

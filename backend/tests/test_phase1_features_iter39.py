@@ -229,7 +229,7 @@ class TestMultiPaymentNotification:
             f"{BASE_URL}/api/orders/{UNPAID_ORDER_ID}/notify-customer",
             headers={
                 **auth_headers,
-                "Origin": "https://ventura-deploy-test.preview.emergentagent.com"
+                "Origin": "https://route-optimize-fresh.preview.emergentagent.com"
             },
             json={"channel": "sms"}
         )
@@ -246,7 +246,7 @@ class TestMultiPaymentNotification:
             f"{BASE_URL}/api/orders/{UNPAID_ORDER_ID}/notify-customer",
             headers={
                 **auth_headers,
-                "Origin": "https://ventura-deploy-test.preview.emergentagent.com"
+                "Origin": "https://route-optimize-fresh.preview.emergentagent.com"
             },
             json={"channel": "sms"}
         )
@@ -263,7 +263,7 @@ class TestMultiPaymentNotification:
             f"{BASE_URL}/api/orders/{UNPAID_ORDER_ID}/notify-customer",
             headers={
                 **auth_headers,
-                "Origin": "https://ventura-deploy-test.preview.emergentagent.com"
+                "Origin": "https://route-optimize-fresh.preview.emergentagent.com"
             },
             json={"channel": "sms"}
         )
@@ -279,7 +279,7 @@ class TestMultiPaymentNotification:
             f"{BASE_URL}/api/orders/{PAID_ORDER_ID}/notify-customer",
             headers={
                 **auth_headers,
-                "Origin": "https://ventura-deploy-test.preview.emergentagent.com"
+                "Origin": "https://route-optimize-fresh.preview.emergentagent.com"
             },
             json={"channel": "sms"}
         )

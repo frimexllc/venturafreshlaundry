@@ -21,7 +21,7 @@ from datetime import datetime
 ADMIN_EMAIL = os.environ.get("TEST_ADMIN_EMAIL", "owner@frimexllc.com")
 ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD", "admin123")
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://ventura-deploy-test.preview.emergentagent.com').rstrip('/')
+BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://route-optimize-fresh.preview.emergentagent.com').rstrip('/')
 
 @pytest.fixture(scope="module")
 def auth_token():

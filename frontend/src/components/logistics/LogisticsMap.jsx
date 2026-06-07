@@ -126,11 +126,21 @@ function buildGoogleMapsUrl(stops) {
 }
 
 function optimizeOrders(allOrders, vehicleMpg, fuelPrice) {
+  // Solo órdenes que requieren ruta (excluye drop-off W&F y self-service)
   const routeOrders = allOrders.filter(
-    o => (o.status === 'pending' || o.status === 'ready') && o.type !== 'wash-fold'
+    o => (o.status === 'pending' || o.status === 'ready') &&
+         o.type !== 'wash-fold' &&
+         o.type !== 'self-service'
   );
   if (routeOrders.length === 0) return null;
-  return optimizeRouteAdvanced(routeOrders, HQ, vehicleMpg, fuelPrice);
+  // Convertir mpg → km/L y precio USD/gal → MXN/L equivalente para mantener cálculo internamente
+  // optimizeRouteAdvanced acepta options como tercer argumento
+  const kmPerLiter = (vehicleMpg || 12) * 0.425144; // mpg → km/L
+  const pricePerLiter = (fuelPrice || 4.89) / 3.78541; // USD/gal → USD/L
+  return optimizeRouteAdvanced(routeOrders, HQ, {
+    vehicleKmPerLiter: kmPerLiter,
+    fuelPricePerLiter: pricePerLiter,
+  });
 }
 
 function useIsMobile() {
@@ -260,9 +270,16 @@ export function LogisticsMap() {
   const loadOrders = useCallback(() => {
     const token = localStorage.getItem('token');
     if (!token || !API_URL) { setLoadingBackend(false); return; }
+    setLoadingBackend(true);
     const params = new URLSearchParams();
     if (mapFilters.date) params.set('date', mapFilters.date);
     if (mapFilters.time_window) params.set('time_window', mapFilters.time_window);
+    if (mapFilters.service_type && mapFilters.service_type !== 'all') {
+      params.set('service_type', mapFilters.service_type);
+    }
+    if (mapFilters.phase && mapFilters.phase !== 'both') {
+      params.set('phase', mapFilters.phase);
+    }
     const qs = params.toString();
     fetch(`${API_URL}/api/logistics/orders${qs ? `?${qs}` : ''}`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -270,17 +287,21 @@ export function LogisticsMap() {
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(data => {
         const arr = Array.isArray(data) ? data : [];
-        let mapped = arr.map(o => ({
+        // El backend ya envía type, schedule, customer normalizado
+        const mapped = arr.map(o => ({
           ...o,
           _backendId: o.id,
+          // garantizar campos requeridos
+          type: o.type || o.service_type || 'pickup-delivery',
           pricing: o.pricing || { subtotal: 0, tax: 0, total: 0 },
           payment: o.payment || { method: 'card', status: 'pending' },
           schedule: o.schedule || { pickupDate: '', pickupTime: '', deliveryDate: '', deliveryTime: '' },
+          location: o.location || { lat: HQ.lat, lng: HQ.lng, address: '', zipCode: '' },
+          customer: o.customer || { name: 'Cliente', phone: '', email: '' },
         }));
-        mapped = filterOrdersByTimeWindow(mapped, mapFilters.time_window);
         setOrders(mapped);
       })
-      .catch(() => {})
+      .catch(() => { setOrders([]); })
       .finally(() => setLoadingBackend(false));
   }, [mapFilters]);
 
@@ -308,23 +329,17 @@ export function LogisticsMap() {
     return () => clearInterval(interval);
   }, []);
 
-  // ── Filtered orders ───────────────────────────────────────────────────
+  // ── Filtered orders (backend ya filtra; este es solo respaldo cliente) ──
   const filteredByDateAndTime = useMemo(() => {
-    let result = orders;
-    if (mapFilters.date) {
-      result = result.filter(order => {
-        const pickupDate   = order.schedule?.pickupDate   || order.pickup_date   || order.pickupDate;
-        const deliveryDate = order.schedule?.deliveryDate || order.delivery_date || order.deliveryDate;
-        return pickupDate === mapFilters.date || deliveryDate === mapFilters.date;
-      });
-    }
-    if (mapFilters.time_window) result = filterOrdersByTimeWindow(result, mapFilters.time_window);
-    return result;
-  }, [orders, mapFilters]);
+    // Backend ya hace el filtrado pesado. Aquí solo aplicamos defensivo si llegan datos sin filtrar.
+    return orders;
+  }, [orders]);
 
-  const displayedOrders = filterType === 'all'
+  // service_type viene del MapFilters (single source of truth); filterType legacy se mantiene para tabs móviles
+  const activeServiceType = mapFilters.service_type || filterType || 'all';
+  const displayedOrders = activeServiceType === 'all'
     ? filteredByDateAndTime
-    : filteredByDateAndTime.filter(o => o.type === filterType);
+    : filteredByDateAndTime.filter(o => o.type === activeServiceType);
 
   const pickupCount   = displayedOrders.filter(o => o.status === 'pending' && o.type !== 'wash-fold').length;
   const deliveryCount = displayedOrders.filter(o => o.status === 'ready'   && o.type !== 'wash-fold').length;
@@ -1029,9 +1044,13 @@ export function LogisticsMap() {
           {['all', 'pickup-delivery', 'airbnb', 'b2b', 'wash-fold'].map(type => (
             <button
               key={type}
-              onClick={() => setFilterType(type)}
+              onClick={() => {
+                setFilterType(type);
+                setMapFilters(prev => ({ ...prev, service_type: type }));
+              }}
+              data-testid={`mobile-filter-${type}`}
               className={`text-[10px] px-3 py-1 rounded-lg border font-medium transition-colors shrink-0 ${
-                filterType === type
+                activeServiceType === type
                   ? 'bg-gray-900 text-white border-gray-900'
                   : 'bg-white text-gray-600 border-gray-200'
               }`}
@@ -1082,9 +1101,13 @@ export function LogisticsMap() {
                 {['all', 'pickup-delivery', 'airbnb', 'b2b', 'wash-fold'].map(type => (
                   <button
                     key={type}
-                    onClick={() => setFilterType(type)}
+                    onClick={() => {
+                      setFilterType(type);
+                      setMapFilters(prev => ({ ...prev, service_type: type }));
+                    }}
+                    data-testid={`desktop-filter-${type}`}
                     className={`text-[10px] px-2 py-1 rounded-lg border font-medium transition-colors ${
-                      filterType === type
+                      activeServiceType === type
                         ? 'bg-gray-900 text-white border-gray-900'
                         : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
                     }`}

@@ -8,7 +8,7 @@ import requests
 import json
 
 # Configuration
-BASE_URL = "https://ventura-deploy-test.preview.emergentagent.com"
+BASE_URL = "https://route-optimize-fresh.preview.emergentagent.com"
 API_URL = f"{BASE_URL}/api"
 
 # Use existing admin user for testing

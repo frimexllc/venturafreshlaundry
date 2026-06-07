@@ -178,3 +178,35 @@ NEW -> CONFIRMED -> PROCESSING -> READY -> COMPLETED
 - (P3) Advanced Stripe Sync bidirectional (PAUSED by user)
 - (P4) Split CustomerAccount.jsx into subcomponents
 - (P5) Virtual tour of the interface (guided walkthrough for new operators) (PendingPayments, OrderHistory, Preferences)
+
+## Logistics Module Enhancements — 2026-02-07
+### Backend (`routes/logistics.py`)
+- `/api/logistics/orders` GET ahora soporta filtros completos:
+  - `date` (auto = hoy si no se envía via `auto_today=true`)
+  - `service_type` = pickup-delivery | wash-fold | airbnb | b2b | all
+  - `time_window` = morning (6-12) | afternoon (12-18) | evening (18-22)
+  - `phase` = pickup | delivery | both
+  - `include_wash_fold` = bool (excluye drop-off W&F si false)
+- Normaliza `service_type` desde múltiples formatos (`wash_fold`, `airbnb-specialist`, `commercial`, etc.)
+- Devuelve `type` y `service_type` para compatibilidad con mapper de frontend
+- Estados ampliados: `new`, `pending`, `confirmed`, `pickup_scheduled`, `picked_up`, `in_process`, `ready`, `out_for_delivery`, `shipping`
+- Filtra siempre `self-service` (no requiere ruta)
+
+### Frontend
+- `MapFilters.jsx` rediseñado profesional con:
+  - Fecha por defecto = hoy + botón HOY
+  - 5 chips de servicio (Todos, P&D, Airbnb, B2B, W&F) con íconos
+  - 3 chips de fase (Ambos, Recoger, Entregar)
+  - 3 chips de horario (AM, PM, Noche)
+  - data-testid en todos los controles para testing
+  - Modo oscuro soportado
+- `LogisticsMap.jsx`:
+  - Bug fix: `optimizeRouteAdvanced(orders, HQ, mpg, fuelPrice)` → `optimizeRouteAdvanced(orders, HQ, { vehicleKmPerLiter, fuelPricePerLiter })` (firma correcta, mpg→km/L, USD/gal→USD/L)
+  - Excluye `self-service` y `wash-fold` de la optimización de ruta
+  - Pasa filtros completos al backend (date, time_window, service_type, phase)
+  - Tabs móviles y filtro lateral sincronizados con `mapFilters.service_type` como single source of truth
+  - Fallback defensivo si backend devuelve datos sin filtrar
+
+### Conocidos / Externos
+- Google Maps RefererNotAllowedMapError en preview: requiere whitelist del dominio `route-optimize-fresh.preview.emergentagent.com` en Google Cloud Console. Funciona en producción.
+- Overpass API a veces devuelve 504 (servicio público externo). Tenemos fallback regional EIA + backend FuelAPI.

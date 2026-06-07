@@ -11,7 +11,7 @@ import pytest
 import requests
 import os
 
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://ventura-deploy-test.preview.emergentagent.com")
+BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://route-optimize-fresh.preview.emergentagent.com")
 
 # Test credentials from review request
 TEST_CUSTOMER = {"email": "test_customer@test.com", "password": "test123"}

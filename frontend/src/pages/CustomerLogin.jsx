@@ -21,7 +21,7 @@ import {
 
 // ─── Axios instance ────────────────────────────────────────────────────────────
 const api = axios.create({
-  baseURL: process.env.REACT_APP_BACKEND_URL || "https://ventura-deploy-test.preview.emergentagent.com",
+  baseURL: process.env.REACT_APP_BACKEND_URL || "https://route-optimize-fresh.preview.emergentagent.com",
   headers: { "Content-Type": "application/json" },
   timeout: 30000,
 });

@@ -30,7 +30,7 @@ TWILIO_AUTH_TOKEN       = os.environ.get("TWILIO_AUTH_TOKEN")
 TWILIO_PHONE_NUMBER     = os.environ.get("TWILIO_PHONE_NUMBER")
 TWILIO_WHATSAPP_NUMBER  = os.environ.get("TWILIO_WHATSAPP_NUMBER")
 
-FRONTEND_URL = os.environ.get("FRONTEND_URL") or os.environ.get("DEPLOY_URL") or "https://ventura-deploy-test.preview.emergentagent.com"
+FRONTEND_URL = os.environ.get("FRONTEND_URL") or os.environ.get("DEPLOY_URL") or "https://route-optimize-fresh.preview.emergentagent.com"
 
 BUSINESS_NAME           = os.environ.get("BUSINESS_NAME", "Ventura Fresh Laundry")
 BUSINESS_ADDRESS        = os.environ.get("BUSINESS_ADDRESS", "Ventura, CA")

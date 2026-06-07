@@ -13,7 +13,7 @@ import uuid
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
 if not BASE_URL:
-    BASE_URL = os.environ.get("BASE_URL", "https://ventura-deploy-test.preview.emergentagent.com")
+    BASE_URL = os.environ.get("BASE_URL", "https://route-optimize-fresh.preview.emergentagent.com")
 
 # Test credentials
 ADMIN_EMAIL = os.environ.get("TEST_ADMIN_EMAIL", "owner@frimexllc.com")
@@ -117,7 +117,7 @@ class TestStripeCheckout:
                 "Authorization": f"Bearer {auth_token}",
                 "Content-Type": "application/json"
             },
-            json={"origin_url": "https://ventura-deploy-test.preview.emergentagent.com"}
+            json={"origin_url": "https://route-optimize-fresh.preview.emergentagent.com"}
         )
         
         assert response.status_code == 200, f"Stripe checkout failed: {response.text}"
@@ -163,7 +163,7 @@ class TestStripeCheckout:
                 "Authorization": f"Bearer {auth_token}",
                 "Content-Type": "application/json"
             },
-            json={"origin_url": "https://ventura-deploy-test.preview.emergentagent.com"}
+            json={"origin_url": "https://route-optimize-fresh.preview.emergentagent.com"}
         )
         
         # Should return 400 because actual_lbs is required

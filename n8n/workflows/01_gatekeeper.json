@@ -18,7 +18,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://ventura-deploy-test.preview.emergentagent.com/api/automation/ingest",
+        "url": "=https://route-optimize-fresh.preview.emergentagent.com/api/automation/ingest",
         "sendBody": true,
         "bodyParameters": {
           "parameters": [
