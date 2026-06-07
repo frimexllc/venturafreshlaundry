@@ -1095,14 +1095,18 @@ export function LogisticsMap() {
 
           {/* 🏆 Cheapest gas station floating banner */}
           {showGasStations && (() => {
-            const priced = (gasStations || []).filter(s => typeof s.price === 'number' && !isNaN(s.price) && s.price > 0);
+            const all = gasStations || [];
+            // Preferir estaciones con precio REAL (Google Places). Si hay 2+ reales, usar esas.
+            // Si no hay ninguna real, mostrar la más barata de las regionales como info pero marcada como estimada.
+            const real = all.filter(s => s.isRealPrice && typeof s.price === 'number' && s.price > 0);
+            const priced = (real.length >= 1 ? real : all).filter(
+              s => typeof s.price === 'number' && !isNaN(s.price) && s.price > 0
+            );
             if (priced.length < 2) return null;
             const cheapest = priced.reduce((m, s) => (s.price < m.price ? s : m), priced[0]);
             const avg = priced.reduce((sum, s) => sum + s.price, 0) / priced.length;
             const savings = (avg - cheapest.price).toFixed(2);
-            const isRealPrice =
-              cheapest.price_source === 'google_places' ||
-              cheapest.price_source === 'fuelapi';
+            const isRealPrice = !!cheapest.isRealPrice;
             return (
               <div
                 className="absolute top-3 left-3 z-[1000] bg-white/95 backdrop-blur-md rounded-xl shadow-lg border border-emerald-200 px-3 py-2 max-w-[280px]"

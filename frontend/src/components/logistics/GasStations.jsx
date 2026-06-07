@@ -172,14 +172,21 @@ export function useGasStations(hq, routeWaypoints, enabled = true, vehicleMpg = 
           const minD = Math.min(
             ...allPoints.map((p) => haversineDistance(s.lat, s.lng, p.lat, p.lng))
           );
-          const price =
-            safePrice(s.price) ??
-            getRegionalPrice(s.lat, s.lng, s.brand);
+          const realPrice = safePrice(s.price);
+          // Si no hay precio real, usar baseline regional pero MARCAR como "regional"
+          const price = realPrice ?? getRegionalPrice(s.lat, s.lng, s.brand);
+          // Solo es "real" si el backend reportó google_places/fuelapi Y tenemos un número
+          const sourceFromBackend = s.price_source || "";
+          const isRealSource =
+            sourceFromBackend === "google_places" ||
+            sourceFromBackend === "fuelapi";
           return {
             ...s,
             distanceToRouteKm: minD,
             price,
-            price_source: s.price_source || (safePrice(s.price) ? "google_places" : "regional"),
+            // Conservamos el source del backend para sub-categorías como google_places_area_avg
+            price_source: realPrice && isRealSource ? sourceFromBackend : "regional",
+            isRealPrice: !!(realPrice && isRealSource),
           };
         })
         .sort((a, b) => a.distanceToRouteKm - b.distanceToRouteKm)
@@ -227,11 +234,14 @@ export function useGasStations(hq, routeWaypoints, enabled = true, vehicleMpg = 
     const routePoints = [hq, ...routeWaypoints].filter((p) => p?.lat != null);
     const map = new Map();
     routePoints.forEach((pt, idx) => {
+      // Preferir estaciones con precio REAL (Google Places). Solo caer a estimadas si no hay reales en el área.
       const nearby = enrichedStations.filter(
         (s) => s.price != null && haversineDistance(s.lat, s.lng, pt.lat, pt.lng) <= 3.0
       );
       if (!nearby.length) return;
-      const cheapest = nearby.reduce((m, s) => (s.price < m.price ? s : m), nearby[0]);
+      const real = nearby.filter((s) => s.isRealPrice);
+      const pool = real.length ? real : nearby;
+      const cheapest = pool.reduce((m, s) => (s.price < m.price ? s : m), pool[0]);
       map.set(idx, cheapest.id);
     });
     return new Set(map.values());
