@@ -70,7 +70,16 @@ async def _fetch_tomtom_incidents() -> list:
     """Fetch real-time incidents from TomTom API."""
     if not TOMTOM_KEY:
         logger.warning("TOMTOM_API_KEY not set — returning empty traffic")
-        return []
+        return  [{
+            "id": "mock-1",
+            "road": "US-101 N (mock)",
+            "description": "Simulación de incidente",
+            "lat": 34.27,
+            "lng": -119.25,
+            "severity": "light",
+            "delayMinutes": 5,
+            "source": "mock"
+        }]
 
     fields = (
         "{incidents{type,geometry{type,coordinates},"

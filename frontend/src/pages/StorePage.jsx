@@ -10,8 +10,15 @@ import { StorePaymentModal } from "./StorePaymentModal";
 import { toast } from "sonner";
 import { useLocale } from "../context/LocaleContext";
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
+const API_URL = process.env.REACT_APP_BACKEND_URL || "";
 const DEFAULT_PRODUCT_IMAGE = "https://images.unsplash.com/photo-1582735689369-4fe89db7114c?w=400&h=300&fit=crop";
+
+// Logger para depuración (solo en desarrollo)
+const log = (msg, data = null) => {
+  if (process.env.NODE_ENV === "development") {
+    console.log(`[StorePage] ${msg}`, data || "");
+  }
+};
 
 // ─── IntersectionObserver hook ────────────────────────────────────────────────
 function useInView(threshold = 0.08) {
@@ -193,7 +200,7 @@ const ProductCard = ({ product, onAdd, t }) => {
   );
 };
 
-// ─── Field + Input ────────────────────────────────────────────────────────────
+// ─── Field + Input ───────────────────────────────────────────────────────────
 const Field = ({ label, required, children, ...p }) => (
   <div {...p}>
     <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1 block not-italic">
@@ -213,7 +220,14 @@ export default function StorePage() {
   const [cartOpen, setCartOpen] = useState(false);
   const [checkingOut, setCheckingOut] = useState(false);
   const [shippingLoading, setShippingLoading] = useState(false);
-  const [shippingQuote, setShippingQuote] = useState({ distance_km: null, fee: 0 });
+  const [shippingQuote, setShippingQuote] = useState({ 
+    distance_km: null, 
+    fee: 0, 
+    distance_miles: null, 
+    method: null,
+    straight_line_miles: null,
+    within_range: true
+  });
   const [shippingError, setShippingError] = useState("");
   const [scrollY, setScrollY] = useState(0);
   const [stripeModalOpen, setStripeModalOpen] = useState(false);
@@ -223,6 +237,7 @@ export default function StorePage() {
     instructions: "", notes: "", preferred_contact: "sms", payment_method: "card"
   });
   const [searchParams] = useSearchParams();
+  const [isValidatingAddress, setIsValidatingAddress] = useState(false);
   const { ring, dot } = useCursor();
 
   useEffect(() => {
@@ -235,16 +250,34 @@ export default function StorePage() {
   const pollCheckoutStatus = useCallback(async (sessionId, attempt = 0) => {
     const maxAttempts = 8;
     try {
+      // ✅ CORREGIDO: usar /api/store/
       const res = await fetch(`${API_URL}/api/store/checkout/status/${sessionId}`);
       if (!res.ok) throw new Error("status");
       const data = await res.json();
       const paymentStatus = (data?.payment_status || "").toLowerCase();
       const checkoutStatus = (data?.status || "").toLowerCase();
-      if (paymentStatus === "paid") { toast.success(t("Payment completed successfully!", "¡Pago completado exitosamente!")); localStorage.removeItem("cartId"); setCart(null); return; }
-      if (checkoutStatus === "expired") { toast.error(t("Payment session expired", "La sesión de pago expiró")); return; }
-      if (attempt >= maxAttempts) { toast.info(t("Payment pending, refresh in a moment", "Pago pendiente, actualiza en un momento")); return; }
+      if (paymentStatus === "paid") { 
+        toast.success(t("Payment completed successfully!", "¡Pago completado exitosamente!")); 
+        localStorage.removeItem("cartId"); 
+        setCart(null); 
+        return; 
+      }
+      if (checkoutStatus === "expired") { 
+        toast.error(t("Payment session expired", "La sesión de pago expiró")); 
+        return; 
+      }
+      if (attempt >= maxAttempts) { 
+        toast.info(t("Payment pending, refresh in a moment", "Pago pendiente, actualiza en un momento")); 
+        return; 
+      }
       setTimeout(() => pollCheckoutStatus(sessionId, attempt + 1), 2000);
-    } catch { if (attempt >= maxAttempts) { toast.error(t("Unable to verify payment", "No se pudo verificar pago")); return; } setTimeout(() => pollCheckoutStatus(sessionId, attempt + 1), 2000); }
+    } catch { 
+      if (attempt >= maxAttempts) { 
+        toast.error(t("Unable to verify payment", "No se pudo verificar pago")); 
+        return; 
+      } 
+      setTimeout(() => pollCheckoutStatus(sessionId, attempt + 1), 2000); 
+    }
   }, [t]);
 
   const formatApiError = (detail, fallback) => {
@@ -258,12 +291,17 @@ export default function StorePage() {
   useEffect(() => {
     const status = searchParams.get("status");
     const sessionId = searchParams.get("session_id");
-    if (sessionId) { pollCheckoutStatus(sessionId); window.history.replaceState({}, "", window.location.pathname); return; }
+    if (sessionId) { 
+      pollCheckoutStatus(sessionId); 
+      window.history.replaceState({}, "", window.location.pathname); 
+      return; 
+    }
     if (status === "cancelled") toast.error(t("Payment was cancelled", "El pago fue cancelado"));
   }, [pollCheckoutStatus, searchParams, t]);
 
-  // ✅ FIX: ensure products is always an array
+  // Cargar productos
   useEffect(() => {
+    log("Loading products...");
     fetch(`${API_URL}/api/store/products`)
       .then(r => r.json())
       .then(data => {
@@ -278,6 +316,7 @@ export default function StorePage() {
           console.warn('Unexpected products response shape:', data);
           productsArray = [];
         }
+        log(`Loaded ${productsArray.length} products`);
         setProducts(productsArray);
       })
       .catch(err => {
@@ -287,94 +326,262 @@ export default function StorePage() {
       .finally(() => setLoading(false));
   }, []);
 
+  // Cargar carrito
   useEffect(() => {
     const cartId = localStorage.getItem("cartId");
     if (cartId) {
+      log(`Loading cart: ${cartId}`);
       fetch(`${API_URL}/api/store/cart/${cartId}`)
         .then(r => { if (r.ok) return r.json(); throw new Error(); })
-        .then(d => { if (d && Array.isArray(d.items)) setCart(d); else throw new Error(); })
-        .catch(() => localStorage.removeItem("cartId"));
+        .then(d => { 
+          if (d && Array.isArray(d.items)) {
+            log(`Cart loaded with ${d.items.length} items`);
+            setCart(d); 
+          } else throw new Error(); 
+        })
+        .catch(() => {
+          log("Cart not found, removing from localStorage");
+          localStorage.removeItem("cartId");
+        });
     }
   }, []);
 
+  // Cálculo de envío llamando al backend
   useEffect(() => {
     if (!checkoutForm.address || checkoutForm.address.trim().length < 10) {
-      setShippingQuote({ distance_km: null, fee: 0 }); setShippingError(""); return;
+      setShippingQuote({ distance_km: null, fee: 0, distance_miles: null, method: null, straight_line_miles: null, within_range: true });
+      setShippingError("");
+      return;
     }
+
     const timer = setTimeout(async () => {
       setShippingLoading(true);
+      setIsValidatingAddress(true);
       try {
-        const res = await fetch(`${API_URL}/api/store/shipping/quote`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ address: checkoutForm.address }) });
-        if (res.ok) { const d = await res.json(); setShippingQuote(d); setShippingError(""); }
-        else { const e = await res.json(); setShippingQuote({ distance_km: null, fee: 0 }); setShippingError(formatApiError(e.detail, t("Unable to calculate shipping", "No se pudo calcular envío"))); }
-      } catch { setShippingQuote({ distance_km: null, fee: 0 }); setShippingError(t("Unable to calculate shipping", "No se pudo calcular envío")); }
-      finally { setShippingLoading(false); }
+        log(`Calculating shipping for address: ${checkoutForm.address}`);
+        // ✅ CORREGIDO: usar /api/store/
+        const response = await fetch(`${API_URL}/api/store/shipping/calculate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ address: checkoutForm.address })
+        });
+        
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.detail || "Failed to calculate distance");
+        }
+        
+        const data = await response.json();
+        log("Shipping calculation result:", data);
+        
+        if (!data.within_range) {
+          setShippingError(t(`Distance exceeds maximum service area of ${data.max_service_miles} miles (measured: ${data.straight_line_miles?.toFixed(1)} miles)`, 
+            `La distancia excede el área de servicio máxima de ${data.max_service_miles} millas (medida: ${data.straight_line_miles?.toFixed(1)} millas)`));
+          setShippingQuote({ 
+            distance_km: null, 
+            fee: 0, 
+            distance_miles: null, 
+            method: "backend",
+            straight_line_miles: data.straight_line_miles,
+            within_range: false
+          });
+          return;
+        }
+        
+        setShippingQuote({
+          straight_line_miles: data.straight_line_miles,
+          distance_miles: data.straight_line_miles,
+          distance_km: Math.round(data.straight_line_miles * 1.60934 * 100) / 100,
+          fee: data.fee,
+          method: "backend",
+          within_range: true
+        });
+        setShippingError("");
+        
+      } catch (err) {
+        console.error("Shipping calculation error:", err);
+        setShippingQuote({ distance_km: null, fee: 0, distance_miles: null, method: null, straight_line_miles: null, within_range: true });
+        setShippingError(err.message || t("Unable to calculate shipping", "No se pudo calcular envío"));
+      } finally {
+        setShippingLoading(false);
+        setIsValidatingAddress(false);
+      }
     }, 600);
+    
     return () => clearTimeout(timer);
   }, [checkoutForm.address, t]);
 
   const createCart = async () => {
+    log("Creating new cart...");
     const res = await fetch(`${API_URL}/api/store/cart`, { method: "POST" });
-    if (!res.ok) { toast.error(t("Unable to create cart", "No se pudo crear el carrito")); return null; }
+    if (!res.ok) { 
+      toast.error(t("Unable to create cart", "No se pudo crear el carrito")); 
+      return null; 
+    }
     const c = await res.json();
-    if (!c || !Array.isArray(c.items)) { toast.error(t("Invalid cart data", "Datos de carrito inválidos")); return null; }
-    localStorage.setItem("cartId", c.id); setCart(c); return c;
+    if (!c || !Array.isArray(c.items)) { 
+      toast.error(t("Invalid cart data", "Datos de carrito inválidos")); 
+      return null; 
+    }
+    localStorage.setItem("cartId", c.id); 
+    setCart(c); 
+    log(`Cart created: ${c.id}`);
+    return c;
   };
 
   const addToCart = async (product) => {
     try {
-      let cur = cart; if (!cur) cur = await createCart(); if (!cur) return;
-      const res = await fetch(`${API_URL}/api/store/cart/${cur.id}/items`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ product_id: product.id, quantity: 1 }) });
-      if (res.ok) { const d = await res.json(); if (!d || !Array.isArray(d.items)) { toast.error(t("Invalid cart data", "Datos de carrito inválidos")); return; } setCart(d); toast.success(t("{name} added to cart", "{name} agregado al carrito").replace("{name}", product.name)); }
-      else { const e = await res.json(); toast.error(formatApiError(e.detail, t("Error adding to cart", "Error al agregar al carrito"))); }
-    } catch { toast.error(t("Connection error", "Error de conexión")); }
+      let cur = cart; 
+      if (!cur) cur = await createCart(); 
+      if (!cur) return;
+      
+      log(`Adding to cart: ${product.name}`);
+      const res = await fetch(`${API_URL}/api/store/cart/${cur.id}/items`, { 
+        method: "POST", 
+        headers: { "Content-Type": "application/json" }, 
+        body: JSON.stringify({ product_id: product.id, quantity: 1 }) 
+      });
+      
+      if (res.ok) { 
+        const d = await res.json(); 
+        if (!d || !Array.isArray(d.items)) { 
+          toast.error(t("Invalid cart data", "Datos de carrito inválidos")); 
+          return; 
+        } 
+        setCart(d); 
+        toast.success(t("{name} added to cart", "{name} agregado al carrito").replace("{name}", product.name)); 
+      } else { 
+        const e = await res.json(); 
+        toast.error(formatApiError(e.detail, t("Error adding to cart", "Error al agregar al carrito"))); 
+      }
+    } catch { 
+      toast.error(t("Connection error", "Error de conexión")); 
+    }
   };
 
   const updateQuantity = async (productId, qty) => {
     if (!cart) return;
     try {
+      log(`Updating quantity for product ${productId} to ${qty}`);
       const res = await fetch(`${API_URL}/api/store/cart/${cart.id}/items/${productId}?quantity=${qty}`, { method: "PUT" });
-      if (res.ok) { const d = await res.json(); if (!d || !Array.isArray(d.items)) return; setCart(d); }
-    } catch { toast.error(t("Connection error", "Error de conexión")); }
+      if (res.ok) { 
+        const d = await res.json(); 
+        if (!d || !Array.isArray(d.items)) return; 
+        setCart(d); 
+      }
+    } catch { 
+      toast.error(t("Connection error", "Error de conexión")); 
+    }
   };
 
   const removeFromCart = async (productId) => {
     if (!cart) return;
     try {
+      log(`Removing product ${productId} from cart`);
       const res = await fetch(`${API_URL}/api/store/cart/${cart.id}/items/${productId}`, { method: "DELETE" });
-      if (res.ok) { const d = await res.json(); if (!d || !Array.isArray(d.items)) return; setCart(d); toast.success(t("Product removed from cart", "Producto eliminado del carrito")); }
-    } catch { toast.error(t("Connection error", "Error de conexión")); }
+      if (res.ok) { 
+        const d = await res.json(); 
+        if (!d || !Array.isArray(d.items)) return; 
+        setCart(d); 
+        toast.success(t("Product removed from cart", "Producto eliminado del carrito")); 
+      }
+    } catch { 
+      toast.error(t("Connection error", "Error de conexión")); 
+    }
   };
 
   const checkout = async () => {
-    if (!cart || cart.items.length === 0) { toast.error(t("Cart is empty", "El carrito está vacío")); return; }
-    if (!checkoutForm.name || !checkoutForm.email || !checkoutForm.phone || !checkoutForm.address) { toast.error(t("Please complete required fields", "Completa los campos obligatorios")); return; }
-    if (shippingError) { toast.error(shippingError); return; }
-    if (!shippingQuote.fee) { toast.error(t("Enter full address (street, city, state, ZIP)", "Ingresa dirección completa")); return; }
+    if (!cart || cart.items.length === 0) { 
+      toast.error(t("Cart is empty", "El carrito está vacío")); 
+      return; 
+    }
+    if (!checkoutForm.name || !checkoutForm.email || !checkoutForm.phone || !checkoutForm.address) { 
+      toast.error(t("Please complete required fields", "Completa los campos obligatorios")); 
+      return; 
+    }
+    if (shippingError) { 
+      toast.error(shippingError); 
+      return; 
+    }
+    if (!shippingQuote.distance_miles && checkoutForm.address.length > 10) { 
+      toast.error(t("Enter full address (street, city, state, ZIP)", "Ingresa dirección completa")); 
+      return; 
+    }
+
+    const payload = { 
+      cart_id: cart.id, 
+      origin_url: window.location.origin, 
+      customer_name: checkoutForm.name, 
+      customer_email: checkoutForm.email, 
+      customer_phone: checkoutForm.phone, 
+      shipping_address: checkoutForm.address, 
+      shipping_apt: checkoutForm.apt, 
+      delivery_instructions: checkoutForm.instructions, 
+      notes: checkoutForm.notes, 
+      preferred_contact: checkoutForm.preferred_contact, 
+      fulfillment_type: "delivery", 
+      payment_method: checkoutForm.payment_method 
+    };
+
+    log("Checkout payload:", payload);
 
     if (checkoutForm.payment_method === "card") {
       setCheckingOut(true);
       try {
-        const payload = { cart_id: cart.id, origin_url: window.location.origin, customer_name: checkoutForm.name, customer_email: checkoutForm.email, customer_phone: checkoutForm.phone, shipping_address: checkoutForm.address, shipping_apt: checkoutForm.apt, delivery_instructions: checkoutForm.instructions, notes: checkoutForm.notes, preferred_contact: checkoutForm.preferred_contact, fulfillment_type: "delivery", payment_method: "card" };
-        const res = await fetch(`${API_URL}/api/store/checkout/manual`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+        // ✅ CORREGIDO: usar /api/store/
+        const res = await fetch(`${API_URL}/api/store/checkout/manual`, { 
+          method: "POST", 
+          headers: { "Content-Type": "application/json" }, 
+          body: JSON.stringify(payload) 
+        });
+        
         if (res.ok) {
           const d = await res.json();
           const total = cart.total + (shippingQuote.fee || 0);
-          setStripeOrderData({ orderId: d.order_id || d.id, amount: total, description: `Tienda - ${checkoutForm.name}` });
+          log("Order created for card payment:", d);
+          setStripeOrderData({ 
+            orderId: d.order_id || d.id, 
+            amount: total, 
+            description: `Tienda - ${checkoutForm.name}` 
+          });
           setStripeModalOpen(true);
-        } else { const e = await res.json(); toast.error(formatApiError(e.detail, t("Error processing order", "Error al procesar orden"))); }
-      } catch { toast.error(t("Connection error", "Error de conexión")); }
+        } else { 
+          const e = await res.json(); 
+          log("Checkout error:", e);
+          toast.error(formatApiError(e.detail, t("Error processing order", "Error al procesar orden"))); 
+        }
+      } catch (err) { 
+        log("Checkout exception:", err);
+        toast.error(t("Connection error", "Error de conexión")); 
+      }
       finally { setCheckingOut(false); }
       return;
     }
 
+    // Para otros métodos de pago (cash, transfer, etc.)
     setCheckingOut(true);
     try {
-      const payload = { cart_id: cart.id, origin_url: window.location.origin, customer_name: checkoutForm.name, customer_email: checkoutForm.email, customer_phone: checkoutForm.phone, shipping_address: checkoutForm.address, shipping_apt: checkoutForm.apt, delivery_instructions: checkoutForm.instructions, notes: checkoutForm.notes, preferred_contact: checkoutForm.preferred_contact, fulfillment_type: "delivery", payment_method: checkoutForm.payment_method };
-      const res = await fetch(`${API_URL}/api/store/checkout/manual`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-      if (res.ok) { toast.success(t("Order confirmed. Payment registered.", "Orden confirmada.")); localStorage.removeItem("cartId"); setCart(null); }
-      else { const e = await res.json(); toast.error(formatApiError(e.detail, t("Error processing payment", "Error al procesar el pago"))); }
-    } catch { toast.error(t("Connection error", "Error de conexión")); }
+      // ✅ CORREGIDO: usar /api/store/
+      const res = await fetch(`${API_URL}/api/store/checkout/manual`, { 
+        method: "POST", 
+        headers: { "Content-Type": "application/json" }, 
+        body: JSON.stringify(payload) 
+      });
+      
+      if (res.ok) { 
+        log("Order confirmed with non-card payment");
+        toast.success(t("Order confirmed. Payment registered.", "Orden confirmada.")); 
+        localStorage.removeItem("cartId"); 
+        setCart(null); 
+      } else { 
+        const e = await res.json(); 
+        log("Checkout error:", e);
+        toast.error(formatApiError(e.detail, t("Error processing payment", "Error al procesar el pago"))); 
+      }
+    } catch (err) { 
+      log("Checkout exception:", err);
+      toast.error(t("Connection error", "Error de conexión")); 
+    }
     finally { setCheckingOut(false); }
   };
 
@@ -385,7 +592,7 @@ export default function StorePage() {
   const marqueeItems = [
     t("Laundry Products", "Productos de Lavandería"),
     t("Premium Quality", "Calidad Premium"),
-    t("Free Delivery", "Envío Gratis"),
+    t("Free Delivery within 3 miles", "Envío Gratis hasta 3 millas"),
     t("Detergents", "Detergentes"),
     t("Softeners", "Suavizantes"),
     t("Ventura Fresh Store", "Tienda Ventura Fresh"),
@@ -403,6 +610,7 @@ export default function StorePage() {
     <style>{`
       @keyframes fadeUp { from { opacity:0; transform:translateY(10px) } to { opacity:1; transform:translateY(0) } }
       @keyframes mq { from { transform:translateX(0) } to { transform:translateX(-33.333%) } }
+      @keyframes spin { to { transform:rotate(360deg) } }
       * { font-style: normal !important; }
     `}</style>
 
@@ -611,6 +819,45 @@ export default function StorePage() {
                         {t("Format: street + number, city, state, ZIP", "Formato: calle y número, ciudad, estado, ZIP")}
                       </p>
                     </Field>
+                    
+                    {/* Mostrar información de distancia y envío */}
+                    {shippingQuote.straight_line_miles && (
+                      <div className="mt-2 p-2.5 rounded-xl bg-sky-50 border border-sky-100">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-slate-600">{t("Distance from store", "Distancia desde tienda")}:</span>
+                          <span className="font-semibold text-slate-800">{shippingQuote.straight_line_miles} miles</span>
+                        </div>
+                        <div className="flex items-center justify-between text-xs mt-1 pt-1 border-t border-sky-100">
+                          <span className="text-slate-600">{t("Round trip for delivery", "Viaje redondo para entrega")}:</span>
+                          <span className="font-semibold text-slate-800">{shippingQuote.distance_miles} miles</span>
+                        </div>
+                        <div className="flex items-center justify-between text-xs mt-1">
+                          <span className="text-slate-600">{t("Delivery fee", "Tarifa de envío")}:</span>
+                          <span className={`font-bold ${shippingQuote.fee === 0 ? "text-emerald-600" : "text-sky-600"}`}>
+                            {shippingQuote.fee === 0 ? t("FREE", "GRATIS") : `$${shippingQuote.fee.toFixed(2)}`}
+                          </span>
+                        </div>
+                        {!shippingQuote.within_range && shippingQuote.straight_line_miles && (
+                          <div className="mt-2 text-xs text-amber-600 bg-amber-50 p-1.5 rounded">
+                            ⚠️ {t("Address is outside delivery area", "La dirección está fuera del área de entrega")}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    
+                    {isValidatingAddress && (
+                      <div className="flex items-center gap-2 text-xs text-slate-400 animate-pulse">
+                        <div className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                        {t("Calculating distance...", "Calculando distancia...")}
+                      </div>
+                    )}
+                    
+                    {shippingError && (
+                      <div className="p-2.5 rounded-xl bg-red-50 border border-red-100 text-red-600 text-xs">
+                        {shippingError}
+                      </div>
+                    )}
+
                     <Field label={t("Apartment / Suite", "Apto / Suite")}>
                       <input value={checkoutForm.apt} onChange={e => setField("apt", e.target.value)} className={inputCls} data-testid="checkout-apt" />
                     </Field>
@@ -648,14 +895,20 @@ export default function StorePage() {
                   </div>
                   <div className="flex justify-between text-sm text-slate-500">
                     <span className="not-italic">{t("Shipping", "Envío")}</span>
-                    <span className={`font-medium not-italic ${shippingError ? "text-red-500" : "text-slate-800"}`}>
+                    <span className={`font-medium not-italic ${shippingError ? "text-red-500" : shippingQuote.fee === 0 ? "text-emerald-600" : "text-slate-800"}`}>
                       {shippingLoading
                         ? <span className="flex items-center gap-1 not-italic"><div className="w-3 h-3 border border-primary border-t-transparent rounded-full animate-spin" />{t("Calculating...", "Calculando...")}</span>
-                        : shippingQuote.distance_km
-                          ? `$${shippingFee.toFixed(2)} · ${(shippingQuote.distance_km * 0.621371).toFixed(1)} mi`
+                        : shippingQuote.distance_miles
+                          ? shippingQuote.fee === 0 ? t("FREE", "GRATIS") : `$${shippingQuote.fee.toFixed(2)}`
                           : "—"}
                     </span>
                   </div>
+                  {shippingQuote.distance_miles && !shippingLoading && !shippingError && (
+                    <div className="flex justify-between text-xs text-slate-400">
+                      <span>{t("Round trip distance", "Distancia ida y vuelta")}</span>
+                      <span>{shippingQuote.distance_miles} miles</span>
+                    </div>
+                  )}
                   {shippingError && <p className="text-[11px] text-red-500 not-italic" data-testid="checkout-shipping-error">{shippingError}</p>}
                   <div className="flex justify-between font-bold text-slate-900 border-t border-slate-200 pt-2 mt-1">
                     <span className="not-italic">{t("Total", "Total")}</span>
@@ -665,7 +918,7 @@ export default function StorePage() {
 
                 <button
                   onClick={checkout}
-                  disabled={checkingOut}
+                  disabled={checkingOut || !!shippingError || isValidatingAddress}
                   data-testid="checkout-button"
                   className="group w-full flex items-center justify-center gap-2 bg-primary text-white rounded-xl px-6 py-3.5 sm:py-4 text-sm font-bold uppercase tracking-wider hover:bg-primary/90 transition-all duration-200 shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/30 active:scale-95 overflow-hidden relative disabled:opacity-60 disabled:cursor-not-allowed">
                   {checkingOut ? (
@@ -694,7 +947,12 @@ export default function StorePage() {
         amount={stripeOrderData?.amount}
         description={stripeOrderData?.description}
         orderId={stripeOrderData?.orderId}
-        onPaymentSuccess={() => { toast.success(t("Payment completed!", "Pago completado!")); localStorage.removeItem("cartId"); setCart(null); setStripeModalOpen(false); }}
+        onPaymentSuccess={() => { 
+          toast.success(t("Payment completed!", "Pago completado!")); 
+          localStorage.removeItem("cartId"); 
+          setCart(null); 
+          setStripeModalOpen(false); 
+        }}
       />
     </div>
   </>);

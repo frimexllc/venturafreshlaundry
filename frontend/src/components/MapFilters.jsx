@@ -1,62 +1,78 @@
-import { useState } from "react";
-import { Calendar, Sun, Moon, X, Filter } from "lucide-react";
-import { Button } from "./ui/button";
-import { Input } from "./ui/input";
-import { useLocale } from "../context/LocaleContext";
+// src/components/MapFilters.jsx
+import { useState, useEffect } from "react";
+import { Calendar, X } from "lucide-react";
 
-// ── Inline MapFilters replacement (safe, no external dependency) ──────────
 function MapFilters({ onFilterChange, activeFilters = {} }) {
-  const [date, setDate] = useState(activeFilters.date || '');
-  const [timeWindow, setTimeWindow] = useState(activeFilters.time_window || '');
+  // Sincronizar estado local con props
+  const [date, setDate] = useState(activeFilters.date || "");
+  const [timeWindow, setTimeWindow] = useState(activeFilters.time_window || "");
 
-  function apply(newDate, newWindow) {
-    onFilterChange({ date: newDate, time_window: newWindow });
-  }
+  useEffect(() => {
+    setDate(activeFilters.date || "");
+    setTimeWindow(activeFilters.time_window || "");
+  }, [activeFilters]);
+
+  const apply = (d, tw) => onFilterChange({ date: d, time_window: tw });
 
   return (
-    <div className="bg-white dark:bg-gray-900 border-b dark:border-gray-700 px-3 py-2 flex flex-wrap items-center gap-2">
-      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
-        <Filter className="w-3 h-3" /> Filtros
+    <div className="bg-white border-b border-slate-200 px-4 sm:px-6 py-3 flex flex-wrap items-center gap-2 sm:gap-4">
+      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+        Filtros
       </span>
-      <div className="flex items-center gap-1">
-        <Calendar className="w-3.5 h-3.5 text-gray-400" />
+
+      {/* Filtro de Fecha */}
+      <div className="flex items-center gap-2">
+        <Calendar className="w-4 h-4 text-slate-400" />
         <input
           type="date"
           value={date}
-          onChange={e => { setDate(e.target.value); apply(e.target.value, timeWindow); }}
-          className="text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1 bg-white dark:bg-gray-800 dark:text-gray-100"
+          onChange={(e) => {
+            setDate(e.target.value);
+            apply(e.target.value, timeWindow);
+          }}
+          className="text-sm outline-none border border-slate-200 rounded-lg px-3 py-1.5 bg-white text-slate-700 placeholder:text-slate-400 focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300 transition-all"
         />
       </div>
-      <div className="flex gap-1">
+
+      {/* Filtro de Horario */}
+      <div className="flex items-center gap-1">
         {[
-          { label: 'Mañana', value: 'morning' },
-          { label: 'Tarde', value: 'afternoon' },
-        ].map(opt => (
+          { label: "AM", value: "morning" },
+          { label: "PM", value: "afternoon" },
+        ].map((opt) => (
           <button
             key={opt.value}
             onClick={() => {
-              const next = timeWindow === opt.value ? '' : opt.value;
+              const next = timeWindow === opt.value ? "" : opt.value;
               setTimeWindow(next);
               apply(date, next);
             }}
-            className={`text-[10px] font-semibold px-2.5 py-1 rounded-lg border transition-colors ${
+            className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-all ${
               timeWindow === opt.value
-                ? 'bg-blue-600 text-white border-blue-600'
-                : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600 hover:border-blue-300'
+                ? "bg-indigo-50 text-indigo-700 border-indigo-300 shadow-sm"
+                : "bg-white text-slate-400 border-slate-200 hover:text-slate-600 hover:border-slate-300"
             }`}
           >
             {opt.label}
           </button>
         ))}
-        {(date || timeWindow) && (
-          <button
-            onClick={() => { setDate(''); setTimeWindow(''); apply('', ''); }}
-            className="text-[10px] text-gray-400 hover:text-red-500 px-1.5"
-          >
-            <X className="w-3 h-3" />
-          </button>
-        )}
       </div>
+
+      {/* Botón Limpiar */}
+      {(date || timeWindow) && (
+        <button
+          onClick={() => {
+            setDate("");
+            setTimeWindow("");
+            apply("", "");
+          }}
+          className="ml-auto flex items-center gap-1 text-xs text-slate-400 hover:text-red-500 transition-colors"
+          title="Limpiar filtros"
+        >
+          <X className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">Limpiar</span>
+        </button>
+      )}
     </div>
   );
 }

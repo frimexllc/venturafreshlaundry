@@ -14,11 +14,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 # ── Create FastAPI app immediately (no heavy deps) ───────────────────
 fastapi_app = FastAPI(
-    title="Ventura Fresh Laundry CRM",
-    docs_url="/api/docs",
-    redoc_url="/api/redoc",
-    openapi_url="/api/openapi.json",
-)
+        title="Ventura Fresh Laundry CRM",
+        docs_url=None,        # 👈 Oculta /api/docs
+        redoc_url=None,       # 👈 Oculta /api/redoc  
+        openapi_url=None      # 👈 Oculta /api/openapi.json
+    )
 
 cors_origins = os.environ.get("CORS_ORIGINS", "*")
 fastapi_app.add_middleware(

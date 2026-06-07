@@ -4,6 +4,7 @@ import { ChevronDown, Check, Star, Clock, Shield, Truck, ArrowRight, Zap, X, Spa
 import PublicNav from "../components/PublicNav";
 import PublicFooter from "../components/PublicFooter";
 import { useLocale } from "../context/LocaleContext";
+import BecomeAMemberButton from "../components/BecomeAMemberButton";
 import leftBannerImage from "../assets/image.png";
 import rightBannerImage from "../assets/image2.jpeg";
 
@@ -60,6 +61,7 @@ const ORIGINS = {
   scale: "opacity-0 scale-95",
   blur:  "opacity-0 blur-sm scale-98",
 };
+
 const Reveal = ({ children, delay = 0, dir = "up", dur = 600, className = "" }) => {
   const [ref, v] = useInView();
   return (
@@ -489,7 +491,12 @@ const PickupDeliveryServiceCard = ({ t }) => {
         </div>
         <div className="relative px-5 py-3 bg-slate-50 border-t border-slate-100">
           <ul className="space-y-1">
-            {[t("✅ FREE delivery (0–3 miles)", "✅ Entrega GRATIS (0–3 millas)"), t("🚗 $2.99–$5.99 (3–10 miles)", "🚗 $2.99–$5.99 (3–10 millas)"), t("📦 Min. order $40", "📦 Pedido mínimo $40")].map((item, i) => (
+            {[
+              t("✅ FREE delivery (0–3 miles)", "✅ Entrega GRATIS (0–3 millas)"),
+              t("🚗 Delivery: $1.99 (3–5 mi) · $2.99 (5–8 mi) · $4.99 (8–12 mi) · $8.99 (12–15 mi)",
+                 "🚗 Entrega: $1.99 (3–5 mi) · $2.99 (5–8 mi) · $4.99 (8–12 mi) · $8.99 (12–15 mi)"),
+              t("📦 Min. order $40", "📦 Pedido mínimo $40"),
+            ].map((item, i) => (
               <li key={i} className="text-xs text-slate-500">{item}</li>
             ))}
           </ul>
@@ -575,7 +582,7 @@ const PickupDeliveryServiceCardHead = ({ t }) => {
         <div className="relative px-5 py-3 bg-slate-50 border-t border-slate-100">
           <ul className="space-y-1.5">
             <li className="text-xs text-slate-600 flex items-center gap-2"><span className="text-green-600 text-sm">✅</span> {t("FREE delivery (0–3 miles)", "Entrega GRATIS (0–3 millas)")}</li>
-            <li className="text-xs text-slate-600 flex items-center gap-2"><span className="text-red-500 text-sm">❌</span> {t("$2.99–$5.99 (3–10 miles)", "$2.99–$5.99 (3–10 millas)")}</li>
+            <li className="text-xs text-slate-600 flex items-center gap-2"><span className="text-red-500 text-sm">❌</span> {t("$1.99 (3–5 mi) · $2.99 (5–8 mi) · $4.99 (8–12 mi) · $8.99 (12–15 mi)", "$1.99 (3–5 mi) · $2.99 (5–8 mi) · $4.99 (8–12 mi) · $8.99 (12–15 mi)")}</li>
             <li className="text-xs text-slate-600 flex items-center gap-2"><span className="text-amber-500 text-sm">⚠️</span> {t("Min. order $40", "Pedido mínimo $40")}</li>
           </ul>
         </div>
@@ -633,20 +640,123 @@ const WashFoldServiceCardHead = ({ t }) => {
   );
 };
 
-// ─── MEMBERSHIP CARD — imagen como banner de fondo con gradiente ──────────────
-const MembershipCard = ({ plan, price, image, features, isPopular }) => {
+// ═══════════════════════════════════════════════════════════════
+//  MEMBERSHIP CARD — CORREGIDA PARA MÓVIL Y REDIRECCIÓN CORRECTA
+// ═══════════════════════════════════════════════════════════════
+
+const MembershipCard = ({ plan, price, image, features, isPopular, lbs_allowance, onSelectPlan }) => {
   const { t } = useLocale();
   const [h, setH] = useState(false);
+  const [showFeatures, setShowFeatures] = useState(false);
+  const [isTouchDevice, setIsTouchDevice] = useState(false);
+  const [imageError, setImageError] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
+
+  // Detectar si es dispositivo táctil
+  useEffect(() => {
+    setIsTouchDevice('ontouchstart' in window || navigator.maxTouchPoints > 0);
+  }, []);
+
+  // Extraer número limpio del precio
+  const priceNum = typeof price === "string" ? price.split("/")[0].trim() : price;
+
+  // Icono dinámico según contenido del feature
+  const featureIcon = (f = "") => {
+    const fl = f.toLowerCase();
+    if (fl.includes("standard") || fl.includes("estándar") || fl.includes("36h") || fl.includes("turnaround"))
+      return <Clock className="w-4 h-4 flex-shrink-0 text-slate-400 mt-0.5" />;
+    if (fl.includes("priority") || fl.includes("priorit") || fl.includes("handling"))
+      return <Zap className="w-4 h-4 flex-shrink-0 text-amber-400 mt-0.5" />;
+    if (fl.includes("emergency") || fl.includes("emergencia") || fl.includes("pickup"))
+      return <Truck className="w-4 h-4 flex-shrink-0 text-sky-400 mt-0.5" />;
+    if (fl.includes("perfect") || fl.includes("ideal") || fl.includes("great") || fl.includes("best") || fl.includes("airbnb") || fl.includes("families") || fl.includes("familias") || fl.includes("individuals") || fl.includes("professionals"))
+      return <Star className="w-4 h-4 flex-shrink-0 text-slate-300 mt-0.5" />;
+    return <Check className="w-4 h-4 flex-shrink-0 text-sky-400 mt-0.5" />;
+  };
+
+  // Función para redirigir a la página de membresía
+  const redirectToMembership = () => {
+    if (onSelectPlan) {
+      onSelectPlan(plan, price, lbs_allowance, features);
+    } else {
+      // Redirección directa a la página de membresía
+      window.location.href = `/membership-signup?plan=${encodeURIComponent(plan)}&price=${encodeURIComponent(price)}&lbs=${lbs_allowance || ''}`;
+    }
+  };
+
+  // Manejar hover para mostrar características (solo desktop)
+  const handleMouseEnter = () => {
+    setH(true);
+    if (!isTouchDevice) setShowFeatures(true);
+  };
+
+  const handleMouseLeave = () => {
+    setH(false);
+    if (!isTouchDevice) setShowFeatures(false);
+  };
+
+  // Manejar tap en móvil - SOLO expande características, NO redirige
+  const handleTouchTap = (e) => {
+    // Si el tap fue en el botón, no hacer nada aquí (el botón manejará su propio click)
+    if (e.target.closest('button')) return;
+    
+    if (isTouchDevice) {
+      e.preventDefault();
+      e.stopPropagation();
+      setShowFeatures(!showFeatures);
+    }
+  };
+
+  // Manejar clic en toda la card (solo para desktop)
+  const handleCardClick = (e) => {
+    // En móvil, no redirigir al hacer clic en la card (solo el botón redirige)
+    if (isTouchDevice) return;
+    // En desktop, redirigir al hacer clic en la card
+    redirectToMembership();
+  };
+
+  // Mostrar solo primeras 2 características en vista normal
+  const visibleFeatures = showFeatures ? features : features.slice(0, 2);
+  const hasMoreFeatures = features.length > 2;
+
+  // Colores de fondo por defecto para cards sin imagen
+  const getDefaultGradient = () => {
+    const gradients = [
+      "from-sky-100 to-sky-200",
+      "from-indigo-100 to-indigo-200",
+      "from-purple-100 to-purple-200",
+      "from-pink-100 to-pink-200",
+      "from-amber-100 to-amber-200",
+      "from-emerald-100 to-emerald-200",
+    ];
+    const index = (plan?.length || 0) % gradients.length;
+    return gradients[index];
+  };
+
   return (
     <Tilt depth={isPopular ? 4 : 3}>
       <div
-        className={`relative bg-white rounded-2xl overflow-hidden h-full flex flex-col transition-all duration-300 ${isPopular ? "border-2 border-primary shadow-2xl shadow-primary/20 sm:scale-105 md:scale-110 z-10" : "border border-slate-200 shadow-lg"} ${h ? "-translate-y-1" : ""}`}
-        onMouseEnter={() => setH(true)}
-        onMouseLeave={() => setH(false)}
+        onClick={handleCardClick}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        onTouchStart={handleTouchTap}
+        className={`relative bg-white rounded-2xl overflow-hidden h-full flex flex-col transition-all duration-300 ${!isTouchDevice ? 'cursor-pointer' : ''}
+          ${isPopular
+            ? "border-2 border-primary shadow-2xl shadow-primary/20 sm:scale-105 z-10"
+            : "border border-slate-200 shadow-lg hover:shadow-xl"
+          } ${h ? "-translate-y-1" : ""}`}
+        role={!isTouchDevice ? "button" : undefined}
+        tabIndex={!isTouchDevice ? 0 : undefined}
+        onKeyDown={(e) => {
+          if (!isTouchDevice && (e.key === 'Enter' || e.key === ' ')) {
+            e.preventDefault();
+            redirectToMembership();
+          }
+        }}
       >
-        {/* Badge MOST POPULAR */}
+        {/* Badge Most Popular */}
         {isPopular && (
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20">
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
             <div className="flex items-center gap-1.5 bg-gradient-to-r from-primary to-sky-400 text-white px-3 sm:px-4 py-1.5 rounded-full text-[11px] font-black uppercase tracking-widest shadow-lg whitespace-nowrap">
               <Star className="w-3 h-3 fill-white flex-shrink-0" />
               {t("MOST POPULAR", "MÁS POPULAR")}
@@ -654,42 +764,223 @@ const MembershipCard = ({ plan, price, image, features, isPopular }) => {
           </div>
         )}
 
-        {/* Image as full-width background banner */}
-        <div className="relative h-40 w-full overflow-hidden bg-gradient-to-br from-sky-100 to-sky-200 flex-shrink-0">
-          {image && (
-            <img
-              src={image}
-              alt={`${plan} – Ventura Fresh Laundry`}
-              className={`absolute inset-0 w-full h-full object-cover object-center transition-transform duration-500 ${h ? "scale-105" : "scale-100"}`}
-              loading="lazy"
-              onError={(e) => { e.currentTarget.style.display = "none"; }}
-            />
+        {/* IMAGEN CON FALLBACK */}
+        <div className={`relative h-40 w-full overflow-hidden bg-gradient-to-br flex-shrink-0 ${getDefaultGradient()}`}>
+          {image && !imageError ? (
+            <>
+              {!imageLoaded && (
+                <div className="absolute inset-0 flex items-center justify-center bg-slate-100 z-10">
+                  <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                </div>
+              )}
+              <img
+                src={image}
+                alt={`${plan} – Ventura Fresh Laundry`}
+                className={`absolute inset-0 w-full h-full object-cover object-center transition-all duration-500 ${h ? "scale-105" : "scale-100"} ${imageLoaded ? "opacity-100" : "opacity-0"}`}
+                loading="lazy"
+                onLoad={() => setImageLoaded(true)}
+                onError={(e) => {
+                  console.warn(`Failed to load image for plan: ${plan}`, image);
+                  setImageError(true);
+                  setImageLoaded(true);
+                  e.currentTarget.style.display = "none";
+                }}
+              />
+            </>
+          ) : (
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <div className="w-16 h-16 rounded-full bg-white/30 backdrop-blur-sm flex items-center justify-center mb-2">
+                <span className="text-3xl">🧺</span>
+              </div>
+              <span className="text-xs font-semibold text-slate-600 bg-white/50 px-2 py-1 rounded-full">
+                {plan?.split(' ').slice(0, 2).join(' ') || "Plan"}
+              </span>
+            </div>
           )}
-          {/* Gradient fade to white */}
-          <div className="absolute inset-0 bg-gradient-to-t from-white via-white/20 to-transparent" />
-
-          {/* Plan name overlaid at the bottom of the banner */}
-          <div className="absolute bottom-0 left-0 right-0 px-4 pb-2">
+          <div className="absolute inset-0 bg-gradient-to-t from-white via-white/20 to-transparent pointer-events-none" />
+          <div className="absolute bottom-0 left-0 right-0 px-4 pb-2 pointer-events-none">
             <h2 className={`text-base sm:text-lg font-black transition-colors duration-200 ${h ? "text-primary" : "text-slate-900"}`}>
               {plan}
             </h2>
           </div>
         </div>
 
-        {/* Card content */}
+        {/* Contenido debajo de la imagen */}
         <div className="px-4 sm:px-5 pb-5 pt-2 flex flex-col flex-grow">
-          <p className="text-2xl sm:text-3xl font-black text-primary mb-4">{price}</p>
-          <ul className="space-y-2 flex-grow">
-            {features.map((f, i) => (
-              <li key={i} className="flex items-start gap-2 text-xs sm:text-sm text-slate-500">
-                <Check className={`w-4 h-4 flex-shrink-0 mt-0.5 transition-colors duration-200 ${h ? "text-primary" : "text-sky-400"}`} />
-                {f}
-              </li>
-            ))}
-          </ul>
+          {/* Precio */}
+          <div className="flex items-baseline gap-1.5 mb-3">
+            <span className={`text-2xl sm:text-3xl font-black leading-none transition-colors duration-200 ${h ? "text-primary" : "text-slate-900"}`}>
+              {priceNum}
+            </span>
+            <span className="text-sm font-semibold text-slate-400 pb-1">
+              / {t("month", "mes")}
+            </span>
+          </div>
+
+          {/* LBS badge */}
+          {lbs_allowance && (
+            <div className="inline-flex items-center gap-1.5 bg-primary text-white rounded-full px-3 py-1.5 mb-3 self-start pointer-events-none">
+              <span className="text-xs font-bold leading-none">
+                {t(`Up to ${lbs_allowance} lbs included`, `Hasta ${lbs_allowance} lbs incluidas`)}
+              </span>
+            </div>
+          )}
+
+          {/* Indicador hover/tap para ver más características */}
+          {hasMoreFeatures && !showFeatures && (
+            <div className="text-center mb-2">
+              <span className="text-[10px] text-slate-400 bg-slate-100 px-2 py-1 rounded-full inline-flex items-center gap-1">
+                <span className="animate-pulse">👆</span> {isTouchDevice ? t("Tap to see more", "Toca para ver más") : t("Hover to see more", "Pasa el mouse para ver más")}
+              </span>
+            </div>
+          )}
+
+          {/* Features con animación */}
+          <div 
+            className="overflow-hidden transition-all duration-300 ease-in-out" 
+            style={{ 
+              maxHeight: showFeatures ? `${Math.min(features.length * 36, 300)}px` : '76px',
+              transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)'
+            }}
+          >
+            <ul className="space-y-2.5">
+              {visibleFeatures.map((f, i) => (
+                <li key={i} className="flex items-start gap-2.5 text-xs sm:text-sm text-slate-600 leading-snug">
+                  {featureIcon(f)}
+                  <span className="flex-1">{f}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Indicador de más características */}
+          {hasMoreFeatures && !showFeatures && (
+            <div className="text-center mt-1">
+              <span className="text-[10px] text-primary/60 font-medium">
+                +{features.length - 2} {t("more", "más")}...
+              </span>
+            </div>
+          )}
+
+          {/* Botón BECOME A MEMBER - SIEMPRE redirige */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              redirectToMembership();
+            }}
+            className="mt-4 w-full bg-gradient-to-r from-primary to-primary/90 text-white py-2.5 rounded-lg font-semibold hover:from-primary/90 hover:to-primary transition-all duration-200 text-sm shadow-md hover:shadow-lg active:scale-95"
+          >
+            {t("👉 BECOME A MEMBER", "👉 CONVIÉRTETE EN MIEMBRO")}
+          </button>
         </div>
       </div>
     </Tilt>
+  );
+};
+
+// ═══════════════════════════════════════════════════════════════
+//  SECCIÓN GLOBAL: UPGRADE OPTIONS + ADDITIONAL LBS
+// ═══════════════════════════════════════════════════════════════
+
+const MembershipExtrasSection = ({ t }) => (
+  <div className="mt-8 sm:mt-10 grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 max-w-5xl mx-auto">
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-md p-5 sm:p-6 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300">
+      <div className="flex items-center gap-3 mb-5">
+        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
+          <Sparkles className="w-5 h-5 text-primary" />
+        </div>
+        <h4 className="font-black text-slate-900 uppercase tracking-wide text-sm">
+          {t("Upgrade Options", "Opciones de Mejora")}
+        </h4>
+      </div>
+      <div className="space-y-1">
+        <div className="flex items-center justify-between py-3 border-b border-slate-50">
+          <div className="flex items-center gap-2.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-violet-400 flex-shrink-0" />
+            <span className="text-sm text-slate-700">{t("Premium Service (24h)", "Servicio Premium (24h)")}</span>
+          </div>
+          <span className="text-sm font-black text-slate-800">+$0.25<span className="text-xs font-normal text-slate-400">/lb</span></span>
+        </div>
+        <div className="flex items-center justify-between py-3">
+          <div className="flex items-center gap-2.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-rose-400 flex-shrink-0" />
+            <span className="text-sm text-slate-700">{t("Express Service (Same Day)", "Servicio Express (Mismo Día)")}</span>
+          </div>
+          <span className="text-sm font-black text-slate-800">+$0.50<span className="text-xs font-normal text-slate-400">/lb</span></span>
+        </div>
+      </div>
+      <p className="text-xs text-slate-400 mt-3 pt-3 border-t border-slate-50">
+        {t("Need faster service? Upgrade anytime.", "¿Necesitas más rapidez? Mejora en cualquier momento.")}
+      </p>
+    </div>
+
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-md p-5 sm:p-6 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300">
+      <div className="flex items-center gap-3 mb-5">
+        <div className="w-10 h-10 rounded-xl bg-sky-50 flex items-center justify-center flex-shrink-0">
+          <svg className="w-5 h-5 text-sky-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 6l9-3 9 3M3 6v12l9 3 9-3V6M12 3v18" />
+          </svg>
+        </div>
+        <h4 className="font-black text-slate-900 uppercase tracking-wide text-sm">
+          {t("Additional lbs After Allowance", "Lbs Adicionales Después del Límite")}
+        </h4>
+      </div>
+      <div className="space-y-1">
+        {[
+          { dot: "bg-blue-500",   label: t("Standard", "Estándar"), price: "$2.75" },
+          { dot: "bg-violet-500", label: t("Premium", "Premium"),   price: "$3.00" },
+          { dot: "bg-rose-400",   label: t("Express", "Express"),   price: "$3.25" },
+        ].map((row, i, arr) => (
+          <div key={i} className={`flex items-center justify-between py-3 ${i < arr.length - 1 ? "border-b border-slate-50" : ""}`}>
+            <div className="flex items-center gap-2.5">
+              <span className={`w-2.5 h-2.5 rounded-full ${row.dot} flex-shrink-0`} />
+              <span className="text-sm text-slate-700">{row.label}</span>
+            </div>
+            <span className="text-sm font-black text-slate-800">{row.price}<span className="text-xs font-normal text-slate-400">/lb</span></span>
+          </div>
+        ))}
+      </div>
+      <p className="text-xs text-slate-400 mt-3 pt-3 border-t border-slate-50">
+        {t("Additional charges apply per pound.", "Se aplican cargos adicionales por libra.")}
+      </p>
+    </div>
+  </div>
+);
+
+// ═══════════════════════════════════════════════════════════════
+//  SECCIÓN GLOBAL: WHAT'S INCLUDED IN ALL MEMBERSHIPS
+// ═══════════════════════════════════════════════════════════════
+
+const MembershipIncludedSection = ({ t }) => {
+  const items = [
+    { icon: "🛡️", label: t("Professional Wash, Dry & Fold", "Lavado, Secado y Doblado Profesional") },
+    { icon: "🧴", label: t("High-Quality Detergents (Free & Clear Available)", "Detergentes de Alta Calidad") },
+    { icon: "👕", label: t("Care for All Fabric Types", "Cuidado para Todo Tipo de Tela") },
+    { icon: "📦", label: t("Neatly Folded & Ready to Use", "Perfectamente Doblado y Listo") },
+    { icon: "✅", label: t("Consistent & Reliable Service", "Servicio Consistente y Confiable") },
+    { icon: "❤️", label: t("100% Satisfaction Guaranteed", "100% Satisfacción Garantizada") },
+  ];
+  return (
+    <div className="mt-6 sm:mt-8 max-w-5xl mx-auto">
+      <div className="bg-gradient-to-br from-sky-50 to-white rounded-2xl border border-sky-100 shadow-sm p-6 sm:p-8">
+        <h4 className="text-center text-sm font-black uppercase tracking-widest text-primary mb-6">
+          {t("What's Included in All Memberships", "Qué Incluyen Todas las Membresías")}
+        </h4>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-5">
+          {items.map((item, i) => (
+            <div key={i} className="flex flex-col items-center text-center gap-2.5">
+              <div className="w-12 h-12 rounded-2xl bg-white shadow-sm border border-sky-100 flex items-center justify-center text-2xl">
+                {item.icon}
+              </div>
+              <span className="text-xs font-semibold text-slate-600 leading-tight">{item.label}</span>
+            </div>
+          ))}
+        </div>
+        <p className="text-center text-xs text-slate-400 mt-6 pt-4 border-t border-sky-100">
+          {t("Memberships are prepaid. No monthly commitments.", "Las membresías son prepagadas. Sin compromisos mensuales.")}
+        </p>
+      </div>
+    </div>
   );
 };
 
@@ -756,7 +1047,12 @@ const PickupDeliveryTable = ({ t }) => {
         <div className="px-5 py-3 bg-sky-50/30">
           <p className="text-[11px] font-bold uppercase tracking-widest text-primary/60 mb-1.5 flex items-center gap-1"><Star className="w-3 h-3 fill-primary/30 text-primary" />{t("Members", "Miembros")}</p>
           <ul className="space-y-0.5">
-            {[t("✅ FREE (0–3 miles)", "✅ GRATIS (0–3 millas)"), t("🚗 $2.99–$5.99 (3–10 miles)", "🚗 $2.99–$5.99 (3–10 millas)"), t("📦 Min. order $40", "📦 Pedido mínimo $40")].map((item, i) => <li key={i} className="text-xs text-slate-600">{item}</li>)}
+            {[
+              t("✅ FREE (0–3 miles)", "✅ GRATIS (0–3 millas)"),
+              t("🚗 $1.99 (3–5 mi) · $2.99 (5–8 mi) · $4.99 (8–12 mi) · $8.99 (12–15 mi)",
+                 "🚗 $1.99 (3–5 mi) · $2.99 (5–8 mi) · $4.99 (8–12 mi) · $8.99 (12–15 mi)"),
+              t("📦 Min. order $40", "📦 Pedido mínimo $40"),
+            ].map((item, i) => <li key={i} className="text-xs text-slate-600">{item}</li>)}
           </ul>
         </div>
       </div>
@@ -803,7 +1099,6 @@ const SelfServiceTable = ({ t, washerPrices, dryerPrices }) => (
       <p className="text-slate-400 text-xs mt-1">{t("Open 6:00 AM – 10:00 PM", "Abierto 6:00 AM – 10:00 PM")}</p>
     </div>
     <div className="flex-grow grid grid-cols-2 divide-x divide-slate-100">
-      {/* Washers */}
       <div className="p-4">
         <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-3 flex items-center gap-1.5">
           <span className="w-0.5 h-4 bg-primary rounded-full inline-block flex-shrink-0" />
@@ -820,8 +1115,6 @@ const SelfServiceTable = ({ t, washerPrices, dryerPrices }) => (
           </tbody>
         </table>
       </div>
-
-      {/* Dryers — now with 3 columns: size, time, price */}
       <div className="p-4">
         <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-3 flex items-center gap-1.5">
           <span className="w-0.5 h-4 bg-sky-300 rounded-full inline-block flex-shrink-0" />
@@ -829,10 +1122,10 @@ const SelfServiceTable = ({ t, washerPrices, dryerPrices }) => (
         </p>
         <table className="w-full">
           <thead>
-            <tr className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-              <th className="text-left py-1">{t("Size", "Tamaño")}</th>
-              <th className="text-left py-1">{t("Time", "Tiempo")}</th>
-              <th className="text-right py-1">{t("Price", "Precio")}</th>
+            <tr>
+              <th className="text-left py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">{t("Size", "Tamaño")}</th>
+              <th className="text-left py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">{t("Time", "Tiempo")}</th>
+              <th className="text-right py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">{t("Price", "Precio")}</th>
             </tr>
           </thead>
           <tbody>
@@ -851,27 +1144,66 @@ const SelfServiceTable = ({ t, washerPrices, dryerPrices }) => (
   </div>
 );
 
-const PerPieceTable = ({ t, categories }) => (
-  <div className="bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 h-full flex flex-col">
-    <div className="px-5 pt-5 pb-3 border-b border-slate-100">
-      <p className="text-[11px] font-bold uppercase tracking-widest text-primary/50 mb-1">{t("Individual Items", "Artículos Individuales")}</p>
-      <h3 className="text-lg sm:text-xl font-bold text-slate-900">{t("🧺 Per Piece Pricing", "🧺 Precio por Pieza")}</h3>
-    </div>
-    <div className="flex-grow grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-slate-100">
-      {categories.map((cat, ci) => (
-        <div key={ci} className="p-4">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b-2 border-primary/15 pb-2 mb-3">{cat.category}</p>
-          <table className="w-full"><tbody>{cat.items.map((it, i) => (<tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-sky-50/30 transition-colors group"><td className="py-2 text-xs text-slate-500 group-hover:text-slate-700 pr-2 leading-tight">{it.name}</td><td className="py-2 text-right text-xs font-bold text-slate-800 group-hover:text-primary transition-colors whitespace-nowrap">{it.price}</td></tr>))}</tbody></table>
+const PerPieceTable = ({ t, categories }) => {
+  const mainCategories = categories.slice(0, 3);
+  const extraCategories = categories.slice(3);
+  return (
+    <div className="bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 h-full flex flex-col">
+      <div className="px-5 pt-5 pb-3 border-b border-slate-100">
+        <p className="text-[11px] font-bold uppercase tracking-widest text-primary/50 mb-1">{t("Individual Items", "Artículos Individuales")}</p>
+        <h3 className="text-lg sm:text-xl font-bold text-slate-900">{t("🧺 Per Piece Pricing", "🧺 Precio por Pieza")}</h3>
+      </div>
+      <div className="flex-grow flex flex-col">
+        <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-slate-100">
+          {mainCategories.map((cat, ci) => (
+            <div key={ci} className="p-4">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b-2 border-primary/15 pb-2 mb-3">{cat.category}</p>
+              <table className="w-full">
+                <tbody>
+                  {cat.items.map((it, i) => (
+                    <tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-sky-50/30 transition-colors group">
+                      <td className="py-2 text-xs text-slate-500 group-hover:text-slate-700 pr-2 leading-tight">{it.name}</td>
+                      <td className="py-2 text-right text-xs font-bold text-slate-800 group-hover:text-primary transition-colors whitespace-nowrap">{it.price}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))}
         </div>
-      ))}
+        {mainCategories.length >= 3 && (
+          <div className="px-4 py-2 text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg mx-4 my-2">
+            💡 {t("Please note: Bed sheet sets and regular clothing are charged by weight at our standard Wash & Fold rate.",
+                   "Nota: Los juegos de sábanas y la ropa común se cobran por peso a nuestra tarifa estándar de Lavado y Doblado.")}
+          </div>
+        )}
+        {extraCategories.length > 0 && (
+          <div className="border-t border-slate-100 p-4">
+            {extraCategories.map((cat, ci) => (
+              <div key={ci}>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b-2 border-primary/15 pb-2 mb-3">{cat.category}</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-1">
+                  {cat.items.map((it, i) => (
+                    <div key={i} className="flex justify-between items-center py-2 border-b border-slate-50 last:border-0 hover:bg-sky-50/30 transition-colors px-1">
+                      <span className="text-xs text-slate-600">{it.name}</span>
+                      <span className="text-xs font-bold text-slate-800 whitespace-nowrap">{it.price}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="px-5 py-3 bg-slate-50 border-t border-slate-100 text-center">
+        <Link to="/schedule-pickup" className="inline-flex items-center gap-1.5 text-sm text-primary hover:text-sky-600 font-semibold transition-colors group">
+          {t("Special items? Contact us", "¿Artículos especiales? Contáctanos")}
+          <ArrowRight className="w-3.5 h-3.5 transition-transform duration-200 group-hover:translate-x-1" />
+        </Link>
+      </div>
     </div>
-    <div className="px-5 py-3 bg-slate-50 border-t border-slate-100 text-center">
-      <Link to="/schedule-pickup" className="inline-flex items-center gap-1.5 text-sm text-primary hover:text-sky-600 font-semibold transition-colors group">
-        {t("Special items? Contact us", "¿Artículos especiales? Contáctanos")}<ArrowRight className="w-3.5 h-3.5 transition-transform duration-200 group-hover:translate-x-1" />
-      </Link>
-    </div>
-  </div>
-);
+  );
+};
 
 const DarkSection = ({ children, bgImage, from = "from-sky-950/92", to = "to-sky-900/88", scrollY = 0, parallaxStrength = 0.15 }) => (
   <section className="py-16 sm:py-20 relative overflow-hidden bg-sky-950">
@@ -883,7 +1215,10 @@ const DarkSection = ({ children, bgImage, from = "from-sky-950/92", to = "to-sky
   </section>
 );
 
-// ─── MAIN PAGE ────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+//  MAIN PAGE
+// ═══════════════════════════════════════════════════════════════
+
 export default function ServicesPage() {
   const { t, locale } = useLocale();
   const [openAccordions, setOpenAccordions] = useState({ b2b: 0, commercial: 0, airbnb: 0 });
@@ -891,6 +1226,15 @@ export default function ServicesPage() {
   const [membershipPlans, setMembershipPlans] = useState([]);
   const [scrollY, setScrollY] = useState(0);
   const { ring, dot } = useCursor();
+
+  useEffect(() => {
+    document.body.style.overflowY = "auto";
+    document.documentElement.style.overflowY = "auto";
+    return () => {
+      document.body.style.overflowY = "";
+      document.documentElement.style.overflowY = "";
+    };
+  }, []);
 
   useEffect(() => {
     let tick = false;
@@ -913,22 +1257,105 @@ export default function ServicesPage() {
   };
 
   const DEFAULT_MEMBERSHIP_PLANS = [
-    { plan: t("FAMILY PLUS", "FAMILY PLUS"), price: "$219 / month", image: "https://images.squarespace-cdn.com/content/v1/696c559a4b2b9b1b0febf8d7/f262a5b8-0043-4977-9d32-d6b343be3e70/FAMILY+PLUS.png", features: [t("Up to 90 lb/ month", "Hasta 90 lb/ mes"), t("Priority scheduling", "Programación prioritaria"), t("Saved preferences", "Preferencias guardadas"), t("Great for larger households or rentals", "Ideal para hogares grandes")], isPopular: false },
-    { plan: t("MOST POPULAR", "MÁS POPULAR"), price: "$149 / month", image: "https://images.squarespace-cdn.com/content/v1/696c559a4b2b9b1b0febf8d7/4a2815a1-54c1-45fb-8320-244dce8b83c8/MOST+POPULAR.png", features: [t("Up to 60 lb/ month", "Hasta 60 lb/ mes"), t("Basic preferences saved", "Preferencias básicas guardadas"), t("Best value for most families", "Mejor valor para la mayoría")], isPopular: true },
-    { plan: t("ELITE CONCIERGE", "ELITE CONCIERGE"), price: "$299 / month", image: "https://images.squarespace-cdn.com/content/v1/696c559a4b2b9b1b0febf8d7/13a4c501-7792-4f72-bf5c-072f95b5f995/ELITE+CONCIERGE.png", features: [t("Up to 120 lb/ month", "Hasta 120 lb/ mes"), t("Priority turnaround", "Respuesta prioritaria"), t("Premium packaging", "Empaque premium"), t("Saved preferences", "Preferencias guardadas"), t("1 emergency pickup", "1 recogida de emergencia")], isPopular: false },
+    {
+      plan: t("SOLO ESSENTIAL", "SOLO ESSENTIAL"),
+      price: "$149 / month",
+      image: "https://images.unsplash.com/photo-1462556791646-c201b8241a94?q=80&w=1165&auto=format&fit=crop",
+      features: [
+        t("Included: Standard Service (36h turnaround)", "Incluido: Servicio Estándar (36h de entrega)"),
+        t("Perfect for individuals & couples.", "Perfecto para individuos y parejas."),
+      ],
+      isPopular: false,
+      lbs_allowance: 60,
+    },
+    {
+      plan: t("FAMILY PLUS", "FAMILY PLUS"),
+      price: "$219 / month",
+      image: "https://images.unsplash.com/photo-1462556791646-c201b8241a94?q=80&w=1165&auto=format&fit=crop",
+      features: [
+        t("Included: Standard Service (36h turnaround)", "Incluido: Servicio Estándar (36h de entrega)"),
+        t("Priority Scheduling Included", "Programación Prioritaria Incluida"),
+        t("Great for families, busy households & short-term rentals.", "Ideal para familias, hogares ocupados y alquileres."),
+      ],
+      isPopular: false,
+      lbs_allowance: 90,
+    },
+    {
+      plan: t("ELITE CONCIERGE", "ELITE CONCIERGE"),
+      price: "$299 / month",
+      image: "https://images.squarespace-cdn.com/content/v1/696c559a4b2b9b1b0febf8d7/13a4c501-7792-4f72-bf5c-072f95b5f995/ELITE+CONCIERGE.png",
+      features: [
+        t("Included: Standard Service (36h turnaround)", "Incluido: Servicio Estándar (36h de entrega)"),
+        t("Priority Handling & Saved Preferences", "Manejo Prioritario y Preferencias Guardadas"),
+        t("1 Emergency Pickup Included", "1 Recogida de Emergencia Incluida"),
+        t("Ideal for large families, busy professionals & high-volume laundry needs.", "Ideal para familias grandes y profesionales ocupados."),
+      ],
+      isPopular: true,
+      lbs_allowance: 120,
+    },
+    {
+      plan: t("ULTRA VOLUME", "ULTRA VOLUME"),
+      price: "$379 / month",
+      image: "https://images.unsplash.com/photo-1462556791646-c201b8241a94?q=80&w=1165&auto=format&fit=crop",
+      features: [
+        t("Included: Standard Service (36h turnaround)", "Incluido: Servicio Estándar (36h de entrega)"),
+        t("Priority Handling & Saved Preferences", "Manejo Prioritario y Preferencias Guardadas"),
+        t("2 Emergency Pickups Included", "2 Recogidas de Emergencia Incluidas"),
+        t("Ideal for Airbnb hosts, large households & commercial needs.", "Ideal para anfitriones Airbnb, hogares grandes y usos comerciales."),
+      ],
+      isPopular: false,
+      lbs_allowance: 150,
+    },
   ];
 
   const PER_PIECE_CATEGORIES = [
-    { category: t("Home Essentials", "Artículos del hogar"), items: [{ name: t("Bath Mat", "Tapete de baño"), price: "$5.00" }, { name: t("Cooking Glove", "Guante de cocina"), price: "$5.00" }, { name: t("Pet Bed (Small)", "Cama mascotas (S)"), price: "$5.00" }, { name: t("Pet Bed (M/L)", "Cama mascotas (M/L)"), price: "$8.00" }] },
-    { category: t("Bedding", "Ropa de cama"), items: [{ name: t("Standard Pillow", "Almohada estándar"), price: "$8.00" }, { name: t("Large Pillow", "Almohada grande"), price: "$10.00" }, { name: t("Duvet Cover", "Funda de edredón"), price: "$8.00" }, { name: t("Blanket", "Manta"), price: "$10.00" }] },
-    { category: t("Comforters", "Edredones"), items: [{ name: t("Comforter T/D/Q", "Edredón T/D/Q"), price: "$18.00" }, { name: t("Comforter King", "Edredón King"), price: "$20.00" }, { name: t("Mattress Cover", "Cubrecama"), price: "$20.00" }, { name: t("Down Comforters", "Edredones plumas"), price: "$40.00" }] },
+    { category: t("Home Essentials", "Artículos del hogar"), items: [
+      { name: t("Bath Mat", "Tapete de baño"), price: "$8.00" },
+      { name: t("Heavy Rubber Bath Mat", "Tapete de goma pesado"), price: "$13.00" },
+      { name: t("Oven Mitt", "Cojín para horno"), price: "$8.00" },
+      { name: t("Pet Bed (Small)", "Cama mascotas (S)"), price: "$15.00" },
+      { name: t("Pet Bed (M/L)", "Cama mascotas (M/L)"), price: "$18.00" }
+    ]},
+    { category: t("Bedding", "Ropa de cama"), items: [
+      { name: t("Standard Pillow", "Almohada estándar"), price: "$10.00" },
+      { name: t("Large Pillow", "Almohada grande"), price: "$15.00" },
+      { name: t("Duvet Cover", "Funda de edredón"), price: "$15.00" },
+      { name: t("Blanket (Small)", "Manta (pequeña)"), price: "$15.00" },
+      { name: t("Blanket (Large/Heavy)", "Manta (grande/pesada)"), price: "$25.00" }
+    ]},
+    { category: t("Comforters", "Edredones"), items: [
+      { name: t("Comforter Twin/Full", "Edredón Twin/Full"), price: "$22.00" },
+      { name: t("Comforter Queen", "Edredón Queen"), price: "$25.00" },
+      { name: t("Comforter King", "Edredón King"), price: "$30.00" },
+      { name: t("Mattress Cover", "Cubrecama"), price: "$25.00" },
+      { name: t("Down Comforter (Goose Down / Special Material)", "Edredón de plumas"), price: "$40.00" }
+    ]},
+    { category: t("Add-on Services", "Servicios adicionales"), items: [
+      { name: t("Same Day Service", "Servicio mismo día"), price: "$10.00" },
+      { name: t("Express Service", "Servicio Express"), price: "$15.00" },
+      { name: t("Hypoallergenic Detergent", "Detergente hipoalergénico"), price: "$5.00" },
+      { name: t("Premium Softener", "Suavizante premium"), price: "$4.00" },
+      { name: t("Pet Hair Removal", "Eliminación de pelo de mascotas"), price: "$10.00" },
+      { name: t("Heavy Soil Treatment", "Tratamiento de suciedad intensa"), price: "$15.00" },
+      { name: t("Oversized Item Fee", "Cargo por artículo grande"), price: "$10.00" }
+    ]}
   ];
 
-  const WASHER_PRICES = [{ size: t("20 lb (2 loads)", "20 lb (2 cargas)"), price: "$3.25" }, { size: t("30 lb (3 loads)", "30 lb (3 cargas)"), price: "$4.50" }, { size: t("50 lb (4 loads)", "50 lb (4 cargas)"), price: "$6.00" }, { size: t("60 lb (6 loads)", "60 lb (6 cargas)"), price: "$7.50" }, { size: t("90 lb (9 loads)", "90 lb (9 cargas)"), price: "$9.00" }];
-  const DRYER_PRICES = [{ size: "30 lb",time:"10min", price: "$0.50" }, { size: "50 lb",time:"8min", price: "$0.50" }];
+  const WASHER_PRICES = [
+    { size: t("20 lb (2 loads)", "20 lb (2 cargas)"), price: "$3.25" },
+    { size: t("30 lb (3 loads)", "30 lb (3 cargas)"), price: "$4.50" },
+    { size: t("50 lb (4 loads)", "50 lb (4 cargas)"), price: "$6.00" },
+    { size: t("60 lb (6 loads)", "60 lb (6 cargas)"), price: "$7.50" },
+    { size: t("90 lb (9 loads)", "90 lb (9 cargas)"), price: "$9.00" },
+  ];
+  const DRYER_PRICES = [
+    { size: "30 lb", time: "10min", price: "$0.50" },
+    { size: "50 lb", time: "8min",  price: "$0.50" },
+  ];
 
   const toggleAcc = (sec, idx) => setOpenAccordions(p => ({ ...p, [sec]: p[sec] === idx ? -1 : idx }));
 
+  // CARGA DE DATOS
   useEffect(() => {
     const load = async () => {
       try {
@@ -936,23 +1363,65 @@ export default function ServicesPage() {
           fetch(`${API}/public/membership-section`),
           fetch(`${API}/public/membership-plans`),
         ]);
-        if (sR.ok) { const d = await sR.json(); setMembershipSection({ ...d, heading: t(d.heading, d.heading) }); }
-        else setMembershipSection(MEMBERSHIP_SECTION_DEFAULT);
-        if (pR.ok) { const d = await pR.json(); setMembershipPlans(d.map(p => ({ plan: t(p.name, p.name), price: p.price, image: p.image_url, features: (p.features || []).map(f => t(f, f)), isPopular: p.is_popular }))); }
-        else setMembershipPlans(DEFAULT_MEMBERSHIP_PLANS);
-      } catch { setMembershipSection(MEMBERSHIP_SECTION_DEFAULT); setMembershipPlans(DEFAULT_MEMBERSHIP_PLANS); }
+
+        if (sR.ok) {
+          const d = await sR.json();
+          setMembershipSection({ ...d, heading: t(d.heading, d.heading) });
+        } else {
+          setMembershipSection(MEMBERSHIP_SECTION_DEFAULT);
+        }
+
+        if (pR.ok) {
+          const d = await pR.json();
+          setMembershipPlans(d.map(p => ({
+            plan:          t(p.name, p.name),
+            price:         p.price,
+            image:         p.image_url,
+            features:      (p.features || []).map(f => t(f, f)),
+            isPopular:     p.is_popular,
+            lbs_allowance: p.lbs_allowance || null,
+          })));
+        } else {
+          setMembershipPlans(DEFAULT_MEMBERSHIP_PLANS);
+        }
+      } catch {
+        setMembershipSection(MEMBERSHIP_SECTION_DEFAULT);
+        setMembershipPlans(DEFAULT_MEMBERSHIP_PLANS);
+      }
     };
     load();
-  }, [locale]);
+  }, [locale, t]);
+
+  // Función para redirigir a la página de membresía con los datos del plan
+  const handleSelectPlan = (planName, planPrice, lbsAllowance, featuresList) => {
+    // Guardar en sessionStorage para que la página de membresía pueda leerlo
+    sessionStorage.setItem('selectedMembershipPlan', JSON.stringify({
+      name: planName,
+      price: planPrice,
+      lbs_allowance: lbsAllowance,
+      features: featuresList
+    }));
+    // Redirigir a la página de membresía
+    window.location.href = '/membership';
+  };
 
   const MS = membershipSection || MEMBERSHIP_SECTION_DEFAULT;
   const plans = membershipPlans.length > 0 ? membershipPlans : DEFAULT_MEMBERSHIP_PLANS;
-  const marqueeItems = [t("Pickup & Delivery", "Recogida y Entrega"), t("Wash & Fold", "Lavado y Doblado"), t("Airbnb Specialists", "Especialistas Airbnb"), t("B2B Solutions", "Soluciones B2B"), t("Self Service", "Autoservicio"), t("Ventura County", "Condado de Ventura")];
+
+  const marqueeItems = [
+    t("Pickup & Delivery", "Recogida y Entrega"),
+    t("Wash & Fold", "Lavado y Doblado"),
+    t("Airbnb Specialists", "Especialistas Airbnb"),
+    t("B2B Solutions", "Soluciones B2B"),
+    t("Self Service", "Autoservicio"),
+    t("Ventura County", "Condado de Ventura"),
+  ];
 
   return (
     <>
       <style>{`
-        body { overflow-x: hidden; width: 100%; }
+        body { overflow-x: hidden; width: 100%; overflow-y: auto !important; }
+        html { overflow-y: auto !important; }
         .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
         .line-clamp-3 { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
         @keyframes fadeUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
@@ -966,7 +1435,7 @@ export default function ServicesPage() {
       <div className="min-h-screen bg-white overflow-x-hidden">
         <PublicNav />
 
-        {/* ══ HERO ══ */}
+        {/* HERO */}
         <section className="relative min-h-[55vh] sm:min-h-[65vh] flex items-end justify-center overflow-hidden">
           <div className="absolute inset-0 will-change-transform" style={{ backgroundImage: "url('https://images.unsplash.com/photo-1545173168-9f1947eebb7f?w=1920&h=1080&fit=crop')", backgroundSize: "cover", backgroundPosition: "center", transform: `translateY(${scrollY * 0.18}px) scale(1.08)` }} />
           <div className="absolute inset-0 bg-gradient-to-t from-slate-950/92 via-slate-900/65 to-slate-800/30" />
@@ -991,7 +1460,7 @@ export default function ServicesPage() {
 
         <Marquee items={marqueeItems} />
 
-        {/* ══ SERVICES GRID ══ */}
+        {/* SERVICES GRID */}
         <section className="py-12 sm:py-20 lg:py-24 relative overflow-hidden bg-white">
           <div className="relative z-10 max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-12">
             <Reveal dir="blur"><p className="text-center text-[11px] font-bold uppercase tracking-[0.18em] text-primary/50 mb-3">{t("Core Services", "Servicios Principales")}</p></Reveal>
@@ -1044,16 +1513,29 @@ export default function ServicesPage() {
           </div>
         </section>
 
-        {/* ══ DYNAMIC ADMIN SERVICES ══ */}
+        {/* DYNAMIC ADMIN SERVICES */}
         <AdminServicesSection t={t} locale={locale} />
 
-        {/* ══ MEMBERSHIP ══ */}
+        {/* MEMBERSHIP */}
         <section className="py-12 sm:py-20 lg:py-24 bg-gradient-to-b from-slate-50/60 to-white relative overflow-hidden">
           <div className="absolute inset-0 opacity-[0.4]" style={{ backgroundImage: "radial-gradient(rgba(14,165,233,0.08) 1px,transparent 1px)", backgroundSize: "24px 24px" }} />
           <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-12">
-            <Reveal dir="blur"><p className="text-center text-[11px] font-bold uppercase tracking-[0.18em] text-primary/50 mb-3">{t("Membership", "Membresía")}</p></Reveal>
-            <Reveal delay={80}><h2 className="text-2xl sm:text-4xl lg:text-5xl font-bold text-slate-900 text-center mb-3">{MS.heading}</h2></Reveal>
-            {MS.subheading && <Reveal delay={140}><p className="text-slate-500 text-center text-sm sm:text-lg mb-5">{MS.subheading}</p></Reveal>}
+
+            <Reveal dir="blur">
+              <p className="text-center text-[11px] font-bold uppercase tracking-[0.18em] text-primary/50 mb-3">
+                {t("Membership", "Membresía")}
+              </p>
+            </Reveal>
+            <Reveal delay={80}>
+              <h2 className="text-2xl sm:text-4xl lg:text-5xl font-bold text-slate-900 text-center mb-3">{MS.heading}</h2>
+            </Reveal>
+            {MS.subheading && (
+              <Reveal delay={140}>
+                <p className="text-slate-500 text-center text-sm sm:text-lg mb-5">{MS.subheading}</p>
+              </Reveal>
+            )}
+
+            {/* Oferta especial */}
             {(MS.special_title || MS.special_text) && (
               <Reveal delay={180} dir="scale">
                 <div className="relative overflow-hidden bg-gradient-to-r from-amber-50 to-yellow-50 rounded-2xl p-5 sm:p-6 max-w-2xl mx-auto border border-amber-200/60 mb-8 sm:mb-12 shadow-sm">
@@ -1063,31 +1545,65 @@ export default function ServicesPage() {
                 </div>
               </Reveal>
             )}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 sm:gap-6 items-center max-w-4xl mx-auto mb-10 sm:mb-14">
-              {plans.map((plan, i) => (<Reveal key={i} delay={i * 90} dir="up" dur={700}><MembershipCard {...plan} /></Reveal>))}
+
+            {/* CARDS: Grid responsivo 4 columnas */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-7xl mx-auto">
+              {plans.map((plan, i) => (
+                <Reveal key={i} delay={i * 80} dir="up" dur={700}>
+                  <MembershipCard
+                    plan={plan.plan}
+                    price={plan.price}
+                    image={plan.image}
+                    features={plan.features}
+                    isPopular={plan.isPopular}
+                    lbs_allowance={plan.lbs_allowance}
+                    onSelectPlan={handleSelectPlan}
+                  />
+                </Reveal>
+              ))}
             </div>
-            <Reveal delay={280} dir="scale">
-              <div className="text-center bg-white rounded-2xl p-5 sm:p-8 shadow-lg max-w-2xl mx-auto border border-slate-100 hover:shadow-xl transition-shadow duration-300">
-                <div className="w-10 h-10 sm:w-12 sm:h-12 mx-auto mb-4 bg-primary/10 rounded-2xl flex items-center justify-center"><Shield className="w-5 h-5 sm:w-6 sm:h-6 text-primary" /></div>
-                {MS.cta_title && <h4 className="text-base sm:text-lg font-bold text-slate-900 mb-2">{MS.cta_title}</h4>}
-                {MS.cta_text && <p className="text-slate-500 text-sm mb-5 sm:mb-6">{MS.cta_text}{" "}{MS.contact_phone && <a href={`tel:${MS.contact_phone.replace(/[^\d]/g, "")}`} className="text-primary font-bold hover:underline">{MS.contact_phone}</a>}</p>}
-                {MS.cta_button_label && (() => {
-                  const url = MS.cta_button_url || "/membership";
-                  const isExt = /^https?:\/\//i.test(url);
-                  const Inner = (
-                    <Mag as="div" strength={0.22} className="inline-flex items-center gap-2 overflow-hidden relative bg-primary text-white rounded-full px-7 sm:px-10 py-3.5 sm:py-4 text-sm font-bold uppercase tracking-widest shadow-lg shadow-primary/30 cursor-pointer hover:-translate-y-0.5 transition-transform duration-300 active:scale-95 group touch-manipulation" style={{ minHeight: "48px" }}>
-                      <span className="relative z-10 flex items-center gap-2">{MS.cta_button_label}<ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-1" /></span>
-                      <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
-                    </Mag>
-                  );
-                  return isExt ? <a href={url} target="_blank" rel="noopener noreferrer">{Inner}</a> : <Link to={url}>{Inner}</Link>;
-                })()}
+
+            {/* UPGRADE OPTIONS + ADDITIONAL LBS */}
+            <Reveal delay={200} dir="up">
+              <MembershipExtrasSection t={t} />
+            </Reveal>
+
+            {/* WHAT'S INCLUDED */}
+            <Reveal delay={260} dir="up">
+              <MembershipIncludedSection t={t} />
+            </Reveal>
+
+            {/* CTA CARD */}
+            <Reveal delay={320} dir="scale">
+              <div className="text-center bg-white rounded-2xl p-5 sm:p-8 shadow-lg max-w-2xl mx-auto border border-slate-100 hover:shadow-xl transition-shadow duration-300 mt-8 sm:mt-10">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 mx-auto mb-4 bg-primary/10 rounded-2xl flex items-center justify-center">
+                  <Shield className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
+                </div>
+                {MS.cta_title && (
+                  <h4 className="text-base sm:text-lg font-bold text-slate-900 mb-2">{MS.cta_title}</h4>
+                )}
+                {MS.cta_text && (
+                  <p className="text-slate-500 text-sm mb-5 sm:mb-6">
+                    {MS.cta_text}{" "}
+                    {MS.contact_phone && (
+                      <a href={`tel:${MS.contact_phone.replace(/[^\d]/g, "")}`} className="text-primary font-bold hover:underline">
+                        {MS.contact_phone}
+                      </a>
+                    )}
+                  </p>
+                )}
+                <div className="flex justify-center">
+                  <BecomeAMemberButton
+                    label={MS.cta_button_label || t("👉 BECOME A MEMBER", "👉 CONVIÉRTETE EN MIEMBRO")}
+                    className="shadow-lg shadow-primary/30"
+                  />
+                </div>
               </div>
             </Reveal>
           </div>
         </section>
 
-        {/* ══ AIRBNB ══ */}
+        {/* AIRBNB */}
         <DarkSection bgImage="https://images.unsplash.com/photo-1556910103-1c02745a2384?w=1920&h=1080&fit=crop" from="from-sky-950/92" to="to-sky-900/88" scrollY={scrollY}>
           <Reveal dir="blur"><p className="text-center text-[11px] font-bold uppercase tracking-[0.18em] text-sky-400/60 mb-4">{t("Airbnb & Rentals", "Airbnb y Alquileres")}</p></Reveal>
           <Reveal delay={80}><h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-white text-center mb-4 leading-tight">{t("Premium Laundry for", "Lavandería Premium para")}<span className="block font-bold text-sky-300">{t("Airbnb Hosts.", "Anfitriones Airbnb.")}</span></h2></Reveal>
@@ -1118,7 +1634,7 @@ export default function ServicesPage() {
           </Reveal>
         </DarkSection>
 
-        {/* ══ B2B ══ */}
+        {/* B2B */}
         <DarkSection bgImage="https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=1920&h=1080&fit=crop" from="from-sky-950/92" to="to-indigo-950/88" scrollY={scrollY} parallaxStrength={0.12}>
           <Reveal dir="blur"><p className="text-center text-[11px] font-bold uppercase tracking-[0.18em] text-sky-400/60 mb-4">{t("B2B Solutions", "Soluciones B2B")}</p></Reveal>
           <Reveal delay={80}><h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-white text-center mb-4 leading-tight">{t("High-Performance", "Alto Rendimiento")}<span className="block font-bold text-sky-300">{t("B2B Laundry.", "Lavandería B2B.")}</span></h2></Reveal>
@@ -1149,7 +1665,7 @@ export default function ServicesPage() {
           </Reveal>
         </DarkSection>
 
-        {/* ══ COMMERCIAL ══ */}
+        {/* COMMERCIAL */}
         <DarkSection bgImage="https://images.unsplash.com/photo-1521791055366-0d553872125f?w=1920&h=1080&fit=crop" from="from-sky-950/92" to="to-indigo-950/88" scrollY={scrollY} parallaxStrength={0.1}>
           <Reveal dir="blur"><p className="text-center text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400/70 mb-4">{t("Commercial Services", "Servicios Comerciales")}</p></Reveal>
           <Reveal delay={80}><h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-white text-center mb-4 leading-tight">{t("Commercial Laundry", "Lavandería Comercial")}<span className="block font-bold text-slate-300">{t("You Can Depend On.", "En la que Puedes Confiar.")}</span></h2></Reveal>
@@ -1180,7 +1696,7 @@ export default function ServicesPage() {
           </Reveal>
         </DarkSection>
 
-        {/* ══ QUOTE ══ */}
+        {/* QUOTE */}
         <section className="relative py-20 sm:py-28 overflow-hidden bg-slate-950">
           <div className="absolute inset-0 will-change-transform" style={{ backgroundImage: "url('https://images.unsplash.com/photo-1517677208171-0bc6725a3e60?w=1920&h=1080&fit=crop')", backgroundSize: "cover", backgroundPosition: "center", transform: `translateY(${scrollY * 0.18}px) scale(1.1)` }} />
           <div className="absolute inset-0 bg-gradient-to-br from-black/85 to-black/70" />
@@ -1205,7 +1721,7 @@ export default function ServicesPage() {
           </div>
         </section>
 
-        {/* ══ PRICING ══ */}
+        {/* PRICING */}
         <section className="py-12 sm:py-20 lg:py-24 bg-white">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-12">
             <Reveal dir="blur"><p className="text-center text-[11px] font-bold uppercase tracking-[0.18em] text-primary/50 mb-3">{t("Pricing", "Precios")}</p></Reveal>
@@ -1221,6 +1737,17 @@ export default function ServicesPage() {
               <Reveal dir="left" delay={0}><SelfServiceTable t={t} washerPrices={WASHER_PRICES} dryerPrices={DRYER_PRICES} /></Reveal>
               <Reveal dir="right" delay={60}><PerPieceTable t={t} categories={PER_PIECE_CATEGORIES} /></Reveal>
             </div>
+
+            <Reveal delay={200} dir="scale">
+              <div className="mt-12 sm:mt-16 text-center">
+                <p className="text-slate-500 text-sm mb-4">
+                  {t("Save on every order with a membership plan.", "Ahorra en cada orden con un plan de membresía.")}
+                </p>
+                <BecomeAMemberButton
+                  label={t("🌟 Become a Member & Save", "🌟 Conviértete en Miembro y Ahorra")}
+                />
+              </div>
+            </Reveal>
           </div>
         </section>
 

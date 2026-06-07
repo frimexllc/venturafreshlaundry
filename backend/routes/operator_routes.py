@@ -698,3 +698,238 @@ async def link_delivery_image(
         )
 
     return {"ok": True, "linked": bool(pickup_img)}
+
+
+# ── Weight image ──────────────────────────────────────────────────────
+
+@router.post("/driver/orders/{order_id}/weight-image")
+async def upload_weight_image(
+    order_id: str,
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """Upload weight proof image (shows the scale/weight)"""
+    role = current_user.get("role", "")
+    if role not in ("admin", "operator", "driver"):
+        raise HTTPException(status_code=403, detail="Permiso denegado")
+
+    ct = _validate_upload(file)
+
+    order = await _find_order(order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail=f"Orden no encontrada: {order_id}")
+    real_order_id = order.get("id") or order_id
+
+    user_id = current_user["id"]
+    # Drivers pueden subir weight si están asignados, pero normalmente solo operadores
+    if role == "driver":
+        assigned = order.get("assigned_driver_id") or order.get("driver_id")
+        if assigned and assigned != user_id:
+            raise HTTPException(status_code=403, detail="No estás asignado a esta orden")
+
+    try:
+        data = await file.read()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error leyendo archivo: {e}")
+
+    if len(data) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=413, detail="Imagen demasiado grande (máx 10 MB)")
+
+    ext      = (file.filename or "image.jpg").rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else "jpg"
+    uid      = str(uuid.uuid4())
+    filename = f"weight_{real_order_id}_{uid}.{ext}"
+    file_path = await _save_image_to_disk(data, filename)
+
+    data_b64 = base64.b64encode(data).decode("utf-8")
+    now = datetime.now(timezone.utc).isoformat()
+
+    record = {
+        "id": uid, "order_id": real_order_id, "type": "weight_proof",
+        "storage_path": str(file_path) if file_path else None,
+        "original_filename": file.filename, "content_type": ct,
+        "size": len(data), "data_base64": data_b64,
+        "uploaded_by": user_id, "uploader_role": role, "created_at": now,
+    }
+    try:
+        # Usamos la colección weight_images (asegúrate de crearla)
+        await db.weight_images.insert_one(record)
+    except Exception as e:
+        logger.error(f"Error saving weight_image to DB: {e}")
+        raise HTTPException(status_code=500, detail="Error al guardar imagen")
+
+    update_data = {
+        "weight_image_id": uid, "weight_image_data": data_b64,
+        "weight_image_url": f"/api/driver/orders/{real_order_id}/weight-image/view",
+        "weight_image_uploaded_at": now,
+        "weight_image_filename": file.filename,
+        "updated_at": now,
+    }
+    await db.orders.update_one({"id": real_order_id}, {"$set": update_data})
+
+    await create_audit_log("WEIGHT_IMAGE_UPLOADED", "order", real_order_id, user_id, {"file_id": uid})
+    # NO notificamos al cliente por una foto de peso (es solo evidencia interna)
+
+    return {
+        "message": "Imagen de peso guardada correctamente",
+        "id": uid, "image_id": uid,
+        "filename": file.filename, "order_id": real_order_id,
+        "size": len(data), "uploaded_at": now,
+        "url": f"/api/driver/orders/{real_order_id}/weight-image/view",
+    }
+
+
+@router.get("/driver/orders/{order_id}/weight-image/view")
+async def get_weight_image(order_id: str, current_user: dict = Depends(get_current_user)):
+    """Get weight image as file"""
+    role = current_user.get("role", "")
+    if role not in ("admin", "driver", "operator"):
+        raise HTTPException(status_code=403, detail="Permiso denegado")
+
+    order = await _find_order(order_id)
+    real_order_id = order.get("id") or order_id if order else order_id
+
+    if order and order.get("weight_image_data"):
+        data  = base64.b64decode(order["weight_image_data"])
+        fname = order.get("weight_image_filename", f"weight_{real_order_id}.jpg")
+        return Response(
+            content=data, media_type="image/jpeg",
+            headers={"Content-Disposition": f'inline; filename="{fname}"',
+                     "Cache-Control": "private, max-age=86400"},
+        )
+
+    record = await db.weight_images.find_one(
+        {"order_id": real_order_id}, {"_id": 0}, sort=[("created_at", -1)]
+    )
+    if not record:
+        raise HTTPException(status_code=404, detail="No hay imagen de peso")
+
+    if record.get("data_base64"):
+        data = base64.b64decode(record["data_base64"])
+        return Response(
+            content=data, media_type=record.get("content_type", "image/jpeg"),
+            headers={
+                "Content-Disposition": f'inline; filename="{record.get("original_filename", "weight.jpg")}"',
+                "Cache-Control": "private, max-age=86400",
+            },
+        )
+
+    storage_path = record.get("storage_path")
+    if storage_path:
+        try:
+            with open(storage_path, "rb") as f:
+                data = f.read()
+            return Response(
+                content=data, media_type=record.get("content_type", "image/jpeg"),
+                headers={"Content-Disposition": f'inline; filename="{record.get("original_filename", "weight.jpg")}"',
+                         "Cache-Control": "private, max-age=86400"},
+            )
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="Archivo no encontrado en disco")
+
+    raise HTTPException(status_code=404, detail="Imagen no disponible")
+
+
+@router.get("/driver/orders/{order_id}/weight-image")
+async def get_weight_image_info(order_id: str, current_user: dict = Depends(get_current_user)):
+    """Get weight image metadata"""
+    role = current_user.get("role", "")
+    if role not in ("admin", "driver", "operator"):
+        raise HTTPException(status_code=403, detail="Permiso denegado")
+
+    order = await _find_order(order_id)
+    real_order_id = order.get("id") or order_id if order else order_id
+
+    record = await db.weight_images.find_one(
+        {"order_id": real_order_id}, {"_id": 0, "data_base64": 0}, sort=[("created_at", -1)]
+    )
+    if not record:
+        if order and order.get("weight_image_id"):
+            return {
+                "exists": True, "image_id": order["weight_image_id"],
+                "url": order.get("weight_image_url", f"/api/driver/orders/{real_order_id}/weight-image/view"),
+            }
+        return {"exists": False, "order_id": real_order_id}
+
+    return {
+        "exists": True, "image_id": record["id"],
+        "filename": record.get("original_filename"),
+        "uploaded_at": record.get("created_at"),
+        "size": record.get("size"),
+        "url": f"/api/driver/orders/{real_order_id}/weight-image/view",
+    }
+
+@router.get("/operator/orders/{order_id}")
+async def get_operator_order_by_id(
+    order_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """Get full order details (including images) for operator view"""
+    if not has_permission(current_user, "orders:read"):
+        raise HTTPException(status_code=403, detail="Permission denied")
+
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    # ── Enrich with customer data if missing ──────────────────────────────
+    customer_id = order.get("customer_id")
+    if customer_id and (not order.get("customer_phone") or not order.get("customer_email")):
+        customer = await db.customers.find_one({"id": customer_id}, {"_id": 0})
+        if customer:
+            # Only fill in fields missing from the order document
+            for field in ("customer_phone", "customer_email", "preferred_contact",
+                          "membership_plan", "membership_status", "stripe_customer_id",
+                          "card_last4", "card_brand", "distance_miles"):
+                if not order.get(field) and customer.get(field):
+                    order[field] = customer[field]
+            # customer_name fallback
+            if not order.get("customer_name") and customer.get("name"):
+                order["customer_name"] = customer["name"]
+
+    return order
+
+@router.post("/driver/orders/{order_id}/weight-image/link")
+async def link_weight_image(
+    order_id: str,
+    body: dict,
+    current_user: dict = Depends(get_current_user),
+):
+    """Link an existing pickup image as weight proof"""
+    role = current_user.get("role", "")
+    if role not in ("admin", "driver", "operator"):
+        raise HTTPException(status_code=403, detail="Permiso denegado")
+
+    image_id = body.get("image_id")
+    if not image_id:
+        raise HTTPException(status_code=400, detail="image_id requerido")
+
+    order = await _find_order(order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Orden no encontrada")
+    real_order_id = order.get("id") or order_id
+    now = datetime.now(timezone.utc).isoformat()
+
+    # Buscar la imagen en pickup_images
+    source_img = await db.pickup_images.find_one({"id": image_id}, {"_id": 0})
+    if source_img:
+        weight_record = {
+            **source_img,
+            "id": str(uuid.uuid4()),
+            "type": "weight_proof",
+            "order_id": real_order_id,
+            "created_at": now,
+            "linked_from_pickup_image_id": image_id,
+        }
+        await db.weight_images.insert_one(weight_record)
+        await db.orders.update_one(
+            {"id": real_order_id},
+            {"$set": {
+                "weight_image_id": weight_record["id"],
+                "weight_image_data": source_img.get("data_base64"),
+                "weight_image_url": f"/api/driver/orders/{real_order_id}/weight-image/view",
+                "weight_image_uploaded_at": now,
+                "updated_at": now,
+            }},
+        )
+
+    return {"ok": True, "linked": bool(source_img)}

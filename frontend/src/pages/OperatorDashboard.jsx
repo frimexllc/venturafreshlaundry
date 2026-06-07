@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import axios from "axios";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
-import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
 import {
   Dialog,
@@ -36,6 +35,7 @@ import {
   Wifi,
   WifiOff,
   ArrowUpDown,
+  Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 import { createNotificationsSocket } from "../utils/notificationsSocket";
@@ -87,8 +87,6 @@ const cpCoordinates = {
   93010: { lat: 34.225, lng: -119.082 },
 };
 
-// ─── Constants ───────────────────────────────────────────────────────────────
-
 const INITIAL_CHECKOUT_FORM = {
   name: "",
   email: "",
@@ -98,11 +96,20 @@ const INITIAL_CHECKOUT_FORM = {
   instructions: "",
   notes: "",
   preferred_contact: "sms",
-  payment_method: "card",
+  payment_method: "cash",
   fulfillment_type: "pickup",
 };
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// Tarifas por método de pago
+const PAYMENT_METHOD_FEES = {
+  card: 0.035,
+  cash: 0,
+  transfer: 0.02,
+  other: 0,
+};
+
+const MIN_CARD_FEE = 0.5;
+const MAX_CARD_FEE = 15.0;
 
 const extractCP = (address) => {
   if (!address) return null;
@@ -122,17 +129,18 @@ function getDistanceInMiles(lat1, lng1, lat2, lng2) {
   const dLng = ((lng2 - lng1) * Math.PI) / 180;
   const a =
     Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) ** 2;
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
 }
 
 function calculateDeliveryFee(distanceMiles) {
-  // 3 miles free, $1.50/mile after (matches backend delivery_rules.py)
   if (distanceMiles <= 3) return 0;
   const extraMiles = distanceMiles - 3;
   const fee = extraMiles * 1.5;
-  return Math.min(Math.round(fee * 100) / 100, 25.0); // cap $25
+  return Math.min(Math.round(fee * 100) / 100, 25.0);
 }
 
 function getMarkerColor(status) {
@@ -159,8 +167,6 @@ const isValidEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
 const getToken = () => localStorage.getItem("token") || sessionStorage.getItem("token");
 const isValidPhone = (v) => /^\+?[\d\s\-().]{7,}$/.test(v.trim());
 
-// ─── Hook: detect mobile ──────────────────────────────────────────────────────
-
 const useMobile = () => {
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -172,15 +178,35 @@ const useMobile = () => {
   return isMobile;
 };
 
-// ─── UI Primitives ────────────────────────────────────────────────────────────
+const calculatePriceWithPaymentMethod = (baseAmount, paymentMethod) => {
+  const feePercentage = PAYMENT_METHOD_FEES[paymentMethod] || 0;
+  if (feePercentage === 0)
+    return { original: baseAmount, fee: 0, total: baseAmount, feePercentage: 0 };
+  let feeAmount = baseAmount * feePercentage;
+  if (paymentMethod === "card") {
+    feeAmount = Math.min(Math.max(feeAmount, MIN_CARD_FEE), MAX_CARD_FEE);
+  }
+  return {
+    original: baseAmount,
+    fee: feeAmount,
+    total: baseAmount + feeAmount,
+    feePercentage: feePercentage * 100,
+  };
+};
 
-const CardHeader = ({ icon, title, count, bgClass = "bg-slate-50", testId }) => (
-  <div className={`px-4 sm:px-5 py-3 border-b border-slate-100 ${bgClass}`}>
-    <h2 className="font-semibold text-slate-900 flex items-center gap-2 text-sm sm:text-base">
+const CardHeader = ({
+  icon,
+  title,
+  count,
+  bgClass = "bg-gradient-to-r from-slate-50 to-slate-100/50",
+  testId,
+}) => (
+  <div className={`px-5 py-4 border-b border-slate-200/80 ${bgClass}`}>
+    <h2 className="font-semibold text-slate-800 flex items-center gap-2 text-base">
       <span className="shrink-0">{icon}</span>
-      <span className="truncate">{title}</span>
+      <span className="flex-1 truncate">{title}</span>
       <span
-        className="ml-auto shrink-0 text-xs font-semibold text-slate-500 bg-white border border-slate-200 rounded-full px-2 py-0.5"
+        className="shrink-0 text-xs font-semibold text-indigo-600 bg-indigo-50 border border-indigo-200/50 rounded-full px-2.5 py-1 shadow-sm"
         data-testid={testId}
       >
         {count}
@@ -190,33 +216,37 @@ const CardHeader = ({ icon, title, count, bgClass = "bg-slate-50", testId }) => 
 );
 
 const EmptyState = ({ icon, text, testId }) => (
-  <div className="p-8 text-center text-slate-400" data-testid={testId}>
-    <div className="mb-2 flex justify-center opacity-25">{icon}</div>
-    <p className="text-sm">{text}</p>
+  <div className="py-12 text-center text-slate-400" data-testid={testId}>
+    <div className="mb-4 flex justify-center">
+      <div className="w-20 h-20 rounded-2xl bg-slate-100 flex items-center justify-center border border-slate-200">
+        {icon}
+      </div>
+    </div>
+    <p className="text-sm font-medium">{text}</p>
   </div>
 );
 
 const StatCard = ({ icon, bg, count, label, testId, highlight }) => (
   <div
-    className={`bg-white rounded-xl border p-3 sm:p-4 transition-all hover:shadow-md hover:-translate-y-0.5 ${
-      highlight ? "border-red-200 bg-red-50/30" : "border-slate-200"
+    className={`bg-white rounded-2xl border p-5 transition-all hover:shadow-lg hover:-translate-y-1 shadow-md ${
+      highlight ? "border-red-200 bg-red-50/30" : "border-slate-200/50"
     }`}
   >
-    <div className="flex items-center gap-2 sm:gap-3">
+    <div className="flex items-center gap-4">
       <div
-        className={`h-9 w-9 sm:h-10 sm:w-10 rounded-full ${bg} flex items-center justify-center shrink-0`}
+        className={`h-14 w-14 rounded-2xl ${bg} flex items-center justify-center shrink-0 shadow-inner`}
       >
         {icon}
       </div>
       <div className="min-w-0">
         <p
-          className="text-xl sm:text-2xl font-bold text-slate-900 leading-none"
+          className="text-2xl font-bold text-slate-900 leading-none truncate"
           data-testid={`operator-stat-${testId}-count`}
         >
           {count}
         </p>
         <p
-          className="text-xs sm:text-sm text-slate-500 mt-0.5 truncate"
+          className="text-xs font-semibold text-slate-500 mt-1 truncate uppercase tracking-wide"
           data-testid={`operator-stat-${testId}-label`}
         >
           {label}
@@ -236,77 +266,75 @@ const OrderRow = ({
   onAdvance,
   onPrint,
   onPDF,
-  advanceBtnClass = "bg-sky-600 hover:bg-sky-700",
+  advanceBtnClass = "bg-slate-900 hover:bg-slate-800",
   showPrint = false,
   t,
 }) => (
   <div
-    className="p-3 sm:p-4 hover:bg-slate-50/70 transition-colors cursor-pointer group"
+    className="p-4 bg-white border-l-4 border-l-transparent hover:border-l-indigo-500 border rounded-xl hover:shadow-lg transition-all duration-200 cursor-pointer group"
     role="button"
     onClick={() => onRowClick(order)}
     data-testid={`order-row-${order.order_id || "unknown"}`}
   >
-    <div className="flex items-start justify-between gap-2">
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-1.5 mb-1">
-          <span className="font-mono font-semibold text-slate-900 text-xs sm:text-sm truncate">
+    <div className="flex flex-col sm:flex-row sm:items-start gap-4">
+      <div className="flex-1 min-w-0 space-y-1.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-semibold text-slate-800 text-sm font-mono tracking-wide">
             {formatOrderNumber(order)}
           </span>
           <span
-            className={`px-1.5 py-0.5 text-xs font-medium rounded-full shrink-0 ${statusInfo.color}`}
+            className={`px-2.5 py-0.5 text-xs font-medium rounded-full shrink-0 border ${statusInfo.color} shadow-sm`}
           >
             {statusInfo.label}
           </span>
+          <span className="text-xs text-slate-400 truncate font-medium">
+            {order.pickup_time_window || order.pickup_date || t("No time", "Sin hora")}
+          </span>
         </div>
-       <p className="text-sm text-slate-700 font-medium truncate flex items-center gap-1 flex-wrap">
-  {safeString(order.customer_name, t("Customer", "Cliente"))}
-  {order.service_type === "airbnb_host" && (
-    <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded-full">
-      🏠 Airbnb
-    </span>
-  )}
-  {order.service_type === "commercial" && (
-    <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded-full">
-      🏢 B2B
-    </span>
-  )}
-</p>
-        {(() => {
-          const addr = order.pickup_address || order.delivery_address;
-          const cp = extractCP(addr);
-          return (
-            <p className="text-xs text-slate-400 mt-0.5 truncate">
-              {order.pickup_time_window
-                ? safeString(order.pickup_time_window)
-                : order.pickup_date
-                  ? formatShortDatePT(order.pickup_date)
-                  : t("No time", "Sin hora")}
-              {addr && <> · {safeString(addr)}</>}
-              {cp && (
-                <span className="ml-1 px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-xs font-mono">
-                  CP {cp}
-                </span>
-              )}
-            </p>
-          );
-        })()}
+        <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
+          <span className="font-semibold truncate">
+            {safeString(order.customer_name, t("Customer", "Cliente"))}
+          </span>
+          <span className="text-slate-400 text-xs truncate">
+            {order.pickup_address || order.delivery_address}
+          </span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 mt-1">
+          {order.service_type === "airbnb_host" && (
+            <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-orange-600 bg-orange-50/80 px-2 py-0.5 rounded-full border border-orange-200">
+              🏠 Airbnb
+            </span>
+          )}
+          {order.service_type === "commercial" && (
+            <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-indigo-600 bg-indigo-50/80 px-2 py-0.5 rounded-full border border-indigo-200">
+              🏢 B2B
+            </span>
+          )}
+          {extractCP(order.pickup_address || order.delivery_address) && (
+            <span className="inline-flex items-center gap-0.5 px-2 py-0.5 bg-slate-100 text-slate-500 rounded-full text-[10px] font-mono font-medium">
+              CP {extractCP(order.pickup_address || order.delivery_address)}
+            </span>
+          )}
+        </div>
       </div>
-      <div className="flex flex-col gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+      <div className="flex flex-row gap-2 sm:justify-end flex-wrap items-start shrink-0">
         {nextStatus && (
           <Button
             size="sm"
-            className={`${advanceBtnClass} text-xs h-7 px-2`}
-            onClick={() => onAdvance(order.order_id, nextStatus)}
+            className={`${advanceBtnClass} text-white text-xs h-8 px-3 rounded-lg shadow-sm hover:shadow-md transition-all`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onAdvance(order.order_id, nextStatus);
+            }}
             disabled={updating[order.order_id]}
             data-testid={`advance-btn-${order.order_id}`}
           >
             {updating[order.order_id] ? (
               <RefreshCw className="h-3 w-3 animate-spin" />
             ) : (
-              <>
-                <span className="hidden sm:inline mr-1">{nextStatusInfo?.label}</span>
-                <ChevronRight className="h-3 w-3" />
-              </>
+              <span className="flex items-center gap-1 font-medium">
+                {nextStatusInfo?.label} <ChevronRight className="h-3 w-3" />
+              </span>
             )}
           </Button>
         )}
@@ -315,22 +343,26 @@ const OrderRow = ({
             <Button
               variant="outline"
               size="sm"
-              className="text-xs h-7 px-2 gap-1 hover:border-sky-300 hover:text-sky-600"
-              onClick={() => onPrint(order)}
+              className="h-8 w-8 p-0 rounded-lg text-slate-400 hover:text-sky-600 hover:border-sky-300 hover:bg-sky-50 shadow-sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                onPrint(order);
+              }}
               data-testid={`print-btn-${order.order_id}`}
             >
-              <Printer className="h-3 w-3" />
-              <span className="hidden sm:inline">{t("Print", "Imprimir")}</span>
+              <Printer className="h-4 w-4" />
             </Button>
             <Button
               variant="outline"
               size="sm"
-              className="text-xs h-7 px-2 gap-1 hover:border-emerald-300 hover:text-emerald-600"
-              onClick={() => onPDF(order)}
+              className="h-8 w-8 p-0 rounded-lg text-slate-400 hover:text-emerald-600 hover:border-emerald-300 hover:bg-emerald-50 shadow-sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                onPDF(order);
+              }}
               data-testid={`pdf-btn-${order.order_id}`}
             >
-              <FileDown className="h-3 w-3" />
-              <span className="hidden sm:inline">PDF</span>
+              <FileDown className="h-4 w-4" />
             </Button>
           </div>
         )}
@@ -339,39 +371,30 @@ const OrderRow = ({
   </div>
 );
 
-// ─── Mobile floating switch button ───────────────────────────────────────────
-
 const MobileServiceSwitch = ({ onSwitch, currentService }) => {
   const isMobile = useMobile();
   if (!isMobile) return null;
   return (
     <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2">
-      <button onClick={onSwitch} className="group relative" aria-label="Cambiar entre servicios">
-        <div className="absolute -top-10 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white text-xs py-1.5 px-3 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none shadow-lg">
+      <button
+        onClick={onSwitch}
+        className="group relative bg-slate-900 text-white rounded-full p-3 shadow-xl hover:bg-slate-800 active:scale-90 transition-all border border-slate-800/50"
+      >
+        <ArrowUpDown className="h-5 w-5" />
+        <div className="absolute -top-12 left-1/2 transform -translate-x-1/2 bg-slate-900 text-white text-xs py-1 px-3 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none shadow-lg font-medium">
           Cambiar a {currentService === "pickup" ? "Wash & Fold" : "Pickup & Delivery"}
         </div>
-        <div className="bg-blue-600 text-white rounded-full p-4 shadow-lg hover:bg-blue-700 active:scale-95 transition-all">
-          <ArrowUpDown className="h-6 w-6" />
-        </div>
       </button>
-      <div className="bg-white rounded-full px-3 py-1.5 shadow-md text-xs font-medium text-slate-700 border border-slate-200 flex items-center gap-1.5">
+      <div className="bg-white rounded-full px-3 py-1 shadow-md text-xs font-semibold text-slate-700 border border-slate-200 flex items-center gap-1 mx-auto">
         {currentService === "pickup" ? (
-          <>
-            <Truck className="h-3 w-3 text-blue-500" />
-            Pickup
-          </>
+          <Truck className="h-3 w-3 text-indigo-500" />
         ) : (
-          <>
-            <Package className="h-3 w-3 text-purple-500" />
-            Wash
-          </>
+          <Package className="h-3 w-3 text-purple-500" />
         )}
       </div>
     </div>
   );
 };
-
-// ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function OperatorDashboard() {
   const { t } = useLocale();
@@ -449,7 +472,7 @@ export default function OperatorDashboard() {
     setServiceSubTab((prev) => (prev === "pickup" ? "wash" : "pickup"));
   }, []);
 
-  // ─── Status helpers ─────────────────────────────────────────────────────────
+  // ─── Status helpers ───────────────────────────────────────────────────────
 
   const getStatusLabel = useCallback(
     (status, serviceType) => {
@@ -522,14 +545,26 @@ export default function OperatorDashboard() {
     [t]
   );
 
-  // ─── Data loading ───────────────────────────────────────────────────────────
+  // ─── Data loading ─────────────────────────────────────────────────────────
 
   const loadDashboard = useCallback(async () => {
     if (dashboardLoadingRef.current) return;
     if (document.visibilityState !== "visible" && autoRefreshRef.current) return;
     dashboardLoadingRef.current = true;
     try {
-      const res = await fetch(`${API_URL}/api/automation/operator-dashboard`);
+      const token = getToken();
+      const res = await fetch(`${API_URL}/api/automation/operator-dashboard`, {
+        headers: {
+          "Content-Type": "application/json",
+          ...(token && { Authorization: `Bearer ${token}` }),
+        },
+      });
+      if (res.status === 401) {
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+        window.location.href = "/login";
+        return;
+      }
       if (res.ok) {
         setDashboard(await res.json());
         setLastRefresh(new Date());
@@ -542,36 +577,36 @@ export default function OperatorDashboard() {
     }
   }, [t]);
 
-const loadStoreOrders = useCallback(async () => {
-  if (storeLoadingRef.current) return;
-  storeLoadingRef.current = true;
-  setStoreOrdersLoading(true);
-  try {
-    const token = localStorage.getItem("token");
-    const res = await fetch(`${API_URL}/api/store/orders`, {
-      headers: {
-        "Content-Type": "application/json",
-        ...(token && { Authorization: `Bearer ${token}` }),
-      },
-    });
-    if (res.ok) {
-      setStoreOrders((await res.json()) || []);
-    } else if (res.status === 401) {
-      localStorage.removeItem("token");
-      localStorage.removeItem("user");
-      window.location.href = "/login";
-    } else {
-      console.error("Store orders error:", res.status);
+  const loadStoreOrders = useCallback(async () => {
+    if (storeLoadingRef.current) return;
+    storeLoadingRef.current = true;
+    setStoreOrdersLoading(true);
+    try {
+      const token = getToken();
+      const res = await fetch(`${API_URL}/api/store/orders`, {
+        headers: {
+          "Content-Type": "application/json",
+          ...(token && { Authorization: `Bearer ${token}` }),
+        },
+      });
+      if (res.ok) {
+        setStoreOrders((await res.json()) || []);
+      } else if (res.status === 401) {
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+        window.location.href = "/login";
+      } else {
+        console.error("Store orders error:", res.status);
+        setStoreOrders([]);
+      }
+    } catch (err) {
+      console.error("Error loading store orders:", err);
       setStoreOrders([]);
+    } finally {
+      storeLoadingRef.current = false;
+      setStoreOrdersLoading(false);
     }
-  } catch (err) {
-    console.error("Error loading store orders:", err);
-    setStoreOrders([]);
-  } finally {
-    storeLoadingRef.current = false;
-    setStoreOrdersLoading(false);
-  }
-}, [t]);
+  }, []);
 
   useEffect(() => {
     loadDashboard();
@@ -608,7 +643,7 @@ const loadStoreOrders = useCallback(async () => {
     [t]
   );
 
-  // ─── Socket ─────────────────────────────────────────────────────────────────
+  // ─── Socket ──────────────────────────────────────────────────────────────
 
   useEffect(() => {
     const socket = createNotificationsSocket();
@@ -633,16 +668,18 @@ const loadStoreOrders = useCallback(async () => {
     };
   }, [loadDashboard, loadStoreOrders]);
 
-  // ─── Stripe return handling ──────────────────────────────────────────────────
+  // ─── Stripe return handling ───────────────────────────────────────────────
 
   const pollStoreCheckoutStatus = useCallback(
     async (sessionId, attempt = 0) => {
-      const retry = () => setTimeout(() => pollStoreCheckoutStatus(sessionId, attempt + 1), 2000);
       const finish = async (notify) => {
         notify();
         try {
           await loadStoreOrders();
         } catch {}
+      };
+      const scheduleRetry = () => {
+        setTimeout(() => pollStoreCheckoutStatus(sessionId, attempt + 1), 2000);
       };
       try {
         const res = await fetch(`${API_URL}/api/store/checkout/status/${sessionId}`);
@@ -650,21 +687,29 @@ const loadStoreOrders = useCallback(async () => {
         const data = await res.json();
         const ps = (data?.payment_status || "").toLowerCase();
         const cs = (data?.status || "").toLowerCase();
-        if (ps === "paid")
+        if (ps === "paid") {
           return finish(() =>
             toast.success(t("Store payment confirmed", "Pago de tienda confirmado"))
           );
-        if (cs === "expired")
-          return finish(() => toast.error(t("Store payment expired", "Pago de tienda expirado")));
-        if (attempt >= 8)
-          return finish(() => toast.info(t("Store payment pending", "Pago de tienda pendiente")));
-        retry();
+        }
+        if (cs === "expired") {
+          return finish(() =>
+            toast.error(t("Store payment expired", "Pago de tienda expirado"))
+          );
+        }
+        if (attempt >= 8) {
+          return finish(() =>
+            toast.info(t("Store payment pending", "Pago de tienda pendiente"))
+          );
+        }
+        scheduleRetry();
       } catch {
-        if (attempt >= 8)
+        if (attempt >= 8) {
           return finish(() =>
             toast.error(t("Unable to verify payment", "No se pudo verificar pago"))
           );
-        retry();
+        }
+        scheduleRetry();
       }
     },
     [loadStoreOrders, t]
@@ -711,7 +756,7 @@ const loadStoreOrders = useCallback(async () => {
     })();
   }, [t, loadDashboard]);
 
-  // ─── Order status updates ───────────────────────────────────────────────────
+  // ─── Order status updates ─────────────────────────────────────────────────
 
   const executeOrderStatusUpdate = async (orderId, newStatus) => {
     setUpdating((prev) => ({ ...prev, [orderId]: true }));
@@ -725,7 +770,9 @@ const loadStoreOrders = useCallback(async () => {
         await loadDashboard();
       } else {
         const errorText = await res.text();
-        toast.error(t("Error updating order", "Error al actualizar orden") + `: ${errorText}`);
+        toast.error(
+          t("Error updating order", "Error al actualizar orden") + `: ${errorText}`
+        );
       }
     } catch {
       toast.error(t("Connection error", "Error de conexion"));
@@ -740,24 +787,84 @@ const loadStoreOrders = useCallback(async () => {
     await executeOrderStatusUpdate(orderId, newStatus);
   };
 
-  const updateOrderStatus = async (orderId, newStatus) => {
+  const allServiceOrdersById = useMemo(() => {
+    const map = new Map();
+    [
+      ...(dashboard?.todays_pickups || []),
+      ...(dashboard?.ready_for_delivery || []),
+      ...(dashboard?.wash_fold_dropoffs || []),
+      ...(dashboard?.wash_fold_ready || []),
+    ].forEach((o) => map.set(o.order_id, o));
+    return map;
+  }, [dashboard]);
+
+  /**
+   * updateOrderStatus — manejador principal del botón de avance de estado.
+   *
+   * REGLAS:
+   * - "picked_up" / "delivered" → abre modal de foto (evidencia de recogida/entrega).
+   * - "processing"              → avanza directamente el status SIN pedir lbs ni foto.
+   *                               El peso y la foto de báscula se manejan dentro de
+   *                               OrderDetailModal (botón "Set lbs").
+   * - "confirmed"               → muestra diálogo de confirmación.
+   * - Todo lo demás             → avanza directamente.
+   */
+const updateOrderStatus = useCallback(
+  async (orderId, newStatus) => {
     const statusLower = newStatus.toLowerCase();
 
+    let order = allServiceOrdersById.get(orderId);
+    if (!order && dashboard) {
+      const allOrders = [
+        ...(dashboard.todays_pickups || []),
+        ...(dashboard.ready_for_delivery || []),
+        ...(dashboard.wash_fold_dropoffs || []),
+        ...(dashboard.wash_fold_ready || []),
+      ];
+      order = allOrders.find((o) => o.order_id === orderId) || null;
+    }
+
+    // Foto de evidencia de recogida o entrega
     if (statusLower === "picked_up" || statusLower === "delivered") {
-      const order = allServiceOrdersById.get(orderId) || {
-        order_id: orderId,
-        order_number: orderId,
-        customer_name: "",
-      };
-      setPickupImageModal({ order, pendingStatus: newStatus });
+      setPickupImageModal({
+        order: order || { order_id: orderId, order_number: orderId, customer_name: "" },
+        pendingStatus: statusLower,
+      });
       return;
     }
 
+// ✅ VALIDACIÓN ESTRICTA: Para avanzar a "processing" DEBE tener peso O add-ons guardados en el backend
+if (statusLower === "processing") {
+  // Obtener la orden FRESCA del estado actual (que se actualiza con onRefresh)
+  const currentOrderData = allServiceOrdersById.get(orderId);
+  
+  // Verificar si tiene peso real (del backend, no del input)
+  const hasWeight = currentOrderData?.actual_lbs && Number(currentOrderData.actual_lbs) > 0;
+  
+  // Verificar si tiene add-ons guardados (del backend)
+  const hasAddons = (currentOrderData?.addon_services || []).length > 0;
+  
+  // Si NO tiene peso Y NO tiene add-ons → bloquear y abrir modal
+  if (!hasWeight && !hasAddons) {
+    toast.warning(
+      t("Debe ingresar el peso o agregar artículos (add-ons) antes de avanzar a Procesando",
+        "Debe ingresar el peso o agregar artículos (add-ons) antes de avanzar a Procesando")
+    );
+    // Abrir el modal para que el operador ingrese peso o add-ons
+    setSelectedOrder(currentOrderData || order);
+    // NO avanzar — el operador debe guardar cambios en el modal primero
+    return;
+  }
+  
+  // Si llegó aquí, tiene peso O add-ons → permitir avanzar
+}
+
+    // Confirmación: mostrar diálogo antes de avanzar
     if (statusLower === "confirmed") {
       setConfirmDialog({
         orderId,
         newStatus,
-        title: t("Confirmar orden", "Confirmar orden"),
+        title: t("Confirm order", "Confirmar orden"),
         description: t(
           "Se notificará al cliente y al driver asignado.",
           "Se notificará al cliente y al driver asignado."
@@ -766,27 +873,49 @@ const loadStoreOrders = useCallback(async () => {
       return;
     }
 
+    // Todos los demás estados: avanzar directamente
     await executeOrderStatusUpdate(orderId, newStatus);
-  };
+  },
+  [allServiceOrdersById, dashboard, t]
+);
 
+  /**
+   * handlePickupImageConfirm — se llama cuando el operador/driver confirma
+   * la foto de recogida o entrega.  NO maneja el flujo de peso (eso ya
+   * está en OrderDetailModal).
+   */
   const handlePickupImageConfirm = async (imageResult) => {
     const { order, pendingStatus } = pickupImageModal;
     setPickupImageModal(null);
     const orderId = order.order_id;
 
-    if (imageResult && pendingStatus.toLowerCase() === "delivered") {
-      try {
-        await fetch(`${API_URL}/api/driver/orders/${orderId}/delivery-image/link`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ image_id: imageResult.id }),
-        });
-      } catch (e) {
-        console.warn("Could not link delivery image:", e);
+    // "weight" ya no llega desde aquí — sólo "picked_up" o "delivered"
+    const targetStatus = pendingStatus;
+
+    if (imageResult && imageResult.id) {
+      let linkEndpoint = null;
+      if (targetStatus === "delivered") {
+        linkEndpoint = `/api/driver/orders/${orderId}/delivery-image/link`;
+      } else if (targetStatus === "picked_up") {
+        linkEndpoint = `/api/driver/orders/${orderId}/pickup-image/link`;
+      }
+
+      if (linkEndpoint) {
+        try {
+          const res = await fetch(`${API_URL}${linkEndpoint}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ image_id: imageResult.id }),
+          });
+          if (!res.ok)
+            console.warn(`Could not link ${targetStatus} image:`, await res.text());
+        } catch (e) {
+          console.warn(`Could not link ${targetStatus} image:`, e);
+        }
       }
     }
 
-    await executeOrderStatusUpdate(orderId, pendingStatus);
+    await executeOrderStatusUpdate(orderId, targetStatus);
   };
 
   const updateStoreOrderStatus = async (orderId, newStatus) => {
@@ -802,7 +931,9 @@ const loadStoreOrders = useCallback(async () => {
         await loadStoreOrders();
       } else {
         const e = await res.json();
-        toast.error(formatApiError(e.detail, t("Error updating order", "Error al actualizar")));
+        toast.error(
+          formatApiError(e.detail, t("Error updating order", "Error al actualizar"))
+        );
       }
     } catch {
       toast.error(t("Connection error", "Error de conexión"));
@@ -814,13 +945,17 @@ const loadStoreOrders = useCallback(async () => {
   const refundStoreOrder = async (orderId) => {
     setStoreUpdating((prev) => ({ ...prev, [orderId]: true }));
     try {
-      const res = await fetch(`${API_URL}/api/store/orders/${orderId}/refund`, { method: "POST" });
+      const res = await fetch(`${API_URL}/api/store/orders/${orderId}/refund`, {
+        method: "POST",
+      });
       if (res.ok) {
         toast.success(t("Store order refunded", "Orden reembolsada"));
         await loadStoreOrders();
       } else {
         const e = await res.json();
-        toast.error(formatApiError(e.detail, t("Refund failed", "Falló el reembolso")));
+        toast.error(
+          formatApiError(e.detail, t("Refund failed", "Falló el reembolso"))
+        );
       }
     } catch {
       toast.error(t("Connection error", "Error de conexión"));
@@ -829,7 +964,7 @@ const loadStoreOrders = useCallback(async () => {
     }
   };
 
-  // ─── Print / PDF ────────────────────────────────────────────────────────────
+  // ─── Print / PDF ──────────────────────────────────────────────────────────
 
   const handlePrintTicket = async (order) => {
     if (!order) return;
@@ -839,7 +974,9 @@ const loadStoreOrders = useCallback(async () => {
       return;
     }
     try {
-      const res = await axios.get(`${API_URL}/api/orders/${id}/qr.svg`, { responseType: "blob" });
+      const res = await axios.get(`${API_URL}/api/orders/${id}/qr.svg`, {
+        responseType: "blob",
+      });
       const url = window.URL.createObjectURL(res.data);
       const pw = window.open("");
       if (!pw) {
@@ -898,37 +1035,47 @@ const loadStoreOrders = useCallback(async () => {
     }
     const rows = (order.items || [])
       .map(
-        (i) => `<tr>
-<td style="padding:6px 8px;border-bottom:1px solid #eee;">${safeString(i.name || i.product_name || "Item")}</td>
-<td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center;">${safeString(i.quantity)}</td>
-<td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">$${(Number(i.price) || 0).toFixed(2)}</td>
-</tr>`
+        (i) => `
+          <tr>
+            <td style="padding:6px 8px;border-bottom:1px solid #eee;">${safeString(
+              i.name || i.product_name || "Item"
+            )}</td>
+            <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:center;">${safeString(
+              i.quantity
+            )}</td>
+            <td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right;">$${(
+              Number(i.price) || 0
+            ).toFixed(2)}</td>
+          </tr>
+        `
       )
       .join("");
     pw.document.write(`
-<html><body style="font-family:Arial,sans-serif;padding:24px;">
-<h2>Store Order ${safeString(order.order_number)}</h2>
-<p>${safeString(order.customer_name)} &mdash; ${safeString(order.customer_email)}</p>
-<table style="width:100%;border-collapse:collapse;margin-top:16px;">
-<thead><tr style="background:#f5f5f5;">
-<th style="padding:8px;text-align:left;border-bottom:2px solid #ddd;">Item</th>
-<th style="padding:8px;text-align:center;border-bottom:2px solid #ddd;">Qty</th>
-<th style="padding:8px;text-align:right;border-bottom:2px solid #ddd;">Price</th>
-</tr></thead>
-<tbody>${rows}</tbody>
-</table>
-<div style="margin-top:16px;text-align:right;">
-<p>Subtotal: $${(Number(order.subtotal) || 0).toFixed(2)}</p>
-<p>Shipping: $${(Number(order.shipping_fee) || 0).toFixed(2)}</p>
-<p style="font-size:18px;font-weight:bold;">Total: $${(Number(order.total) || 0).toFixed(2)}</p>
-</div>
-<script>window.print();window.onafterprint=function(){window.close();};<\/script>
-</body></html>
-`);
+      <html><body style="font-family:Arial,sans-serif;padding:24px;">
+        <h2>Store Order ${safeString(order.order_number)}</h2>
+        <p>${safeString(order.customer_name)} &mdash; ${safeString(order.customer_email)}</p>
+        <table style="width:100%;border-collapse:collapse;margin-top:16px;">
+          <thead><tr style="background:#f5f5f5;">
+            <th style="padding:8px;text-align:left;border-bottom:2px solid #ddd;">Item</th>
+            <th style="padding:8px;text-align:center;border-bottom:2px solid #ddd;">Qty</th>
+            <th style="padding:8px;text-align:right;border-bottom:2px solid #ddd;">Price</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <div style="margin-top:16px;text-align:right;">
+          <p>Subtotal: $${(Number(order.subtotal) || 0).toFixed(2)}</p>
+          <p>Shipping: $${(Number(order.shipping_fee) || 0).toFixed(2)}</p>
+          <p style="font-size:18px;font-weight:bold;">Total: $${(
+            Number(order.total) || 0
+          ).toFixed(2)}</p>
+        </div>
+        <script>window.print();window.onafterprint=function(){window.close();};<\/script>
+      </body></html>
+    `);
     pw.document.close();
   };
 
-  // ─── AI Assistant ───────────────────────────────────────────────────────────
+  // ─── AI Assistant ─────────────────────────────────────────────────────────
 
   const handleAiRequest = async () => {
     if (!aiPrompt.trim()) return;
@@ -941,7 +1088,8 @@ const loadStoreOrders = useCallback(async () => {
       setAiReply(res.data?.reply || "");
       setAiResults(res.data?.results || []);
       (res.data?.results || []).forEach((r) => {
-        if (r.type === "print_ticket") handlePrintTicket({ id: r.order_id, order_id: r.order_id });
+        if (r.type === "print_ticket")
+          handlePrintTicket({ id: r.order_id, order_id: r.order_id });
       });
     } catch {
       toast.error(t("Could not execute AI task", "No se pudo ejecutar la tarea IA"));
@@ -950,23 +1098,39 @@ const loadStoreOrders = useCallback(async () => {
     }
   };
 
-  // ─── Store POS ──────────────────────────────────────────────────────────────
+  // ─── Store POS ────────────────────────────────────────────────────────────
 
   const openStorePos = async () => {
     setStorePosOpen(true);
     setStoreCartLoading(true);
     try {
-      const [cartRes, productsRes] = await Promise.all([
-        storeCart
-          ? fetch(`${API_URL}/api/store/cart/${storeCart.id}`)
-          : fetch(`${API_URL}/api/store/cart`, { method: "POST" }),
-        fetch(`${API_URL}/api/store/products`),
-      ]);
-      if (cartRes.ok) {
-        const d = await cartRes.json();
-        if (!d || !Array.isArray(d.items)) throw new Error("Invalid cart response");
-        setStoreCart(d);
+      const productsRes = await fetch(`${API_URL}/api/store/products`);
+
+      let cartData = null;
+      if (storeCart?.id) {
+        const cartRes = await fetch(`${API_URL}/api/store/cart/${storeCart.id}`);
+        if (cartRes.ok) {
+          const d = await cartRes.json();
+          if (d && Array.isArray(d.items)) cartData = d;
+        }
+        if (!cartData) {
+          const newCartRes = await fetch(`${API_URL}/api/store/cart`, { method: "POST" });
+          if (newCartRes.ok) {
+            const d = await newCartRes.json();
+            if (d && Array.isArray(d.items)) cartData = d;
+          }
+        }
+      } else {
+        const newCartRes = await fetch(`${API_URL}/api/store/cart`, { method: "POST" });
+        if (newCartRes.ok) {
+          const d = await newCartRes.json();
+          if (d && Array.isArray(d.items)) cartData = d;
+        }
       }
+
+      if (cartData) setStoreCart(cartData);
+      else toast.error(t("Error loading cart", "Error cargando carrito"));
+
       if (productsRes.ok) setStoreProducts((await productsRes.json()) || []);
     } catch {
       toast.error(t("Error loading store POS", "Error cargando POS"));
@@ -1014,13 +1178,38 @@ const loadStoreOrders = useCallback(async () => {
       } else if (res) {
         const e = await res.json().catch(() => ({}));
         toast.error(
-          formatApiError(e.detail, t("Unable to update cart", "No se pudo actualizar el carrito"))
+          formatApiError(
+            e.detail,
+            t("Unable to update cart", "No se pudo actualizar el carrito")
+          )
         );
       }
     } catch {
       toast.error(t("Connection error", "Error de conexión"));
     }
   };
+
+  const storeOrderTotal = useMemo(() => {
+    const subtotal = Number(storeCart?.total) || 0;
+    const shipping =
+      storeCheckoutForm.fulfillment_type === "delivery"
+        ? Number(storeShippingQuote.fee) || 0
+        : 0;
+    const baseTotal = subtotal + shipping;
+    const result = calculatePriceWithPaymentMethod(baseTotal, storeCheckoutForm.payment_method);
+    return {
+      base: baseTotal,
+      fee: result.fee,
+      total: result.total,
+      feePercentage: result.feePercentage,
+      paymentMethod: storeCheckoutForm.payment_method,
+    };
+  }, [
+    storeCart?.total,
+    storeCheckoutForm.fulfillment_type,
+    storeShippingQuote.fee,
+    storeCheckoutForm.payment_method,
+  ]);
 
   const handleQuickCheckout = async (method) => {
     if (!storeCart?.items?.length) {
@@ -1029,12 +1218,26 @@ const loadStoreOrders = useCallback(async () => {
     }
     setStoreCheckoutLoading(true);
     try {
+      const finalMethod = method;
+      const subtotal = Number(storeCart?.total) || 0;
+      const shipping =
+        storeCheckoutForm.fulfillment_type === "delivery"
+          ? Number(storeShippingQuote.fee) || 0
+          : 0;
+      const baseTotal = subtotal + shipping;
+      const { total: finalTotal } = calculatePriceWithPaymentMethod(baseTotal, finalMethod);
+
       const payload = {
         cart_id: storeCart.id,
         origin_url: window.location.origin,
-        fulfillment_type: "pickup",
+        fulfillment_type: storeCheckoutForm.fulfillment_type,
+        payment_method: finalMethod,
+        total_amount: finalTotal,
+        original_amount: baseTotal,
+        fee_amount: finalTotal - baseTotal,
       };
-      if (method === "card") {
+
+      if (finalMethod === "card") {
         const res = await fetch(`${API_URL}/api/store/checkout`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1051,7 +1254,7 @@ const loadStoreOrders = useCallback(async () => {
         const res = await fetch(`${API_URL}/api/store/checkout/manual`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...payload, payment_method: method }),
+          body: JSON.stringify(payload),
         });
         if (res.ok) {
           toast.success(
@@ -1096,11 +1299,23 @@ const loadStoreOrders = useCallback(async () => {
 
     setStoreCheckoutLoading(true);
     try {
+      const selectedMethod = storeCheckoutForm.payment_method;
+      const subtotal = Number(storeCart?.total) || 0;
+      const shipping =
+        storeCheckoutForm.fulfillment_type === "delivery"
+          ? Number(storeShippingQuote.fee) || 0
+          : 0;
+      const baseTotal = subtotal + shipping;
+      const { total: finalTotal } = calculatePriceWithPaymentMethod(baseTotal, selectedMethod);
+
       const payload = {
         cart_id: storeCart.id,
         origin_url: window.location.origin,
-        fulfillment_type: "pickup",
-        payment_method: "cash",
+        fulfillment_type: storeCheckoutForm.fulfillment_type,
+        payment_method: selectedMethod,
+        total_amount: finalTotal,
+        original_amount: baseTotal,
+        fee_amount: finalTotal - baseTotal,
       };
       if (channel === "sms") payload.customer_phone = contact;
       if (channel === "email") payload.customer_email = contact;
@@ -1112,7 +1327,9 @@ const loadStoreOrders = useCallback(async () => {
       });
       if (!orderRes.ok) {
         const e = await orderRes.json();
-        toast.error(formatApiError(e.detail, t("Error creating order", "Error creando orden")));
+        toast.error(
+          formatApiError(e.detail, t("Error creating order", "Error creando orden"))
+        );
         return;
       }
       const orderData = await orderRes.json();
@@ -1122,15 +1339,18 @@ const loadStoreOrders = useCallback(async () => {
         return;
       }
 
-      const linkRes = await fetch(`${API_URL}/api/store/orders/${orderId}/send-payment-link`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          channel,
-          phone: channel === "sms" ? contact : null,
-          email: channel === "email" ? contact : null,
-        }),
-      });
+      const linkRes = await fetch(
+        `${API_URL}/api/store/orders/${orderId}/send-payment-link`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            channel,
+            phone: channel === "sms" ? contact : null,
+            email: channel === "email" ? contact : null,
+          }),
+        }
+      );
       if (linkRes.ok) {
         toast.success(
           t(
@@ -1166,18 +1386,23 @@ const loadStoreOrders = useCallback(async () => {
     setStoreProcessingPayment(true);
     try {
       if (storePaymentForm.method === "card") {
-        const res = await fetch(`${API_URL}/api/store/orders/${orderId}/stripe-checkout`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ origin_url: window.location.origin }),
-        });
+        const res = await fetch(
+          `${API_URL}/api/store/orders/${orderId}/stripe-checkout`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ origin_url: window.location.origin }),
+          }
+        );
         if (res.ok) {
           const d = await res.json();
           window.location.href = d.checkout_url;
           return;
         }
         const e = await res.json();
-        toast.error(formatApiError(e.detail, t("Stripe checkout failed", "Falló Stripe")));
+        toast.error(
+          formatApiError(e.detail, t("Stripe checkout failed", "Falló Stripe"))
+        );
       } else {
         const res = await fetch(`${API_URL}/api/store/orders/${orderId}/payment`, {
           method: "POST",
@@ -1190,7 +1415,9 @@ const loadStoreOrders = useCallback(async () => {
           await loadStoreOrders();
         } else {
           const e = await res.json();
-          toast.error(formatApiError(e.detail, t("Payment failed", "Pago fallido")));
+          toast.error(
+            formatApiError(e.detail, t("Payment failed", "Pago fallido"))
+          );
         }
       }
     } catch {
@@ -1200,7 +1427,7 @@ const loadStoreOrders = useCallback(async () => {
     }
   };
 
-  // ─── Shipping quote debounce ─────────────────────────────────────────────────
+  // ─── Shipping quote debounce ──────────────────────────────────────────────
 
   useEffect(() => {
     if (!storePosOpen) return;
@@ -1228,59 +1455,63 @@ const loadStoreOrders = useCallback(async () => {
           const e = await res.json();
           setStoreShippingQuote({ distance_km: null, fee: 0, zone_name: null });
           setStoreShippingError(
-            formatApiError(e.detail, t("Unable to calculate shipping", "No se pudo calcular envío"))
+            formatApiError(
+              e.detail,
+              t("Unable to calculate shipping", "No se pudo calcular envío")
+            )
           );
         }
       } catch {
         setStoreShippingQuote({ distance_km: null, fee: 0, zone_name: null });
-        setStoreShippingError(t("Unable to calculate shipping", "No se pudo calcular envío"));
+        setStoreShippingError(
+          t("Unable to calculate shipping", "No se pudo calcular envío")
+        );
       }
     }, 600);
     return () => clearTimeout(timer);
-  }, [storeCheckoutForm.address, storeCheckoutForm.fulfillment_type, storePosOpen, t]);
+  }, [
+    storeCheckoutForm.address,
+    storeCheckoutForm.fulfillment_type,
+    storePosOpen,
+    t,
+  ]);
 
-  // ─── O(1) order lookup map ───────────────────────────────────────────────────
+  // ─── Derived data ─────────────────────────────────────────────────────────
 
-  const allServiceOrdersById = useMemo(() => {
-    const map = new Map();
-    [
-      ...(dashboard?.todays_pickups || []),
-      ...(dashboard?.ready_for_delivery || []),
-      ...(dashboard?.wash_fold_dropoffs || []),
-      ...(dashboard?.wash_fold_ready || []),
-    ].forEach((o) => map.set(o.order_id, o));
-    return map;
-  }, [dashboard]);
+  const {
+    allPickupOrders,
+    allPickupDeliveries,
+    allWashFoldDropoffs,
+    allWashFoldReady,
+    allPickupPaymentQueue,
+    allWashFoldPaymentQueue,
+    ordersWithCoordinates,
+  } = useMemo(() => {
+    const pickupOrders = dedupeOrders(dashboard?.todays_pickups || [])
+      .filter(
+        (o) =>
+          !o.service_type ||
+          o.service_type === "pickup_delivery" ||
+          o.service_type === "airbnb_host" ||
+          o.service_type === "commercial"
+      )
+      .map((o) => ({
+        ...o,
+        pickup_time_window: o.pickup_time_window || o.pickup_time || "",
+      }));
 
-  // ─── Derived data ────────────────────────────────────────────────────────────
-
-const {
-  allPickupOrders,
-  allPickupDeliveries,
-  allWashFoldDropoffs,
-  allWashFoldReady,
-  allPickupPaymentQueue,
-  allWashFoldPaymentQueue,
-  ordersWithCoordinates,
-} = useMemo(() => {
-  // ✅ Incluir airbnb_host y commercial en pickup
-  const pickupOrders = dedupeOrders(dashboard?.todays_pickups || [])
-    .filter((o) => 
-      !o.service_type || 
-      o.service_type === "pickup_delivery" ||
-      o.service_type === "airbnb_host" ||
-      o.service_type === "commercial"
-    )
-    .map((o) => ({ ...o, pickup_time_window: o.pickup_time_window || o.pickup_time || "" }));
-
-  const pickupDeliveries = dedupeOrders(dashboard?.ready_for_delivery || [])
-    .filter((o) => 
-      !o.service_type || 
-      o.service_type === "pickup_delivery" ||
-      o.service_type === "airbnb_host" ||
-      o.service_type === "commercial"
-    )
-    .map((o) => ({ ...o, pickup_time_window: o.pickup_time_window || o.pickup_time || "" }));
+    const pickupDeliveries = dedupeOrders(dashboard?.ready_for_delivery || [])
+      .filter(
+        (o) =>
+          !o.service_type ||
+          o.service_type === "pickup_delivery" ||
+          o.service_type === "airbnb_host" ||
+          o.service_type === "commercial"
+      )
+      .map((o) => ({
+        ...o,
+        pickup_time_window: o.pickup_time_window || o.pickup_time || "",
+      }));
 
     const wfDropoffs = dedupeOrders(dashboard?.wash_fold_dropoffs || []).map((o) => ({
       ...o,
@@ -1348,7 +1579,8 @@ const {
   const filterOrders = useCallback(
     (orders) => {
       let result = orders;
-      if (orderFilters.date) result = result.filter((o) => o.pickup_date === orderFilters.date);
+      if (orderFilters.date)
+        result = result.filter((o) => o.pickup_date === orderFilters.date);
       if (orderFilters.time_window)
         result = result.filter((o) =>
           isWithinTimeWindow(o.pickup_time_window, orderFilters.time_window)
@@ -1358,7 +1590,11 @@ const {
         result = result.filter((order) => {
           const orderNumber = (order.order_number || "").toLowerCase();
           const customerName = (order.customer_name || "").toLowerCase();
-          const address = (order.pickup_address || order.delivery_address || "").toLowerCase();
+          const address = (
+            order.pickup_address ||
+            order.delivery_address ||
+            ""
+          ).toLowerCase();
           const cp = extractCP(address) || "";
           return (
             orderNumber.includes(term) ||
@@ -1408,7 +1644,8 @@ const {
           const num = (order.order_number || "").toLowerCase();
           const name = (order.customer_name || "").toLowerCase();
           const email = (order.customer_email || "").toLowerCase();
-          if (!num.includes(term) && !name.includes(term) && !email.includes(term)) return false;
+          if (!num.includes(term) && !name.includes(term) && !email.includes(term))
+            return false;
         }
         return true;
       }),
@@ -1416,7 +1653,10 @@ const {
   );
 
   const filteredStoreProducts = useMemo(
-    () => storeProducts.filter((p) => p.name?.toLowerCase().includes(storeSearch.toLowerCase())),
+    () =>
+      storeProducts.filter((p) =>
+        p.name?.toLowerCase().includes(storeSearch.toLowerCase())
+      ),
     [storeProducts, storeSearch]
   );
 
@@ -1429,13 +1669,6 @@ const {
     [storeOrders]
   );
 
-  const storeOrderTotal = useMemo(() => {
-    const subtotal = storeCart?.total || 0;
-    const shipping =
-      storeCheckoutForm.fulfillment_type === "delivery" ? storeShippingQuote.fee || 0 : 0;
-    return subtotal + shipping;
-  }, [storeCart?.total, storeCheckoutForm.fulfillment_type, storeShippingQuote.fee]);
-
   const pickupOrdersCount = allPickupOrders.length;
   const ordersInProcessingCount = dashboard?.stats?.orders_in_processing || 0;
   const deliveriesCount = allPickupDeliveries.length;
@@ -1445,114 +1678,120 @@ const {
     realtimeStatus === "connected"
       ? t("Realtime: connected", "Tiempo real: conectado")
       : realtimeStatus === "disabled"
-        ? t("Realtime: not configured", "Tiempo real: sin configurar")
-        : t("Realtime: disconnected", "Tiempo real: desconectado");
+      ? t("Realtime: not configured", "Tiempo real: sin configurar")
+      : t("Realtime: disconnected", "Tiempo real: desconectado");
   const rtClass =
     realtimeStatus === "connected"
       ? "bg-emerald-100 text-emerald-700"
       : realtimeStatus === "disabled"
-        ? "bg-slate-100 text-slate-500"
-        : "bg-orange-100 text-orange-700";
+      ? "bg-slate-100 text-slate-500"
+      : "bg-orange-100 text-orange-700";
   const RtIcon = realtimeStatus === "connected" ? Wifi : WifiOff;
 
-  // ─── Loading screen ──────────────────────────────────────────────────────────
+  // ─── Loading screen ───────────────────────────────────────────────────────
 
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] gap-3">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sky-600" />
-        <p className="text-sm text-slate-400 animate-pulse">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600" />
+        <p className="text-sm text-slate-400 animate-pulse font-medium">
           {t("Loading dashboard…", "Cargando panel…")}
         </p>
       </div>
     );
   }
 
-  // ─── Render ──────────────────────────────────────────────────────────────────
+  // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-4 sm:space-y-6 px-2 sm:px-0 pb-20 md:pb-0">
+    <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-6 pb-12 space-y-8">
       {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 flex items-center gap-2">
-            <Zap className="h-6 w-6 sm:h-7 sm:w-7 text-sky-600 shrink-0" />
-            {t("Operator Dashboard", "Panel del Operador")}
-          </h1>
-          <p className="text-sm text-slate-500 mt-0.5">
-            {t(
-              "Update order status — the system does the rest",
-              "Actualiza el estado — el sistema hace el resto"
-            )}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-            <Input
-              type="text"
-              placeholder={t("Search by order #, customer or CP", "Buscar por orden, cliente o CP")}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-8 text-sm w-64"
-              data-testid="order-search-input"
-            />
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-500 p-6 md:p-8 shadow-xl mb-8">
+        <div className="absolute inset-0 bg-black/5 pointer-events-none"></div>
+        <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center gap-3 text-white">
+            <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm">
+              <Zap className="h-6 w-6" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">
+                {t("Operator Dashboard", "Panel del Operador")}
+              </h1>
+              <p className="text-white/80 text-sm mt-0.5">
+                {t(
+                  "Update order status — the system does the rest",
+                  "Actualiza el estado — el sistema hace el resto"
+                )}
+              </p>
+            </div>
           </div>
-          <span
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${rtClass}`}
-            data-testid="operator-realtime-status"
-          >
-            <RtIcon className="h-3 w-3" />
-            {rtLabel}
-          </span>
-          <span className="text-xs text-slate-400 hidden sm:inline">
-            {t("Updated:", "Actualizado:")} {formatTimePT(lastRefresh)}
-          </span>
-          <Button
-            onClick={() => setAutoRefresh((a) => !a)}
-            variant="outline"
-            size="sm"
-            data-testid="toggle-auto-refresh"
-          >
-            {autoRefresh ? t("Pause", "Pausar") : t("Resume", "Reanudar")}
-          </Button>
-          <Button
-            onClick={loadDashboard}
-            variant="outline"
-            size="sm"
-            data-testid="refresh-dashboard"
-          >
-            <RefreshCw className="h-4 w-4 sm:mr-1.5" />
-            <span className="hidden sm:inline">{t("Refresh", "Actualizar")}</span>
-          </Button>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <Input
+                type="text"
+                placeholder={t("Search orders...", "Buscar órdenes...")}
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10 text-sm w-full sm:w-64 bg-white/10 border-white/20 text-white placeholder-white/60 focus:bg-white/20 focus:border-white/40 ring-0"
+                data-testid="order-search-input"
+              />
+            </div>
+            <span
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold backdrop-blur-sm border border-white/20 ${rtClass}`}
+              data-testid="operator-realtime-status"
+            >
+              <RtIcon className="h-3 w-3" />
+              {rtLabel}
+            </span>
+            <Button
+              onClick={() => setAutoRefresh((a) => !a)}
+              variant="secondary"
+              size="sm"
+              className="bg-white/10 border-white/20 text-white hover:bg-white/20"
+              data-testid="toggle-auto-refresh"
+            >
+              {autoRefresh ? t("Pause", "Pausar") : t("Resume", "Reanudar")}
+            </Button>
+            <Button
+              onClick={loadDashboard}
+              variant="secondary"
+              size="sm"
+              className="bg-white/10 border-white/20 text-white hover:bg-white/20"
+              data-testid="refresh-dashboard"
+            >
+              <RefreshCw className="h-4 w-4 sm:mr-1.5" />
+              <span className="hidden sm:inline">{t("Refresh", "Actualizar")}</span>
+            </Button>
+          </div>
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      {/* Stats Grid */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
-          icon={<Truck className="h-5 w-5 text-sky-600" />}
+          icon={<Truck className="h-6 w-6 text-sky-600" />}
           bg="bg-sky-100"
           count={pickupOrdersCount}
           label={t("Pickups Today", "Pickups Hoy")}
           testId="pickups"
         />
         <StatCard
-          icon={<Package className="h-5 w-5 text-amber-600" />}
+          icon={<Package className="h-6 w-6 text-amber-600" />}
           bg="bg-amber-100"
           count={ordersInProcessingCount}
           label={t("In Process", "En Proceso")}
           testId="processing"
         />
         <StatCard
-          icon={<CheckCircle className="h-5 w-5 text-green-600" />}
+          icon={<CheckCircle className="h-6 w-6 text-green-600" />}
           bg="bg-green-100"
           count={deliveriesCount}
           label={t("Deliveries Ongoing", "Entregas en curso")}
           testId="deliveries"
         />
         <StatCard
-          icon={<AlertTriangle className="h-5 w-5 text-red-600" />}
+          icon={<AlertTriangle className="h-6 w-6 text-red-600" />}
           bg="bg-red-100"
           count={urgentCount}
           label={t("Urgent Tickets", "Tickets Urgentes")}
@@ -1562,14 +1801,15 @@ const {
       </div>
 
       {/* AI Assistant */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div className="px-4 sm:px-6 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
-          <Bot className="h-4 w-4 text-sky-600 shrink-0" />
-          <h2 className="font-semibold text-slate-900 text-sm">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="px-5 py-3 border-b border-slate-200 flex items-center gap-2 bg-slate-50">
+          <Bot className="h-4 w-4 text-indigo-600 shrink-0" />
+          <h3 className="font-semibold text-slate-800 text-sm tracking-tight">
             {t("AI Operations Assistant", "Asistente Operativo IA")}
-          </h2>
+          </h3>
+          <Sparkles className="h-3.5 w-3.5 text-amber-400 ml-auto animate-pulse" />
         </div>
-        <div className="p-4 sm:p-5 grid gap-4 lg:grid-cols-[2fr_1fr]">
+        <div className="p-5 grid gap-4 lg:grid-cols-[2fr_1fr]">
           <div>
             <Textarea
               value={aiPrompt}
@@ -1579,14 +1819,15 @@ const {
                 "Example: Mark order VFL-… as paid in cash $50 and generate ticket",
                 "Ej: Marca la orden VFL-… como pagada en efectivo $50 y genera ticket"
               )}
-              className="text-sm resize-none"
+              className="text-sm resize-none bg-slate-50/80 focus:bg-white"
               data-testid="operator-ai-input"
             />
-            <div className="flex gap-2 mt-2.5">
+            <div className="flex gap-2 mt-3">
               <Button
                 onClick={handleAiRequest}
                 disabled={aiLoading || !aiPrompt.trim()}
                 size="sm"
+                className="bg-indigo-600 hover:bg-indigo-700"
                 data-testid="operator-ai-submit"
               >
                 {aiLoading ? t("Processing…", "Procesando…") : t("Send to AI", "Enviar a IA")}
@@ -1605,20 +1846,22 @@ const {
               </Button>
             </div>
           </div>
-          <div className="bg-slate-50 rounded-xl p-3.5">
-            <p className="text-xs text-slate-400 mb-1">{t("Response", "Respuesta")}</p>
+          <div className="bg-slate-50 rounded-xl p-4 border border-slate-200/80">
+            <p className="text-xs text-slate-400 font-medium uppercase tracking-wide mb-2">
+              {t("Response", "Respuesta")}
+            </p>
             <p
-              className="font-medium text-slate-800 text-sm leading-relaxed"
+              className="font-medium text-slate-800 text-sm leading-relaxed min-h-[4rem]"
               data-testid="operator-ai-reply"
             >
               {aiReply || (
-                <span className="text-slate-400 font-normal">
+                <span className="text-slate-400 font-normal italic">
                   {t("No reply yet", "Aún no hay respuesta")}
                 </span>
               )}
             </p>
             {aiResults.length > 0 && (
-              <ul className="mt-2.5 space-y-1 border-t border-slate-200 pt-2.5">
+              <ul className="mt-2 space-y-1.5 border-t border-slate-200 pt-2">
                 {aiResults.map((r, i) => (
                   <li
                     key={i}
@@ -1641,41 +1884,48 @@ const {
         className="w-full"
         data-testid="operator-tabs"
       >
-        <TabsList className="w-full grid grid-cols-3 mb-4 h-11">
+        <TabsList className="w-full grid grid-cols-3 mb-6 h-12 rounded-xl bg-slate-100 p-1">
           <TabsTrigger
             value="orders"
-            className="text-xs sm:text-sm gap-1.5"
+            className="text-sm gap-1.5 h-10 rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-md data-[state=active]:text-indigo-600"
             data-testid="tab-orders"
           >
             <ClipboardList className="h-4 w-4" />
             <span className="hidden sm:inline">{t("Service Orders", "Ordenes de Servicio")}</span>
             <span className="sm:hidden">{t("Orders", "Ordenes")}</span>
           </TabsTrigger>
-          <TabsTrigger value="store" className="text-xs sm:text-sm gap-1.5" data-testid="tab-store">
+          <TabsTrigger
+            value="store"
+            className="text-sm gap-1.5 h-10 rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-md data-[state=active]:text-indigo-600"
+            data-testid="tab-store"
+          >
             <ShoppingBag className="h-4 w-4" />
             <span className="hidden sm:inline">{t("Store Orders", "Store Orders")}</span>
             <span className="sm:hidden">Store</span>
           </TabsTrigger>
-          <TabsTrigger value="map" className="text-xs sm:text-sm gap-1.5" data-testid="tab-map">
+          <TabsTrigger
+            value="map"
+            className="text-sm gap-1.5 h-10 rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-md data-[state=active]:text-indigo-600"
+            data-testid="tab-map"
+          >
             <MapIcon className="h-4 w-4" />
             <span className="hidden sm:inline">{t("Logistics Map", "Mapa Logistico")}</span>
             <span className="sm:hidden">{t("Map", "Mapa")}</span>
           </TabsTrigger>
         </TabsList>
 
-        {/* ── Tab 1: Service Orders ─────────────────────────────────────────── */}
+        {/* ── Tab 1: Service Orders ──────────────────────────────────────── */}
         <TabsContent value="orders">
           <MapFilters onFilterChange={setOrderFilters} activeFilters={orderFilters} />
 
-          {/* Desktop sub-tabs */}
           {!isMobile && (
-            <div className="flex gap-2 mb-4 border-b border-slate-200 pb-2">
+            <div className="flex gap-3 mb-4 px-1">
               <button
                 onClick={() => setServiceSubTab("pickup")}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition-all text-sm ${
                   serviceSubTab === "pickup"
-                    ? "bg-blue-50 text-blue-600 border-b-2 border-blue-600"
-                    : "text-slate-500 hover:text-slate-700"
+                    ? "bg-slate-900 text-white shadow-md"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
                 }`}
               >
                 <Truck className="h-4 w-4" />
@@ -1683,10 +1933,10 @@ const {
               </button>
               <button
                 onClick={() => setServiceSubTab("wash")}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition-all text-sm ${
                   serviceSubTab === "wash"
-                    ? "bg-purple-50 text-purple-600 border-b-2 border-purple-600"
-                    : "text-slate-500 hover:text-slate-700"
+                    ? "bg-slate-900 text-white shadow-md"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
                 }`}
               >
                 <Package className="h-4 w-4" />
@@ -1695,13 +1945,12 @@ const {
             </div>
           )}
 
-          {/* Mobile floating button */}
           <MobileServiceSwitch onSwitch={handleSwitchService} currentService={serviceSubTab} />
 
           {serviceSubTab === "pickup" ? (
-            <div className="space-y-4">
+            <div className="space-y-6">
               {/* Created / Confirmed */}
-              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-md">
                 <CardHeader
                   icon={<Truck className="h-4 w-4 text-sky-500" />}
                   title={t(
@@ -1714,7 +1963,7 @@ const {
                 <div className="divide-y divide-slate-100">
                   {filteredPickupOrders.length === 0 ? (
                     <EmptyState
-                      icon={<Truck className="h-8 w-8" />}
+                      icon={<Truck className="h-8 w-8 text-slate-300" />}
                       text={t(
                         "No created or confirmed orders",
                         "No hay ordenes creadas o confirmadas"
@@ -1747,7 +1996,7 @@ const {
               </div>
 
               {/* Payment queue */}
-              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-md">
                 <CardHeader
                   icon={<DollarSign className="h-4 w-4 text-emerald-500" />}
                   title={t(
@@ -1760,37 +2009,34 @@ const {
                 <div className="divide-y divide-slate-100">
                   {filteredPickupPaymentQueue.length === 0 ? (
                     <EmptyState
-                      icon={<DollarSign className="h-8 w-8" />}
+                      icon={<DollarSign className="h-8 w-8 text-slate-300" />}
                       text={t("No pickup payments pending", "Sin pagos pendientes")}
                       testId="pos-pickup-payment-empty"
                     />
                   ) : (
                     filteredPickupPaymentQueue.map((order) => {
-                      const amount = calculateServiceCharge(order);
+                      const amount = Number(order.extra_charge ?? order.total_amount ?? 0);
                       return (
                         <div
                           key={order.order_id ?? order.order_number}
-                          className="p-3 sm:p-4 hover:bg-slate-50/70 transition-colors cursor-pointer"
+                          className="p-4 bg-white border border-slate-200 rounded-xl hover:shadow-md hover:border-emerald-300 transition-all cursor-pointer"
                           role="button"
                           onClick={() => setSelectedOrder(order)}
                           data-testid={`pos-pickup-payment-${order.order_id || "unknown"}`}
                         >
-                          <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0 flex-1">
                               <div className="flex flex-wrap items-center gap-1.5 mb-1">
-                                <span className="font-mono font-semibold text-xs sm:text-sm text-slate-900">
+                                <span className="font-mono font-semibold text-slate-800 font-sm">
                                   {formatOrderNumber(order)}
                                 </span>
-                                {(() => {
-                                  const si = getStatusInfo(order.status, order.service_type);
-                                  return (
-                                    <span
-                                      className={`px-1.5 py-0.5 text-xs font-medium rounded-full ${si.color}`}
-                                    >
-                                      {si.label}
-                                    </span>
-                                  );
-                                })()}
+                                <span
+                                  className={`px-2 py-0.5 text-xs font-medium rounded-full ${
+                                    getStatusInfo(order.status, order.service_type).color
+                                  }`}
+                                >
+                                  {getStatusInfo(order.status, order.service_type).label}
+                                </span>
                               </div>
                               <p className="text-sm text-slate-700 font-medium truncate">
                                 {safeString(order.customer_name, t("Customer", "Cliente"))}
@@ -1804,14 +2050,14 @@ const {
                                 </span>
                               </p>
                             </div>
-                            <div
-                              className="flex flex-col gap-1.5 shrink-0"
-                              onClick={(e) => e.stopPropagation()}
-                            >
+                            <div className="flex flex-col gap-2 shrink-0">
                               <Button
                                 size="sm"
-                                className="bg-emerald-600 hover:bg-emerald-700 text-xs h-7"
-                                onClick={() => setSelectedOrder(order)}
+                                className="bg-emerald-600 hover:bg-emerald-700 text-xs h-8 px-3 rounded-lg shadow-sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedOrder(order);
+                                }}
                                 data-testid={`pos-pickup-collect-${order.order_id}`}
                               >
                                 {t("Collect", "Cobrar")}
@@ -1820,22 +2066,26 @@ const {
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  className="text-xs h-7 px-2 gap-1 hover:border-sky-300 hover:text-sky-600"
-                                  onClick={() => handlePrintTicket(order)}
+                                  className="h-8 w-8 p-0 rounded-lg text-slate-400 hover:text-sky-600 shadow-sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handlePrintTicket(order);
+                                  }}
                                   data-testid={`pos-pickup-payment-print-${order.order_id}`}
                                 >
-                                  <Printer className="h-3 w-3" />
-                                  <span className="hidden sm:inline">{t("Print", "Imprimir")}</span>
+                                  <Printer className="h-4 w-4" />
                                 </Button>
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  className="text-xs h-7 px-2 gap-1 hover:border-emerald-300 hover:text-emerald-600"
-                                  onClick={() => handleDownloadPDF(order)}
+                                  className="h-8 w-8 p-0 rounded-lg text-slate-400 hover:text-emerald-600 shadow-sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDownloadPDF(order);
+                                  }}
                                   data-testid={`pos-pickup-payment-pdf-${order.order_id}`}
                                 >
-                                  <FileDown className="h-3 w-3" />
-                                  <span className="hidden sm:inline">PDF</span>
+                                  <FileDown className="h-4 w-4" />
                                 </Button>
                               </div>
                             </div>
@@ -1848,7 +2098,7 @@ const {
               </div>
 
               {/* In Process / Ready / Out for Delivery */}
-              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-md">
                 <CardHeader
                   icon={<CheckCircle className="h-4 w-4 text-emerald-500" />}
                   title={t(
@@ -1856,13 +2106,13 @@ const {
                     "Pickup & Delivery — En proceso / Lista / En camino"
                   )}
                   count={filteredPickupDeliveries.length}
-                  bgClass="bg-emerald-50"
+                  bgClass="bg-emerald-50/30"
                   testId="pos-pickup-delivery-count"
                 />
                 <div className="divide-y divide-slate-100">
                   {filteredPickupDeliveries.length === 0 ? (
                     <EmptyState
-                      icon={<Package className="h-8 w-8" />}
+                      icon={<Package className="h-8 w-8 text-slate-300" />}
                       text={t(
                         "No active process or delivery orders",
                         "No hay ordenes activas en proceso o entrega"
@@ -1895,9 +2145,9 @@ const {
               </div>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-6">
               {/* Wash & Fold — Created / Confirmed */}
-              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-md">
                 <CardHeader
                   icon={<Package className="h-4 w-4 text-purple-500" />}
                   title={t(
@@ -1910,7 +2160,7 @@ const {
                 <div className="divide-y divide-slate-100">
                   {filteredWashFoldDropoffs.length === 0 ? (
                     <EmptyState
-                      icon={<Package className="h-8 w-8" />}
+                      icon={<Package className="h-8 w-8 text-slate-300" />}
                       text={t(
                         "No created or confirmed orders",
                         "Sin ordenes creadas o confirmadas"
@@ -1943,47 +2193,47 @@ const {
               </div>
 
               {/* Wash & Fold — Payment queue */}
-              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-md">
                 <CardHeader
                   icon={<DollarSign className="h-4 w-4 text-emerald-500" />}
-                  title={t("Wash & Fold — Request Payment", "Wash & Fold — Solicitar pago")}
+                  title={t(
+                    "Wash & Fold — Request Payment",
+                    "Wash & Fold — Solicitar pago"
+                  )}
                   count={filteredWashFoldPaymentQueue.length}
                   testId="pos-washfold-payment-count"
                 />
                 <div className="divide-y divide-slate-100">
                   {filteredWashFoldPaymentQueue.length === 0 ? (
                     <EmptyState
-                      icon={<DollarSign className="h-8 w-8" />}
+                      icon={<DollarSign className="h-8 w-8 text-slate-300" />}
                       text={t("No wash & fold payments pending", "Sin pagos pendientes")}
                       testId="pos-washfold-payment-empty"
                     />
                   ) : (
                     filteredWashFoldPaymentQueue.map((order) => {
-                      const amount = calculateServiceCharge(order);
+                      const amount = Number(order.extra_charge ?? order.total_amount ?? 0);
                       return (
                         <div
                           key={order.order_id ?? order.order_number}
-                          className="p-3 sm:p-4 hover:bg-slate-50/70 cursor-pointer transition-colors"
+                          className="p-4 bg-white border border-slate-200 rounded-xl hover:shadow-md hover:border-emerald-300 transition-all cursor-pointer"
                           role="button"
                           onClick={() => setSelectedOrder(order)}
                           data-testid={`pos-washfold-payment-${order.order_id || "unknown"}`}
                         >
-                          <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0 flex-1">
                               <div className="flex flex-wrap items-center gap-1.5 mb-1">
-                                <span className="font-mono font-semibold text-xs sm:text-sm text-slate-900">
+                                <span className="font-mono font-semibold text-slate-800 text-sm">
                                   {formatOrderNumber(order)}
                                 </span>
-                                {(() => {
-                                  const si = getStatusInfo(order.status, order.service_type);
-                                  return (
-                                    <span
-                                      className={`px-1.5 py-0.5 text-xs font-medium rounded-full ${si.color}`}
-                                    >
-                                      {si.label}
-                                    </span>
-                                  );
-                                })()}
+                                <span
+                                  className={`px-2 py-0.5 text-xs font-medium rounded-full ${
+                                    getStatusInfo(order.status, order.service_type).color
+                                  }`}
+                                >
+                                  {getStatusInfo(order.status, order.service_type).label}
+                                </span>
                               </div>
                               <p className="text-sm text-slate-700 font-medium truncate">
                                 {safeString(order.customer_name, t("Customer", "Cliente"))}
@@ -1997,14 +2247,14 @@ const {
                                 </span>
                               </p>
                             </div>
-                            <div
-                              className="flex flex-col gap-1.5 shrink-0"
-                              onClick={(e) => e.stopPropagation()}
-                            >
+                            <div className="flex flex-col gap-2 shrink-0">
                               <Button
                                 size="sm"
-                                className="bg-emerald-600 hover:bg-emerald-700 text-xs h-7"
-                                onClick={() => setSelectedOrder(order)}
+                                className="bg-emerald-600 hover:bg-emerald-700 text-xs h-8 px-3 rounded-lg shadow-sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedOrder(order);
+                                }}
                                 data-testid={`pos-washfold-collect-${order.order_id}`}
                               >
                                 {t("Collect", "Cobrar")}
@@ -2013,22 +2263,26 @@ const {
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  className="text-xs h-7 px-2 gap-1 hover:border-sky-300 hover:text-sky-600"
-                                  onClick={() => handlePrintTicket(order)}
+                                  className="h-8 w-8 p-0 rounded-lg text-slate-400 hover:text-sky-600 shadow-sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handlePrintTicket(order);
+                                  }}
                                   data-testid={`pos-washfold-print-payment-${order.order_id}`}
                                 >
-                                  <Printer className="h-3 w-3" />
-                                  <span className="hidden sm:inline">{t("Print", "Imprimir")}</span>
+                                  <Printer className="h-4 w-4" />
                                 </Button>
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  className="text-xs h-7 px-2 gap-1 hover:border-emerald-300 hover:text-emerald-600"
-                                  onClick={() => handleDownloadPDF(order)}
+                                  className="h-8 w-8 p-0 rounded-lg text-slate-400 hover:text-emerald-600 shadow-sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDownloadPDF(order);
+                                  }}
                                   data-testid={`pos-washfold-pdf-payment-${order.order_id}`}
                                 >
-                                  <FileDown className="h-3 w-3" />
-                                  <span className="hidden sm:inline">PDF</span>
+                                  <FileDown className="h-4 w-4" />
                                 </Button>
                               </div>
                             </div>
@@ -2041,7 +2295,7 @@ const {
               </div>
 
               {/* Wash & Fold — Processing / Ready */}
-              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-md">
                 <CardHeader
                   icon={<CheckCircle className="h-4 w-4 text-emerald-500" />}
                   title={t(
@@ -2049,14 +2303,17 @@ const {
                     "Wash & Fold — Procesando / Lista para recoger"
                   )}
                   count={filteredWashFoldReady.length}
-                  bgClass="bg-emerald-50"
+                  bgClass="bg-emerald-50/30"
                   testId="pos-washfold-ready-count"
                 />
                 <div className="divide-y divide-slate-100">
                   {filteredWashFoldReady.length === 0 ? (
                     <EmptyState
-                      icon={<CheckCircle className="h-8 w-8" />}
-                      text={t("No orders in process or ready", "Sin ordenes en proceso o listas")}
+                      icon={<CheckCircle className="h-8 w-8 text-slate-300" />}
+                      text={t(
+                        "No orders in process or ready",
+                        "Sin ordenes en proceso o listas"
+                      )}
                       testId="pos-washfold-ready-empty"
                     />
                   ) : (
@@ -2087,50 +2344,36 @@ const {
           )}
         </TabsContent>
 
-        {/* ── Tab 2: Store Orders ───────────────────────────────────────────── */}
+        {/* ── Tab 2: Store Orders ────────────────────────────────────────── */}
         <TabsContent value="store">
           <div className="space-y-4">
-            <div
-              className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm"
-              data-testid="store-orders-panel"
-            >
-              <div className="px-4 sm:px-6 py-4 border-b border-slate-100 bg-slate-50">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                  <div>
-                    <h3 className="font-semibold text-slate-900 text-sm sm:text-base">
-                      {t("Store Orders", "Ordenes tienda")}
-                    </h3>
-                    <p className="text-xs text-slate-400 mt-0.5">
-                      {t("Process product purchases", "Procesa compras de productos")}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button
-                      size="sm"
-                      className="bg-sky-600 hover:bg-sky-700 text-xs sm:text-sm"
-                      onClick={openStorePos}
-                      data-testid="store-pos-open"
-                    >
-                      {t("New Store Sale", "Nueva venta")}
-                    </Button>
-                    <span
-                      className="text-xs font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full"
-                      data-testid="store-orders-count"
-                    >
-                      {storeOrders.length}
-                    </span>
-                  </div>
+            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-md">
+              <div className="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-slate-50/50">
+                <div>
+                  <h3 className="font-semibold text-slate-800 text-sm">
+                    {t("Store Orders", "Ordenes tienda")}
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {t("Process product purchases", "Procesa compras de productos")}
+                  </p>
                 </div>
+                <Button
+                  size="sm"
+                  className="bg-slate-900 hover:bg-slate-800 text-xs h-9 px-4 rounded-lg shadow-sm"
+                  onClick={openStorePos}
+                  data-testid="store-pos-open"
+                >
+                  {t("New Store Sale", "Nueva venta")}
+                </Button>
               </div>
 
-              {/* Filters bar */}
-              <div
-                className="px-4 sm:px-6 py-2.5 bg-white border-b border-slate-100 flex flex-wrap items-center gap-2"
-                data-testid="store-orders-filters"
-              >
-                <Search className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+              <div className="px-4 py-3 border-b border-slate-100 flex flex-wrap items-center gap-2">
+                <Search className="h-4 w-4 text-slate-400 shrink-0" />
                 <Input
-                  placeholder={t("Search by order, customer...", "Buscar por orden, cliente...")}
+                  placeholder={t(
+                    "Search by order, customer...",
+                    "Buscar por orden, cliente..."
+                  )}
                   value={storeOrderSearch}
                   onChange={(e) => setStoreOrderSearch(e.target.value)}
                   className="h-8 w-[200px] text-xs"
@@ -2142,14 +2385,19 @@ const {
                       key={f}
                       size="sm"
                       variant={storePaymentFilter === f ? "default" : "outline"}
-                      className={`h-7 text-xs ${storePaymentFilter === f ? (f === "unpaid" ? "bg-amber-500 hover:bg-amber-600" : f === "paid" ? "bg-emerald-500 hover:bg-emerald-600" : "") : ""}`}
+                      className={`h-7 text-xs ${
+                        storePaymentFilter === f
+                          ? f === "unpaid"
+                            ? "bg-amber-500 hover:bg-amber-600"
+                            : f === "paid"
+                            ? "bg-emerald-500 hover:bg-emerald-600"
+                            : ""
+                          : ""
+                      }`}
                       onClick={() => setStorePaymentFilter(f)}
                       data-testid={`store-filter-${f}`}
                     >
-                      {t(
-                        f === "all" ? "All" : f === "unpaid" ? "Unpaid" : "Paid",
-                        f === "all" ? "Todos" : f === "unpaid" ? "Sin pagar" : "Pagados"
-                      )}
+                      {t(f === "all" ? "All" : f === "unpaid" ? "Unpaid" : "Paid")}
                       {f === "unpaid" && unpaidStoreOrders.length > 0 && (
                         <span className="ml-1 text-[10px] font-bold">
                           {unpaidStoreOrders.length}
@@ -2160,7 +2408,6 @@ const {
                 </div>
               </div>
 
-              {/* Orders table */}
               {storeOrdersLoading ? (
                 <div className="p-8 text-center text-slate-400 text-sm">
                   {t("Loading store orders...", "Cargando ordenes...")}
@@ -2188,7 +2435,9 @@ const {
                           ].map((h, i) => (
                             <th
                               key={i}
-                              className={`px-4 py-3 font-semibold ${i === 5 ? "text-right" : "text-left"}`}
+                              className={`px-4 py-3 font-semibold ${
+                                i === 5 ? "text-right" : "text-left"
+                              }`}
                             >
                               {h}
                             </th>
@@ -2209,24 +2458,24 @@ const {
                               </td>
                               <td className="px-4 py-3">
                                 <p className="text-slate-800 text-sm font-medium">
-                                  {safeString(order.customer_name, t("Customer", "Cliente"))}
+                                  {safeString(order.customer_name)}
                                 </p>
                                 <p className="text-xs text-slate-400">
                                   {safeString(order.customer_email)}
                                 </p>
                               </td>
                               <td className="px-4 py-3">
-                                <span
-                                  className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-xs font-medium"
-                                  data-testid={`store-order-status-${order.id}`}
-                                >
+                                <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-xs font-medium">
                                   {getStoreStatusDisplay(order.status)}
                                 </span>
                               </td>
                               <td className="px-4 py-3">
                                 <p
-                                  className={`text-sm font-semibold ${order.payment_status === "paid" ? "text-emerald-600" : "text-amber-600"}`}
-                                  data-testid={`store-order-payment-${order.id}`}
+                                  className={`text-sm font-semibold ${
+                                    order.payment_status === "paid"
+                                      ? "text-emerald-600"
+                                      : "text-amber-600"
+                                  }`}
                                 >
                                   {getPaymentStatusLabel(order.payment_status)}
                                 </p>
@@ -2234,10 +2483,7 @@ const {
                                   {safeString(order.payment_method, "-")}
                                 </p>
                               </td>
-                              <td
-                                className="px-4 py-3 font-bold text-slate-800"
-                                data-testid={`store-order-total-${order.id}`}
-                              >
+                              <td className="px-4 py-3 font-bold text-slate-800">
                                 {formatCurrency(order.total)}
                               </td>
                               <td className="px-4 py-3 text-right">
@@ -2288,7 +2534,9 @@ const {
                                       disabled={storeUpdating[order.id]}
                                       data-testid={`store-order-refund-${order.id}`}
                                     >
-                                      {storeUpdating[order.id] ? "…" : t("Refund", "Reembolsar")}
+                                      {storeUpdating[order.id]
+                                        ? "…"
+                                        : t("Refund", "Reembolsar")}
                                     </Button>
                                   )}
                                 </div>
@@ -2316,7 +2564,7 @@ const {
                                 {safeString(order.order_number)}
                               </p>
                               <p className="text-sm font-medium text-slate-800 mt-0.5">
-                                {safeString(order.customer_name, t("Customer", "Cliente"))}
+                                {safeString(order.customer_name)}
                               </p>
                               <p className="text-xs text-slate-400">
                                 {safeString(order.customer_email)}
@@ -2333,7 +2581,11 @@ const {
                           </div>
                           <div className="flex items-center gap-1.5 text-xs">
                             <span
-                              className={`font-semibold ${order.payment_status === "paid" ? "text-emerald-600" : "text-amber-600"}`}
+                              className={`font-semibold ${
+                                order.payment_status === "paid"
+                                  ? "text-emerald-600"
+                                  : "text-amber-600"
+                              }`}
                             >
                               {getPaymentStatusLabel(order.payment_status)}
                             </span>
@@ -2364,7 +2616,9 @@ const {
                                 onClick={() => updateStoreOrderStatus(order.id, ns)}
                                 disabled={storeUpdating[order.id]}
                               >
-                                {storeUpdating[order.id] ? "…" : `→ ${getStoreStatusDisplay(ns)}`}
+                                {storeUpdating[order.id]
+                                  ? "…"
+                                  : `→ ${getStoreStatusDisplay(ns)}`}
                               </Button>
                             )}
                             <Button
@@ -2398,15 +2652,12 @@ const {
           </div>
         </TabsContent>
 
-        {/* ── Tab 3: Logistics Map ──────────────────────────────────────────── */}
+        {/* ── Tab 3: Logistics Map ───────────────────────────────────────── */}
         <TabsContent value="map">
-          <div
-            className="bg-white rounded-xl border border-slate-200 overflow-hidden"
-            style={{ position: "relative", zIndex: 1 }}
-          >
-            <div className="px-4 sm:px-6 py-4 border-b border-slate-100 bg-slate-50">
-              <h3 className="font-semibold text-slate-900 text-sm sm:text-base flex items-center gap-2">
-                <MapPin className="h-4 w-4 text-sky-600" />
+          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-md">
+            <div className="px-5 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
+              <MapPin className="h-4 w-4 text-indigo-600" />
+              <h3 className="font-semibold text-slate-800 text-sm">
                 {t("Order Locations", "Ubicaciones de ordenes")}
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
@@ -2418,10 +2669,12 @@ const {
             </div>
             <MapFilters onFilterChange={loadFilteredMapOrders} activeFilters={mapFilters} />
             {(mapFilters.date || mapFilters.time_window) && (
-              <div className="px-4 py-1.5 bg-sky-50 border-b border-sky-100 text-xs text-sky-700">
+              <div className="px-4 py-1.5 bg-indigo-50 border-b border-indigo-100 text-xs text-indigo-700 font-medium">
                 {t("Showing filtered results", "Mostrando resultados filtrados")}
                 {mapFilters.date && (
-                  <span className="ml-1 font-semibold">{formatShortDatePT(mapFilters.date)}</span>
+                  <span className="ml-1 font-semibold">
+                    {formatShortDatePT(mapFilters.date)}
+                  </span>
                 )}
                 {mapFilters.time_window && (
                   <span className="ml-1 font-semibold">
@@ -2430,7 +2683,8 @@ const {
                   </span>
                 )}
                 <span className="ml-2">
-                  ({(filteredMapOrders || ordersWithCoordinates).length} {t("orders", "ordenes")})
+                  ({(filteredMapOrders || ordersWithCoordinates).length}{" "}
+                  {t("orders", "ordenes")})
                 </span>
               </div>
             )}
@@ -2453,9 +2707,11 @@ const {
                           ...o,
                           order_id: o.id,
                           customer_name: o.customer?.name || o.customer_name || "",
-                          pickup_address: o.location?.address || o.pickup_address || "",
+                          pickup_address:
+                            o.location?.address || o.pickup_address || "",
                           delivery_address: o.delivery_address || "",
-                          payment_status: o.payment?.status || o.payment_status || "unpaid",
+                          payment_status:
+                            o.payment?.status || o.payment_status || "unpaid",
                           coords: { lat: o.location.lat, lng: o.location.lng },
                         }))
                     : ordersWithCoordinates;
@@ -2487,7 +2743,9 @@ const {
                       >
                         <Popup minWidth={280} maxWidth={320}>
                           <div className="space-y-2 text-sm">
-                            <div className="font-bold text-base">{formatOrderNumber(order)}</div>
+                            <div className="font-bold text-base">
+                              {formatOrderNumber(order)}
+                            </div>
                             <div className="text-slate-700">{order.customer_name}</div>
                             <div className="text-xs text-slate-500 break-words">
                               {order.pickup_address || order.delivery_address}
@@ -2524,7 +2782,7 @@ const {
                               <Button
                                 size="sm"
                                 variant="default"
-                                className="w-full"
+                                className="w-full bg-slate-900 hover:bg-slate-800"
                                 onClick={() => setSelectedOrder(order)}
                               >
                                 {t("View details", "Ver detalles")}
@@ -2542,7 +2800,7 @@ const {
         </TabsContent>
       </Tabs>
 
-      {/* ── Modals ────────────────────────────────────────────────────────────── */}
+      {/* ── Modals ─────────────────────────────────────────────────────────── */}
       <OrderDetailDialog
         order={selectedOrder}
         onClose={() => setSelectedOrder(null)}
@@ -2555,8 +2813,6 @@ const {
         onClose={() => setPickupImageModal(null)}
         onConfirm={handlePickupImageConfirm}
       />
-
-      {/* ── Confirm Dialog ────────────────────────────────────────────────────── */}
       <ConfirmDialog
         open={!!confirmDialog}
         title={confirmDialog?.title}
@@ -2570,20 +2826,22 @@ const {
         open={storePosOpen}
         onOpenChange={(open) => (!open ? resetStorePos() : setStorePosOpen(true))}
       >
-<DialogContent className="w-[95vw] max-w-5xl bg-white max-h-[90vh] overflow-y-auto">
-  <DialogHeader>
-    <DialogTitle className="text-base sm:text-lg">
-      {t("New Store Sale", "Nueva venta en tienda")}
-    </DialogTitle>
-    <DialogDescription className="text-xs sm:text-sm">
-      {t("Select products and collect payment quickly.", "Selecciona productos y cobra rapido.")}
-    </DialogDescription>
-  </DialogHeader>
-            <div
+        <DialogContent className="w-[95vw] max-w-5xl bg-white max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-base sm:text-lg">
+              {t("New Store Sale", "Nueva venta en tienda")}
+            </DialogTitle>
+            <DialogDescription className="text-xs sm:text-sm">
+              {t(
+                "Select products and collect payment quickly.",
+                "Selecciona productos y cobra rapido."
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div
             className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6"
             data-testid="store-pos-modal"
           >
-            {/* Product list */}
             <div className="space-y-3">
               <Input
                 placeholder={t("Search products", "Buscar productos")}
@@ -2663,8 +2921,6 @@ const {
                 </div>
               </div>
             </div>
-
-            {/* Cart + Payment */}
             <div className="space-y-3">
               <div
                 className="border border-slate-200 rounded-xl p-3 sm:p-4"
@@ -2693,40 +2949,78 @@ const {
                   <p className="text-xs text-slate-400">{t("No items yet", "Sin productos")}</p>
                 )}
               </div>
-
               <div
                 className="border border-slate-200 rounded-xl p-3 sm:p-4 space-y-2"
                 data-testid="store-pos-summary"
               >
-                <div className="flex justify-between font-bold text-base sm:text-lg pt-1 border-b border-slate-100 pb-2">
-                  <span>{t("Total", "Total")}</span>
-                  <span data-testid="store-pos-total">${storeOrderTotal.toFixed(2)}</span>
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-500">{t("Subtotal", "Subtotal")}</span>
+                  <span>${storeOrderTotal.base.toFixed(2)}</span>
                 </div>
-                <p className="text-xs text-slate-400 text-center">
-                  {t("Select a payment method", "Selecciona metodo de pago")}
-                </p>
-                <div className="grid grid-cols-2 gap-2">
+                {storeCheckoutForm.fulfillment_type === "delivery" &&
+                  storeShippingQuote.fee > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-500">{t("Shipping", "Envío")}</span>
+                      <span>${storeShippingQuote.fee.toFixed(2)}</span>
+                    </div>
+                  )}
+                {storeOrderTotal.fee > 0 && (
+                  <div className="flex justify-between text-sm text-amber-600">
+                    <span>
+                      {t("Payment method fee", "Recargo por método de pago")} (
+                      {storeOrderTotal.feePercentage}%)
+                    </span>
+                    <span>+${storeOrderTotal.fee.toFixed(2)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between font-bold text-base sm:text-lg pt-2 border-t border-slate-100">
+                  <span>{t("Total", "Total")}</span>
+                  <span data-testid="store-pos-total">${storeOrderTotal.total.toFixed(2)}</span>
+                </div>
+
+                <div className="mt-3">
+                  <label className="text-xs font-semibold">
+                    {t("Payment method", "Método de pago")}
+                  </label>
+                  <select
+                    className="w-full mt-1 border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                    value={storeCheckoutForm.payment_method}
+                    onChange={(e) =>
+                      setStoreCheckoutForm((prev) => ({
+                        ...prev,
+                        payment_method: e.target.value,
+                      }))
+                    }
+                    data-testid="store-payment-method-select"
+                  >
+                    <option value="cash">{t("Cash (0% fee)", "Efectivo (0% recargo)")}</option>
+                    <option value="card">{t("Card (3.5% fee)", "Tarjeta (3.5% recargo)")}</option>
+                    <option value="transfer">
+                      {t("Transfer (2% fee)", "Transferencia (2% recargo)")}
+                    </option>
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 mt-2">
                   <Button
-                    className="w-full bg-sky-600 hover:bg-sky-700 text-xs sm:text-sm h-11"
+                    className="w-full bg-sky-600 hover:bg-sky-700 text-xs sm:text-sm h-11 shadow-sm"
                     onClick={() => handleQuickCheckout("card")}
                     disabled={storeCheckoutLoading || !storeCart?.items?.length}
-                    data-testid="store-pos-pay-card"
                   >
                     <CreditCard className="h-4 w-4 mr-1.5" />
-                    {t("Tap / Card", "Tap / Tarjeta")}
+                    {t("Pay with Card", "Pagar con Tarjeta")}
                   </Button>
                   <Button
-                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-xs sm:text-sm h-11"
+                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-xs sm:text-sm h-11 shadow-sm"
                     onClick={() => handleQuickCheckout("cash")}
                     disabled={storeCheckoutLoading || !storeCart?.items?.length}
-                    data-testid="store-pos-pay-cash"
                   >
                     <DollarSign className="h-4 w-4 mr-1.5" />
-                    {t("Cash", "Efectivo")}
+                    {t("Pay with Cash", "Pagar en Efectivo")}
                   </Button>
                   <Button
                     variant="outline"
-                    className="w-full text-xs sm:text-sm h-11 border-purple-200 text-purple-700 hover:bg-purple-50"
+                    className="w-full text-xs sm:text-sm h-11 border-purple-200 text-purple-700 hover:bg-purple-50 shadow-sm"
                     onClick={() => setStoreLinkMode("sms")}
                     disabled={storeCheckoutLoading || !storeCart?.items?.length}
                     data-testid="store-pos-link-sms"
@@ -2736,7 +3030,7 @@ const {
                   </Button>
                   <Button
                     variant="outline"
-                    className="w-full text-xs sm:text-sm h-11 border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+                    className="w-full text-xs sm:text-sm h-11 border-indigo-200 text-indigo-700 hover:bg-indigo-50 shadow-sm"
                     onClick={() => setStoreLinkMode("email")}
                     disabled={storeCheckoutLoading || !storeCart?.items?.length}
                     data-testid="store-pos-link-email"
@@ -2751,11 +3045,11 @@ const {
                     data-testid="store-pos-link-form"
                   >
                     <div className="flex items-center justify-between">
-                      <Label className="text-xs font-semibold">
+                      <label className="text-xs font-semibold">
                         {storeLinkMode === "sms"
                           ? t("Phone number", "Numero de telefono")
                           : t("Email address", "Correo electronico")}
-                      </Label>
+                      </label>
                       <button
                         className="text-slate-400 hover:text-slate-600"
                         onClick={() => setStoreLinkMode(null)}
@@ -2796,15 +3090,15 @@ const {
         open={!!storePaymentOrder}
         onOpenChange={(open) => !open && setStorePaymentOrder(null)}
       >
-       <DialogContent className="w-[95vw] max-w-lg bg-white">
-  <DialogHeader>
-    <DialogTitle className="text-base sm:text-lg">
-      {t("Request payment", "Solicitar pago")}
-    </DialogTitle>
-    <DialogDescription className="text-xs sm:text-sm">
-      {safeString(storePaymentOrder?.order_number)}
-    </DialogDescription>
-  </DialogHeader>
+        <DialogContent className="w-[95vw] max-w-lg bg-white">
+          <DialogHeader>
+            <DialogTitle className="text-base sm:text-lg">
+              {t("Request payment", "Solicitar pago")}
+            </DialogTitle>
+            <DialogDescription className="text-xs sm:text-sm">
+              {safeString(storePaymentOrder?.order_number)}
+            </DialogDescription>
+          </DialogHeader>
           {storePaymentOrder && (
             <div className="space-y-4" data-testid="store-payment-modal">
               <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
@@ -2814,9 +3108,9 @@ const {
                 </span>
               </div>
               <div>
-                <Label className="text-xs sm:text-sm">
+                <label className="text-xs sm:text-sm">
                   {t("Payment method", "Metodo de pago")}
-                </Label>
+                </label>
                 <select
                   className="w-full mt-1 border border-slate-200 rounded-lg px-3 py-2 text-sm"
                   value={storePaymentForm.method}
@@ -2838,7 +3132,7 @@ const {
                 </p>
               )}
               <Button
-                className="w-full bg-emerald-600 hover:bg-emerald-700 text-sm"
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-sm shadow-md"
                 onClick={handleStorePayment}
                 disabled={storeProcessingPayment}
                 data-testid="store-payment-submit"
@@ -2846,8 +3140,8 @@ const {
                 {storeProcessingPayment
                   ? t("Processing…", "Procesando…")
                   : storePaymentForm.method === "card"
-                    ? t("Pay with Stripe", "Pagar con Stripe")
-                    : t("Register payment", "Registrar pago")}
+                  ? t("Pay with Stripe", "Pagar con Stripe")
+                  : t("Register payment", "Registrar pago")}
               </Button>
             </div>
           )}
@@ -2856,15 +3150,15 @@ const {
 
       {/* Urgent Tickets */}
       {dashboard?.urgent_tickets?.length > 0 && (
-        <div className="bg-white rounded-xl border border-red-200 overflow-hidden shadow-sm">
-          <div className="px-4 sm:px-6 py-4 border-b border-red-100 bg-red-50 flex items-center gap-2">
+        <div className="bg-white rounded-2xl border border-red-200 overflow-hidden shadow-md">
+          <div className="px-5 py-4 border-b border-red-100 bg-red-50/50 flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-red-500 shrink-0" />
-            <h2 className="font-semibold text-red-800 text-sm sm:text-base">
+            <h3 className="font-semibold text-red-800 text-sm sm:text-base">
               {t("Urgent Tickets", "Tickets Urgentes")}{" "}
               <span className="ml-1 bg-red-100 text-red-700 text-xs font-bold px-2 py-0.5 rounded-full">
                 {dashboard.urgent_tickets.length}
               </span>
-            </h2>
+            </h3>
           </div>
           <div className="divide-y divide-red-100">
             {dashboard.urgent_tickets.map((ticket) => (

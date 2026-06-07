@@ -62,7 +62,7 @@ const navigationGroups = [
   {
     title: "LOGISTICS", emoji: "🚚",
     items: [
-      { path: "/admin/logistics-map", icon: MapPin, key: "logistics_map", adminOnly: true },
+      { path: "/admin/logistics-map", icon: MapPin, key: "logistics_map", highlight: true },
     ],
   },
   {
@@ -103,6 +103,7 @@ const navigationGroups = [
     items: [
       { path: "/admin/quick-approval", icon: ShieldCheck,     key: "quick_approval", highlight: true },
       { path: "/admin/tickets",        icon: HeadphonesIcon,  key: "support" },
+      { path: "/survey",               icon: ClipboardList,   key: "survey_form" },   // 👈 Encuesta cliente
     ],
   },
   {
@@ -147,7 +148,7 @@ navigationGroups.flatMap(g => g.items).forEach(item => {
     leads:               ["Leads",            "Prospectos"],
     services:            ["Services",         "Servicios"],
     finances:            ["Finances",         "Finanzas"],
-    financesreport:      ["Financesreport",         "Finanzas reporte"],
+    financesreport:      ["Financesreport",   "Finanzas reporte"],
     ai_metrics:          ["AI Metrics",       "Métricas IA"],
     operational_kpis:    ["KPIs Dashboard",   "KPIs Operativos"],
     ocr_analytics:       ["OCR Analytics",    "Analytics OCR"],
@@ -164,6 +165,7 @@ navigationGroups.flatMap(g => g.items).forEach(item => {
     suppliers:           ["Suppliers",        "Proveedores"],
     catalog:             ["Catalog",          "Catálogo"],
     inventory:           ["Inventory",        "Inventario"],
+    survey_form:         ["Customer Survey",  "Encuesta Cliente"],
   };
   const [en, es] = map[item.key] || [item.key, item.key];
   navLabels[item.key] = { en, es };
@@ -383,10 +385,12 @@ function LayoutInner() {
 
   const { t } = useLocale();
 
+  // 🔥 Modificación: solo los grupos MAIN y OPERATIONS se abren por defecto.
+  // Todos los demás (incluyendo SYSTEM / ADMIN) estarán cerrados inicialmente.
   const [openGroups, setOpenGroups] = useState(() => {
     const defaults = {};
     navigationGroups.forEach((group, idx) => {
-      defaults[idx] = ["TOOLS","MAIN","OPERATIONS","LOGISTICS","INVENTORY & SUPPLIERS","FINANCES","ANALYTICS & KPIs"].includes(group.title);
+      defaults[idx] = group.title === "MAIN" || group.title === "OPERATIONS";
     });
     return defaults;
   });

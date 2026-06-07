@@ -139,6 +139,48 @@ const OptionGrid = ({ options, value, onChange, cols = 3 }) => (
   </div>
 );
 
+// Nueva cuadrícula para selección múltiple de servicios
+const MultiServiceGrid = ({ options, value, onChange, locale }) => (
+  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+    {options.map((o) => {
+      const active = value.includes(o.value);
+      return (
+        <button
+          key={o.value}
+          type="button"
+          onClick={() => {
+            if (active) {
+              onChange(value.filter(v => v !== o.value));
+            } else {
+              onChange([...value, o.value]);
+            }
+          }}
+          style={{
+            padding: "13px 8px",
+            borderRadius: 12,
+            textAlign: "center",
+            border: `1.5px solid ${active ? "#0ea5e9" : "hsl(var(--border))"}`,
+            background: active ? "rgba(14,165,233,.09)" : "hsl(var(--secondary))",
+            cursor: "pointer",
+            transition: "all .18s",
+            transform: active ? "scale(1.04)" : "scale(1)",
+            fontFamily: "inherit",
+            boxShadow: active ? "0 0 0 3px rgba(14,165,233,.15)" : "none",
+          }}
+        >
+          <div style={{ fontSize: 22, marginBottom: 5 }}>{o.icon}</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: active ? "#0ea5e9" : "hsl(var(--foreground))", lineHeight: 1.3, marginBottom: 2 }}>
+            {locale === "es" ? o.es : o.en}
+          </div>
+          <div style={{ fontSize: 10, color: "hsl(var(--muted-foreground))", lineHeight: 1.4 }}>
+            {locale === "es" ? o.es : o.en}
+          </div>
+        </button>
+      );
+    })}
+  </div>
+);
+
 const SumBlock = ({ title, rows }) => (
   <div style={{ padding: "11px 14px", borderRadius: 10, background: "hsl(var(--secondary))", border: "0.5px solid hsl(var(--border))" }}>
     <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".13em", color: "hsl(var(--muted-foreground))", marginBottom: 7 }}>{title}</div>
@@ -282,13 +324,14 @@ const SuccessMachine = () => (
   </svg>
 );
 
-/* ─── Empty state ────────────────────────────────────────────────────────────── */
+/* ─── Empty state (modificado: service_types array) ─────────────────────────── */
 const EMPTY = {
   first_name: "", last_name: "", email: "", phone: "",
   contact_method: "", sms_consent: false,
   address_line1: "", address_line2: "", city: "", state: "", zip_code: "",
   company_legal_name: "", dba_name: "", business_type: "", has_membership: "", job_title: "",
-  service_type: "", laundry_frequency: "", estimated_lbs: "",
+  service_types: [],       // ← ahora es un array
+  laundry_frequency: "", estimated_lbs: "",
   best_date: "", best_time: "",
   additional_notes: "", subscribe_newsletter: false, terms: false,
 };
@@ -360,7 +403,8 @@ export default function RequestQuotePage() {
       if (!form.has_membership) return err(t("Select membership status", "Selecciona estado de membresía"));
     }
     if (cur === 3) {
-      if (!form.service_type) return err(t("Select a service type", "Selecciona tipo de servicio"));
+      // Validación para múltiples servicios
+      if (!form.service_types.length) return err(t("Select at least one service type", "Selecciona al menos un tipo de servicio"));
       if (!form.laundry_frequency) return err(t("Select a frequency", "Selecciona una frecuencia"));
       if (!form.estimated_lbs) return err(t("Enter estimated lbs", "Ingresa las libras estimadas"));
     }
@@ -382,6 +426,9 @@ export default function RequestQuotePage() {
 
     setSubmitting(true);
     try {
+      // Convertir service_types a string para el backend (si espera service_type)
+      const serviceTypeString = form.service_types.join(", ");
+      
       const payload = {
         ...form,
         first_name: form.first_name.trim(),
@@ -396,6 +443,8 @@ export default function RequestQuotePage() {
         dba_name: form.dba_name.trim(),
         additional_notes: form.additional_notes.trim(),
         estimated_lbs: parseFloat(form.estimated_lbs) || 0,
+        service_type: serviceTypeString,   // ← enviamos como string concatenado
+        // Si tu backend acepta array, puedes enviar service_types: form.service_types
       };
       const res = await axios.post(`${API}/public/b2b-quote`, payload);
       toast.success(res.data.message || t("Quote request submitted!", "¡Solicitud enviada!"));
@@ -420,7 +469,14 @@ export default function RequestQuotePage() {
   const g3 = { display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 10 };
   const fGap = { display: "flex", flexDirection: "column", gap: 16 };
 
-  const svcLabel = SERVICE_TYPES.find((s) => s.value === form.service_type)?.[locale === "es" ? "es" : "en"] || "";
+  // Funciones auxiliares para mostrar etiquetas en el resumen
+  const getServiceLabels = () => {
+    return form.service_types.map(s => {
+      const found = SERVICE_TYPES.find(st => st.value === s);
+      return found ? (locale === "es" ? found.es : found.en) : s;
+    }).join(", ");
+  };
+  
   const freqLabel = FREQUENCY_OPTIONS.find((f) => f.value === form.laundry_frequency)?.[locale === "es" ? "es" : "en"] || "";
   const bizLabel = BUSINESS_TYPES.find((b) => b.value === form.business_type)?.[locale === "es" ? "es" : "en"] || "";
   const cmLabel = CONTACT_METHODS.find((c) => c.value === form.contact_method)?.[locale === "es" ? "es" : "en"] || "";
@@ -650,12 +706,16 @@ export default function RequestQuotePage() {
                     </>
                   )}
 
-                  {/* ── Step 3: Service ── */}
+                  {/* ── Step 3: Service (MULTIPLE SELECTION) ── */}
                   {cur === 3 && (
                     <>
                       <FF label={t("Type of service needed *", "Tipo de servicio requerido *")}>
-                        <OptionGrid value={form.service_type} onChange={(v) => setF("service_type", v)} cols={3}
-                          options={SERVICE_TYPES.map((s) => ({ ...s, val: s.value, en: locale === "es" ? s.es : s.en }))} />
+                        <MultiServiceGrid
+                          options={SERVICE_TYPES}
+                          value={form.service_types}
+                          onChange={(newVal) => setF("service_types", newVal)}
+                          locale={locale}
+                        />
                       </FF>
                       <FF label={t("Expected laundry frequency *", "Frecuencia esperada de lavandería *")}>
                         <OptionGrid value={form.laundry_frequency} onChange={(v) => setF("laundry_frequency", v)} cols={3}
@@ -708,7 +768,7 @@ export default function RequestQuotePage() {
                         [t("Membership", "Membresía"), memLabels[form.has_membership]],
                       ]} />
                       <SumBlock title={`🧺 ${t("Service", "Servicio")}`} rows={[
-                        [t("Service type", "Tipo de servicio"), svcLabel],
+                        [t("Service type", "Tipo de servicio"), getServiceLabels()],
                         [t("Frequency", "Frecuencia"), freqLabel],
                         [t("Est. lbs / pickup", "Lbs / recogida"), form.estimated_lbs ? `${form.estimated_lbs} lbs` : ""],
                       ]} />

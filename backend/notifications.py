@@ -1,11 +1,11 @@
 """
-Notification services — Ventura Fresh Laundry  v3.5 (Fixed language detection)
-CHANGES vs v3.4:
-  1. Fixed detect_language() – now uses DEFAULT_LANGUAGE env var for fallback.
-  2. detect_country() returns None for unknown country codes → language fallback works.
-  3. SMS/WhatsApp footer is now monolingual (only the detected language).
-  4. Payment skip logic for membership remains unchanged.
-  5. Voice calls unchanged (already clean).
+Notification services — Ventura Fresh Laundry  v4.1
+FIXES:
+  - Expanded WASH_FOLD_TYPES set to match all possible service_type values stored in DB
+  - normalize_status_value now strips and lowercases before lookup (consistent)
+  - EVENT_MAPPING covers wash_fold statuses in both uppercase and lowercase
+  - Added debug logging for flow detection to ease future troubleshooting
+  - payment_request flow preserved, milestones check preserved
 """
 
 import os
@@ -29,6 +29,9 @@ TWILIO_ACCOUNT_SID      = os.environ.get("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN       = os.environ.get("TWILIO_AUTH_TOKEN")
 TWILIO_PHONE_NUMBER     = os.environ.get("TWILIO_PHONE_NUMBER")
 TWILIO_WHATSAPP_NUMBER  = os.environ.get("TWILIO_WHATSAPP_NUMBER")
+
+FRONTEND_URL = os.environ.get("FRONTEND_URL") or os.environ.get("DEPLOY_URL") or "https://ventura-deploy-test.preview.emergentagent.com"
+
 BUSINESS_NAME           = os.environ.get("BUSINESS_NAME", "Ventura Fresh Laundry")
 BUSINESS_ADDRESS        = os.environ.get("BUSINESS_ADDRESS", "Ventura, CA")
 BUSINESS_PHONE_DISPLAY  = os.environ.get("BUSINESS_PHONE_DISPLAY", "")
@@ -40,26 +43,24 @@ SENDGRID_DATA_RESIDENCY = os.environ.get("SENDGRID_DATA_RESIDENCY", "").lower()
 GROQ_API_KEY            = os.environ.get("GROQ_API_KEY")
 USE_ULTRA_PREMIUM       = os.environ.get("USE_ULTRA_PREMIUM", "false").lower() == "true"
 ADMIN_PHONE             = os.environ.get("ADMIN_PHONE", "")
+DEFAULT_LANGUAGE        = os.environ.get("DEFAULT_LANGUAGE", "en-US").lower()
 
-# NEW: Default language when no preference and country unknown
-DEFAULT_LANGUAGE = os.environ.get("DEFAULT_LANGUAGE", "en-US").lower()   # "en-US" or "es-MX"
-
-# ── Footer (now monolingual) ─────────────────────────────────────────
-def _support_footer(is_es: bool) -> str:
-    """Devuelve el footer SOLO en el idioma indicado (no bilingüe)."""
+# ── Footer (monolingüe según idioma) ─────────────────────────────────
+def _support_footer(is_es: bool = False):
     if is_es:
         return (
-            "\n\n—\nMensaje Automático — Ventura Fresh Laundry\n"
-            "Para soporte o asistencia, responda a este mensaje o llame al (805) 234-8181."
+            "\n\n---\nEste es un mensaje automatizado de Ventura Fresh Laundry. "
+            "Por favor, no responda a este mensaje. Para soporte o asistencia, "
+            "llame o envíe un mensaje de texto al: (820) 234-8181 o envíe un correo "
+            "electrónico a: info@venturafreshlaundry.com"
         )
-    else:
-        return (
-            "\n\n—\nAutomated Message — Ventura Fresh Laundry\n"
-            "For support or assistance, please reply to this message or call (805) 234-8181."
-        )
+    return (
+        "\n\n---\nThis is an automated message from Ventura Fresh Laundry. "
+        "Please do not reply to this message. For customer support or assistance, "
+        "call or text: (820) 234-8181 or e-mail to: info@venturafreshlaundry.com"
+    )
 
-# ── Fin CAMBIO footer ─────────────────────────────────────────────────
-
+# ── Otros settings ────────────────────────────────────────────────────
 QUIET_START             = os.environ.get("QUIET_HOURS_START", "21:00")
 QUIET_END               = os.environ.get("QUIET_HOURS_END", "08:00")
 MAX_RETRIES             = int(os.environ.get("TWILIO_MAX_RETRIES", "3"))
@@ -88,24 +89,35 @@ _BORDER_COLORS = {
     VFL_DANGER:  "#fca5a5",
 }
 
-
 def _border_color(accent: str) -> str:
     return _BORDER_COLORS.get(accent, "#bae6fd")
-
 
 _sent_cache: Set[str] = set()
 _audit_log: list = []
 
+# ── FIX: Conjunto ampliado de tipos Wash & Fold ───────────────────────
+# Todos los valores posibles que pueden llegar en order.service_type
+WASH_FOLD_TYPES: Set[str] = {
+    "wash_fold",
+    "wash_fold_dropoff",
+    "wash-fold",
+    "wash fold",
+    "wash_and_fold",
+    "wash&fold",
+    "washfold",
+    "self_service",
+    "dropoff",
+    "drop_off",
+    "wash_dry_fold",
+}
 
 async def _is_already_sent_db(key: str) -> bool:
     try:
         from database import db as _db
         doc = await _db.notification_dedupe.find_one({"key": key})
         return doc is not None
-    except Exception as e:
-        logger.debug(f"Dedup DB check failed (falling back to in-memory): {e}")
+    except Exception:
         return key in _sent_cache
-
 
 async def _mark_sent_db(key: str) -> None:
     _sent_cache.add(key)
@@ -116,9 +128,8 @@ async def _mark_sent_db(key: str) -> None:
             {"$setOnInsert": {"key": key, "created_at": datetime.now(timezone.utc).isoformat()}},
             upsert=True,
         )
-    except Exception as e:
-        logger.debug(f"Dedup DB write failed: {e}")
-
+    except Exception:
+        pass
 
 def _log_attempt(entry: dict) -> None:
     _audit_log.append(entry)
@@ -130,15 +141,13 @@ def _log_attempt(entry: dict) -> None:
     except Exception:
         pass
 
-
 async def _persist_log(entry: dict):
     try:
         from database import db as _db
         entry["_persisted"] = True
         await _db.notification_logs.insert_one(entry)
-    except Exception as e:
-        logger.debug(f"Notification log persist failed: {e}")
-
+    except Exception:
+        pass
 
 MILESTONES = {
     "wash_fold":       {"order_created", "order_received", "processing",
@@ -161,13 +170,50 @@ EVENT_MAPPING = {
     "status_changed":   None,
 }
 
+# ── FIX: Mapas de status → evento para cada flujo ────────────────────
+# Soportan tanto MAYÚSCULAS (automation_engine) como minúsculas (orders.py)
+_WF_STATUS_MAP = {
+    # minúsculas
+    "confirmed":  "order_received",
+    "processing": "processing",
+    "ready":      "ready_for_pickup",
+    "completed":  "completed",
+    "cancelled":  "cancelled",
+    # MAYÚSCULAS
+    "CONFIRMED":  "order_received",
+    "PROCESSING": "processing",
+    "READY":      "ready_for_pickup",
+    "COMPLETED":  "completed",
+    "CANCELLED":  "cancelled",
+}
+
+_PD_STATUS_MAP = {
+    # minúsculas
+    "confirmed":        "pickup_confirmed",
+    "pickup_scheduled": "pickup_confirmed",
+    "picked_up":        "processing",
+    "processing":       "processing",
+    "ready":            "ready",
+    "out_for_delivery": "out_for_delivery",
+    "delivered":        "delivered",
+    "cancelled":        "cancelled",
+    "completed":        "completed",
+    # MAYÚSCULAS
+    "CONFIRMED":        "pickup_confirmed",
+    "PICKUP_SCHEDULED": "pickup_confirmed",
+    "PICKED_UP":        "processing",
+    "PROCESSING":       "processing",
+    "READY":            "ready",
+    "OUT_FOR_DELIVERY": "out_for_delivery",
+    "DELIVERED":        "delivered",
+    "CANCELLED":        "cancelled",
+    "COMPLETED":        "completed",
+}
 
 # ── Utilities ─────────────────────────────────────────────────────────
-
 def parse_hhmm(s: str) -> dtime:
     hh, mm = s.split(":")
     return dtime(int(hh), int(mm))
-
 
 def is_quiet_hours(now_local: Optional[datetime] = None) -> bool:
     now_local = now_local or datetime.now()
@@ -176,7 +222,6 @@ def is_quiet_hours(now_local: Optional[datetime] = None) -> bool:
     if start < end:
         return start <= n < end
     return (n >= start) or (n < end)
-
 
 twilio_client = None
 if TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN:
@@ -198,7 +243,6 @@ if SENDGRID_API_KEY:
     except Exception as e:
         logger.error(f"Failed to init SendGrid: {e}")
 
-
 def get_groq_client():
     if not GROQ_API_KEY:
         return None
@@ -207,7 +251,6 @@ def get_groq_client():
     except Exception as e:
         logger.error(f"Failed to init Groq: {e}")
         return None
-
 
 def format_phone(phone: str) -> Optional[str]:
     if not phone:
@@ -223,12 +266,7 @@ def format_phone(phone: str) -> Optional[str]:
         return "+" + cleaned
     return "+" + cleaned if not cleaned.startswith("+") else cleaned
 
-
 def detect_country(phone: Optional[str]) -> Optional[str]:
-    """
-    Returns 'mx' for Mexico (+52), 'us' for USA/Canada (+1),
-    otherwise None (unknown). This allows DEFAULT_LANGUAGE to be used.
-    """
     if not phone:
         return None
     f = format_phone(phone)
@@ -236,14 +274,11 @@ def detect_country(phone: Optional[str]) -> Optional[str]:
         return "mx"
     if f and f.startswith("+1"):
         return "us"
-    # For UK, Australia, etc. return None → fallback to DEFAULT_LANGUAGE
     return None
-
 
 def format_whatsapp(phone: str) -> Optional[str]:
     f = format_phone(phone)
     return f"whatsapp:{f}" if f else None
-
 
 def normalize_preferred_contact(value: str) -> str:
     if not value:
@@ -257,32 +292,22 @@ def normalize_preferred_contact(value: str) -> str:
         return "whatsapp"
     return "sms"
 
-
 def has_sms_consent(order: Optional[Dict], customer: Optional[Dict]) -> bool:
     return bool(
         (order and order.get("sms_consent"))
         or (customer and customer.get("sms_consent"))
     )
 
-
 def normalize_status_value(value: Optional[str]) -> str:
+    """Normaliza status a minúsculas con guiones bajos para comparación interna."""
     if not value:
         return ""
     return value.strip().lower().replace(" ", "_")
 
-
 def should_notify_customer(status: str) -> bool:
     return normalize_status_value(status) not in _NO_NOTIFY_STATUSES
 
-
 def detect_language(customer: Optional[Dict], phone: Optional[str]) -> str:
-    """
-    Detect language:
-    1. If customer has preferred_language, use it.
-    2. Else if phone number belongs to Mexico -> Spanish.
-    3. Else if phone number belongs to USA/Canada -> English.
-    4. Else use DEFAULT_LANGUAGE (configurable, default 'en-US').
-    """
     if customer:
         preferred = (
             customer.get("preferred_language") or customer.get("language") or ""
@@ -300,11 +325,9 @@ def detect_language(customer: Optional[Dict], phone: Optional[str]) -> str:
         if country == "us":
             return "en-US"
 
-    # Fallback to environment variable
     if DEFAULT_LANGUAGE.startswith("es"):
         return "es-MX"
     return "en-US"
-
 
 def extract_contact_from_notes(order: Dict) -> Optional[str]:
     if not order:
@@ -316,10 +339,8 @@ def extract_contact_from_notes(order: Dict) -> Optional[str]:
         return notes[idx:].strip().split("\n")[0].strip()
     return None
 
-
-# FIX v3.4: Payment URL always routes to /account?order={id}
 def _generate_internal_payment_url(order: Dict, base_url: str = "") -> str:
-    origin = (base_url or BUSINESS_WEBSITE).rstrip("/")
+    origin = (base_url or FRONTEND_URL).rstrip("/")
     order_id = order.get("id") or order.get("order_number", "")
     pay_status = (order.get("payment_status") or "pending").lower()
     total = float(order.get("total_amount") or order.get("total") or 0)
@@ -336,8 +357,21 @@ def _generate_internal_payment_url(order: Dict, base_url: str = "") -> str:
 
     return f"{origin}/account?order={order_id}"
 
+# ── FIX: Helper central para detectar el flujo de la orden ───────────
+def _detect_order_flow(service_type: Optional[str]) -> str:
+    """
+    Retorna 'wash_fold' o 'pickup_delivery' basado en el service_type.
+    Normaliza el valor antes de comparar para cubrir todos los formatos
+    posibles guardados en la base de datos.
+    """
+    if not service_type:
+        return "pickup_delivery"
+    normalized = service_type.strip().lower().replace("-", "_").replace(" ", "_").replace("&", "and")
+    if normalized in WASH_FOLD_TYPES or "wash" in normalized or "fold" in normalized or "dropoff" in normalized or "drop_off" in normalized:
+        return "wash_fold"
+    return "pickup_delivery"
 
-# ── HTML helpers (unchanged, email footer remains bilingual) ─────────
+# ── HTML helpers (email) ─────────────────────────────────────────────
 _EMAIL_CSS = """
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
   * { box-sizing: border-box; }
@@ -358,6 +392,8 @@ _EMAIL_CSS = """
   .total-row { background: #f8fafc; border-radius: 10px; padding: 14px 18px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
   .total-row .t-label { color: #64748b; font-size: 13px; font-weight: 500; }
   .total-row .t-value { color: #0b1929; font-size: 18px; font-weight: 700; }
+  .breakdown { background: #f8fafc; border-radius: 10px; padding: 14px 18px; margin-bottom: 24px; font-size: 14px; }
+  .breakdown p { margin: 6px 0; }
   .cta { display: block; text-align: center; margin: 0 0 16px; }
   .btn { display: inline-block; padding: 16px 40px; border-radius: 50px; font-size: 15px; font-weight: 700; text-decoration: none; letter-spacing: 0.3px; }
   .tip { border-radius: 12px; padding: 14px 18px; margin-top: 8px; }
@@ -377,7 +413,7 @@ def _html_base(content_html: str, accent_color: str = VFL_BLUE, status_label: st
         f'<div class="status-bar" style="background:{accent_color}">'
         f'<span>{status_label}</span></div>'
     ) if status_label else ""
-    
+
     footer_html = (
         '<div class="footer">'
         f'<p class="biz">{BUSINESS_NAME}</p>'
@@ -386,10 +422,10 @@ def _html_base(content_html: str, accent_color: str = VFL_BLUE, status_label: st
         '<hr style="border:none;border-top:1px solid #e2e8f0;margin:14px 0 10px">'
         '<p style="font-size:10px;color:#94a3b8;margin:0">'
         'Automated Message — Ventura Fresh Laundry<br>'
-        'For support or assistance, reply to this message or call (805) 234-8181.</p>'
+        'For support or assistance, reply to this message or call (820) 234-8181.</p>'
         '<p style="font-size:10px;color:#94a3b8;margin:6px 0 0">'
         'Mensaje Automático — Ventura Fresh Laundry<br>'
-        'Para soporte o asistencia, responda a este mensaje o llame al (805) 234-8181.</p>'
+        'Para soporte o asistencia, responda a este mensaje o llame al (820) 234-8181.</p>'
         '</div>'
     )
 
@@ -410,7 +446,6 @@ def _html_base(content_html: str, accent_color: str = VFL_BLUE, status_label: st
         '</div></div></body></html>'
     )
 
-
 def _order_chip(order_number: str, is_es: bool) -> str:
     label = "Número de Orden" if is_es else "Order Number"
     return (
@@ -419,7 +454,6 @@ def _order_chip(order_number: str, is_es: bool) -> str:
         f'<p class="value">#{order_number}</p>'
         '</div>'
     )
-
 
 def _tip_box(text: str, accent: str = VFL_ACCENT) -> str:
     border = _border_color(accent)
@@ -430,13 +464,11 @@ def _tip_box(text: str, accent: str = VFL_ACCENT) -> str:
         f'<p style="color:{text_color}">{text}</p></div>'
     )
 
-
 def _cta_button(url: str, label: str, color: str = VFL_BLUE) -> str:
     return (
         f'<div class="cta"><a class="btn" href="{url}" '
         f'style="background:{color};color:#ffffff">{label}</a></div>'
     )
-
 
 def _total_row(order_total: Optional[float], is_es: bool) -> str:
     if not order_total:
@@ -449,8 +481,17 @@ def _total_row(order_total: Optional[float], is_es: bool) -> str:
         '</div>'
     )
 
+def _breakdown_block(lbs: float, rate: float, subtotal: float, total: float, is_es: bool) -> str:
+    lines = []
+    if is_es:
+        lines.append(f"<p>• {lbs} lbs × ${rate:.2f}/lb = ${subtotal:.2f}</p>")
+        lines.append(f"<p><strong>Total: ${total:.2f}</strong></p>")
+    else:
+        lines.append(f"<p>• {lbs} lbs × ${rate:.2f}/lb = ${subtotal:.2f}</p>")
+        lines.append(f"<p><strong>Total: ${total:.2f}</strong></p>")
+    return f'<div class="breakdown">{"".join(lines)}</div>'
 
-# ── HTML per-event builders (unchanged, but language is now correct) ──
+# ── HTML per-event builders ───────────────────────────────────────────
 def _html_order_created(name, order_number, pickup_date, pickup_window, is_es):
     accent = VFL_BLUE
     lang = "es" if is_es else "en"
@@ -483,8 +524,30 @@ def _html_order_created(name, order_number, pickup_date, pickup_window, is_es):
     )
     return _html_base(body, accent, status_label, lang)
 
+def _html_order_received(name, order_number, pickup_date, pickup_window, is_es):
+    accent = VFL_BLUE
+    lang = "es" if is_es else "en"
+    heading = f"¡Recibimos tu ropa, {name}! 🧺" if is_es else f"We received your laundry, {name}! 🧺"
+    subtext = (
+        f"Tu orden <strong>#{order_number}</strong> fue ingresada al sistema. "
+        "La procesamos con cuidado y te avisamos cuando esté lista."
+        if is_es else
+        f"Your order <strong>#{order_number}</strong> has been logged. "
+        "We'll process it with care and let you know when it's ready."
+    )
+    tip = "👕 Tiempo estimado: 24–48 horas." if is_es else "👕 Estimated turnaround: 24–48 hours."
+    status_label = "Orden Recibida" if is_es else "Order Received"
+    body = (
+        '<div class="body">'
+        + _order_chip(order_number, is_es)
+        + f'<h2 class="heading">{heading}</h2>'
+        + f'<p class="subtext">{subtext}</p>'
+        + _tip_box(tip, accent)
+        + '</div>'
+    )
+    return _html_base(body, accent, status_label, lang)
 
-def _html_pickup_confirmed(name, order_number, pickup_date, pickup_window, is_es):
+def _html_pickup_confirmed(name, order_number, pickup_date, pickup_window, pickup_address, is_es):
     accent = VFL_BLUE
     lang = "es" if is_es else "en"
     heading = "Recolección confirmada ✓" if is_es else "Pickup confirmed ✓"
@@ -495,13 +558,14 @@ def _html_pickup_confirmed(name, order_number, pickup_date, pickup_window, is_es
         f"Hi <strong>{name}</strong>, your pickup is confirmed. "
         "Have your laundry ready and we'll be there at the scheduled time."
     )
-    pickup_html = ""
+    info_html = ""
     if pickup_date:
-        pickup_html = (
+        info_html = (
             f'<div class="tip" style="background:#f0f9ff;border:1px solid #bae6fd;margin-bottom:20px">'
-            f'<p style="color:#0369a1">📅 <strong>{pickup_date}'
-            + (f' · {pickup_window}' if pickup_window else '') +
-            '</strong></p></div>'
+            f'<p style="color:#0369a1">📅 <strong>{pickup_date}</strong>'
+            + (f' · {pickup_window}' if pickup_window else '') + '</p>'
+            + (f'<p style="color:#0369a1">📍 {pickup_address}</p>' if pickup_address else '')
+            + '</div>'
         )
     tip = "🧺 Ten tu ropa lista en una bolsa." if is_es else "🧺 Have your laundry in a bag ready to hand off."
     status_label = "Recolección Confirmada" if is_es else "Pickup Confirmed"
@@ -510,12 +574,11 @@ def _html_pickup_confirmed(name, order_number, pickup_date, pickup_window, is_es
         + _order_chip(order_number, is_es)
         + f'<h2 class="heading">{heading}</h2>'
         + f'<p class="subtext">{subtext}</p>'
-        + pickup_html
+        + info_html
         + _tip_box(tip, accent)
         + '</div>'
     )
     return _html_base(body, accent, status_label, lang)
-
 
 def _html_processing(name, order_number, is_es):
     accent = VFL_WARN
@@ -540,7 +603,6 @@ def _html_processing(name, order_number, is_es):
     )
     return _html_base(body, accent, status_label, lang)
 
-
 def _html_ready(name, order_number, service_type, is_es):
     accent = VFL_SUCCESS
     lang = "es" if is_es else "en"
@@ -564,10 +626,26 @@ def _html_ready(name, order_number, service_type, is_es):
     )
     return _html_base(body, accent, status_label, lang)
 
-
-def _html_wash_fold_ready(name, order_number, is_es):
-    return _html_ready(name, order_number, "wash_fold", is_es)
-
+def _html_ready_for_pickup(name, order_number, is_es):
+    accent = VFL_SUCCESS
+    lang = "es" if is_es else "en"
+    heading = "¡Tu ropa está lista para recoger! 🧺" if is_es else "Your laundry is ready for pickup! 🧺"
+    subtext = (
+        f"Hola <strong>{name}</strong>, tu ropa está lista y puedes pasar a recogerla en nuestra tienda."
+        if is_es else
+        f"Hi <strong>{name}</strong>, your laundry is ready and you can pick it up at our store."
+    )
+    tip = "🏪 ¡Te esperamos!" if is_es else "🏪 We look forward to seeing you!"
+    status_label = "Lista para Recoger" if is_es else "Ready for Pickup"
+    body = (
+        '<div class="body">'
+        + _order_chip(order_number, is_es)
+        + f'<h2 class="heading">{heading}</h2>'
+        + f'<p class="subtext">{subtext}</p>'
+        + _tip_box(tip, accent)
+        + '</div>'
+    )
+    return _html_base(body, accent, status_label, lang)
 
 def _html_out_for_delivery(name, order_number, is_es):
     accent = VFL_BLUE
@@ -591,7 +669,6 @@ def _html_out_for_delivery(name, order_number, is_es):
         + '</div>'
     )
     return _html_base(body, accent, status_label, lang)
-
 
 def _html_delivered(name, order_number, order_total, is_es):
     accent = VFL_SUCCESS
@@ -617,10 +694,8 @@ def _html_delivered(name, order_number, order_total, is_es):
     )
     return _html_base(body, accent, status_label, lang)
 
-
 def _html_completed(name, order_number, order_total, is_es):
     return _html_delivered(name, order_number, order_total, is_es)
-
 
 def _html_cancelled(name, order_number, is_es):
     accent = VFL_DANGER
@@ -644,7 +719,6 @@ def _html_cancelled(name, order_number, is_es):
         + '</div>'
     )
     return _html_base(body, accent, status_label, lang)
-
 
 def _html_store_order(name, order_number, order_total, shipping_fee, is_es):
     accent = VFL_BLUE
@@ -670,8 +744,7 @@ def _html_store_order(name, order_number, order_total, shipping_fee, is_es):
     )
     return _html_base(body, accent, status_label, lang)
 
-
-def _html_payment_request(name, order_number, order_total, payment_url, is_es):
+def _html_payment_request(name, order_number, order_total, payment_url, lbs, rate, subtotal, is_es):
     accent = VFL_SUCCESS
     lang = "es" if is_es else "en"
     heading = "Tienes un pago pendiente 💳" if is_es else "Payment required 💳"
@@ -683,45 +756,25 @@ def _html_payment_request(name, order_number, order_total, payment_url, is_es):
         "Securely complete your payment using the button below."
     )
     btn_label = "Pagar ahora" if is_es else "Pay now"
-    tip = "🔒 Enlace seguro · expira en 24 horas." if is_es else "🔒 Secure link · expires in 24 hours."
-    status_label = "Pago Pendiente" if is_es else "Payment Required"
-    body = (
-        '<div class="body">'
-        + _order_chip(order_number, is_es)
-        + f'<h2 class="heading">{heading}</h2>'
-        + f'<p class="subtext">{subtext}</p>'
-        + _total_row(order_total, is_es)
-        + _cta_button(payment_url, btn_label, accent)
-        + f'<div class="pay-link"><a href="{payment_url}">{payment_url}</a></div>'
-        + '<div style="margin-top:16px">' + _tip_box(tip, accent) + '</div>'
-        + '</div>'
-    )
-    return _html_base(body, accent, status_label, lang)
-
-
-def _html_order_received(name, order_number, pickup_date, pickup_window, is_es):
-    accent = VFL_BLUE
-    lang = "es" if is_es else "en"
-    heading = f"¡Recibimos tu ropa, {name}! 🧺" if is_es else f"We received your laundry, {name}! 🧺"
-    subtext = (
-        f"Tu orden <strong>#{order_number}</strong> fue ingresada al sistema. "
-        "La procesamos con cuidado y te avisamos cuando esté lista."
+    warning = (
+        "⚠️ <strong>Nota:</strong> Tu orden no comenzará a procesarse hasta que se complete el pago. "
+        "Por favor realiza tu pago lo antes posible para evitar demoras."
         if is_es else
-        f"Your order <strong>#{order_number}</strong> has been logged. "
-        "We'll process it with care and let you know when it's ready."
+        "⚠️ <strong>Note:</strong> Your order will not begin processing until payment has been completed. "
+        "Please submit your payment as soon as possible to avoid delays with your order."
     )
-    tip = "👕 Tiempo estimado: 24–48 horas." if is_es else "👕 Estimated turnaround: 24–48 hours."
-    status_label = "Orden Recibida" if is_es else "Order Received"
     body = (
         '<div class="body">'
         + _order_chip(order_number, is_es)
         + f'<h2 class="heading">{heading}</h2>'
         + f'<p class="subtext">{subtext}</p>'
-        + _tip_box(tip, accent)
+        + _breakdown_block(lbs, rate, subtotal, order_total, is_es)
+        + _cta_button(payment_url, btn_label, accent)
+        + f'<div class="tip" style="background:#fff4e5;border:1px solid #ffedd5;"><p>{warning}</p></div>'
+        + f'<div class="pay-link"><a href="{payment_url}">{payment_url}</a></div>'
         + '</div>'
     )
-    return _html_base(body, accent, status_label, lang)
-
+    return _html_base(body, accent, "Pago Pendiente" if is_es else "Payment Required", lang)
 
 def _html_generic(name, is_es, title=None, body_text=None):
     accent = VFL_BLUE
@@ -742,80 +795,193 @@ def _html_generic(name, is_es, title=None, body_text=None):
     )
     return _html_base(body, accent, heading, lang)
 
-
-# ── SMS copy (footer now monolingual via _support_footer) ────────────
+# ── SMS copy ──────────────────────────────────────────────────────────
 def _sms_sync(
     event: str, name: str, order_number: str, language: str,
     pickup_date: Optional[str] = None, pickup_window: Optional[str] = None,
-    order_total: Optional[float] = None, payment_url: Optional[str] = None
+    order_total: Optional[float] = None, payment_url: Optional[str] = None,
+    pickup_address: Optional[str] = None,
+    lbs: Optional[float] = None, rate: Optional[float] = None
 ) -> str:
     is_es = str(language).lower().startswith("es")
     biz = BUSINESS_NAME
     n = name or ("Cliente" if is_es else "Customer")
 
+    def breakdown_block():
+        if lbs is not None and rate is not None and lbs > 0:
+            subtotal = lbs * rate
+            total = order_total if order_total is not None else subtotal
+            if is_es:
+                return (
+                    f"\n📊 Desglose:\n"
+                    f"• {lbs} lbs × ${rate:.2f}/lb = ${subtotal:.2f}\n"
+                    f"• Total: ${total:.2f}"
+                )
+            else:
+                return (
+                    f"\n📊 Breakdown:\n"
+                    f"• {lbs} lbs × ${rate:.2f}/lb = ${subtotal:.2f}\n"
+                    f"• Total: ${total:.2f}"
+                )
+        return ""
+
+    warning_block = (
+        "\n\n⚠️ NOTA: Tu orden no comenzará a procesarse hasta que se complete el pago. "
+        "Por favor realiza tu pago lo antes posible para evitar demoras."
+        if is_es else
+        "\n\n⚠️ NOTE: Your order will not begin processing until payment has been completed. "
+        "Please submit your payment as soon as possible to avoid delays with your order."
+    )
+
     templates = {
         "order_created": (
-            f"🫧 *{biz}*\n\n¡Hola {n}! Tu orden *#{order_number}* fue programada.{chr(10) + '📅 ' + pickup_date if pickup_date else ''}\n\n¡Gracias! 🙌",
-            f"🫧 *{biz}*\n\nHi {n}! Your order *#{order_number}* has been scheduled.{chr(10) + '📅 ' + pickup_date if pickup_date else ''}\n\nThank you! 🙌"
+            f"🧼 *{biz}*\n\nHola {n} 👋\n"
+            f"Tu orden #{order_number} ha sido programada.\n"
+            f"📅 Fecha: {pickup_date or 'por confirmar'}\n"
+            f"⏰ Horario: {pickup_window or 'por definir'}\n\n"
+            f"Te mantendremos informado. ¡Gracias por confiar en nosotros!",
+            f"🧼 *{biz}*\n\nHi {n} 👋\n"
+            f"Your order #{order_number} has been scheduled.\n"
+            f"📅 Date: {pickup_date or 'to be confirmed'}\n"
+            f"⏰ Time: {pickup_window or 'to be defined'}\n\n"
+            f"We'll keep you updated. Thank you for trusting us!"
         ),
         "order_received": (
-            f"☺ *{biz}*\n\nHola {n}, recibimos tu orden *#{order_number}* y pronto la procesaremos.\n\n⏱ Te avisamos cuando esté lista.",
-            f"☺ *{biz}*\n\nHi {n}, we received your order *#{order_number}* and will process it soon.\n\n⏱ We'll notify you when ready."
+            f"🧼 *{biz}*\n\nHola {n} 👋\n"
+            f"¡Recibimos tu orden #{order_number}!\n"
+            f"📅 Fecha de entrega: {'por confirmar'}\n\n"
+            f"Procesaremos tu ropa con cuidado y te avisaremos cuando esté lista para recoger.",
+            f"🧼 *{biz}*\n\nHi {n} 👋\n"
+            f"We received your order #{order_number}!\n"
+            f"📅 Ready date: {'to be confirmed'}\n\n"
+            f"We'll process your laundry with care and notify you when it's ready for pickup."
         ),
         "pickup_confirmed": (
-            f"🚚 *{biz}*\n\nHola {n}, tu recolección fue confirmada.\n¡Gracias por tu preferencia!",
-            f"🚚 *{biz}*\n\nHi {n}, your pickup has been confirmed.\nThank you for choosing us!"
+            f"🚚 *{biz}*\n\n"
+            f"Hola {n},\n"
+            f"✅ Tu recolección fue confirmada para el **{pickup_date or 'fecha a confirmar'}**\n"
+            f"⏰ Horario: {pickup_window or 'a convenir'}\n"
+            f"📍 Dirección: {pickup_address or 'la registrada'}\n\n"
+            f"¡Gracias por preferirnos! 🙌",
+            f"🚚 *{biz}*\n\n"
+            f"Hi {n},\n"
+            f"✅ Your pickup has been confirmed for **{pickup_date or 'date to be confirmed'}**\n"
+            f"⏰ Time window: {pickup_window or 'to be arranged'}\n"
+            f"📍 Address: {pickup_address or 'the one registered'}\n\n"
+            f"Thank you for choosing us! 🙌"
         ),
         "processing": (
-            f"🧺 *{biz}*\n\nHola {n}, ya tenemos tu ropa y la estamos procesando.\n\n⏱ Te avisamos cuando esté lista.",
-            f"🧺 *{biz}*\n\nHi {n}, we have your laundry and it's being carefully processed.\n\n⏱ We'll let you know when it's ready."
+            f"🧺 *{biz}*\n\nHola {n} 👋\n"
+            f"Tu orden #{order_number} está en proceso de lavado.\n"
+            f"🧼 Cuidamos tu ropa con los mejores productos.\n\n"
+            f"Te avisaremos cuando esté lista.",
+            f"🧺 *{biz}*\n\nHi {n} 👋\n"
+            f"Your order #{order_number} is being processed.\n"
+            f"🧼 We take care of your clothes with the best products.\n\n"
+            f"We'll notify you when it's ready."
         ),
         "ready": (
-            f"✨ *{biz}*\n\n¡Hola {n}! Tu ropa está *LISTA* y en camino. 🛵\n\nGracias por confiar en nosotros.",
-            f"✨ *{biz}*\n\nHi {n}! Your laundry is *READY* and will be on its way soon. 🛵\n\nThank you for trusting us."
+            f"✨ *{biz}*\n\n"
+            f"Hola {n} 👋\n"
+            f"¡Tu orden #{order_number} está LISTA! ✅\n\n"
+            f"🚚 Estamos preparando tu entrega y estaremos en camino en breve.\n\n"
+            f"Gracias por confiar en {biz}. 💙",
+            f"✨ *{biz}*\n\n"
+            f"Hi {n} 👋\n"
+            f"Your order #{order_number} is READY! ✅\n\n"
+            f"🚚 We are preparing to start your delivery and will be on our way shortly.\n\n"
+            f"Thank you for trusting {biz}. 💙"
         ),
         "ready_for_pickup": (
-            f"✅ *{biz}*\n\n¡Hola {n}! Tu ropa está lista para recoger en nuestra tienda.\n\n🏪 ¡Te esperamos!",
-            f"✅ *{biz}*\n\nHi {n}! Your laundry is ready for pickup at our store.\n\n🏪 We look forward to seeing you!"
+            f"✅ *{biz}*\n\nHola {n} 👋\n"
+            f"Tu orden #{order_number} está LISTA para recoger en nuestra tienda. 🧺\n\n"
+            f"🏪 ¡Te esperamos! Cualquier duda al (820) 234-8181.",
+            f"✅ *{biz}*\n\nHi {n} 👋\n"
+            f"Your order #{order_number} is READY for pickup at our store. 🧺\n\n"
+            f"🏪 We look forward to seeing you!"
         ),
         "out_for_delivery": (
-            f"🚚 *{biz}*\n\n¡Hola {n}! Tu entrega va *EN CAMINO*. 💨\n\nPor favor mantente disponible.",
-            f"🚚 *{biz}*\n\nHi {n}! Your delivery is *ON THE WAY*. 💨\n\nPlease be available to receive it."
+            f"🚚 *{biz}*\n\n"
+            f"Hola {n} 👋\n"
+            f"¡Tu orden #{order_number} está EN CAMINO! ✅\n\n"
+            f"💨 Nuestro conductor se dirige a tu ubicación y tu orden llegará en breve.\n\n"
+            f"Gracias por confiar en {biz}. 💙",
+            f"🚚 *{biz}*\n\n"
+            f"Hi {n} 👋\n"
+            f"Your order #{order_number} is ON THE WAY! ✅\n\n"
+            f"💨 Our driver is heading to your location and your order will arrive shortly.\n\n"
+            f"Thank you for trusting {biz}. 💙"
         ),
         "delivered": (
-            f"🎉 *{biz}*\n\n¡Hola {n}! Tu entrega fue *COMPLETADA*. ✓{chr(10) + '💰 Total: $' + f'{order_total:.2f}' if order_total else ''}\n\n¡Gracias! ❤️",
-            f"🎉 *{biz}*\n\nHi {n}! Your delivery has been *COMPLETED*. ✓{chr(10) + '💰 Total: $' + f'{order_total:.2f}' if order_total else ''}\n\nThank you! ❤️"
+            f"🎉 *{biz}*\n\nHola {n} 👋\n"
+            f"¡Tu orden #{order_number} ha sido ENTREGADA! ✓"
+            + (f"\n💰 Total: ${order_total:.2f}" if order_total else "")
+            + f"\n\n¡Gracias por confiar en nosotros! ❤️",
+            f"🎉 *{biz}*\n\nHi {n} 👋\n"
+            f"Your order #{order_number} has been DELIVERED! ✓"
+            + (f"\n💰 Total: ${order_total:.2f}" if order_total else "")
+            + f"\n\nThank you for trusting us! ❤️"
         ),
         "completed": (
-            f"🙏 *{biz}*\n\nHola {n}, tu servicio está *COMPLETO*.{chr(10) + '💰 Total: $' + f'{order_total:.2f}' if order_total else ''}\n\n¡Hasta pronto!",
-            f"🙏 *{biz}*\n\nHi {n}, your service is *COMPLETE*.{chr(10) + '💰 Total: $' + f'{order_total:.2f}' if order_total else ''}\n\nSee you soon!"
+            f"🙏 *{biz}*\n\nHola {n} 👋\n"
+            f"Tu servicio #{order_number} está COMPLETO. ✓"
+            + (f"\n💰 Total: ${order_total:.2f}" if order_total else "")
+            + f"\n\n¡Hasta pronto! ¡Gracias por preferirnos! 🧺",
+            f"🙏 *{biz}*\n\nHi {n} 👋\n"
+            f"Your service #{order_number} is COMPLETE. ✓"
+            + (f"\n💰 Total: ${order_total:.2f}" if order_total else "")
+            + f"\n\nSee you soon! Thank you for choosing us! 🧺"
         ),
         "cancelled": (
-            f"❌ *{biz}*\n\nHola {n}, tu orden *#{order_number}* fue cancelada.\n\n¿Necesitas reagendar? Contáctanos. 📞",
-            f"❌ *{biz}*\n\nHi {n}, your order *#{order_number}* was cancelled.\n\nNeed to reschedule? Contact us. 📞"
+            f"❌ *{biz}*\n\nHola {n} 👋\n"
+            f"Tu orden #{order_number} fue cancelada.\n\n"
+            f"¿Necesitas reagendar? Contáctanos al (820) 234-8181",
+            f"❌ *{biz}*\n\nHi {n} 👋\n"
+            f"Your order #{order_number} was cancelled.\n\n"
+            f"Need to reschedule? Contact us at (820) 234-8181"
         ),
         "store_order": (
-            f"🛍️ *{biz}*\n\n¡Hola {n}! Recibimos tu orden *#{order_number}*{' · Total: $' + f'{order_total:.2f}' if order_total else ''}.\n\nTe avisamos cuando esté lista. ¡Gracias!",
-            f"🛍️ *{biz}*\n\nHi {n}! We received your order *#{order_number}*{' · Total: $' + f'{order_total:.2f}' if order_total else ''}.\n\nWe'll let you know when it's ready. Thank you!"
+            f"🛍️ *{biz}*\n\nHola {n} 👋\n"
+            f"¡Recibimos tu orden de tienda #{order_number}!"
+            + (f"\n💰 Total: ${order_total:.2f}" if order_total else "")
+            + f"\n\nTe avisaremos cuando esté lista para envío.\n\n¡Gracias por tu compra!",
+            f"🛍️ *{biz}*\n\nHi {n} 👋\n"
+            f"We received your store order #{order_number}!"
+            + (f"\n💰 Total: ${order_total:.2f}" if order_total else "")
+            + f"\n\nWe'll notify you when it's ready to ship.\n\nThank you for your purchase!"
         ),
         "payment_request": (
-            f"💰 *{biz}*\n\nHola {n}, tu servicio *#{order_number}* está listo para pagar.{' Total: $' + f'{order_total:.2f}.' if order_total else ''}"
-            + (f"\n\n💳 *Paga aquí* 👇\n{payment_url}\n\n🔒 Enlace seguro · expira en 24 h." if payment_url else ""),
-            f"💰 *{biz}*\n\nHi {n}, your service *#{order_number}* is ready to pay.{' Total: $' + f'{order_total:.2f}.' if order_total else ''}"
-            + (f"\n\n💳 *Pay here* 👇\n{payment_url}\n\n🔒 Secure link · expires in 24 h." if payment_url else "")
+            f"🧼 *{biz}*\n\n"
+            f"Hola {n} 👋\n"
+            f"Tu orden #{order_number} está lista para pago."
+            + breakdown_block()
+            + f"\n\n💳 Completa tu pago de forma segura a través de tu portal de cliente\n"
+            f"👉 Por favor, haz clic en el siguiente enlace para acceder a tu cuenta:\n"
+            f"{payment_url or 'Enlace no disponible'}\n"
+            + warning_block
+            + f"\n\n⚡ Proceso rápido, seguro y fácil\n\n"
+            f"Si tienes alguna pregunta, no dudes en contactarnos al (820) 234-8181",
+            f"🧼 *{biz}*\n\n"
+            f"Hi {n} 👋\n"
+            f"Your order #{order_number} is ready for payment."
+            + breakdown_block()
+            + f"\n\n💳 Complete your payment securely through your customer portal\n"
+            f"👉 Please click the link below to access your account:\n"
+            f"{payment_url or 'Link not available'}\n"
+            + warning_block
+            + f"\n\n⚡ Fast, secure, and easy process\n\n"
+            f"If you have any questions, feel free to contact us at (820) 234-8181"
         ),
     }
 
     es_msg, en_msg = templates.get(event, (
-        f"🫧 *{biz}*\n\nHola {n}, hay una actualización en tu servicio.",
-        f"🫧 *{biz}*\n\nHi {n}, there's an update on your service."
+        f"🫧 *{biz}*\n\nHola {n}, hay una actualización en tu servicio.\n\nPor favor revisa tu correo electrónico o portal de cliente para más detalles.",
+        f"🫧 *{biz}*\n\nHi {n}, there's an update on your service.\n\nPlease check your email or customer portal for details."
     ))
     base = es_msg if is_es else en_msg
-    # Footer monolingüe
     return base + _support_footer(is_es)
 
-
-# ── Voice TwiML (unchanged, clean) ───────────────────────────────────
+# ── Voice TwiML ──────────────────────────────────────────────────────
 def _voice(event: str, name: str, order_number: str, language: str) -> str:
     is_es = str(language).lower().startswith("es")
     biz = BUSINESS_NAME
@@ -827,6 +993,12 @@ def _voice(event: str, name: str, order_number: str, language: str) -> str:
             "Te avisaremos sobre cada actualización. ¡Hasta pronto!",
             f"Hi {n}, this is {biz} calling to confirm we received your request. "
             "We'll keep you updated. Goodbye!"
+        ),
+        "order_received": (
+            f"Hola {n}, de {biz}. Recibimos tu ropa y ya la estamos procesando. "
+            "Te avisamos cuando esté lista para recoger. ¡Gracias!",
+            f"Hi {n}, this is {biz}. We received your laundry and are processing it now. "
+            "We'll let you know when it's ready for pickup. Thank you!"
         ),
         "pickup_confirmed": (
             f"Hola {n}, te llamamos de {biz}. Tu recolección fue confirmada. "
@@ -879,10 +1051,10 @@ def _voice(event: str, name: str, order_number: str, language: str) -> str:
         "payment_request": (
             f"Hola {n}, de {biz}. Tienes un pago pendiente por tu servicio. "
             "Por favor, revisa el mensaje de texto o el correo electrónico que te enviamos "
-            "para completar tu pago. ¡Gracias!",
+            "para completar tu pago. Tu orden no comenzará hasta que se realice el pago. ¡Gracias!",
             f"Hi {n}, this is {biz}. You have a pending payment for your service. "
             "Please check the text message or email we sent you to complete your payment. "
-            "Thank you!"
+            "Your order will not start until payment is made. Thank you!"
         ),
     }
 
@@ -894,32 +1066,32 @@ def _voice(event: str, name: str, order_number: str, language: str) -> str:
     ))
     return es_s if is_es else en_s
 
-
-# ── build_premium_message (sync + async) ─────────────────────────────
+# ── Construcción premium ──────────────────────────────────────────────
 def build_premium_message(
     event: str, status: Optional[str], order_number: str,
     customer_name: Optional[str], language: str,
     pickup_date: Optional[str] = None, pickup_window: Optional[str] = None,
     order_total: Optional[float] = None, shipping_fee: Optional[float] = None,
     service_type: Optional[str] = None, payment_url: Optional[str] = None,
+    pickup_address: Optional[str] = None,
+    lbs: Optional[float] = None, rate: Optional[float] = None
 ) -> dict:
     is_es = str(language).lower().startswith("es")
     name = customer_name or ("Cliente" if is_es else "Customer")
-    svc = normalize_status_value(service_type or "pickup_delivery")
 
     subjects = {
-        "order_created":    ("Orden programada — " + BUSINESS_NAME,    "Order scheduled — " + BUSINESS_NAME),
-        "order_received":   ("Orden recibida — " + BUSINESS_NAME,      "Order received — " + BUSINESS_NAME),
+        "order_created":    ("Orden programada — " + BUSINESS_NAME, "Order scheduled — " + BUSINESS_NAME),
+        "order_received":   ("Orden recibida — " + BUSINESS_NAME, "Order received — " + BUSINESS_NAME),
         "pickup_confirmed": ("Recolección confirmada ✓ — " + BUSINESS_NAME, "Pickup confirmed ✓ — " + BUSINESS_NAME),
-        "processing":       ("Tu ropa está en proceso — " + BUSINESS_NAME,  "Your laundry is processing — " + BUSINESS_NAME),
-        "ready":            ("¡Tu ropa está lista! — " + BUSINESS_NAME,     "Your laundry is ready! — " + BUSINESS_NAME),
-        "ready_for_pickup": ("Lista para recoger — " + BUSINESS_NAME,   "Ready for pickup — " + BUSINESS_NAME),
-        "out_for_delivery": ("En camino 🚚 — " + BUSINESS_NAME,         "Out for delivery 🚚 — " + BUSINESS_NAME),
+        "processing":       ("Tu ropa está en proceso — " + BUSINESS_NAME, "Your laundry is processing — " + BUSINESS_NAME),
+        "ready":            ("¡Tu ropa está lista! — " + BUSINESS_NAME, "Your laundry is ready! — " + BUSINESS_NAME),
+        "ready_for_pickup": ("Lista para recoger — " + BUSINESS_NAME, "Ready for pickup — " + BUSINESS_NAME),
+        "out_for_delivery": ("En camino 🚚 — " + BUSINESS_NAME, "Out for delivery 🚚 — " + BUSINESS_NAME),
         "delivered":        ("Entrega completada ✓ — " + BUSINESS_NAME, "Delivery completed ✓ — " + BUSINESS_NAME),
         "completed":        ("Servicio completado ✓ — " + BUSINESS_NAME, "Service completed ✓ — " + BUSINESS_NAME),
-        "cancelled":        ("Orden cancelada — " + BUSINESS_NAME,      "Order cancelled — " + BUSINESS_NAME),
-        "store_order":      ("Compra confirmada — " + BUSINESS_NAME,    "Purchase confirmed — " + BUSINESS_NAME),
-        "payment_request":  ("Pago pendiente — " + BUSINESS_NAME,       "Payment required — " + BUSINESS_NAME),
+        "cancelled":        ("Orden cancelada — " + BUSINESS_NAME, "Order cancelled — " + BUSINESS_NAME),
+        "store_order":      ("Compra confirmada — " + BUSINESS_NAME, "Purchase confirmed — " + BUSINESS_NAME),
+        "payment_request":  ("Pago pendiente — " + BUSINESS_NAME, "Payment required — " + BUSINESS_NAME),
     }
     es_subj, en_subj = subjects.get(event, ("Actualización de orden", "Order update"))
     subject = es_subj if is_es else en_subj
@@ -927,26 +1099,29 @@ def build_premium_message(
     html_builders = {
         "order_created":    lambda: _html_order_created(name, order_number, pickup_date, pickup_window, is_es),
         "order_received":   lambda: _html_order_received(name, order_number, pickup_date, pickup_window, is_es),
-        "pickup_confirmed": lambda: _html_pickup_confirmed(name, order_number, pickup_date, pickup_window, is_es),
+        "pickup_confirmed": lambda: _html_pickup_confirmed(name, order_number, pickup_date, pickup_window, pickup_address, is_es),
         "processing":       lambda: _html_processing(name, order_number, is_es),
-        "ready":            lambda: _html_ready(name, order_number, svc, is_es),
-        "ready_for_pickup": lambda: _html_wash_fold_ready(name, order_number, is_es),
+        "ready":            lambda: _html_ready(name, order_number, service_type or "", is_es),
+        "ready_for_pickup": lambda: _html_ready_for_pickup(name, order_number, is_es),
         "out_for_delivery": lambda: _html_out_for_delivery(name, order_number, is_es),
         "delivered":        lambda: _html_delivered(name, order_number, order_total, is_es),
         "completed":        lambda: _html_completed(name, order_number, order_total, is_es),
         "cancelled":        lambda: _html_cancelled(name, order_number, is_es),
         "store_order":      lambda: _html_store_order(name, order_number, order_total, shipping_fee, is_es),
-        "payment_request":  lambda: _html_payment_request(name, order_number, order_total, payment_url or "#", is_es),
+        "payment_request":  lambda: _html_payment_request(
+            name, order_number, order_total or 0, payment_url or "#",
+            lbs or 0, rate or 2.75, (lbs or 0) * (rate or 2.75), is_es
+        ),
     }
 
     html = html_builders.get(event, lambda: _html_generic(name, is_es))()
     sms_message = _sms_sync(
         event, name, order_number, language,
-        pickup_date, pickup_window, order_total, payment_url
+        pickup_date, pickup_window, order_total, payment_url,
+        pickup_address, lbs, rate
     )
     voice_text = _voice(event, name, order_number, language)
     return {"subject": subject, "message": sms_message, "html": html, "voice_text": voice_text}
-
 
 async def build_premium_message_async(
     event: str, status: Optional[str], order_number: str,
@@ -955,14 +1130,20 @@ async def build_premium_message_async(
     order_total: Optional[float] = None, shipping_fee: Optional[float] = None,
     service_type: Optional[str] = None, payment_url: Optional[str] = None,
     order: Optional[Dict] = None,
+    pickup_address: Optional[str] = None
 ) -> dict:
     final_payment_url = payment_url
     if event == "payment_request":
         if not final_payment_url and order:
             final_payment_url = _generate_internal_payment_url(order)
         if not final_payment_url:
-            final_payment_url = f"{BUSINESS_WEBSITE.rstrip('/')}/account"
-        logger.info(f"payment_request URL resolved to: {final_payment_url}")
+            final_payment_url = f"{FRONTEND_URL.rstrip('/')}/account"
+
+    lbs = None
+    rate = None
+    if order:
+        lbs = order.get("actual_lbs") or order.get("estimated_lbs") or 0
+        rate = order.get("price_per_lb") or order.get("rate") or 2.75
 
     return build_premium_message(
         event=event, status=status, order_number=order_number,
@@ -970,10 +1151,11 @@ async def build_premium_message_async(
         pickup_date=pickup_date, pickup_window=pickup_window,
         order_total=order_total, shipping_fee=shipping_fee,
         service_type=service_type, payment_url=final_payment_url,
+        pickup_address=pickup_address,
+        lbs=lbs, rate=rate
     )
 
-
-# ── Send functions (unchanged) ───────────────────────────────────────
+# ── Funciones de envío ────────────────────────────────────────────────
 async def _send_with_retries(send_func, *args, **kwargs) -> Tuple[bool, Any]:
     last_exc = None
     for attempt in range(1, MAX_RETRIES + 1):
@@ -986,7 +1168,6 @@ async def _send_with_retries(send_func, *args, **kwargs) -> Tuple[bool, Any]:
             if attempt < MAX_RETRIES:
                 await asyncio.sleep(RETRY_DELAY * attempt)
     return False, last_exc
-
 
 async def send_sms(to_phone: str, message: str) -> bool:
     if not twilio_client or not TWILIO_PHONE_NUMBER:
@@ -1014,7 +1195,6 @@ async def send_sms(to_phone: str, message: str) -> bool:
                   "reason": str(res)[:100], "timestamp": datetime.now(timezone.utc).isoformat()})
     return False
 
-
 async def send_whatsapp(to_phone: str, message: str) -> bool:
     if not twilio_client or not TWILIO_WHATSAPP_NUMBER:
         logger.warning("Twilio not configured for WhatsApp")
@@ -1040,7 +1220,6 @@ async def send_whatsapp(to_phone: str, message: str) -> bool:
     _log_attempt({"channel": "whatsapp", "status": "failed", "to": formatted,
                   "reason": str(res)[:100], "timestamp": datetime.now(timezone.utc).isoformat()})
     return False
-
 
 async def send_voice_call(to_phone: str, message: str, language: str) -> bool:
     if not twilio_client or not TWILIO_PHONE_NUMBER:
@@ -1071,7 +1250,6 @@ async def send_voice_call(to_phone: str, message: str, language: str) -> bool:
     logger.error(f"Call failed to {formatted}: {res}")
     return False
 
-
 async def send_email(
     to_email: str, subject: str, body: str, html_body: Optional[str] = None
 ) -> bool:
@@ -1079,12 +1257,11 @@ async def send_email(
         logger.warning("SendGrid not configured")
         return False
     plain_text = body.replace("*", "").replace("_", "") if body else ""
-    is_es = "hola" in plain_text.lower() or "orden" in plain_text.lower()
     message = Mail(
         from_email=(SENDGRID_FROM_EMAIL, SENDGRID_FROM_NAME),
         to_emails=to_email,
         subject=subject,
-        html_content=html_body or _html_generic("Cliente" if is_es else "Customer", is_es, subject, plain_text),
+        html_content=html_body or body,
         plain_text_content=plain_text,
     )
 
@@ -1102,8 +1279,7 @@ async def send_email(
                   "reason": str(res)[:100], "timestamp": datetime.now(timezone.utc).isoformat()})
     return False
 
-
-# ── Groq AI (unchanged) ──────────────────────────────────────────────
+# ── AI Groq (opcional) ────────────────────────────────────────────────
 async def generate_ai_message(
     context: dict, language: str, channel: str, include_date: bool
 ) -> Optional[str]:
@@ -1131,8 +1307,7 @@ async def generate_ai_message(
         logger.error(f"Groq failed: {e}")
         return None
 
-
-# ── Helper to skip payment for membership (unchanged) ────────────────
+# ── Membership payment skip helper ────────────────────────────────────
 async def _should_skip_payment_notification(order: dict, customer: dict) -> bool:
     membership_status = (customer or {}).get("membership_status", "")
     if membership_status.lower() not in ("active", "activo"):
@@ -1162,15 +1337,13 @@ async def _should_skip_payment_notification(order: dict, customer: dict) -> bool
 
     try:
         from database import db as _db
-        from utils import get_customer_cycle_usagee
+        from utils import get_customer_cycle_usage
 
         usage = await get_customer_cycle_usage(customer_id)
         if not usage:
             return False
 
-        lbs_used_before_this_order = usage.get("lbs_used", 0)
         lbs_remaining = usage.get("lbs_remaining", 0)
-
         if order_lbs <= lbs_remaining:
             return True
         return False
@@ -1178,8 +1351,7 @@ async def _should_skip_payment_notification(order: dict, customer: dict) -> bool
         logger.warning(f"Could not determine membership usage for payment skip check: {e}")
         return False
 
-
-# ── Main orchestrator (with updated language detection) ──────────────
+# ── Orquestador principal (FIX central) ──────────────────────────────
 async def send_preferred_notification(
     customer: Optional[Dict], order: Optional[Dict],
     event: str, status: Optional[str] = None
@@ -1188,71 +1360,81 @@ async def send_preferred_notification(
         logger.error("Customer or order missing for notification")
         return False
 
-    # Determine flow and map event
-    service_type = normalize_status_value(order.get("service_type") or "pickup_delivery")
-    flow = "wash_fold" if service_type in ["wash_fold", "self_service"] else "pickup_delivery"
+    raw_service_type = order.get("service_type") or "pickup_delivery"
 
+    # FIX: usar _detect_order_flow para una detección robusta y consistente
+    flow = _detect_order_flow(raw_service_type)
+    service_type_normalized = normalize_status_value(raw_service_type)
+
+    logger.info(
+        f"[notification] order={order.get('order_number')} "
+        f"service_type='{raw_service_type}' flow='{flow}' "
+        f"event='{event}' status='{status}'"
+    )
+
+    # ── Mapear evento al nombre canónico ──────────────────────────────
     mapped_event = event
+
     if event == "status_changed":
-        status_norm = normalize_status_value(status)
-        wf_map = {
-            "confirmed": "order_received", "processing": "processing",
-            "ready": "ready_for_pickup", "completed": "completed"
-        }
-        pd_map = {
-            "confirmed": "pickup_confirmed", "pickup_scheduled": "pickup_confirmed",
-            "picked_up": "processing", "processing": "processing",
-            "ready": "ready", "out_for_delivery": "out_for_delivery",
-            "delivered": "delivered", "cancelled": "cancelled"
-        }
-        mapped_event = (wf_map if flow == "wash_fold" else pd_map).get(status_norm, "status_changed")
+        # FIX: usar los mapas que soportan MAYÚSCULAS y minúsculas
+        status_key = (status or "").strip()
+        if flow == "wash_fold":
+            mapped_event = _WF_STATUS_MAP.get(status_key) or _WF_STATUS_MAP.get(status_key.lower(), "")
+        else:
+            mapped_event = _PD_STATUS_MAP.get(status_key) or _PD_STATUS_MAP.get(status_key.lower(), "")
+
+        if not mapped_event:
+            logger.info(f"[notification] Status '{status}' has no mapped event for flow '{flow}', skipping.")
+            return False
+
+    elif event == "order_created":
+        # Wash & Fold: order_created → order_received
+        if flow == "wash_fold":
+            mapped_event = "order_received"
+        else:
+            mapped_event = EVENT_MAPPING.get(event, event)
     else:
         mapped_event = EVENT_MAPPING.get(event, event)
-        if flow == "wash_fold" and event == "order_created":
-            mapped_event = "order_received"
 
-    # Skip if not a milestone
+    # Verificar que el evento sea un milestone válido para el flujo
     if mapped_event != "payment_request" and mapped_event not in MILESTONES.get(flow, set()):
-        logger.info(f"Event {mapped_event} not a milestone for {flow}, skipping.")
+        logger.info(f"[notification] Event '{mapped_event}' not a milestone for flow '{flow}', skipping.")
         return False
 
-    if mapped_event == "status_changed":
-        logger.info(f"Status {status} has no mapped event, skipping notification.")
+    if mapped_event == "status_changed" or not mapped_event:
+        logger.info(f"[notification] No valid mapped_event, skipping.")
         return False
 
-    # Skip payment notification if covered by membership
+    # Verificar skip de pago por membresía
     if mapped_event == "payment_request":
         skip = await _should_skip_payment_notification(order, customer)
         if skip:
-            logger.info(
-                f"Payment notification skipped — customer within membership allowance: "
-                f"order={order.get('order_number')}"
-            )
+            logger.info(f"[notification] Payment skipped — membership covers order {order.get('order_number')}")
             return True
 
     order_number = order.get("order_number", order.get("id", "N/A"))
     phone = customer.get("phone")
     email = customer.get("email")
 
-    # Language detection now uses DEFAULT_LANGUAGE as final fallback
     language = detect_language(customer, phone)
-    logger.debug(f"Resolved language={language} for order {order_number}, phone={phone}")
+    logger.debug(f"[notification] language={language} order={order_number}")
 
     customer_name = customer.get("name") or ""
     include_date = mapped_event in {
-        "order_created", "pickup_scheduled", "pickup_reminder",
+        "order_created", "order_received", "pickup_scheduled", "pickup_reminder",
         "pickup_completed", "pickup_update", "pickup_confirmed"
     }
-    pickup_date = order.get("pickup_date") if include_date else None
-    pickup_window = order.get("pickup_time_window") if include_date else None
-    order_total = order.get("total") or order.get("total_amount")
-    shipping_fee = order.get("shipping_fee")
-    payment_url = order.get("payment_url") or order.get("checkout_url")
+    pickup_date    = order.get("pickup_date") if include_date else None
+    pickup_window  = order.get("pickup_time_window") if include_date else None
+    order_total    = order.get("total") or order.get("total_amount")
+    shipping_fee   = order.get("shipping_fee")
+    payment_url    = order.get("payment_url") or order.get("checkout_url")
+    pickup_address = order.get("pickup_address") if include_date else None
 
     if mapped_event == "payment_request" and not payment_url:
         payment_url = _generate_internal_payment_url(order)
         if not payment_url:
-            logger.error(f"payment_request aborted: no URL for order {order_number}")
+            logger.error(f"[notification] payment_request aborted: no URL for order {order_number}")
             _log_attempt({
                 "timestamp": datetime.now().isoformat(),
                 "order_id": order.get("id"), "event": mapped_event,
@@ -1265,8 +1447,9 @@ async def send_preferred_notification(
         order_number=order_number, customer_name=customer_name,
         language=language, pickup_date=pickup_date, pickup_window=pickup_window,
         order_total=order_total, shipping_fee=shipping_fee,
-        service_type=service_type, payment_url=payment_url,
+        service_type=service_type_normalized, payment_url=payment_url,
         order=order,
+        pickup_address=pickup_address,
     )
     message    = content["message"]
     html_body  = content["html"]
@@ -1298,7 +1481,7 @@ async def send_preferred_notification(
 
     dedupe_key = f"{order.get('id')}:{mapped_event}:{preference}:{language}"
     if await _is_already_sent_db(dedupe_key):
-        logger.info(f"Duplicate notification skipped (DB): {dedupe_key}")
+        logger.info(f"[notification] Duplicate skipped: {dedupe_key}")
         _log_attempt({
             "timestamp": datetime.now().isoformat(),
             "order_id": order.get("id"), "event": mapped_event,
@@ -1307,7 +1490,7 @@ async def send_preferred_notification(
         return True
 
     if ENFORCE_QUIET_HOURS and is_quiet_hours():
-        logger.info(f"Quiet hours active, notification queued: {dedupe_key}")
+        logger.info(f"[notification] Quiet hours active, queued: {dedupe_key}")
         _log_attempt({
             "timestamp": datetime.now().isoformat(),
             "order_id": order.get("id"), "event": mapped_event,
@@ -1316,7 +1499,7 @@ async def send_preferred_notification(
         return False
 
     logger.info(
-        f"Sending notification: order={order_number} event={mapped_event} "
+        f"[notification] Sending: order={order_number} event={mapped_event} "
         f"channel={preference} lang={language}"
     )
 
@@ -1329,16 +1512,16 @@ async def send_preferred_notification(
         if phone:
             success = await send_whatsapp(phone, message)
             if not success:
-                logger.info(f"WhatsApp failed → SMS fallback for order {order.get('id')}")
+                logger.info(f"[notification] WhatsApp failed → SMS fallback for order {order.get('id')}")
                 success = await send_sms(phone, message)
         if not success and email:
-            logger.info(f"WhatsApp+SMS failed → Email fallback for order {order.get('id')}")
+            logger.info(f"[notification] WhatsApp+SMS failed → Email fallback for order {order.get('id')}")
             success = await send_email(email, subject, message, html_body)
     else:  # sms default
         if phone:
             success = await send_sms(phone, message)
         if not success and email:
-            logger.info(f"SMS failed → Email fallback for order {order.get('id')}")
+            logger.info(f"[notification] SMS failed → Email fallback for order {order.get('id')}")
             success = await send_email(email, subject, message, html_body)
 
     _log_attempt({
@@ -1351,8 +1534,7 @@ async def send_preferred_notification(
 
     return success
 
-
-# ── Public API ────────────────────────────────────────────────────────
+# ── Funciones públicas de entrada ─────────────────────────────────────
 async def notify_order_created(customer: Dict, order: Dict) -> bool:
     return await send_preferred_notification(customer, order, "order_created")
 

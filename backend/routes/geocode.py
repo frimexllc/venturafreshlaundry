@@ -1,22 +1,24 @@
-"""Geocode / Distance endpoints — OpenRouteService integration"""
-import os
+"""Geocode / Distance endpoints — using centralized delivery_config"""
 import logging
-import httpx
+from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
+
+# Importar configuración centralizada
+from delivery_config import (
+    STORE_LAT,
+    STORE_LNG,
+    MAX_DELIVERY_MILES,
+    DELIVERY_FEE_TIERS,
+    calculate_distance_async,
+    calculate_delivery_fee,
+    get_delivery_info,
+    geocode_address,
+    USE_GOOGLE_MAPS,
+    USE_ORS,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/geocode", tags=["geocode"])
-
-ORS_API_KEY = os.environ.get("ORS_API_KEY", "")
-STORE_LAT = 34.283
-STORE_LNG = -119.293
-METERS_PER_MILE = 1609.344
-
-DELIVERY_RULES = [
-    {"max_miles": 3, "fee": 0.0, "label": "Free delivery"},
-    {"max_miles": 10, "fee": 2.99, "label": "$2.99 delivery fee"},
-]
-MAX_DELIVERY_MILES = 10
 
 
 @router.get("/distance")
@@ -24,55 +26,83 @@ async def get_distance(
     lat: float = Query(..., description="Destination latitude"),
     lng: float = Query(..., description="Destination longitude"),
 ):
-    if not ORS_API_KEY:
-        raise HTTPException(status_code=503, detail="ORS_API_KEY not configured")
-
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(
-                "https://api.openrouteservice.org/v2/directions/driving-car",
-                params={
-                    "api_key": ORS_API_KEY,
-                    "start": f"{STORE_LNG},{STORE_LAT}",
-                    "end": f"{lng},{lat}",
-                },
-            )
-            resp.raise_for_status()
-            data = resp.json()
-
-        segment = data["features"][0]["properties"]["segments"][0]
-        distance_m = segment["distance"]
-        duration_s = segment["duration"]
-        distance_miles = round(distance_m / METERS_PER_MILE, 2)
-
-        if distance_miles > MAX_DELIVERY_MILES:
-            return {
-                "distance_miles": distance_miles,
-                "duration_minutes": round(duration_s / 60, 1),
-                "delivery_fee": None,
-                "allowed": False,
-                "message": f"Delivery not available beyond {MAX_DELIVERY_MILES} miles",
-            }
-
-        fee = 0.0
-        label = ""
-        for rule in DELIVERY_RULES:
-            if distance_miles <= rule["max_miles"]:
-                fee = rule["fee"]
-                label = rule["label"]
-                break
-
+    """Calculate distance and delivery fee using centralized config"""
+    # Calculate distance (uses ORS if available)
+    from delivery_config import get_distance_ors_sync
+    
+    ors_result = get_distance_ors_sync(lat, lng)
+    
+    if ors_result:
+        distance_miles = ors_result["distance_miles"]
+        delivery_info = get_delivery_info(distance_miles)
+        
         return {
             "distance_miles": distance_miles,
-            "duration_minutes": round(duration_s / 60, 1),
-            "delivery_fee": fee,
-            "allowed": True,
-            "label": label,
+            "duration_minutes": ors_result["duration_minutes"],
+            "delivery_fee": delivery_info["fee"],
+            "allowed": distance_miles <= MAX_DELIVERY_MILES,
+            "tier": delivery_info.get("tier"),
+            "is_free": delivery_info["is_free"],
+            "calculation_method": "ors_driving",
         }
+    
+    # Fallback to Haversine
+    from delivery_config import haversine_miles
+    distance_miles = haversine_miles(STORE_LAT, STORE_LNG, lat, lng)
+    
+    if distance_miles > MAX_DELIVERY_MILES:
+        return {
+            "distance_miles": round(distance_miles, 2),
+            "delivery_fee": None,
+            "allowed": False,
+            "message": f"Delivery not available beyond {MAX_DELIVERY_MILES} miles",
+            "calculation_method": "haversine",
+        }
+    
+    fee = calculate_delivery_fee(distance_miles)
+    
+    return {
+        "distance_miles": round(distance_miles, 2),
+        "delivery_fee": fee,
+        "allowed": True,
+        "is_free": fee == 0,
+        "calculation_method": "haversine",
+        "tier": next((t for t in DELIVERY_FEE_TIERS if distance_miles <= t["max_miles"]), None),
+    }
 
-    except httpx.HTTPStatusError as exc:
-        logger.error("ORS API error: %s", exc.response.text)
-        raise HTTPException(status_code=502, detail="Distance service error")
-    except Exception as exc:
-        logger.error("Distance calc failed: %s", exc)
-        raise HTTPException(status_code=500, detail="Distance calculation failed")
+
+@router.post("/geocode")
+async def geocode(address: str):
+    """Geocode an address using centralized config"""
+    coords = geocode_address(address)
+    
+    if not coords:
+        raise HTTPException(status_code=400, detail="Could not geocode address")
+    
+    return {
+        "address": address,
+        "lat": coords["lat"],
+        "lng": coords["lng"],
+        "geocoding_source": "google_maps" if USE_GOOGLE_MAPS else "ors",
+    }
+
+
+@router.get("/validate-address")
+async def validate_address(address: str, zip_code: Optional[str] = None):
+    """Validate if an address is eligible for delivery"""
+    from delivery_config import validate_delivery_address
+    
+    result = validate_delivery_address(address, zip_code)
+    return result
+
+
+@router.get("/config")
+async def get_geocode_config():
+    """Get geocoding configuration status"""
+    return {
+        "google_maps_enabled": USE_GOOGLE_MAPS,
+        "ors_enabled": USE_ORS,
+        "max_delivery_miles": MAX_DELIVERY_MILES,
+        "delivery_tiers": DELIVERY_FEE_TIERS,
+        "store_location": {"lat": STORE_LAT, "lng": STORE_LNG},
+    }

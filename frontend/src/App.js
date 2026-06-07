@@ -61,6 +61,9 @@ import PaymentSuccessPage from "./pages/PaymentSuccessPage";
 import CustomerPaymentPage from "./pages/CustomerPaymentPage";
 import RefundForm from "./pages/RefundForm";
 import SuggestionForm from "./pages/SuggestionForm";
+// 🔥 NUEVA IMPORTACIÓN
+import Survey from "./pages/Survey";
+
 import axios from "axios";
 
 // Pre-carga de rutas críticas
@@ -144,8 +147,8 @@ function AppRoutes() {
       <Route path="/blog" element={<BlogPage />} />
       <Route path="/blog/:slug" element={<BlogPage />} />
       <Route path="/schedule-pickup" element={<CustomerProtectedRoute><SchedulePickup /></CustomerProtectedRoute>} />
-      <Route path="/wash-fold" element={<CustomerProtectedRoute><WashFoldRequest /></CustomerProtectedRoute>} />
-      <Route path="/membership" element={<MembershipPage />} />
+      <Route path="/wash-fold" element={<WashFoldRequest />} />
+      <Route path="/membership" element={<CustomerProtectedRoute><MembershipPage /> </CustomerProtectedRoute>} />
       <Route path="/request-quote" element={<RequestQuotePage />} />
       <Route path="/commercial" element={<CustomerProtectedRoute><RequestQuotePage /></CustomerProtectedRoute>} />
       <Route path="/b2b" element={<CustomerProtectedRoute><RequestQuotePage /></CustomerProtectedRoute>} />
@@ -155,6 +158,8 @@ function AppRoutes() {
       <Route path="/faq" element={<FAQPage />} />
       <Route path="/payment-success" element={<PaymentSuccessPage />} />
       <Route path="/customer/pay/:orderId" element={<CustomerPaymentPage />} />
+      {/* 🔥 NUEVA RUTA DE ENCUESTA (pública) */}
+      <Route path="/survey" element={<Survey />} />
 
       {/* Customer portal */}
       <Route path="/account/login" element={<CustomerLogin />} />

@@ -51,22 +51,20 @@ const STAGES = [
 
 const WASH_PHASES = ["Pre-wash", "Washing", "Rinse", "Spin", "Done!"];
 
-// ─── Recurrence options ────────────────────────────────────────────────────────
 const RECURRENCE_OPTIONS = [
-  { val: "once",      icon: "1️⃣",  en: "One time",           es: "Una sola vez" },
-  { val: "twice_week",icon: "🔄",  en: "Twice a week",       es: "Dos veces por semana" },
-  { val: "weekly",    icon: "📅",  en: "Every week",         es: "Cada semana" },
-  { val: "biweekly",  icon: "📆",  en: "Every 2 weeks",      es: "Cada 2 semanas" },
+  { val: "once",       icon: "1️⃣", en: "One time",       es: "Una sola vez" },
+  { val: "twice_week", icon: "🔄", en: "Twice a week",    es: "Dos veces por semana" },
+  { val: "weekly",     icon: "📅", en: "Every week",      es: "Cada semana" },
+  { val: "biweekly",   icon: "📆", en: "Every 2 weeks",   es: "Cada 2 semanas" },
 ];
 
 const RECURRENCE_LABELS = {
-  once:       { en: "One time",        es: "Una sola vez" },
-  weekly:     { en: "Every week",      es: "Cada semana" },
-  biweekly:   { en: "Every 2 weeks",   es: "Cada 2 semanas" },
-  twice_week: { en: "Twice a week",    es: "Dos veces por semana" },
+  once:       { en: "One time",      es: "Una sola vez" },
+  weekly:     { en: "Every week",    es: "Cada semana" },
+  biweekly:   { en: "Every 2 weeks", es: "Cada 2 semanas" },
+  twice_week: { en: "Twice a week",  es: "Dos veces por semana" },
 };
 
-// ─── Weekday selector for twice_week ──────────────────────────────────────────
 const WEEKDAYS = [
   { value: "Monday",    label: { en: "Monday",    es: "Lunes" } },
   { value: "Tuesday",   label: { en: "Tuesday",   es: "Martes" } },
@@ -84,9 +82,9 @@ const WeekdaySelector = ({ selectedDays, onChange, locale, t }) => {
       : [...selectedDays, dayValue];
     onChange(newSelected);
   };
-
-  const isValid = selectedDays.length === 2;
-  const warning = selectedDays.length > 2 ? t("You can select up to 2 days", "Puedes seleccionar hasta 2 días") : null;
+  const warning = selectedDays.length > 2
+    ? t("You can select up to 2 days", "Puedes seleccionar hasta 2 días")
+    : null;
 
   return (
     <div style={{ marginTop: 12, animation: "tl_panel .2s ease both" }}>
@@ -97,29 +95,19 @@ const WeekdaySelector = ({ selectedDays, onChange, locale, t }) => {
         {WEEKDAYS.map(day => {
           const active = selectedDays.includes(day.value);
           return (
-            <button
-              key={day.value}
-              type="button"
-              onClick={() => toggleDay(day.value)}
-              style={{
-                padding: "6px 12px",
-                borderRadius: 20,
+            <button key={day.value} type="button" onClick={() => toggleDay(day.value)}
+              style={{ padding: "6px 12px", borderRadius: 20,
                 border: `1.5px solid ${active ? "#0ea5e9" : "hsl(var(--border))"}`,
                 background: active ? "rgba(14,165,233,.1)" : "hsl(var(--secondary))",
-                cursor: "pointer",
-                fontSize: 11,
-                fontWeight: active ? 700 : 500,
-                color: active ? "#0ea5e9" : "hsl(var(--foreground))",
-                transition: "all .15s",
-              }}
-            >
+                cursor: "pointer", fontSize: 11, fontWeight: active ? 700 : 500,
+                color: active ? "#0ea5e9" : "hsl(var(--foreground))", transition: "all .15s" }}>
               {locale === "es" ? day.label.es : day.label.en}
             </button>
           );
         })}
       </div>
       {warning && <div style={{ fontSize: 10, color: "#dc2626", marginTop: 2 }}>{warning}</div>}
-      {!isValid && selectedDays.length > 0 && selectedDays.length < 2 && (
+      {selectedDays.length > 0 && selectedDays.length < 2 && (
         <div style={{ fontSize: 10, color: "#f59e0b", marginTop: 2 }}>
           {t("Please select exactly two days", "Por favor selecciona exactamente dos días")}
         </div>
@@ -128,11 +116,136 @@ const WeekdaySelector = ({ selectedDays, onChange, locale, t }) => {
   );
 };
 
+// ─── Address Validation Status Component ─────────────────────────────────────
+const AddressValidationStatus = ({ checking, valid, error, distanceMiles, locale, t }) => {
+  if (!checking && !valid && !error) return null;
+
+  if (checking) {
+    return (
+      <div style={{
+        marginTop: 10,
+        padding: "10px 14px",
+        borderRadius: 10,
+        background: "rgba(14,165,233,.06)",
+        border: "1.5px solid rgba(14,165,233,.25)",
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        animation: "tl_panel .2s ease both",
+      }}>
+        <div style={{
+          width: 18, height: 18, borderRadius: "50%",
+          border: "2.5px solid rgba(14,165,233,.2)",
+          borderTopColor: "#0ea5e9",
+          animation: "tl_spin .7s linear infinite",
+          flexShrink: 0,
+        }} />
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#0ea5e9" }}>
+            {t("Verifying address…", "Verificando dirección…")}
+          </div>
+          <div style={{ fontSize: 10, color: "rgba(14,165,233,.7)", marginTop: 1 }}>
+            {t("Checking if we cover your area", "Verificando si cubrimos tu área")}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={{
+        marginTop: 10,
+        padding: "10px 14px",
+        borderRadius: 10,
+        background: "rgba(220,38,38,.05)",
+        border: "1.5px solid rgba(220,38,38,.3)",
+        display: "flex",
+        alignItems: "flex-start",
+        gap: 10,
+        animation: "tl_panel .2s ease both",
+      }}>
+        <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>❌</span>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#dc2626" }}>
+            {t("Address outside service area", "Dirección fuera del área de servicio")}
+          </div>
+          <div style={{ fontSize: 10, color: "#b91c1c", marginTop: 2, lineHeight: 1.5 }}>
+            {error}
+          </div>
+          <div style={{ fontSize: 10, color: "#b91c1c", marginTop: 4 }}>
+            {t("We currently serve Ventura, Oxnard and surrounding areas.",
+               "Actualmente servimos Ventura, Oxnard y áreas cercanas.")}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (valid) {
+    const isFree = distanceMiles && parseFloat(distanceMiles) <= 3;
+    const deliveryFee = distanceMiles
+      ? parseFloat(distanceMiles) > 10
+        ? "$5.99"
+        : parseFloat(distanceMiles) <= 3
+          ? t("FREE", "GRATIS")
+          : `$${Math.round(Math.max(2.99, Math.min((parseFloat(distanceMiles) - 3) * 1.5, 5.99)) * 100) / 100}`
+      : null;
+
+    return (
+      <div style={{
+        marginTop: 10,
+        padding: "10px 14px",
+        borderRadius: 10,
+        background: "rgba(5,150,105,.05)",
+        border: "1.5px solid rgba(5,150,105,.3)",
+        display: "flex",
+        alignItems: "flex-start",
+        gap: 10,
+        animation: "tl_panel .2s ease both",
+      }}>
+        <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>✅</span>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#059669" }}>
+            {t("Address verified — we cover your area!", "¡Dirección verificada — cubrimos tu área!")}
+          </div>
+          {distanceMiles && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 5, flexWrap: "wrap" }}>
+              <span style={{
+                display: "inline-flex", alignItems: "center", gap: 4,
+                padding: "3px 9px", borderRadius: 20,
+                background: "rgba(5,150,105,.1)", border: "1px solid rgba(5,150,105,.25)",
+                fontSize: 11, fontWeight: 600, color: "#059669",
+              }}>
+                📍 {parseFloat(distanceMiles).toFixed(1)} mi {t("from store", "de la tienda")}
+              </span>
+              {deliveryFee && (
+                <span style={{
+                  display: "inline-flex", alignItems: "center", gap: 4,
+                  padding: "3px 9px", borderRadius: 20,
+                  background: isFree ? "rgba(5,150,105,.1)" : "rgba(14,165,233,.08)",
+                  border: `1px solid ${isFree ? "rgba(5,150,105,.25)" : "rgba(14,165,233,.2)"}`,
+                  fontSize: 11, fontWeight: 700,
+                  color: isFree ? "#059669" : "#0ea5e9",
+                }}>
+                  🚚 {t("Delivery", "Entrega")}: {deliveryFee}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+};
+
 // ─── Phone input ───────────────────────────────────────────────────────────────
 const PhoneInput = ({ value, dialCode, dialIso, onValueChange, onDialCodeChange }) => {
-  const [open, setOpen]   = useState(false);
-  const [srch, setSrch]   = useState("");
-  const [foc,  setFoc]    = useState(false);
+  const [open, setOpen] = useState(false);
+  const [srch, setSrch] = useState("");
+  const [foc,  setFoc]  = useState(false);
   const ref = useRef(null);
 
   useEffect(() => {
@@ -141,9 +254,9 @@ const PhoneInput = ({ value, dialCode, dialIso, onValueChange, onDialCodeChange 
     return () => document.removeEventListener("mousedown", fn);
   }, []);
 
-  const cur    = COUNTRIES.find((c) => c.code === dialCode && c.iso === dialIso) || COUNTRIES[0];
-  const list   = COUNTRIES.filter((c) => c.name.toLowerCase().includes(srch.toLowerCase()) || c.code.includes(srch));
-  const fmt    = (raw) => {
+  const cur  = COUNTRIES.find((c) => c.code === dialCode && c.iso === dialIso) || COUNTRIES[0];
+  const list = COUNTRIES.filter((c) => c.name.toLowerCase().includes(srch.toLowerCase()) || c.code.includes(srch));
+  const fmt  = (raw) => {
     const d = raw.replace(/\D/g, "").slice(0, 10);
     if (d.length >= 7) return `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`;
     if (d.length >= 4) return `(${d.slice(0,3)}) ${d.slice(3)}`;
@@ -208,13 +321,13 @@ const PhoneInput = ({ value, dialCode, dialIso, onValueChange, onDialCodeChange 
   );
 };
 
-// ─── Washing Machine SVGs (unchanged) ─────────────────────────────────────────
+// ─── Washing Machine SVGs ──────────────────────────────────────────────────────
 const RiderMachine = ({ step }) => {
-  const holes = [0, 45, 90, 135, 180, 225, 270, 315];
+  const holes    = [0, 45, 90, 135, 180, 225, 270, 315];
   const spinDurs = ["2.5s", "2s", "1.2s", "0.7s", "0.5s"];
-  const spinDur = spinDurs[step] || "2s";
-  const wLevels = [82, 76, 70, 64, 58];
-  const wY = wLevels[step] || 82;
+  const spinDur  = spinDurs[step] || "2s";
+  const wLevels  = [82, 76, 70, 64, 58];
+  const wY       = wLevels[step] || 82;
 
   return (
     <svg viewBox="0 0 100 130" width="52" style={{ display: "block", overflow: "visible" }}>
@@ -344,10 +457,10 @@ const inputSt = (foc) => ({
   fontSize: 12, fontWeight: 500, fontFamily: "inherit", outline: "none",
   boxShadow: foc ? "0 0 0 2px rgba(14,165,233,.12)" : "none", transition: "all .15s",
 });
-const FInput = (p) => { const [f, setF] = useState(false); return <input {...p} style={{ ...inputSt(f), ...(p.style || {}) }} onFocus={() => setF(true)} onBlur={() => setF(false)} />; };
+const FInput    = (p) => { const [f, setF] = useState(false); return <input {...p} style={{ ...inputSt(f), ...(p.style || {}) }} onFocus={() => setF(true)} onBlur={() => setF(false)} />; };
 const FTextarea = ({ rows = 3, ...p }) => { const [f, setF] = useState(false); return <textarea rows={rows} {...p} style={{ ...inputSt(f), resize: "vertical", minHeight: 60 }} onFocus={() => setF(true)} onBlur={() => setF(false)} />; };
-const FLabel = ({ children }) => <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".13em", color: "hsl(var(--muted-foreground))", marginBottom: 4 }}>{children}</div>;
-const FF = ({ label, children }) => <div><FLabel>{label}</FLabel>{children}</div>;
+const FLabel    = ({ children }) => <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".13em", color: "hsl(var(--muted-foreground))", marginBottom: 4 }}>{children}</div>;
+const FF        = ({ label, children }) => <div><FLabel>{label}</FLabel>{children}</div>;
 
 const ChipSet = ({ options, value, onChange }) => (
   <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
@@ -410,22 +523,22 @@ const PRICING = {
   },
 };
 
-// ─── Membership pricing logic ──────────────────────────────────────────────────
 const getMembershipDiscount = (membershipPlan) => {
   if (!membershipPlan) return null;
   const plan = membershipPlan.toLowerCase();
-  if (plan.includes("elite")) return { label: "Elite Member", discount: "member", badge: "👑 Elite" };
-  if (plan.includes("family")) return { label: "Family Plus", discount: "member", badge: "⭐ Family" };
-  if (plan.includes("popular") || plan.includes("most")) return { label: "Member", discount: "member", badge: "✨ Member" };
+  if (plan.includes("elite"))                             return { label: "Elite Member", discount: "member", badge: "👑 Elite" };
+  if (plan.includes("family"))                            return { label: "Family Plus",  discount: "member", badge: "⭐ Family" };
+  if (plan.includes("popular") || plan.includes("most")) return { label: "Member",       discount: "member", badge: "✨ Member" };
   return { label: "Member", discount: "member", badge: "⭐ Member" };
 };
 
+// ─── PlanSelector ACTUALIZADO con surcharge para miembros ─────────────────────
 const PlanSelector = ({ value, onChange, serviceType, membershipPlan }) => {
   const { t } = useLocale();
-  const isPD = serviceType === "pickup_delivery" || serviceType === "airbnb_host" || serviceType === "commercial";
-  const pricing = isPD ? PRICING.pickup_delivery : PRICING.wash_fold;
+  const isPD      = serviceType === "pickup_delivery" || serviceType === "airbnb_host" || serviceType === "commercial";
+  const pricing   = isPD ? PRICING.pickup_delivery : PRICING.wash_fold;
   const memberInfo = getMembershipDiscount(membershipPlan);
-  const isMember = !!memberInfo;
+  const isMember  = !!memberInfo;
 
   const plans = [
     { val: "standard", icon: "🕒", label: t("Standard", "Estándar") },
@@ -451,7 +564,7 @@ const PlanSelector = ({ value, onChange, serviceType, membershipPlan }) => {
       )}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
         {plans.map((p) => {
-          const tier = pricing[p.val];
+          const tier   = pricing[p.val];
           const active = value === p.val;
           return (
             <button key={p.val} type="button" onClick={() => onChange(p.val)}
@@ -468,9 +581,30 @@ const PlanSelector = ({ value, onChange, serviceType, membershipPlan }) => {
               {isPD ? (
                 <div style={{ marginTop: 6 }}>
                   {isMember ? (
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "#059669" }}>
-                      ${tier.member.toFixed(2)}/lb
-                      <span style={{ fontSize: 9, color: "#0ea5e9", fontWeight: 700, marginLeft: 3 }}>MEMBER</span>
+                    <div>
+                      {/* Precio efectivo para miembro con allowance */}
+                      <div style={{ fontSize: 12, fontWeight: 700, color: "#059669" }}>
+                        ${tier.member.toFixed(2)}/lb
+                        <span style={{ fontSize: 9, color: "#0ea5e9", fontWeight: 700, marginLeft: 3 }}>
+                          MEMBER
+                        </span>
+                      </div>
+                      {/* Mostrar surcharge si aplica */}
+                      {p.val === "premium" && (
+                        <div style={{ fontSize: 9, color: "#f59e0b", fontWeight: 600, marginTop: 2 }}>
+                          +$0.25/lb en allowance
+                        </div>
+                      )}
+                      {p.val === "express" && (
+                        <div style={{ fontSize: 9, color: "#f97316", fontWeight: 600, marginTop: 2 }}>
+                          +$0.75/lb en allowance
+                        </div>
+                      )}
+                      {p.val === "standard" && (
+                        <div style={{ fontSize: 9, color: "#059669", fontWeight: 600, marginTop: 2 }}>
+                          ✓ incluido en membresía
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <>
@@ -498,9 +632,8 @@ const PlanSelector = ({ value, onChange, serviceType, membershipPlan }) => {
   );
 };
 
-// ─── Recurrence Selector (with weekday picker for twice_week) ─────────────────
 const RecurrenceSelector = ({ value, onChange, endDate, onEndDateChange, selectedDays, onDaysChange, locale, t }) => {
-  const isRecurring = value && value !== "once";
+  const isRecurring      = value && value !== "once";
   const showDaysSelector = value === "twice_week";
 
   return (
@@ -524,16 +657,9 @@ const RecurrenceSelector = ({ value, onChange, endDate, onEndDateChange, selecte
           );
         })}
       </div>
-
       {showDaysSelector && (
-        <WeekdaySelector
-          selectedDays={selectedDays}
-          onChange={onDaysChange}
-          locale={locale}
-          t={t}
-        />
+        <WeekdaySelector selectedDays={selectedDays} onChange={onDaysChange} locale={locale} t={t} />
       )}
-
       {isRecurring && (
         <div style={{ marginTop: 12, animation: "tl_panel .2s ease both" }}>
           <div style={{ padding: "10px 14px", borderRadius: 9,
@@ -552,10 +678,6 @@ const RecurrenceSelector = ({ value, onChange, endDate, onEndDateChange, selecte
               onChange={(e) => onEndDateChange(e.target.value)}
               min={new Date().toISOString().split("T")[0]}
               style={{ cursor: "pointer" }} />
-            <div style={{ fontSize: 10, color: "hsl(var(--muted-foreground))", marginTop: 3 }}>
-              {t("Leave empty for indefinite recurring pickups",
-                 "Deja vacío para pickups recurrentes indefinidos")}
-            </div>
           </FF>
         </div>
       )}
@@ -572,13 +694,13 @@ const PickupDeliveryInfoPanel = ({ t }) => (
       <span style={{ fontSize: 17 }}>🚚</span>
       <span style={{ fontSize: 12, fontWeight: 700, color: "#0ea5e9" }}>{t("Pickup & Delivery Service", "Servicio de Recogida y Entrega")}</span>
     </div>
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "5px 12px", marginBottom: 9 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "5px 12px" }}>
       {[
-        { icon: "⚡", en: "Same-day available",     es: "Disponible el mismo día" },
-        { icon: "🌿", en: "Eco-friendly detergents", es: "Detergentes ecológicos" },
-        { icon: "🩸", en: "Stain treatment",        es: "Tratamiento de manchas" },
-        { icon: "📦", en: "Folding & packaging",    es: "Doblado y empaquetado" },
-        { icon: "✅", en: "Satisfaction guaranteed", es: "Garantía de satisfacción" },
+        { icon: "⚡", en: "Same-day available",      es: "Disponible el mismo día" },
+        { icon: "🌿", en: "Eco-friendly detergents",  es: "Detergentes ecológicos" },
+        { icon: "🩸", en: "Stain treatment",          es: "Tratamiento de manchas" },
+        { icon: "📦", en: "Folding & packaging",      es: "Doblado y empaquetado" },
+        { icon: "✅", en: "Satisfaction guaranteed",  es: "Garantía de satisfacción" },
       ].map((f) => (
         <div key={f.icon} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "hsl(var(--foreground))" }}>
           <span style={{ fontSize: 13 }}>{f.icon}</span><span>{t(f.en, f.es)}</span>
@@ -596,23 +718,17 @@ const AirbnbInfoPanel = ({ t }) => (
       <span style={{ fontSize: 17 }}>🏠</span>
       <span style={{ fontSize: 12, fontWeight: 700, color: "#ff5c25" }}>{t("Airbnb Host Service", "Servicio para Anfitriones Airbnb")}</span>
     </div>
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "5px 12px", marginBottom: 9 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "5px 12px" }}>
       {[
-        { icon: "🛏️", en: "Bed linens & towels",   es: "Sábanas y toallas"       },
-        { icon: "⚡",  en: "Priority same-day",      es: "Prioridad mismo día"     },
-        { icon: "📦",  en: "Folded & bag-ready",     es: "Doblado listo en bolsa"  },
-        { icon: "📋",  en: "Inventory checklist",    es: "Lista de inventario"     },
-        { icon: "🔄",  en: "Recurring weekly plan",  es: "Plan semanal recurrente" },
-        { icon: "💼",  en: "Volume discount",        es: "Descuento por volumen"   },
+        { icon: "🛏️", en: "Bed linens & towels",  es: "Sábanas y toallas" },
+        { icon: "⚡",  en: "Priority same-day",     es: "Prioridad mismo día" },
+        { icon: "📦",  en: "Folded & bag-ready",    es: "Doblado listo en bolsa" },
+        { icon: "🔄",  en: "Recurring weekly plan", es: "Plan semanal recurrente" },
       ].map((f) => (
         <div key={f.icon} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "hsl(var(--foreground))" }}>
           <span style={{ fontSize: 13 }}>{f.icon}</span><span>{t(f.en, f.es)}</span>
         </div>
       ))}
-    </div>
-    <div style={{ padding: "7px 10px", borderRadius: 8, background: "rgba(255,92,37,.07)", fontSize: 10, color: "#c2440a", lineHeight: 1.55 }}>
-      {t("💡 We'll coordinate with your guest checkout schedule and set up recurring pickups.",
-         "💡 Coordinamos con tus salidas de huéspedes y configuramos recogidas recurrentes.")}
     </div>
   </div>
 );
@@ -625,28 +741,22 @@ const CommercialInfoPanel = ({ t }) => (
       <span style={{ fontSize: 17 }}>🏢</span>
       <span style={{ fontSize: 12, fontWeight: 700, color: "#4f46e5" }}>{t("Commercial / B2B Service", "Servicio Comercial / B2B")}</span>
     </div>
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "5px 12px", marginBottom: 9 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "5px 12px" }}>
       {[
-        { icon: "💰", en: "Bulk pricing",           es: "Precios por volumen" },
-        { icon: "📅", en: "Weekly contracts",       es: "Contratos semanales" },
-        { icon: "👕", en: "Uniforms & linens",      es: "Uniformes y ropa de cama" },
-        { icon: "⚡", en: "Fast turnaround",        es: "Plazo rápido" },
-        { icon: "👤", en: "Dedicated account manager", es: "Gestor de cuenta dedicado" },
-        { icon: "⚙️", en: "Customizable service",    es: "Servicio personalizable" },
+        { icon: "💰", en: "Bulk pricing",     es: "Precios por volumen" },
+        { icon: "📅", en: "Weekly contracts", es: "Contratos semanales" },
+        { icon: "⚡", en: "Fast turnaround",  es: "Plazo rápido" },
+        { icon: "⚙️", en: "Customizable",     es: "Personalizable" },
       ].map((f) => (
         <div key={f.icon} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "hsl(var(--foreground))" }}>
           <span style={{ fontSize: 13 }}>{f.icon}</span><span>{t(f.en, f.es)}</span>
         </div>
       ))}
     </div>
-    <div style={{ padding: "7px 10px", borderRadius: 8, background: "rgba(99,102,241,.07)", fontSize: 10, color: "#3730a3", lineHeight: 1.55 }}>
-      {t("💡 Ideal for hotels, restaurants, gyms, and offices. We adapt to your volume and schedule.",
-         "💡 Ideal para hoteles, restaurantes, gimnasios y oficinas. Nos adaptamos a tu volumen y horario.")}
-    </div>
   </div>
 );
 
-// ─── ADD-ON SERVICES SECTION ──────────────────────────────────────────────────
+// ─── ADD-ON SERVICES ──────────────────────────────────────────────────────────
 const PRICE_UNIT_LABELS = {
   per_lb:    { en: "/ lb",    es: "/ lb"    },
   per_order: { en: "/ order", es: "/ orden" },
@@ -678,7 +788,7 @@ const AddonServicesSection = ({ services, selectedIds, onToggle, t, locale }) =>
         <div style={{ width: 28, height: 28, borderRadius: 8, background: "rgba(14,165,233,.1)", display: "flex",
           alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>✨</div>
         <div>
-          <div style={{ fontSize: 11, fontWeight: 800, color: "hsl(var(--foreground))", letterSpacing: ".02em" }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: "hsl(var(--foreground))" }}>
             {t("Add-on Services", "Servicios Adicionales")}
           </div>
           <div style={{ fontSize: 10, color: "hsl(var(--muted-foreground))", marginTop: 1 }}>
@@ -688,10 +798,10 @@ const AddonServicesSection = ({ services, selectedIds, onToggle, t, locale }) =>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
         {services.map((svc) => {
-          const active = selectedIds.has(svc.id);
-          const icon = getServiceIcon(svc.name, svc.category || "");
+          const active    = selectedIds.has(svc.id);
+          const icon      = getServiceIcon(svc.name, svc.category || "");
           const unitLabel = PRICE_UNIT_LABELS[svc.price_unit] || { en: "", es: "" };
-          const unit = locale === "es" ? unitLabel.es : unitLabel.en;
+          const unit      = locale === "es" ? unitLabel.es : unitLabel.en;
           return (
             <button key={svc.id} type="button" onClick={() => onToggle(svc)}
               style={{ display: "flex", alignItems: "center", gap: 11, padding: "10px 12px",
@@ -735,7 +845,7 @@ const AddonServicesSection = ({ services, selectedIds, onToggle, t, locale }) =>
           <span style={{ fontSize: 13 }}>✅</span>
           <span style={{ fontSize: 11, fontWeight: 600, color: "#0ea5e9" }}>
             {selectedIds.size} {t(selectedIds.size === 1 ? "add-on selected" : "add-ons selected",
-                                 selectedIds.size === 1 ? "servicio adicional seleccionado" : "servicios adicionales seleccionados")}
+                                   selectedIds.size === 1 ? "servicio adicional seleccionado" : "servicios adicionales seleccionados")}
           </span>
         </div>
       )}
@@ -743,7 +853,7 @@ const AddonServicesSection = ({ services, selectedIds, onToggle, t, locale }) =>
   );
 };
 
-// ─── Temp + time selectors ─────────────────────────────────────────────────────
+// ─── Temp selectors ────────────────────────────────────────────────────────────
 const TempRow = ({ value, onChange, options }) => (
   <div style={{ display: "flex", gap: 6 }}>
     {options.map((o) => (
@@ -775,25 +885,80 @@ const DRY_TEMP_OPTIONS = [
   { val: "air",    icon: "🌿", label: "Air dry", sub: "No heat"    },
 ];
 
-const TimeSlots = ({ value, onChange, locale }) => (
-  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-    {[
-      { val: "8am-12pm", icon: "🌅", time: "8:00 AM – 12:00 PM", note: locale === "es" ? "Mañana" : "Morning" },
-      { val: "2pm-6pm",  icon: "🌆", time: "2:00 PM – 6:00 PM",  note: locale === "es" ? "Tarde"  : "Afternoon" },
-    ].map((o) => (
-      <button key={o.val} type="button" onClick={() => onChange(o.val)}
-        style={{ padding: "12px 8px", borderRadius: 10, textAlign: "center",
-          border: `1.5px solid ${value === o.val ? "#0ea5e9" : "hsl(var(--border))"}`,
-          background: value === o.val ? "rgba(14,165,233,.08)" : "hsl(var(--secondary))",
-          cursor: "pointer", transition: "all .15s",
-          transform: value === o.val ? "scale(1.02)" : "scale(1)", fontFamily: "inherit" }}>
-        <div style={{ fontSize: 18, marginBottom: 4 }}>{o.icon}</div>
-        <div style={{ fontSize: 11, fontWeight: 600, color: value === o.val ? "#0ea5e9" : "hsl(var(--foreground))" }}>{o.time}</div>
-        <div style={{ fontSize: 9, color: "hsl(var(--muted-foreground))", marginTop: 2 }}>{o.note}</div>
-      </button>
-    ))}
-  </div>
-);
+const getTimeSlotAvailability = (pickupDate, servicePlan, todayStr) => {
+  const now              = new Date();
+  const nowMinutes       = now.getHours() * 60 + now.getMinutes();
+  const CUTOFF_MORNING   = 10 * 60;
+  const CUTOFF_AFTERNOON = 16 * 60;
+  const isToday          = pickupDate === todayStr;
+  const isExpress        = servicePlan === "express";
+
+  if (!isToday) return { morning: true, afternoon: true, noSlots: false };
+  if (!isExpress) return { morning: true, afternoon: true, noSlots: false };
+
+  const morningAvailable   = nowMinutes < CUTOFF_MORNING;
+  const afternoonAvailable = nowMinutes < CUTOFF_AFTERNOON;
+  return { morning: morningAvailable, afternoon: afternoonAvailable, noSlots: !morningAvailable && !afternoonAvailable };
+};
+
+const TimeSlots = ({ value, onChange, locale, pickupDate, servicePlan, todayStr }) => {
+  const availability = getTimeSlotAvailability(pickupDate, servicePlan, todayStr);
+  const slots = [
+    { val: "8am-12pm",  icon: "🌅", time: "8:00 AM – 12:00 PM", note: locale === "es" ? "Mañana"   : "Morning",   cutoff: locale === "es" ? "Disponible antes de las 10:00 AM" : "Available before 10:00 AM", available: availability.morning   },
+    { val: "2pm-6pm",   icon: "🌆", time: "2:00 PM – 6:00 PM",  note: locale === "es" ? "Tarde"    : "Afternoon", cutoff: locale === "es" ? "Disponible antes de las 4:00 PM"  : "Available before 4:00 PM",  available: availability.afternoon },
+  ];
+
+  return (
+    <div>
+      {availability.noSlots && pickupDate === todayStr && servicePlan === "express" && (
+        <div style={{ padding: "10px 13px", borderRadius: 9, marginBottom: 10,
+          background: "rgba(245,158,11,.08)", border: "1px solid rgba(245,158,11,.35)",
+          display: "flex", alignItems: "flex-start", gap: 8, animation: "tl_panel .2s ease both" }}>
+          <span style={{ fontSize: 16, flexShrink: 0 }}>⏰</span>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#b45309", marginBottom: 2 }}>
+              {locale === "es" ? "Ya no hay ventanas disponibles para hoy" : "No more time windows available for today"}
+            </div>
+          </div>
+        </div>
+      )}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        {slots.map((o) => {
+          const isSelected = value === o.val;
+          const isDisabled = !o.available;
+          return (
+            <button key={o.val} type="button"
+              onClick={() => !isDisabled && onChange(o.val)}
+              disabled={isDisabled}
+              style={{
+                padding: "12px 8px", borderRadius: 10, textAlign: "center",
+                border: `1.5px solid ${isSelected ? "#0ea5e9" : "hsl(var(--border))"}`,
+                background: isSelected ? "rgba(14,165,233,.08)" : "hsl(var(--secondary))",
+                cursor: isDisabled ? "not-allowed" : "pointer",
+                transition: "all .15s",
+                transform: isSelected ? "scale(1.02)" : "scale(1)",
+                fontFamily: "inherit", opacity: isDisabled ? 0.45 : 1,
+                position: "relative", overflow: "hidden",
+              }}>
+              {isDisabled && (
+                <div style={{ position: "absolute", inset: 0,
+                  backgroundImage: "repeating-linear-gradient(135deg, transparent, transparent 5px, rgba(0,0,0,.04) 5px, rgba(0,0,0,.04) 10px)",
+                  borderRadius: 10, pointerEvents: "none" }} />
+              )}
+              <div style={{ fontSize: 18, marginBottom: 4, filter: isDisabled ? "grayscale(1)" : "none" }}>{o.icon}</div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: isSelected ? "#0ea5e9" : isDisabled ? "hsl(var(--muted-foreground))" : "hsl(var(--foreground))" }}>
+                {isDisabled ? <s>{o.time}</s> : o.time}
+              </div>
+              <div style={{ fontSize: 9, color: "hsl(var(--muted-foreground))", marginTop: 2 }}>
+                {isDisabled ? o.cutoff : o.note}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
 
 const SumBlock = ({ title, rows }) => (
   <div style={{ padding: "10px 12px", borderRadius: 9, background: "hsl(var(--secondary))", border: "0.5px solid hsl(var(--border))" }}>
@@ -809,8 +974,8 @@ const SumBlock = ({ title, rows }) => (
 
 // ─── Conveyor track ────────────────────────────────────────────────────────────
 const ConveyorTrack = ({ cur, locale, onStageClick }) => {
-  const stageRefs = useRef([]);
-  const trackRef  = useRef(null);
+  const stageRefs           = useRef([]);
+  const trackRef            = useRef(null);
   const [riderLeft, setRiderLeft] = useState(0);
 
   useEffect(() => {
@@ -822,10 +987,7 @@ const ConveyorTrack = ({ cur, locale, onStageClick }) => {
   }, [cur]);
 
   return (
-    <div style={{
-      background: "linear-gradient(150deg,#0b1929 0%,#081320 60%,#040c16 100%)",
-      borderRadius: 16, padding: "20px 0 14px", position: "relative", overflow: "hidden",
-    }}>
+    <div style={{ background: "linear-gradient(150deg,#0b1929 0%,#081320 60%,#040c16 100%)", borderRadius: 16, padding: "20px 0 14px", position: "relative", overflow: "hidden" }}>
       <div style={{ position: "absolute", inset: 0, backgroundImage: "linear-gradient(rgba(255,255,255,.022) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)", backgroundSize: "32px 32px", pointerEvents: "none" }} />
       <div style={{ overflowX: "auto", overflowY: "visible", padding: "0 16px", WebkitOverflowScrolling: "touch" }} className="scrollbar-hide">
         <div ref={trackRef} style={{ display: "flex", alignItems: "flex-start", minWidth: "max-content", padding: "10px 8px 4px", position: "relative" }}>
@@ -887,18 +1049,18 @@ const ConveyorTrack = ({ cur, locale, onStageClick }) => {
 // ─── localStorage keys ─────────────────────────────────────────────────────────
 const LS_FORM_KEY = "vfl_pickup_form";
 const LS_STEP_KEY = "vfl_pickup_step";
+const LS_ADDR_KEY = "vfl_pickup_addr_validation";
 
 const EMPTY = {
   first_name: "", last_name: "", email: "", phone: "", dialCode: "+1", dialIso: "US",
   contact_method: "", sms_consent: false,
   address_line1: "", address_line2: "", city: "", state: "", zip_code: "", addr_notes: "",
   service_type: "", service_plan: "",
-  recurrence: "once",
-  recurrence_end_date: "",
-  recurrence_days: [],
+  recurrence: "once", recurrence_end_date: "", recurrence_days: [],
   wash_temp: "", dry_temp: "", notes: "",
   pickup_date: "", pickup_time: "", terms: false,
   distance_miles: null,
+  delivery_fee: null,
 };
 
 const loadSavedForm = () => {
@@ -920,22 +1082,31 @@ const loadSavedStep = () => {
   return 0;
 };
 
-// ─── Main Component ────────────────────────────────────────────────────────────
+const loadSavedAddrValidation = () => {
+  try {
+    const saved = localStorage.getItem(LS_ADDR_KEY);
+    if (saved) return JSON.parse(saved);
+  } catch {}
+  return null;
+};
+
+// =============================================================================
+// MAIN COMPONENT
+// =============================================================================
 export default function SchedulePickup() {
   const { t, locale } = useLocale();
-  const topRef = useRef(null);
+  const topRef  = useRef(null);
   const formRef = useRef(null);
 
-  const [cur, setCur] = useState(() => loadSavedStep());
-  const [formKey, setFormKey] = useState(0);
-  const [form, setForm] = useState(() => loadSavedForm());
+  const [cur, setCur]           = useState(() => loadSavedStep());
+  const [formKey, setFormKey]   = useState(0);
+  const [form, setForm]         = useState(() => loadSavedForm());
   const [submitting, setSubmitting] = useState(false);
-  const [washPhase, setWashPhase] = useState(-1);
-  const [washDone, setWashDone] = useState(false);
+  const [washPhase, setWashPhase]   = useState(-1);
+  const [washDone, setWashDone]     = useState(false);
 
   const [membershipInfo, setMembershipInfo] = useState(null);
-
-  const [addonServices, setAddonServices] = useState([]);
+  const [addonServices, setAddonServices]   = useState([]);
   const [selectedAddons, setSelectedAddons] = useState(new Map());
   const [showResumeBanner, setShowResumeBanner] = useState(() => {
     try {
@@ -946,11 +1117,67 @@ export default function SchedulePickup() {
     } catch { return false; }
   });
 
-  const [distanceError, setDistanceError] = useState("");
-  const [distanceValid, setDistanceValid] = useState(false);
+  const [distanceChecking, setDistanceChecking] = useState(false);
+  const [distanceValid,    setDistanceValid]    = useState(() => {
+    const cached = loadSavedAddrValidation();
+    return cached?.valid ?? false;
+  });
+  const [distanceError,    setDistanceError]    = useState(() => {
+    const cached = loadSavedAddrValidation();
+    return cached?.error ?? "";
+  });
+  const [distanceMiles,    setDistanceMiles]    = useState(() => {
+    const cached = loadSavedAddrValidation();
+    return cached?.distanceMiles ?? null;
+  });
+  const [deliveryFee,      setDeliveryFee]      = useState(() => {
+    const cached = loadSavedAddrValidation();
+    return cached?.deliveryFee ?? null;
+  });
+  const lastValidatedAddrRef = useRef(null);
   const checkDistanceDebounce = useRef(null);
 
   const setF = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+  const formatLocalDate = (date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  };
+
+  const todayStr = formatLocalDate(new Date());
+
+  const getMinPickupDate = (plan) => {
+    const today    = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    if (plan === "express") return formatLocalDate(today);
+    return formatLocalDate(tomorrow);
+  };
+
+  useEffect(() => {
+    if (!form.pickup_date || !form.pickup_time) return;
+    const availability = getTimeSlotAvailability(form.pickup_date, form.service_plan, todayStr);
+    if (form.pickup_time === "8am-12pm" && !availability.morning) {
+      setF("pickup_time", "");
+      toast.info(t("Morning window no longer available.", "La ventana de mañana ya no está disponible."));
+    }
+    if (form.pickup_time === "2pm-6pm" && !availability.afternoon) {
+      setF("pickup_time", "");
+      toast.info(t("Afternoon window no longer available today.", "La ventana de tarde ya no está disponible hoy."));
+    }
+  }, [form.pickup_date, form.service_plan]);
+
+  useEffect(() => {
+    if (form.pickup_date && form.service_plan) {
+      const minDate = getMinPickupDate(form.service_plan);
+      if (form.pickup_date < minDate) {
+        setF("pickup_date", "");
+        toast.info(t("Pickup date reset — plan does not allow same-day.", "Se reinició la fecha — el plan no permite mismo día."));
+      }
+    }
+  }, [form.service_plan]);
 
   useEffect(() => {
     try {
@@ -958,48 +1185,105 @@ export default function SchedulePickup() {
       if (cd) {
         const c = JSON.parse(cd);
         if (c.membership_plan || c.membership_status === "active") {
-          setMembershipInfo({
-            plan: c.membership_plan,
-            status: c.membership_status,
-          });
+          setMembershipInfo({ plan: c.membership_plan, status: c.membership_status });
         }
       }
     } catch {}
   }, []);
 
-  const checkDistance = useCallback(async (zipCode) => {
-    if (!zipCode || zipCode.trim().length < 5) {
-      setDistanceError(""); setDistanceValid(false); return false;
+  const checkDistance = useCallback(async (address) => {
+    if (!address || address.trim().length < 10) {
+      setDistanceError("");
+      setDistanceValid(false);
+      setDistanceMiles(null);
+      setDeliveryFee(null);
+      return false;
     }
+
+    if (lastValidatedAddrRef.current === address && distanceValid) {
+      return true;
+    }
+
+    setDistanceChecking(true);
+    setDistanceError("");
+
     try {
-      const res = await axios.post(`${API}/delivery-rules/calculate-fee`, {
-        zip_code: zipCode, distance_miles: null,
-      });
-      if (res.data && res.data.eligible === false) {
-        setDistanceError(res.data.reason || t("Address outside delivery area (max 10 miles)", "Dirección fuera del área de entrega (máx 10 millas)"));
-        setDistanceValid(false); return false;
-      } else {
-        setDistanceError(""); setDistanceValid(true);
-        if (res.data.distance_miles) setF("distance_miles", res.data.distance_miles);
+      const res = await axios.post(`${API}/store/check-address`, { address });
+
+      if (res.data?.valid === false) {
+        const errMsg = res.data.error || t("Address outside delivery area", "Dirección fuera del área de entrega");
+        setDistanceError(errMsg);
+        setDistanceValid(false);
+        setDistanceMiles(null);
+        setDeliveryFee(null);
+        lastValidatedAddrRef.current = address;
+        try { localStorage.setItem(LS_ADDR_KEY, JSON.stringify({ valid: false, error: errMsg, distanceMiles: null, deliveryFee: null, address })); } catch {}
+        return false;
+      } else if (res.data?.valid === true) {
+        const miles = res.data.distance_miles || null;
+        const fee   = res.data.delivery_fee !== undefined ? parseFloat(res.data.delivery_fee) : null;
+        setDistanceError("");
+        setDistanceValid(true);
+        setDistanceMiles(miles);
+        setDeliveryFee(fee);
+        if (miles) setF("distance_miles", miles);
+        if (fee !== null) setF("delivery_fee", fee);
+        lastValidatedAddrRef.current = address;
+        try { localStorage.setItem(LS_ADDR_KEY, JSON.stringify({ valid: true, error: "", distanceMiles: miles, deliveryFee: fee, address })); } catch {}
         return true;
+      } else {
+        setDistanceError(t("Could not verify address", "No se pudo verificar la dirección"));
+        setDistanceValid(false);
+        setDistanceMiles(null);
+        setDeliveryFee(null);
+        return false;
       }
     } catch (err) {
-      const msg = err.response?.data?.detail || t("Could not verify address distance", "No se pudo verificar la distancia");
-      setDistanceError(msg); setDistanceValid(false); return false;
+      const msg = err.response?.data?.detail || err.response?.data?.error
+        || t("Could not verify address distance", "No se pudo verificar la distancia");
+      setDistanceError(msg);
+      setDistanceValid(false);
+      setDistanceMiles(null);
+      setDeliveryFee(null);
+      return false;
+    } finally {
+      setDistanceChecking(false);
     }
-  }, [t]);
+  }, [t, distanceValid]);
 
   useEffect(() => {
     if (checkDistanceDebounce.current) clearTimeout(checkDistanceDebounce.current);
-    checkDistanceDebounce.current = setTimeout(() => {
-      if (form.zip_code && form.zip_code.trim().length >= 5) {
-        checkDistance(form.zip_code);
-      } else {
-        setDistanceError(""); setDistanceValid(false);
+
+    const fullAddress = [form.address_line1, form.city, form.state, form.zip_code]
+      .filter(Boolean).join(", ");
+
+    if (!fullAddress || fullAddress.length < 10) {
+      if (!distanceValid) {
+        setDistanceError("");
+        setDistanceMiles(null);
+        setDeliveryFee(null);
       }
-    }, 500);
+      return;
+    }
+
+    const cached = loadSavedAddrValidation();
+    if (cached && cached.address === fullAddress) {
+      setDistanceValid(cached.valid);
+      setDistanceError(cached.error || "");
+      setDistanceMiles(cached.distanceMiles);
+      setDeliveryFee(cached.deliveryFee);
+      if (cached.distanceMiles) setF("distance_miles", cached.distanceMiles);
+      if (cached.deliveryFee !== undefined) setF("delivery_fee", cached.deliveryFee);
+      lastValidatedAddrRef.current = fullAddress;
+      return;
+    }
+
+    checkDistanceDebounce.current = setTimeout(() => {
+      checkDistance(fullAddress);
+    }, 700);
+
     return () => clearTimeout(checkDistanceDebounce.current);
-  }, [form.zip_code, checkDistance]);
+  }, [form.address_line1, form.city, form.state, form.zip_code]);
 
   useEffect(() => {
     const load = async () => {
@@ -1010,14 +1294,6 @@ export default function SchedulePickup() {
     };
     load();
   }, []);
-
-  useEffect(() => {
-    if (form.service_type === "pickup_delivery") {
-      setF("recurrence", "once");
-      setF("recurrence_end_date", "");
-      setF("recurrence_days", []);
-    }
-  }, [form.service_type]);
 
   const toggleAddon = (svc) => {
     setSelectedAddons(prev => {
@@ -1031,6 +1307,7 @@ export default function SchedulePickup() {
   useEffect(() => {
     try { localStorage.setItem(LS_FORM_KEY, JSON.stringify(form)); } catch {}
   }, [form]);
+
   useEffect(() => {
     try { localStorage.setItem(LS_STEP_KEY, String(cur)); } catch {}
   }, [cur]);
@@ -1038,73 +1315,136 @@ export default function SchedulePickup() {
   useEffect(() => {
     try {
       const cd = localStorage.getItem("customer_data");
-      if (cd) {
-        const c = JSON.parse(cd);
-        const nameParts = (c.name || "").split(" ");
-        const addrParts = (c.address || "").split(",").map(s => s.trim());
-        setForm(p => ({
-          ...p,
-          first_name: p.first_name || nameParts[0] || "",
-          last_name: p.last_name || nameParts.slice(1).join(" ") || "",
-          email: p.email || c.email || "",
-          phone: p.phone || (c.phone || "").replace(/^\+\d+\s?/, "") || "",
-          address_line1: p.address_line1 || c.address_line1 || addrParts[0] || "",
-          city: p.city || c.city || addrParts[1] || "",
-          state: p.state || c.state || addrParts[2] || "",
-          zip_code: p.zip_code || c.zip_code || addrParts[3] || "",
-        }));
+      if (!cd) return;
+      const c = JSON.parse(cd);
+
+      const nameParts = (c.name || "").trim().split(/\s+/);
+      const firstName = nameParts[0] || "";
+      const lastName  = nameParts.slice(1).join(" ") || "";
+
+      const rawPhone = (c.phone || "").replace(/^\+\d{1,3}\s?/, "").trim();
+
+      let street   = c.address_line1 || "";
+      let city     = c.city          || "";
+      let state    = c.state         || "";
+      let zip      = c.zip_code      || "";
+
+      if (!street && c.address) {
+        const parts = c.address.split(",").map(s => s.trim()).filter(Boolean);
+        if (parts.length >= 1) street = parts[0];
+        if (parts.length === 3) {
+          city = parts[1];
+          const lastPart = parts[2].split(/\s+/);
+          if (lastPart.length >= 2) {
+            state = lastPart[0];
+            zip   = lastPart.slice(1).join("");
+          } else {
+            state = lastPart[0];
+          }
+        } else if (parts.length === 4) {
+          city  = parts[1];
+          state = parts[2];
+          zip   = parts[3];
+        } else if (parts.length >= 5) {
+          street = parts.slice(0, parts.length - 3).join(", ");
+          city   = parts[parts.length - 3];
+          state  = parts[parts.length - 2];
+          zip    = parts[parts.length - 1];
+        }
+
+        if (state && !zip) {
+          const stateZip = state.split(/\s+/);
+          if (stateZip.length === 2) {
+            state = stateZip[0];
+            zip   = stateZip[1];
+          }
+        }
       }
+
+      setForm(p => ({
+        ...p,
+        first_name:    p.first_name    || firstName,
+        last_name:     p.last_name     || lastName,
+        email:         p.email         || c.email    || "",
+        phone:         p.phone         || rawPhone,
+        address_line1: p.address_line1 || street,
+        city:          p.city          || city,
+        state:         p.state         || state,
+        zip_code:      p.zip_code      || zip,
+      }));
     } catch {}
   }, []);
 
-  const scrollToForm = () => formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  const goTo = (n) => { setCur(n); setFormKey(k => k + 1); scrollToForm(); };
+  const scrollToForm      = () => formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  const goTo              = (n) => { setCur(n); setFormKey(k => k + 1); scrollToForm(); };
   const clearSavedSession = () => {
     try {
       localStorage.removeItem(LS_FORM_KEY);
       localStorage.removeItem(LS_STEP_KEY);
+      localStorage.removeItem(LS_ADDR_KEY);
     } catch {}
   };
 
-  const showRecurrenceSelector = form.service_type === "airbnb_host" || form.service_type === "commercial";
+  const showRecurrenceSelector = !!form.service_type;
 
   const validate = () => {
     const err = (msg) => { toast.error(msg); return false; };
+
     if (cur === 0) {
-      if (!form.first_name.trim()) return err(t("Enter your first name", "Ingresa tu nombre"));
-      if (!form.last_name.trim()) return err(t("Enter your last name", "Ingresa tu apellido"));
-      if (!form.email.includes("@")) return err(t("Enter a valid email", "Correo inválido"));
-      if (!form.phone.trim()) return err(t("Enter your phone", "Ingresa tu teléfono"));
-      if (!form.contact_method) return err(t("Select a contact method", "Selecciona método de contacto"));
-      if (form.contact_method === "text" && !form.sms_consent) return err(t("Accept SMS consent", "Acepta el consentimiento SMS"));
+      if (!form.first_name.trim())   return err(t("Enter your first name",   "Ingresa tu nombre"));
+      if (!form.last_name.trim())    return err(t("Enter your last name",    "Ingresa tu apellido"));
+      if (!form.email.includes("@")) return err(t("Enter a valid email",     "Correo inválido"));
+      if (!form.phone.trim())        return err(t("Enter your phone",        "Ingresa tu teléfono"));
+      if (!form.contact_method)      return err(t("Select a contact method", "Selecciona método de contacto"));
+      if (form.contact_method === "text" && !form.sms_consent)
+        return err(t("Accept SMS consent", "Acepta el consentimiento SMS"));
     }
+
     if (cur === 1) {
       if (!form.address_line1.trim()) return err(t("Enter your address", "Ingresa tu dirección"));
-      if (!form.city.trim()) return err(t("Enter your city", "Ingresa tu ciudad"));
-      if (!form.state.trim()) return err(t("Enter your state", "Ingresa tu estado"));
-      if (!form.zip_code.trim()) return err(t("Enter your ZIP", "Ingresa tu código postal"));
-      if (distanceError) { toast.error(distanceError); return false; }
+      if (!form.city.trim())          return err(t("Enter your city",    "Ingresa tu ciudad"));
+      if (!form.state.trim())         return err(t("Enter your state",   "Ingresa tu estado"));
+      if (!form.zip_code.trim())      return err(t("Enter your ZIP",     "Ingresa tu código postal"));
+      if (distanceError)              { toast.error(distanceError); return false; }
       if (!distanceValid && form.zip_code && form.zip_code.trim().length >= 5) {
-        toast.error(t("Please check your address, it may be outside delivery area", "Verifica tu dirección, podría estar fuera del área de entrega"));
+        toast.error(t("Please verify your address is within our service area.",
+                      "Verifica que tu dirección esté dentro de nuestra área de servicio."));
         return false;
       }
     }
+
     if (cur === 2) {
-      if (!form.service_type) return err(t("Select a service", "Selecciona un servicio"));
-      if (form.service_type === "pickup_delivery" && !form.service_plan) return err(t("Select a turnaround plan", "Selecciona un plan de tiempo"));
+      if (!form.service_type)  return err(t("Select a service",         "Selecciona un servicio"));
+      if (!form.service_plan)  return err(t("Select a turnaround plan", "Selecciona un plan de tiempo"));
       if (form.recurrence === "twice_week" && (!form.recurrence_days || form.recurrence_days.length !== 2)) {
-        return err(t("Please select exactly two days for twice-a-week pickup", "Por favor selecciona exactamente dos días para recogidas dos veces por semana"));
+        return err(t("Please select exactly two days for twice-a-week pickup",
+                     "Por favor selecciona exactamente dos días para recogidas dos veces por semana"));
       }
     }
-    if (cur === 3 && !form.pickup_time) return err(t("Select a time window", "Selecciona un horario"));
-    if (cur === 4 && !form.terms) return err(t("Accept terms to continue", "Acepta los términos"));
+
+    if (cur === 3) {
+      if (!form.pickup_time) return err(t("Select a time window", "Selecciona un horario"));
+      const avail = getTimeSlotAvailability(form.pickup_date, form.service_plan, todayStr);
+      if (form.pickup_time === "8am-12pm" && !avail.morning) {
+        return err(t("Morning window no longer available.", "La ventana de mañana ya no está disponible."));
+      }
+      if (form.pickup_time === "2pm-6pm" && !avail.afternoon) {
+        return err(t("Afternoon window no longer available today.", "La ventana de tarde ya no está disponible hoy."));
+      }
+    }
+
+    if (cur === 4 && !form.terms)
+      return err(t("Accept terms to continue", "Acepta los términos"));
+
     return true;
   };
 
   const handleNext = async () => {
     if (!validate()) return;
     if (cur === 1) {
-      const isOk = await checkDistance(form.zip_code);
+      const fullAddress = [form.address_line1, form.city, form.state, form.zip_code]
+        .filter(Boolean).join(", ");
+      const isOk = await checkDistance(fullAddress);
       if (!isOk) return;
     }
     if (cur < 4) { goTo(cur + 1); return; }
@@ -1116,15 +1456,15 @@ export default function SchedulePickup() {
 
     setSubmitting(true);
     try {
-      const fullPhone = `${form.dialCode} ${form.phone}`.trim();
+      const fullPhone   = `${form.dialCode} ${form.phone}`.trim();
       const fullAddress = [form.address_line1, form.address_line2, form.city, form.state, form.zip_code].filter(Boolean).join(", ");
-      const addonList = Array.from(selectedAddons.values());
-      const addonNote = addonList.length > 0
+      const addonList   = Array.from(selectedAddons.values());
+      const addonNote   = addonList.length > 0
         ? `\nAdd-on services: ${addonList.map(s => `${s.name}${s.price != null ? ` ($${s.price}${s.price_unit ? "/" + s.price_unit.replace("per_", "") : ""})` : ""}`).join(", ")}`
         : "";
       const notes = [
-        form.wash_temp ? `Wash temp: ${form.wash_temp}` : "",
-        form.dry_temp ? `Dry temp: ${form.dry_temp}` : "",
+        form.wash_temp  ? `Wash temp: ${form.wash_temp}`  : "",
+        form.dry_temp   ? `Dry temp: ${form.dry_temp}`    : "",
         form.notes?.trim(),
         form.addr_notes ? `Pickup note: ${form.addr_notes}` : "",
         `Contact via: ${form.contact_method}`,
@@ -1133,25 +1473,25 @@ export default function SchedulePickup() {
       ].filter(Boolean).join("\n");
 
       let recurrencePayload = { recurrence: "once", recurrence_end_date: null, recurrence_days: null };
-      if (showRecurrenceSelector && form.recurrence && form.recurrence !== "once") {
+      if (form.recurrence && form.recurrence !== "once") {
         recurrencePayload = {
-          recurrence: form.recurrence,
+          recurrence:          form.recurrence,
           recurrence_end_date: form.recurrence_end_date || null,
-          recurrence_days: form.recurrence === "twice_week" ? form.recurrence_days : null,
+          recurrence_days:     form.recurrence === "twice_week" ? form.recurrence_days : null,
         };
       }
 
       await axios.post(`${API}/public/pickup-request`, {
-        name: `${form.first_name} ${form.last_name}`.trim(),
-        email: form.email.trim(),
-        phone: fullPhone,
-        address: fullAddress,
-        pickup_date: form.pickup_date,
-        pickup_time: form.pickup_time,
-        service_type: form.service_type,
-        service_plan: form.service_plan,
+        name:           `${form.first_name} ${form.last_name}`.trim(),
+        email:          form.email.trim(),
+        phone:          fullPhone,
+        address:        fullAddress,
+        pickup_date:    form.pickup_date,
+        pickup_time:    form.pickup_time,
+        service_type:   form.service_type,
+        service_plan:   form.service_plan,
         contact_method: form.contact_method,
-        sms_consent: form.sms_consent,
+        sms_consent:    form.sms_consent,
         notes,
         addon_services: addonList.map(s => ({ id: s.id, name: s.name, price: s.price, price_unit: s.price_unit, category: s.category })),
         ...recurrencePayload,
@@ -1173,6 +1513,9 @@ export default function SchedulePickup() {
     setShowResumeBanner(false);
     setSelectedAddons(new Map());
     setDistanceError(""); setDistanceValid(false);
+    setDistanceMiles(null); setDeliveryFee(null);
+    setDistanceChecking(false);
+    lastValidatedAddrRef.current = null;
     clearSavedSession();
     scrollToForm();
   };
@@ -1181,34 +1524,26 @@ export default function SchedulePickup() {
   const g3   = { display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 8 };
   const fGap = { display: "flex", flexDirection: "column", gap: 14 };
 
-  const svcMap  = {
-    pickup_delivery: t("Pickup & Delivery", "Recogida y Entrega"),
-    airbnb_host:     t("Airbnb Host",       "Anfitrión Airbnb"),
-    commercial:      t("Commercial / B2B",  "Comercial / B2B"),
-  };
-  const planMap = {
-    standard: t("Standard (36h)", "Estándar (36h)"),
-    premium:  t("Premium (24h)",  "Premium (24h)"),
-    express:  t("Express (Same Day)", "Express (mismo día)"),
-  };
+  const svcMap  = { pickup_delivery: t("Pickup & Delivery", "Recogida y Entrega"), airbnb_host: t("Airbnb Host", "Anfitrión Airbnb"), commercial: t("Commercial / B2B", "Comercial / B2B") };
+  const planMap = { standard: t("Standard (36h)", "Estándar (36h)"), premium: t("Premium (24h)", "Premium (24h)"), express: t("Express (Same Day)", "Express (mismo día)") };
   const tempMap = { cold: "Cold ≤30°C", warm: "Warm 40°C", hot: "Hot 60°C+", any: t("Any temperature", "Cualquier temperatura") };
-  const dryMap  = { low: t("Low heat","Calor bajo"), medium: t("Medium heat","Calor medio"), high: t("High heat","Calor alto"), air: t("Air dry","Secado al aire") };
+  const dryMap  = { low: t("Low heat", "Calor bajo"), medium: t("Medium heat", "Calor medio"), high: t("High heat", "Calor alto"), air: t("Air dry", "Secado al aire") };
   const timeMap = { "8am-12pm": "8:00 AM – 12:00 PM", "2pm-6pm": "2:00 PM – 6:00 PM" };
   const cmMap   = { phone: t("Phone call", "Llamada"), text: "Text/SMS", email: "Email" };
 
   const selectedAddonsList = Array.from(selectedAddons.values());
   const selectedAddonIds   = new Set(selectedAddons.keys());
-
-  const recurrenceLabel = form.recurrence && form.recurrence !== "once"
+  const recurrenceLabel    = form.recurrence && form.recurrence !== "once"
     ? (locale === "es" ? RECURRENCE_LABELS[form.recurrence]?.es : RECURRENCE_LABELS[form.recurrence]?.en)
     : null;
-
   const twiceWeekDays = (form.recurrence === "twice_week" && form.recurrence_days.length === 2)
     ? form.recurrence_days.map(d => {
         const found = WEEKDAYS.find(w => w.value === d);
         return locale === "es" ? found?.label.es : found?.label.en;
       }).join(" / ")
     : null;
+
+  const todayAvailability = getTimeSlotAvailability(todayStr, form.service_plan, todayStr);
 
   return (
     <div className="min-h-screen" style={{ background: "hsl(var(--background))" }}>
@@ -1226,12 +1561,9 @@ export default function SchedulePickup() {
         .scrollbar-hide{scrollbar-width:none}
       `}</style>
 
-      {/* Hero */}
-      <section ref={topRef} style={{
-        paddingTop: 80, paddingBottom: 0,
+      <section ref={topRef} style={{ paddingTop: 80, paddingBottom: 0,
         background: "linear-gradient(150deg,#0b1929 0%,#081320 55%,#040c16 100%)",
-        position: "relative", overflow: "hidden",
-      }}>
+        position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", inset: 0, backgroundImage: "linear-gradient(rgba(255,255,255,.022) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)", backgroundSize: "44px 44px", pointerEvents: "none" }} />
         <div style={{ width: "100%", maxHeight: 280, overflow: "hidden", position: "relative" }}>
           <img src={heroBanner} alt="Ventura Fresh Laundry"
@@ -1251,19 +1583,18 @@ export default function SchedulePickup() {
             <span style={{ color: "#38bdf8" }}>{t("Begins Here.", "Comienza Aquí.")}</span>
           </h1>
           <p style={{ fontSize: 14, color: "rgba(255,255,255,.45)", lineHeight: 1.7, maxWidth: 380, margin: 0 }}>
-            {t("Follow the wash cycle — each stage is a step on the conveyor belt.", "Sigue el ciclo de lavado — cada etapa es un paso en la cinta transportadora.")}
+            {t("Follow the wash cycle — each stage is a step on the conveyor belt.",
+               "Sigue el ciclo de lavado — cada etapa es un paso en la cinta transportadora.")}
           </p>
         </div>
       </section>
 
-      {/* Main content */}
       <section style={{ padding: "0 0 64px" }}>
         <div style={{ maxWidth: 800, margin: "0 auto", padding: "0 16px" }}>
           <div ref={formRef} id="schedule-pickup-form" style={{ marginTop: "-20px", position: "relative", zIndex: 2 }}>
             <ConveyorTrack cur={washPhase >= 0 ? 4 : cur} locale={locale} onStageClick={(i) => { if (washPhase < 0) goTo(i); }} />
           </div>
 
-          {/* Resume session banner */}
           {showResumeBanner && washPhase < 0 && (
             <div style={{ marginTop: 12, padding: "11px 16px", borderRadius: 12,
               background: "linear-gradient(135deg,rgba(14,165,233,.08),rgba(56,189,248,.04))",
@@ -1273,8 +1604,8 @@ export default function SchedulePickup() {
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: "#0ea5e9" }}>{t("You have a saved session", "Tienes una sesión guardada")}</div>
                 <div style={{ fontSize: 11, color: "hsl(var(--muted-foreground))", marginTop: 2 }}>
-                  {t(`Resuming from step ${cur + 1} · ${form.first_name ? `Hi, ${form.first_name}!` : ""}`,
-                     `Retomando desde el paso ${cur + 1}${form.first_name ? ` · ¡Hola, ${form.first_name}!` : ""}`)}
+                  {t(`Resuming from step ${cur + 1}`, `Retomando desde el paso ${cur + 1}`)}
+                  {form.first_name ? ` · ${locale === "es" ? "¡Hola" : "Hi"}, ${form.first_name}!` : ""}
                 </div>
               </div>
               <button type="button" onClick={() => setShowResumeBanner(false)}
@@ -1288,7 +1619,6 @@ export default function SchedulePickup() {
             </div>
           )}
 
-          {/* Wash overlay */}
           {washPhase >= 0 && (
             <div style={{ background: "#07111d", borderRadius: 16, marginTop: 16, border: "0.5px solid rgba(14,165,233,.2)", padding: "32px 24px", textAlign: "center", animation: "tl_wash .4s ease both" }}>
               {!washDone ? (
@@ -1300,7 +1630,9 @@ export default function SchedulePickup() {
                   <div style={{ display: "flex", justifyContent: "center", gap: 10, marginTop: 16 }}>
                     {WASH_PHASES.map((p, i) => (
                       <div key={i} style={{ textAlign: "center", width: 52 }}>
-                        <div style={{ width: 8, height: 8, borderRadius: "50%", margin: "0 auto 4px", background: i < washPhase ? "#0ea5e9" : i === washPhase ? "#38bdf8" : "rgba(255,255,255,.1)", boxShadow: i === washPhase ? "0 0 0 3px rgba(56,189,248,.25)" : "none", transition: "all .3s" }} />
+                        <div style={{ width: 8, height: 8, borderRadius: "50%", margin: "0 auto 4px",
+                          background: i < washPhase ? "#0ea5e9" : i === washPhase ? "#38bdf8" : "rgba(255,255,255,.1)",
+                          boxShadow: i === washPhase ? "0 0 0 3px rgba(56,189,248,.25)" : "none", transition: "all .3s" }} />
                         <div style={{ fontSize: 9, fontWeight: 600, color: i <= washPhase ? "rgba(255,255,255,.6)" : "rgba(255,255,255,.2)" }}>{p}</div>
                       </div>
                     ))}
@@ -1313,22 +1645,18 @@ export default function SchedulePickup() {
                   <div style={{ fontSize: 20, fontWeight: 800, fontFamily: "'Manrope',sans-serif", color: "white", marginBottom: 6 }}>
                     {t("Request submitted!", "¡Solicitud enviada!")}
                   </div>
-
-                  {showRecurrenceSelector && form.recurrence && form.recurrence !== "once" && (
+                  {form.recurrence && form.recurrence !== "once" && (
                     <div style={{ margin: "0 auto 16px", maxWidth: 320, padding: "10px 14px", borderRadius: 10,
                       background: "rgba(14,165,233,.1)", border: "1px solid rgba(14,165,233,.2)", animation: "tl_panel .4s ease both" }}>
                       <div style={{ fontSize: 11, fontWeight: 700, color: "#38bdf8", marginBottom: 3 }}>
                         🔄 {t("Recurring schedule confirmed", "Programación recurrente confirmada")}
                       </div>
                       <div style={{ fontSize: 10, color: "rgba(255,255,255,.55)" }}>
-                        {form.recurrence === "twice_week" && twiceWeekDays
-                          ? `${recurrenceLabel} (${twiceWeekDays})`
-                          : recurrenceLabel}
+                        {form.recurrence === "twice_week" && twiceWeekDays ? `${recurrenceLabel} (${twiceWeekDays})` : recurrenceLabel}
                         {form.recurrence_end_date ? ` · ${t("Until", "Hasta")} ${form.recurrence_end_date}` : ` · ${t("Indefinite", "Indefinido")}`}
                       </div>
                     </div>
                   )}
-
                   <p style={{ fontSize: 13, color: "rgba(255,255,255,.45)", maxWidth: 280, lineHeight: 1.65, margin: "0 auto 20px" }}>
                     {t("Our team will confirm your pickup via", "Nuestro equipo confirmará por")}{" "}
                     <strong style={{ color: "#38bdf8" }}>{cmMap[form.contact_method] || t("your preferred method", "tu método preferido")}</strong>.
@@ -1341,7 +1669,6 @@ export default function SchedulePickup() {
             </div>
           )}
 
-          {/* Form card */}
           {washPhase < 0 && (
             <div key={formKey} style={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 16, boxShadow: "var(--shadow-lg)", overflow: "hidden", marginTop: 16, animation: "tl_panel .3s ease both" }}>
               <div style={{ height: 3, background: "linear-gradient(90deg,#38bdf8,#0ea5e9,#2563eb)" }} />
@@ -1357,7 +1684,10 @@ export default function SchedulePickup() {
                 </div>
                 <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
                   {STAGES.map((_, i) => (
-                    <div key={i} style={{ width: i === cur ? 20 : 7, height: 7, borderRadius: 3.5, background: i < cur ? "#0ea5e9" : i === cur ? "#0ea5e9" : "hsl(var(--border))", transition: "all .3s", cursor: i < cur ? "pointer" : "default" }} onClick={() => i < cur && goTo(i)} />
+                    <div key={i} style={{ width: i === cur ? 20 : 7, height: 7, borderRadius: 3.5,
+                      background: i < cur ? "#0ea5e9" : i === cur ? "#0ea5e9" : "hsl(var(--border))",
+                      transition: "all .3s", cursor: i < cur ? "pointer" : "default" }}
+                      onClick={() => i < cur && goTo(i)} />
                   ))}
                 </div>
               </div>
@@ -1365,7 +1695,6 @@ export default function SchedulePickup() {
               <div style={{ padding: "20px 24px" }}>
                 <div style={fGap}>
 
-                  {/* Step 0 — Contact */}
                   {cur === 0 && (
                     <>
                       <div style={g2}>
@@ -1379,7 +1708,8 @@ export default function SchedulePickup() {
                           onDialCodeChange={(code, iso) => { setF("dialCode", code); setF("dialIso", iso); setF("phone", ""); }} />
                       </FF>
                       <FF label={t("Best way to reach you *", "Cómo contactarte *")}>
-                        <ChipSet value={form.contact_method} onChange={(v) => { setF("contact_method", v); if (v !== "text") setF("sms_consent", false); }}
+                        <ChipSet value={form.contact_method}
+                          onChange={(v) => { setF("contact_method", v); if (v !== "text") setF("sms_consent", false); }}
                           options={[
                             { val: "phone", icon: "📞", label: t("Phone call", "Llamada") },
                             { val: "text",  icon: "💬", label: "Text/SMS" },
@@ -1392,7 +1722,6 @@ export default function SchedulePickup() {
                     </>
                   )}
 
-                  {/* Step 1 — Address */}
                   {cur === 1 && (
                     <>
                       <FF label={t("Street address *", "Dirección *")}>
@@ -1400,10 +1729,12 @@ export default function SchedulePickup() {
                           value={form.address_line1}
                           onChange={(v) => setF("address_line1", v)}
                           onSelect={(addr) => {
-                            setF("address_line1", addr.street);
-                            if (addr.city) setF("city", addr.city);
+                            const fullStreet = addr.full || addr.formatted ||
+                              (addr.street_number && addr.route ? `${addr.street_number} ${addr.route}` : addr.street);
+                            setF("address_line1", fullStreet);
+                            if (addr.city)  setF("city", addr.city);
                             if (addr.state) setF("state", addr.state.length > 2 ? addr.state.substring(0, 2).toUpperCase() : addr.state.toUpperCase());
-                            if (addr.zip) setF("zip_code", addr.zip);
+                            if (addr.zip)   setF("zip_code", addr.zip);
                           }}
                           placeholder={t("123 Main St", "Calle Principal 123")}
                           renderInput={(props) => <FInput {...props} data-testid="pickup-address-autocomplete" />}
@@ -1415,31 +1746,39 @@ export default function SchedulePickup() {
                         <FF label={t("State *", "Estado *")}><FInput value={form.state} onChange={(e) => setF("state", e.target.value.toUpperCase())} placeholder="CA" maxLength={2} /></FF>
                         <FF label={t("ZIP *", "CP *")}>
                           <FInput value={form.zip_code} onChange={(e) => setF("zip_code", e.target.value)} placeholder="90001" maxLength={10} />
-                          {distanceError && <div style={{ color: "#dc2626", fontSize: 11, marginTop: 4, paddingLeft: 4 }}>{distanceError}</div>}
                         </FF>
                       </div>
+
+                      <AddressValidationStatus
+                        checking={distanceChecking}
+                        valid={distanceValid}
+                        error={distanceError}
+                        distanceMiles={distanceMiles || form.distance_miles}
+                        deliveryFee={deliveryFee !== null ? deliveryFee : form.delivery_fee}
+                        locale={locale}
+                        t={t}
+                      />
+
                       <FF label={t("Access notes (optional)", "Notas de acceso (opcional)")}>
                         <FTextarea value={form.addr_notes} onChange={(e) => setF("addr_notes", e.target.value)} placeholder={t("Gate code, building entrance…", "Código de puerta, entrada del edificio…")} rows={2} />
                       </FF>
                     </>
                   )}
 
-                  {/* Step 2 — Service */}
                   {cur === 2 && (
                     <>
                       <FF label={t("Service type *", "Tipo de servicio *")}>
                         <OptionCards value={form.service_type} onChange={(v) => setF("service_type", v)}
                           options={[
                             { val: "pickup_delivery", icon: "🚚", title: t("Pickup & Delivery", "Recogida y Entrega"), desc: t("We wash, fold & return", "Lavamos, doblamos y entregamos") },
-                            { val: "airbnb_host", icon: "🏠", title: t("Airbnb Host", "Anfitrión Airbnb"), desc: t("Linens, towels & priority", "Sábanas, toallas y prioridad"), badge: t("NEW", "NUEVO"), badgeBg: "rgba(255,92,37,.12)", badgeColor: "#ff5c25", badgeBorder: "rgba(255,92,37,.3)", accentColor: "#ff5c25", accentBg: "rgba(255,92,37,.07)", accentGlow: "rgba(255,92,37,.18)" },
-                            { val: "commercial", icon: "🏢", title: t("Commercial / B2B", "Comercial / B2B"), desc: t("Bulk & business laundry", "Lavado masivo y empresas") },
+                            { val: "airbnb_host",     icon: "🏠", title: t("Airbnb Host", "Anfitrión Airbnb"),         desc: t("Linens, towels & priority", "Sábanas, toallas y prioridad"), badge: t("NEW", "NUEVO"), badgeBg: "rgba(255,92,37,.12)", badgeColor: "#ff5c25", badgeBorder: "rgba(255,92,37,.3)", accentColor: "#ff5c25", accentBg: "rgba(255,92,37,.07)", accentGlow: "rgba(255,92,37,.18)" },
+                            { val: "commercial",      icon: "🏢", title: t("Commercial / B2B", "Comercial / B2B"),     desc: t("Bulk & business laundry", "Lavado masivo y empresas") },
                           ]} />
 
                         {form.service_type === "pickup_delivery" && (
                           <>
                             <FF label={t("Turnaround plan *", "Plan de tiempo *")}>
-                              <PlanSelector value={form.service_plan} onChange={(v) => setF("service_plan", v)}
-                                serviceType={form.service_type} membershipPlan={membershipInfo?.plan} />
+                              <PlanSelector value={form.service_plan} onChange={(v) => setF("service_plan", v)} serviceType={form.service_type} membershipPlan={membershipInfo?.plan} />
                             </FF>
                             <PickupDeliveryInfoPanel t={t} />
                           </>
@@ -1447,8 +1786,7 @@ export default function SchedulePickup() {
                         {form.service_type === "airbnb_host" && (
                           <>
                             <FF label={t("Turnaround plan *", "Plan de tiempo *")}>
-                              <PlanSelector value={form.service_plan} onChange={(v) => setF("service_plan", v)}
-                                serviceType={form.service_type} membershipPlan={membershipInfo?.plan} />
+                              <PlanSelector value={form.service_plan} onChange={(v) => setF("service_plan", v)} serviceType={form.service_type} membershipPlan={membershipInfo?.plan} />
                             </FF>
                             <AirbnbInfoPanel t={t} />
                           </>
@@ -1456,8 +1794,7 @@ export default function SchedulePickup() {
                         {form.service_type === "commercial" && (
                           <>
                             <FF label={t("Turnaround plan *", "Plan de tiempo *")}>
-                              <PlanSelector value={form.service_plan} onChange={(v) => setF("service_plan", v)}
-                                serviceType={form.service_type} membershipPlan={membershipInfo?.plan} />
+                              <PlanSelector value={form.service_plan} onChange={(v) => setF("service_plan", v)} serviceType={form.service_type} membershipPlan={membershipInfo?.plan} />
                             </FF>
                             <CommercialInfoPanel t={t} />
                           </>
@@ -1470,16 +1807,12 @@ export default function SchedulePickup() {
                       </FF>
 
                       {showRecurrenceSelector && (
-                        <FF label={t("Pickup frequency *", "Frecuencia de recogida *")}>
+                        <FF label={t("Pickup frequency", "Frecuencia de recogida")}>
                           <RecurrenceSelector
-                            value={form.recurrence}
-                            onChange={(v) => setF("recurrence", v)}
-                            endDate={form.recurrence_end_date}
-                            onEndDateChange={(v) => setF("recurrence_end_date", v)}
-                            selectedDays={form.recurrence_days}
-                            onDaysChange={(days) => setF("recurrence_days", days)}
-                            locale={locale}
-                            t={t}
+                            value={form.recurrence} onChange={(v) => setF("recurrence", v)}
+                            endDate={form.recurrence_end_date} onEndDateChange={(v) => setF("recurrence_end_date", v)}
+                            selectedDays={form.recurrence_days} onDaysChange={(days) => setF("recurrence_days", days)}
+                            locale={locale} t={t}
                           />
                         </FF>
                       )}
@@ -1489,12 +1822,10 @@ export default function SchedulePickup() {
                       </FF>
                       <FF label={t("Dry temperature", "Temperatura de secado")}>
                         <TempRow value={form.dry_temp} onChange={(v) => setF("dry_temp", v)} options={DRY_TEMP_OPTIONS} />
-                        <p style={{ fontSize: 10, color: "hsl(var(--muted-foreground))", marginTop: 5, lineHeight: 1.5 }}>
-                          {t("Choose low or air dry for delicates, knits and activewear.", "Elige baja o secado al aire para prendas delicadas, tejidos y ropa deportiva.")}
-                        </p>
                       </FF>
                       <FF label={t("Special instructions (optional)", "Instrucciones especiales (opcional)")}>
-                        <FTextarea value={form.notes} onChange={(e) => setF("notes", e.target.value)} placeholder={t("Detergent type, hang-dry items, folding style…", "Tipo de detergente, prendas a secar, estilo de doblado…")} />
+                        <FTextarea value={form.notes} onChange={(e) => setF("notes", e.target.value)}
+                          placeholder={t("Detergent type, hang-dry items, folding style…", "Tipo de detergente, prendas a secar, estilo de doblado…")} />
                       </FF>
                       {addonServices.length > 0 && (
                         <FF label={t("Add-on services (optional)", "Servicios adicionales (opcional)")}>
@@ -1504,57 +1835,83 @@ export default function SchedulePickup() {
                     </>
                   )}
 
-                  {/* Step 3 — Schedule */}
                   {cur === 3 && (
                     <>
                       <FF label={t("Preferred pickup date", "Fecha preferida")}>
-                        <FInput type="date" value={form.pickup_date} onChange={(e) => setF("pickup_date", e.target.value)}
-                          min={new Date().toISOString().split("T")[0]} style={{ cursor: "pointer" }} />
-                        {form.service_plan === "express" && (
-                          <div style={{ fontSize: 11, color: "#0ea5e9", marginTop: 4, paddingLeft: 4 }}>
-                            ✨ Express plan allows same-day pickup. You can choose today!
+                        <FInput
+                          type="date"
+                          value={form.pickup_date}
+                          onChange={(e) => setF("pickup_date", e.target.value)}
+                          min={getMinPickupDate(form.service_plan)}
+                          style={{ cursor: "pointer" }}
+                        />
+                        {form.service_plan === "express" ? (
+                          todayAvailability.noSlots ? (
+                            <div style={{ fontSize: 11, color: "#f59e0b", marginTop: 4, paddingLeft: 4 }}>
+                              ⏰ {locale === "es" ? "Sin ventanas disponibles hoy — selecciona mañana." : "No windows today — select tomorrow or later."}
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: 11, color: "#0ea5e9", marginTop: 4, paddingLeft: 4 }}>
+                              ✨ {locale === "es" ? "Express: mismo día disponible." : "Express: same-day available."}
+                            </div>
+                          )
+                        ) : (
+                          <div style={{ fontSize: 11, color: "#f59e0b", marginTop: 4, paddingLeft: 4 }}>
+                            ⏰ {locale === "es" ? "Planes Standard y Premium: fecha más próxima es mañana." : "Standard & Premium: earliest pickup is tomorrow."}
                           </div>
                         )}
-                        {showRecurrenceSelector && form.recurrence && form.recurrence !== "once" && (
+                        {form.recurrence && form.recurrence !== "once" && (
                           <div style={{ marginTop: 6, padding: "7px 10px", borderRadius: 7,
                             background: "rgba(14,165,233,.07)", border: "1px solid rgba(14,165,233,.18)",
                             fontSize: 10, color: "#0ea5e9", display: "flex", alignItems: "center", gap: 5 }}>
-                            🔄 {t("This is your first pickup date. Future pickups will be auto-scheduled",
-                               "Esta es tu primera fecha. Los siguientes pickups se programarán automáticamente")}
+                            🔄 {t("This is your first pickup date.", "Esta es tu primera fecha.")}
                             {form.recurrence === "twice_week" && twiceWeekDays && ` (${twiceWeekDays})`}
                           </div>
                         )}
                       </FF>
                       <FF label={t("Preferred time window *", "Horario preferido *")}>
-                        <TimeSlots value={form.pickup_time} onChange={(v) => setF("pickup_time", v)} locale={locale} />
+                        <TimeSlots
+                          value={form.pickup_time} onChange={(v) => setF("pickup_time", v)}
+                          locale={locale} pickupDate={form.pickup_date}
+                          servicePlan={form.service_plan} todayStr={todayStr}
+                        />
                         <p style={{ fontSize: 10, color: "hsl(var(--muted-foreground))", marginTop: 5 }}>
-                          {t("Pacific Time · Our team will confirm via your preferred method", "Hora del Pacífico · Confirmamos por tu método preferido")}
+                          {t("Pacific Time · Our team will confirm via your preferred method",
+                             "Hora del Pacífico · Confirmamos por tu método preferido")}
                         </p>
                       </FF>
                     </>
                   )}
 
-                  {/* Step 4 — Confirm */}
                   {cur === 4 && (
                     <>
                       <SumBlock title={`👤 ${t("Contact", "Contacto")}`} rows={[
-                        [t("Name","Nombre"), `${form.first_name} ${form.last_name}`.trim()],
-                        [t("Email","Correo"), form.email],
+                        [t("Name","Nombre"),    `${form.first_name} ${form.last_name}`.trim()],
+                        [t("Email","Correo"),    form.email],
                         [t("Phone","Teléfono"), `${form.dialCode} ${form.phone}`.trim()],
                         [t("Contact via","Via"), cmMap[form.contact_method]],
                       ]} />
                       <SumBlock title={`📍 ${t("Address", "Dirección")}`} rows={[
-                        [t("Street","Calle"), form.address_line1],
+                        [t("Street","Calle"),  form.address_line1],
                         [t("City / State / ZIP","Ciudad / Estado / CP"), [form.city, form.state, form.zip_code].filter(Boolean).join(", ")],
+                        ...(distanceMiles || form.distance_miles ? [[
+                          t("Delivery","Entrega"),
+                          (() => {
+                            const miles = distanceMiles || form.distance_miles;
+                            const fee = deliveryFee !== null ? deliveryFee : form.delivery_fee;
+                            if (fee === null || fee === undefined) return `${miles.toFixed(1)} mi — ${t("Calculating…", "Calculando…")}`;
+                            const formattedFee = fee === 0 ? t("FREE", "GRATIS") : `$${fee.toFixed(2)}`;
+                            return `${miles.toFixed(1)} mi — ${formattedFee}`;
+                          })()
+                        ]] : []),
                       ]} />
                       <SumBlock title={`🧺 ${t("Service", "Servicio")}`} rows={[
-                        [t("Type","Tipo"), svcMap[form.service_type]],
+                        [t("Type","Tipo"),    svcMap[form.service_type]],
                         ...(form.service_plan ? [[t("Plan","Plan"), planMap[form.service_plan]]] : []),
                         ...(membershipInfo?.plan ? [[t("Pricing","Precio"), `${getMembershipDiscount(membershipInfo.plan)?.badge || "⭐"} ${t("Member rate","Tarifa miembro")}`]] : []),
                         ...(recurrenceLabel ? [[t("Frequency","Frecuencia"), `🔄 ${recurrenceLabel}${form.recurrence === "twice_week" && twiceWeekDays ? ` (${twiceWeekDays})` : ""}`]] : []),
-                        ...(form.recurrence_end_date && recurrenceLabel ? [[t("Until","Hasta"), form.recurrence_end_date]] : []),
                         [t("Wash temp","Temp lavado"), tempMap[form.wash_temp]],
-                        [t("Dry temp","Temp secado"), dryMap[form.dry_temp]],
+                        [t("Dry temp","Temp secado"),  dryMap[form.dry_temp]],
                         ...(form.notes ? [[t("Notes","Notas"), form.notes.slice(0,70)]] : []),
                       ]} />
 
@@ -1578,7 +1935,7 @@ export default function SchedulePickup() {
                       )}
 
                       <SumBlock title={`📅 ${t("Schedule", "Horario")}`} rows={[
-                        [t("Date","Fecha"), form.pickup_date || t("Flexible","Flexible")],
+                        [t("Date","Fecha"),    form.pickup_date || t("Flexible","Flexible")],
                         [t("Window","Ventana"), timeMap[form.pickup_time]],
                       ]} />
                       <div style={{ display: "flex", alignItems: "flex-start", gap: 9, padding: "10px 12px", background: "hsl(var(--secondary))", borderRadius: 9, border: "0.5px solid hsl(var(--border))" }}>
@@ -1588,13 +1945,14 @@ export default function SchedulePickup() {
                           {t("I accept the", "Acepto los")}{" "}
                           <Link to="/terms-and-conditions" style={{ color: "#0ea5e9", fontWeight: 600 }}>{t("Terms", "Términos")}</Link>{" & "}
                           <Link to="/privacy-policy" style={{ color: "#0ea5e9", fontWeight: 600 }}>{t("Privacy Policy", "Privacidad")}</Link>.{" "}
-{t("By submitting I authorize Ventura Fresh Laundry to contact me.", "Al enviar autorizo a Ventura Fresh Laundry a contactarme.")}                        </label>
+                          {t("By submitting I authorize Ventura Fresh Laundry to contact me.",
+                             "Al enviar autorizo a Ventura Fresh Laundry a contactarme.")}
+                        </label>
                       </div>
                     </>
                   )}
                 </div>
 
-                {/* Navigation */}
                 <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
                   {cur > 0 && (
                     <button type="button" onClick={() => goTo(cur - 1)}
@@ -1603,18 +1961,31 @@ export default function SchedulePickup() {
                     </button>
                   )}
                   <button type="button" onClick={handleNext}
-                    disabled={submitting || (cur === 4 && !form.terms) || (cur === 1 && distanceError) || (cur === 2 && form.recurrence === "twice_week" && form.recurrence_days.length !== 2)}
+                    disabled={
+                      submitting ||
+                      (cur === 4 && !form.terms) ||
+                      (cur === 1 && !!distanceError) ||
+                      (cur === 1 && distanceChecking) ||
+                      (cur === 2 && form.recurrence === "twice_week" && form.recurrence_days.length !== 2)
+                    }
                     style={{ flex: 1, padding: "11px 16px", borderRadius: 9, border: "none",
                       background: "linear-gradient(135deg,#0ea5e9,#2563eb)", color: "white",
                       fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".1em",
-                      cursor: (submitting || (cur === 4 && !form.terms) || (cur === 1 && distanceError) || (cur === 2 && form.recurrence === "twice_week" && form.recurrence_days.length !== 2)) ? "not-allowed" : "pointer",
-                      opacity: (submitting || (cur === 4 && !form.terms) || (cur === 1 && distanceError) || (cur === 2 && form.recurrence === "twice_week" && form.recurrence_days.length !== 2)) ? 0.5 : 1,
+                      cursor: (submitting || (cur === 4 && !form.terms) || (cur === 1 && !!distanceError) || (cur === 1 && distanceChecking) || (cur === 2 && form.recurrence === "twice_week" && form.recurrence_days.length !== 2))
+                        ? "not-allowed" : "pointer",
+                      opacity: (submitting || (cur === 4 && !form.terms) || (cur === 1 && !!distanceError) || (cur === 1 && distanceChecking) || (cur === 2 && form.recurrence === "twice_week" && form.recurrence_days.length !== 2))
+                        ? 0.5 : 1,
                       fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
                       boxShadow: "var(--shadow-sky)", transition: "all .15s", position: "relative", overflow: "hidden" }}>
                     {submitting ? (
                       <>
                         <div style={{ width: 13, height: 13, border: "2px solid rgba(255,255,255,.4)", borderTopColor: "white", borderRadius: "50%", animation: "tl_spin .7s linear infinite" }} />
                         {t("Sending…", "Enviando…")}
+                      </>
+                    ) : cur === 1 && distanceChecking ? (
+                      <>
+                        <div style={{ width: 13, height: 13, border: "2px solid rgba(255,255,255,.4)", borderTopColor: "white", borderRadius: "50%", animation: "tl_spin .7s linear infinite" }} />
+                        {t("Verifying address…", "Verificando dirección…")}
                       </>
                     ) : cur < 4 ? (
                       <>{t("Next", "Siguiente")}: {locale === "es" ? STAGES[cur + 1].es : STAGES[cur + 1].en} →</>

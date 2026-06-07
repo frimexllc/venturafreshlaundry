@@ -12,7 +12,3 @@ async def get_order_legacy(order_id: str, current_user = Depends(get_current_use
     from store import get_store_order
     return await get_store_order(order_id, current_user)
 
-@router.put("/{order_id}")
-async def update_order_legacy(order_id: str, body: dict, current_user = Depends(get_current_user)):
-    # Lógica similar a la de store
-    # ...

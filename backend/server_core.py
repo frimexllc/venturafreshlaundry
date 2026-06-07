@@ -204,6 +204,9 @@ async def health_check():
 # ═══════════════════════════════════════════════════════════════════════
 # ENDPOINT: TRANSACCIONES REALES (store/transactions)
 # ═══════════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════
+# ENDPOINT: TRANSACCIONES REALES (store/transactions)
+# ═══════════════════════════════════════════════════════════════════════
 @api_router.get("/store/transactions")
 async def get_store_transactions(current_user: dict = Depends(get_current_user)):
     """Devuelve transacciones de órdenes de servicio y membresías pagadas (últimos 30 días)."""
@@ -224,24 +227,33 @@ async def get_store_transactions(current_user: dict = Depends(get_current_user))
 
     transactions = []
     for o in orders:
+        # ✅ Maneja None en total_amount
+        amount_raw = o.get("total_amount")
+        amount = float(amount_raw) if amount_raw is not None else 0.0
+
         transactions.append({
             "id": f"order_{o.get('order_number', '')}",
             "created_at": o["created_at"],
             "payment_type": "service",
             "order_number": o.get("order_number"),
             "customer_name": o.get("customer_name"),
-            "amount": float(o.get("total_amount", 0)),
+            "amount": amount,
             "payment_status": "paid",
             "payment_method": o.get("payment_method", "card"),
         })
+
     for m in memberships:
+        # ✅ Maneja None en amount
+        amount_raw = m.get("amount")
+        amount = float(amount_raw) if amount_raw is not None else 0.0
+
         transactions.append({
             "id": f"mem_{m['id']}",
             "created_at": m["created_at"],
             "payment_type": "membership",
             "order_number": f"MEM-{m['id'][:8]}",
             "customer_name": m.get("first_name", ""),
-            "amount": float(m.get("amount", 0)),
+            "amount": amount,
             "payment_status": "paid",
             "payment_method": "stripe",
         })

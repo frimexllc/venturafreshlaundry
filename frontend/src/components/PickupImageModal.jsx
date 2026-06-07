@@ -7,19 +7,19 @@ import {
   DialogDescription,
 } from "../components/ui/dialog";
 import { Button } from "../components/ui/button";
-import { Camera, Upload, X, CheckCircle, AlertTriangle, Package } from "lucide-react";
+import { Camera, Upload, X, CheckCircle, AlertTriangle, Package, Scale } from "lucide-react";
 import { toast } from "sonner";
 import { useLocale } from "../context/LocaleContext";
 
 const API_URL = process.env.REACT_APP_BACKEND_URL;
 
 /**
- * PickupImageModal — la foto es OBLIGATORIA para avanzar el estado.
+ * PickupImageModal — foto OBLIGATORIA para avanzar el estado.
  *
  * Props:
  *  - open: boolean
  *  - order: { order_id, order_number, customer_name }
- *  - pendingStatus: "picked_up" | "delivered"
+ *  - pendingStatus: "picked_up" | "delivered" | "weight"
  *  - onClose(): void — cancela la acción, el estado NO cambia
  *  - onConfirm(imageResult): void — solo se llama tras subir la foto exitosamente
  */
@@ -32,7 +32,10 @@ export default function PickupImageModal({ open, order, pendingStatus, onClose, 
   const cameraInputRef = useRef(null);
 
   const isDelivery = pendingStatus?.toLowerCase() === "delivered";
-  const ActionIcon = isDelivery ? Package : Camera;
+  const isWeight   = pendingStatus?.toLowerCase() === "weight";
+
+  // Ícono según el tipo de foto
+  const ActionIcon = isWeight ? Scale : isDelivery ? Package : Camera;
 
   const reset = useCallback(() => {
     setPreview(null);
@@ -67,18 +70,13 @@ export default function PickupImageModal({ open, order, pendingStatus, onClose, 
   };
 
   const handleConfirm = async () => {
-    // Foto obligatoria — no se puede confirmar sin ella
     if (!file) {
       toast.error(
-        isDelivery
-          ? t(
-              "A delivery photo is required to continue",
-              "Se requiere una foto de entrega para continuar"
-            )
-          : t(
-              "A pickup photo is required to continue",
-              "Se requiere una foto de recolección para continuar"
-            )
+        isWeight
+          ? t("A scale photo is required to continue", "Se requiere una foto de la báscula para continuar")
+          : isDelivery
+          ? t("A delivery photo is required to continue", "Se requiere una foto de entrega para continuar")
+          : t("A pickup photo is required to continue", "Se requiere una foto de recolección para continuar")
       );
       return;
     }
@@ -89,10 +87,18 @@ export default function PickupImageModal({ open, order, pendingStatus, onClose, 
       const formData = new FormData();
       formData.append("file", file);
 
-      // El backend guarda la imagen Y dispara la notificación al cliente
-      const endpoint = isDelivery
-        ? `${API_URL}/api/driver/orders/${order?.order_id}/delivery-image`
-        : `${API_URL}/api/driver/orders/${order?.order_id}/pickup-image`;
+      // FIX: cada tipo de foto va a su propio endpoint
+      // - weight  → /weight-image  (NO debe tocar pickup_image_data)
+      // - delivery → /delivery-image
+      // - pickup  → /pickup-image
+      let endpoint;
+      if (isWeight) {
+        endpoint = `${API_URL}/api/driver/orders/${order?.order_id}/weight-image`;
+      } else if (isDelivery) {
+        endpoint = `${API_URL}/api/driver/orders/${order?.order_id}/delivery-image`;
+      } else {
+        endpoint = `${API_URL}/api/driver/orders/${order?.order_id}/pickup-image`;
+      }
 
       const res = await fetch(endpoint, {
         method: "POST",
@@ -106,17 +112,14 @@ export default function PickupImageModal({ open, order, pendingStatus, onClose, 
       }
 
       const data = await res.json();
-      toast.success(
-        isDelivery
-          ? t(
-              "Delivery photo saved — customer notified",
-              "Foto de entrega guardada — cliente notificado"
-            )
-          : t(
-              "Pickup photo saved — customer notified",
-              "Foto de recolección guardada — cliente notificado"
-            )
-      );
+
+      const successMsg = isWeight
+        ? t("Scale photo saved", "Foto de báscula guardada")
+        : isDelivery
+        ? t("Delivery photo saved — customer notified", "Foto de entrega guardada — cliente notificado")
+        : t("Pickup photo saved — customer notified", "Foto de recolección guardada — cliente notificado");
+
+      toast.success(successMsg);
       onConfirm(data);
       reset();
     } catch (err) {
@@ -128,11 +131,18 @@ export default function PickupImageModal({ open, order, pendingStatus, onClose, 
 
   if (!order) return null;
 
-  const titleText = isDelivery
+  const titleText = isWeight
+    ? t("Scale photo (required)", "Foto de báscula (obligatoria)")
+    : isDelivery
     ? t("Delivery photo (required)", "Foto de entrega (obligatoria)")
     : t("Pickup photo (required)", "Foto de recolección (obligatoria)");
 
-  const instructionText = isDelivery
+  const instructionText = isWeight
+    ? t(
+        "A scale photo is required to record the weight. This is internal evidence only.",
+        "Se requiere una foto de la báscula para registrar el peso. Esta es evidencia interna únicamente."
+      )
+    : isDelivery
     ? t(
         "A photo is required to mark this order as delivered. The customer will be notified automatically.",
         "Se requiere una foto para marcar la orden como entregada. El cliente será notificado automáticamente."
@@ -142,7 +152,9 @@ export default function PickupImageModal({ open, order, pendingStatus, onClose, 
         "Se requiere una foto para marcar la orden como recolectada. El cliente será notificado automáticamente."
       );
 
-  const confirmText = isDelivery
+  const confirmText = isWeight
+    ? t("Save weight photo", "Guardar foto de peso")
+    : isDelivery
     ? t("Confirm delivery", "Confirmar entrega")
     : t("Confirm pickup", "Confirmar recolección");
 
@@ -249,7 +261,7 @@ export default function PickupImageModal({ open, order, pendingStatus, onClose, 
             onChange={handleFileSelect}
           />
 
-          {/* Acciones — SIN botón omitir */}
+          {/* Acciones */}
           <div className="flex gap-2 pt-1">
             <Button
               variant="outline"
@@ -281,8 +293,8 @@ export default function PickupImageModal({ open, order, pendingStatus, onClose, 
           {!file && (
             <p className="text-center text-xs text-slate-400">
               {t(
-                "The status will not change until a photo is uploaded",
-                "El estado no cambiará hasta que se cargue una foto"
+                "The action will not proceed until a photo is uploaded",
+                "La acción no continuará hasta que se cargue una foto"
               )}
             </p>
           )}

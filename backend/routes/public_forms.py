@@ -1,4 +1,3 @@
-# routes/public_forms.py
 import os
 import uuid
 import asyncio
@@ -25,7 +24,7 @@ from ai_assistant import get_groq_client
 
 logger = logging.getLogger(__name__)
 
-# ─── Helper para detectar país (si no existe en notifications) ───
+# ─── Helper para detectar país ────────────────────────────────────────
 def detect_country(phone: str) -> Optional[str]:
     if not phone:
         return None
@@ -39,6 +38,84 @@ def detect_country(phone: str) -> Optional[str]:
     if cleaned.startswith('1') and len(cleaned) == 11:
         return 'us'
     return None
+
+# ─── Números de administradores (lista) ──────────────────────────────
+ADMIN_PHONES = [
+    os.environ.get("ADMIN_PHONE_1", "+18056262524"),
+    os.environ.get("ADMIN_PHONE_2", "+18202348181"),
+]
+
+# ─── Función auxiliar para notificar a los admins ─────────────────────────
+async def _notify_admin(request_type: str, details: dict, admin_phones: list, notifications_enabled: bool, skip_server_notifications: bool):
+    """Envía un SMS a múltiples administradores con el tipo de solicitud y detalles clave."""
+    
+    print(f"🔔🔔🔔 _notify_admin LLAMADA para: {request_type}")
+    print(f"📞 admin_phones recibido: {admin_phones}")
+    print(f"⚙️ notifications_enabled={notifications_enabled}, skip={skip_server_notifications}")
+    
+    print("✅ Continuando con envío...")
+    
+    try:
+        from notifications import send_sms
+        
+        emoji_map = {
+            "Pickup": "🚚",
+            "Wash & Fold": "🧺",
+            "Contact": "📩",
+            "Quote": "📊",
+            "B2B Quote": "🏢",
+            "Membership": "🌟",
+            "Suggestion": "💡",
+            "Refund": "💰",
+            "Test": "🧪",
+        }
+        emoji = emoji_map.get(request_type, "📋")
+        
+        msg_parts = [f"{emoji} NUEVA SOLICITUD: {request_type}"]
+        
+        if details.get("order_number"):
+            msg_parts.append(f"📦 #{details['order_number']}")
+        if details.get("customer_name"):
+            msg_parts.append(f"👤 {details['customer_name']}")
+        if details.get("phone"):
+            msg_parts.append(f"📞 {details['phone']}")
+        if details.get("email"):
+            msg_parts.append(f"📧 {details['email']}")
+        if details.get("address"):
+            msg_parts.append(f"📍 {details['address']}")
+        if details.get("date"):
+            msg_parts.append(f"📅 {details['date']}")
+        if details.get("time"):
+            msg_parts.append(f"⏰ {details['time']}")
+        if details.get("amount"):
+            msg_parts.append(f"💰 ${details['amount']:.2f}")
+        if details.get("plan"):
+            msg_parts.append(f"💳 {details['plan']}")
+        
+        admin_msg = "\n".join(msg_parts)
+        print(f"📨 Mensaje a enviar: {admin_msg[:100]}...")
+        
+        phones_to_use = ["+18056262524", "+18202348181"]
+        print(f"📞 Enviando a números: {phones_to_use}")
+        
+        for phone in phones_to_use:
+            if phone and len(phone) >= 10:
+                try:
+                    print(f"📤 Intentando enviar SMS a {phone}...")
+                    success = await send_sms(phone, admin_msg)
+                    if success:
+                        print(f"✅ Admin notification SENT to {phone} for {request_type}")
+                    else:
+                        print(f"❌ Admin notification FAILED to {phone} for {request_type}")
+                except Exception as e:
+                    print(f"❌ Error sending to {phone}: {e}")
+            else:
+                print(f"⚠️ Teléfono inválido: {phone}")
+                
+    except Exception as e:
+        print(f"❌ Admin notification failed for {request_type}: {e}")
+        import traceback
+        traceback.print_exc()
 
 # =============================================================================
 # PYDANTIC MODELS (públicos)
@@ -59,6 +136,7 @@ class PublicPickupRequest(BaseModel):
     addon_services: Optional[List[Dict[str, Any]]] = []
     recurrence: Optional[str] = "once"
     recurrence_end_date: Optional[str] = None
+    recurrence_days: Optional[List[str]] = None   # NUEVO: para 'twice_week'
 
 class PublicWashFoldRequest(BaseModel):
     name: str
@@ -71,6 +149,10 @@ class PublicWashFoldRequest(BaseModel):
     contact_method: Optional[str] = None
     sms_consent: Optional[bool] = False
     plan: Optional[str] = "standard"
+    # 🔥 NUEVO: campos para add-ons
+    addon_services: Optional[List[Dict[str, Any]]] = []
+    wash_temp: Optional[str] = None
+    dry_temp: Optional[str] = None
 
 class PublicContactRequest(BaseModel):
     name: str
@@ -165,7 +247,7 @@ class PublicRefundCreate(BaseModel):
     phone: Optional[str] = None
 
 # =============================================================================
-# PRICING HELPERS (copiados del original)
+# PRICING HELPERS
 # =============================================================================
 PRICING_PD = {
     "standard": {"member": 2.50, "regular": 2.75},
@@ -253,7 +335,7 @@ def validate_sms_consent(contact_method: Optional[str], sms_consent: Optional[bo
         raise HTTPException(status_code=400, detail="SMS consent is required for text or WhatsApp notifications")
 
 # =============================================================================
-# ROUTER FACTORY (FUNCIÓN PRINCIPAL)
+# ROUTER FACTORY
 # =============================================================================
 def get_public_forms_router(
     db,
@@ -266,7 +348,7 @@ def get_public_forms_router(
 ):
     router = APIRouter()
 
-    # ── Helper para membresía activa (consulta la colección memberships) ─────
+    # ── Helper para membresía activa ───────────────────────────────────────────
     async def get_active_membership(customer_id: str) -> Optional[dict]:
         """Devuelve la membresía activa del cliente o None."""
         now = datetime.now(timezone.utc).isoformat()
@@ -284,7 +366,7 @@ def get_public_forms_router(
         return membership
 
     # =========================================================================
-    # 1. PICKUP REQUEST (CON VALIDACIÓN DE MEMBRESÍA ACTIVA)
+    # 1. PICKUP REQUEST (con soporte para recurrence_days)
     # =========================================================================
     @router.post("/public/pickup-request")
     async def public_pickup_request(data: PublicPickupRequest):
@@ -366,7 +448,7 @@ def get_public_forms_router(
                 **({"sms_consent": True, "sms_consent_at": now} if sms_consent else {})
             }
 
-        # ── Obtener preferencias guardadas (CORREGIDO) ──────────────────────────
+        # ── Obtener preferencias guardadas ──────────────────────────────────────
         pref = await db.preferences.find({"customer_id": customer["id"]}, {"_id": 0}).sort("version", -1).limit(1).to_list(1)
         preference_id = pref[0].get("id") if pref else None
         preference_snapshot = None
@@ -410,9 +492,28 @@ def get_public_forms_router(
             except ValueError:
                 pass
 
+        # ⭐ NUEVA VALIDACIÓN PARA recurrence_days (twice_week)
+        if recurrence == "twice_week":
+            if not data.recurrence_days or len(data.recurrence_days) != 2:
+                raise HTTPException(status_code=400, detail="For twice_week recurrence, exactly two days must be provided")
+            valid_days = {"Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"}
+            if not all(day in valid_days for day in data.recurrence_days):
+                raise HTTPException(status_code=400, detail="Invalid day names. Use full weekday names in English")
+        # Guardar los días solo para uso futuro, no se usan en la nota inicialmente pero se almacenan
+        recurrence_days_stored = data.recurrence_days if recurrence == "twice_week" else None
+
+        # Construir nota de recurrencia (opcional pero útil)
         if recurrence != "once":
-            recurrence_labels = {"once": "One time", "weekly": "Every week", "biweekly": "Every 2 weeks", "twice_week": "Twice a week"}
+            recurrence_labels = {
+                "once": "One time",
+                "weekly": "Every week",
+                "biweekly": "Every 2 weeks",
+                "twice_week": "Twice a week"
+            }
             recurrence_note = f"Recurrence: {recurrence_labels.get(recurrence, recurrence)}"
+            if recurrence == "twice_week" and recurrence_days_stored:
+                days_str = ", ".join(recurrence_days_stored)
+                recurrence_note += f" on {days_str}"
             if recurrence_end_date:
                 recurrence_note += f" until {recurrence_end_date}"
             if final_notes:
@@ -429,6 +530,7 @@ def get_public_forms_router(
             "customer_id": customer["id"],
             "customer_name": customer["name"],
             "customer_email": normalized_email,
+            "customer_phone": normalized_phone or customer.get("phone", ""),
             "service_type": normalized_service_type,
             "service_plan": service_plan,
             "membership_plan_applied": membership_plan_name,
@@ -447,8 +549,8 @@ def get_public_forms_router(
             "preferred_contact": preferred_contact,
             "sms_consent": sms_consent,
             "sms_consent_at": now if sms_consent else None,
-            "preferences_id": preference_id,               # ← AHORA SÍ EXISTE
-            "preferences_snapshot": preference_snapshot,   # ← AHORA SÍ EXISTE
+            "preferences_id": preference_id,
+            "preferences_snapshot": preference_snapshot,
             "status": "new",
             "estado_actual": "new",
             "payment_status": "unpaid",
@@ -460,6 +562,7 @@ def get_public_forms_router(
             "updated_at": now,
             "recurrence": recurrence,
             "recurrence_end_date": recurrence_end_date,
+            "recurrence_days": recurrence_days_stored,  # ⭐ NUEVO: almacenar días
             "recurrence_parent_id": None,
             "is_recurring": recurrence != "once",
         }
@@ -467,14 +570,42 @@ def get_public_forms_router(
         await db.orders.insert_one(order)
         await db.customers.update_one({"id": customer["id"]}, {"$inc": {"total_orders": 1}})
         await create_audit_log("ORDER_CREATED", "order", order_id, None, {"source": "public_form"})
-        await emit_realtime("notification", {"type": "order_created", "order_id": order_id, "status": "new", "order_number": order_number})
+        
+        # Emit realtime notification (if available) - AHORA CON TRY/EXCEPT
+        if emit_realtime:
+            try:
+                await emit_realtime("notification", {"type": "order_created", "order_id": order_id, "status": "new", "order_number": order_number})
+            except Exception as e:
+                logger.error(f"Real-time notification failed for order {order_number}: {e}")
 
+        # Send notification to customer
         if notifications_enabled:
             try:
                 from notifications import notify_order_created
                 await notify_order_created(customer, order)
             except Exception as e:
                 logger.error(f"Notification failed: {e}")
+        
+        print(f"🔔 Preparando notificación admin para pickup: service_type={data.service_type}, order_number={order_number}")
+        print(f"📞 ADMIN_PHONES desde variable: {ADMIN_PHONES}")
+        print(f"⚙️ notifications_enabled={notifications_enabled}, skip_server_notifications={skip_server_notifications}")
+        
+        # 🔔 Notificar a los administradores
+        await _notify_admin(
+            request_type="Pickup",
+            details={
+                "order_number": order_number,
+                "customer_name": customer["name"],
+                "phone": customer.get("phone", "N/A"),
+                "email": normalized_email,
+                "address": normalized_address or "N/A",
+                "date": data.pickup_date or "N/A",
+                "time": data.pickup_time or "N/A",
+            },
+            admin_phones=ADMIN_PHONES,
+            notifications_enabled=notifications_enabled,
+            skip_server_notifications=skip_server_notifications
+        )
 
         return {
             "success": True,
@@ -484,7 +615,7 @@ def get_public_forms_router(
         }
 
     # =========================================================================
-    # 2. WASH & FOLD REQUEST (CON VALIDACIÓN DE MEMBRESÍA ACTIVA)
+    # 2. WASH & FOLD REQUEST (CON SOPORTE PARA ADD-ONS)
     # =========================================================================
     @router.post("/public/wash-fold-request")
     async def public_wash_fold_request(data: PublicWashFoldRequest):
@@ -500,9 +631,38 @@ def get_public_forms_router(
         validate_sms_consent(preferred_contact, data.sms_consent)
         sms_consent = bool(data.sms_consent)
 
-        notes_payload = normalized_notes or ""
-        if normalized_contact:
-            notes_payload = f"Preferred contact: {normalized_contact}\n{notes_payload}".strip()
+        # ──────────────────────────────────────────────────────────────
+        # PROCESAR ADD-ONS (igual que en pickup)
+        # ──────────────────────────────────────────────────────────────
+        addon_services = data.addon_services or []
+        clean_addons = []
+        for svc in addon_services:
+            if not isinstance(svc, dict):
+                continue
+            clean_addons.append({
+                "id": str(svc.get("id", "")),
+                "name": str(svc.get("name", "Unknown"))[:120],
+                "price": float(svc["price"]) if svc.get("price") is not None else None,
+                "price_unit": str(svc.get("price_unit", "")) if svc.get("price_unit") else None,
+                "category": str(svc.get("category", "")) if svc.get("category") else None,
+                "quantity": int(svc.get("quantity", 1))   # se guarda también la cantidad
+            })
+
+        addon_amount = calculate_addon_amount(clean_addons)
+        addon_notes_text = build_addon_notes(clean_addons)
+
+        # Construir la nota final (incluyendo add-ons)
+        notes_parts = []
+        if normalized_notes:
+            notes_parts.append(normalized_notes)
+        if addon_notes_text:
+            notes_parts.append(addon_notes_text)
+        # Agregar info de temperatura si viene
+        if data.wash_temp:
+            notes_parts.append(f"Wash temperature: {data.wash_temp}")
+        if data.dry_temp:
+            notes_parts.append(f"Dry temperature: {data.dry_temp}")
+        final_notes = "\n\n".join(notes_parts) if notes_parts else None
 
         customer = await db.customers.find_one({"email": normalized_email}, {"_id": 0})
         if not customer:
@@ -537,14 +697,12 @@ def get_public_forms_router(
                 }}
             )
 
-        # ── Obtener preferencias guardadas ─────────────────────────────────────
         pref = await db.preferences.find({"customer_id": customer["id"]}, {"_id": 0}).sort("version", -1).limit(1).to_list(1)
         preference_id = pref[0].get("id") if pref else None
         preference_snapshot = None
         if pref:
             preference_snapshot = {k: v for k, v in pref[0].items() if k not in ["_id", "customer_id"]}
 
-        # Verificar membresía activa
         active_membership = await get_active_membership(customer["id"])
         has_membership = active_membership is not None
         membership_plan_name = active_membership.get("plan") if active_membership else None
@@ -566,6 +724,7 @@ def get_public_forms_router(
             "customer_id": customer["id"],
             "customer_name": customer["name"],
             "customer_email": normalized_email,
+            "customer_phone": normalized_phone or customer.get("phone", ""),
             "service_type": "wash_fold",
             "service_plan": wf_plan,
             "membership_plan_applied": membership_plan_name,
@@ -580,14 +739,16 @@ def get_public_forms_router(
             "contact_address": normalized_address,
             "estimated_lbs": None,
             "actual_lbs": None,
-            "notes": notes_payload,
+            "notes": final_notes,
             "gate_code": None,
-            "preferences_id": preference_id,               # ← AHORA SÍ EXISTE
-            "preferences_snapshot": preference_snapshot,   # ← AHORA SÍ EXISTE
+            "preferences_id": preference_id,
+            "preferences_snapshot": preference_snapshot,
             "status": "new",
             "estado_actual": "new",
             "payment_status": "unpaid",
             "total_amount": None,
+            "addon_services": clean_addons,          # 🔥 GUARDAR ADD-ONS
+            "addon_amount": addon_amount,            # 🔥 GUARDAR TOTAL DE ADD-ONS
             "origen": "wash_fold_request",
             "created_at": now,
             "updated_at": now
@@ -595,7 +756,13 @@ def get_public_forms_router(
         await db.orders.insert_one(order)
         await db.customers.update_one({"id": customer["id"]}, {"$inc": {"total_orders": 1}})
         await create_audit_log("ORDER_CREATED", "order", order_id, None, {"source": "wash_fold_form"})
-        await emit_realtime("notification", {"type": "order_created", "order_id": order_id, "status": "new", "order_number": order_number})
+        
+        # Emit realtime notification - AHORA CON TRY/EXCEPT
+        if emit_realtime:
+            try:
+                await emit_realtime("notification", {"type": "order_created", "order_id": order_id, "status": "new", "order_number": order_number})
+            except Exception as e:
+                logger.error(f"Real-time notification failed for wash & fold order {order_number}: {e}")
 
         if notifications_enabled:
             try:
@@ -604,14 +771,31 @@ def get_public_forms_router(
             except Exception as e:
                 logger.error(f"Notification failed: {e}")
 
+        await _notify_admin(
+            request_type="Wash & Fold",
+            details={
+                "order_number": order_number,
+                "customer_name": customer["name"],
+                "phone": customer.get("phone", "N/A"),
+                "email": normalized_email,
+                "address": normalized_address or "N/A",
+                "date": data.dropoff_date or "N/A",
+                "time": data.dropoff_time or "N/A",
+            },
+            admin_phones=ADMIN_PHONES,
+            notifications_enabled=notifications_enabled,
+            skip_server_notifications=skip_server_notifications
+        )
+
         return {
             "success": True,
             "order_number": order_number,
-            "message": "¡Gracias! Tu solicitud de Wash & Fold ha sido recibida."
+            "message": "¡Gracias! Tu solicitud de Wash & Fold ha sido recibida.",
+            "addons": {"selected": clean_addons, "total": addon_amount} if clean_addons else None
         }
 
-      # =========================================================================
-    # 3. CONTACT FORM (SIN CAMBIOS)
+    # =========================================================================
+    # 3. CONTACT FORM
     # =========================================================================
     @router.post("/public/contact")
     async def public_contact(data: PublicContactRequest):
@@ -656,7 +840,6 @@ def get_public_forms_router(
         await create_audit_log("TICKET_CREATED", "ticket", ticket_id, None, {"source": "public_form"})
 
         try:
-            # Notificación al cliente
             is_es = detect_language(customer, normalized_phone) if customer else False
             if is_es:
                 msg = (f"Hola {customer_name}, gracias por contactar a Ventura Fresh Laundry. "
@@ -692,6 +875,19 @@ def get_public_forms_router(
         except Exception as e:
             logger.error(f"Contact notification failed: {e}")
 
+        await _notify_admin(
+            request_type="Contact",
+            details={
+                "customer_name": customer_name,
+                "phone": normalized_phone or "N/A",
+                "email": normalized_email,
+                "date": now[:10],
+            },
+            admin_phones=ADMIN_PHONES,
+            notifications_enabled=notifications_enabled,
+            skip_server_notifications=skip_server_notifications
+        )
+
         return {
             "success": True,
             "ticket_number": ticket_number,
@@ -699,7 +895,7 @@ def get_public_forms_router(
         }
 
     # =========================================================================
-    # 4. QUOTE REQUEST (SIN CAMBIOS)
+    # 4. QUOTE REQUEST
     # =========================================================================
     @router.post("/public/quote-request")
     async def public_quote_request(data: PublicQuoteRequest):
@@ -747,6 +943,20 @@ def get_public_forms_router(
         except Exception as e:
             logger.error(f"Quote notification failed: {e}")
 
+        await _notify_admin(
+            request_type="Quote",
+            details={
+                "order_number": quote_number,
+                "customer_name": normalized_contact or data.contact_name,
+                "phone": normalized_phone or "N/A",
+                "email": normalized_email,
+                "company": normalized_company or data.company_name,
+            },
+            admin_phones=ADMIN_PHONES,
+            notifications_enabled=notifications_enabled,
+            skip_server_notifications=skip_server_notifications
+        )
+
         return {
             "success": True,
             "quote_number": quote_number,
@@ -754,7 +964,7 @@ def get_public_forms_router(
         }
 
     # =========================================================================
-    # 5. MEMBERSHIP SIGNUP (SIN CAMBIOS)
+    # 5. MEMBERSHIP SIGNUP
     # =========================================================================
     @router.post("/public/membership-signup")
     async def public_membership_signup(data: PublicMembershipSignup):
@@ -826,13 +1036,26 @@ def get_public_forms_router(
             except Exception as e:
                 logger.error(f"Membership signup SMS failed: {e}")
 
+        await _notify_admin(
+            request_type="Membership",
+            details={
+                "customer_name": f"{normalized_first or data.first_name} {normalized_last or data.last_name}",
+                "phone": normalized_phone or "N/A",
+                "email": normalized_email,
+                "plan": normalized_plan or data.membership_plan,
+            },
+            admin_phones=ADMIN_PHONES,
+            notifications_enabled=notifications_enabled,
+            skip_server_notifications=skip_server_notifications
+        )
+
         return {
             "success": True,
             "message": "¡Gracias! Tu solicitud de membresía fue recibida. Te contactaremos para confirmar tu plan."
         }
 
     # =========================================================================
-    # 6. B2B QUOTE (SIN CAMBIOS)
+    # 6. B2B QUOTE
     # =========================================================================
     @router.post("/public/b2b-quote")
     async def create_b2b_quote(data: B2BQuoteRequest):
@@ -918,7 +1141,7 @@ def get_public_forms_router(
 
         if notifications_enabled and not skip_server_notifications:
             try:
-                admin_phone = os.environ.get("ADMIN_PHONE", "+18055154030")
+                admin_phone = os.environ.get("ADMIN_PHONE", "+19514845088")
                 admin_msg = (f"📋 NUEVA COTIZACIÓN B2B\n"
                              f"📄 #{quote_number}\n"
                              f"🏢 {data.company_legal_name or data.dba_name or f'{data.first_name} {data.last_name}'}\n"
@@ -930,13 +1153,28 @@ def get_public_forms_router(
             except Exception as e:
                 logger.error(f"B2B quote admin notification failed: {e}")
 
+        await _notify_admin(
+            request_type="B2B Quote",
+            details={
+                "order_number": quote_number,
+                "customer_name": f"{normalized_first or data.first_name} {normalized_last or data.last_name}",
+                "phone": normalized_phone or "N/A",
+                "email": normalized_email,
+                "company": data.company_legal_name or data.dba_name or "N/A",
+                "plan": data.business_type,
+            },
+            admin_phones=ADMIN_PHONES,
+            notifications_enabled=notifications_enabled,
+            skip_server_notifications=skip_server_notifications
+        )
+
         return {
             "message": "Thank you! Your quote request has been received. Our team will contact you within 24-48 hours.",
             "quote_number": quote_number
         }
 
     # =========================================================================
-    # 7. VOICE ASSISTANT (SIN CAMBIOS)
+    # 7. VOICE ASSISTANT
     # =========================================================================
     VOICE_ASSISTANT_SYSTEM_PROMPT = """You are Ventura, a friendly and enthusiastic AI sales assistant for Ventura Fresh Laundry, a premium laundry service in Ventura County, California. Your goal is to warmly engage visitors, answer their questions, and help them choose the right service.
 
@@ -1076,7 +1314,7 @@ PERSONALITY GUIDELINES:
         }
 
     # =========================================================================
-    # 8. SUGGESTION (SIN CAMBIOS)
+    # 8. SUGGESTION
     # =========================================================================
     @router.post("/public/suggestion")
     async def public_suggestion(data: PublicSuggestionCreate):
@@ -1113,7 +1351,7 @@ PERSONALITY GUIDELINES:
 
         if notifications_enabled and not skip_server_notifications:
             try:
-                admin_phone = os.environ.get("ADMIN_PHONE", "+18055154030")
+                admin_phone = os.environ.get("ADMIN_PHONE", "+19514845088")
                 admin_msg = (f"📝 NUEVA SUGERENCIA\n"
                              f"📅 {data.date}\n"
                              f"💡 {data.suggestion[:100]}...\n"
@@ -1122,13 +1360,24 @@ PERSONALITY GUIDELINES:
             except Exception as e:
                 logger.error(f"Admin notification for suggestion failed: {e}")
 
+        await _notify_admin(
+            request_type="Suggestion",
+            details={
+                "customer_name": data.name or "Anónimo",
+                "phone": data.phone or "N/A",
+            },
+            admin_phones=ADMIN_PHONES,
+            notifications_enabled=notifications_enabled,
+            skip_server_notifications=skip_server_notifications
+        )
+
         return {
             "success": True,
             "message": "¡Gracias por tu sugerencia! La hemos recibido y la revisaremos pronto."
         }
 
     # =========================================================================
-    # 9. REFUND (SIN CAMBIOS)
+    # 9. REFUND
     # =========================================================================
     @router.post("/public/refund")
     async def public_refund(data: PublicRefundCreate):
@@ -1165,7 +1414,7 @@ PERSONALITY GUIDELINES:
 
         if notifications_enabled and not skip_server_notifications:
             try:
-                admin_phone = os.environ.get("ADMIN_PHONE", "+18055154030")
+                admin_phone = os.environ.get("ADMIN_PHONE", "+19514845088")
                 admin_msg = (f"💰 NUEVA SOLICITUD DE REEMBOLSO\n"
                              f"🖨️ Máquina: {data.machine_number}\n"
                              f"💵 Monto: ${data.amount:.2f}\n"
@@ -1175,13 +1424,26 @@ PERSONALITY GUIDELINES:
             except Exception as e:
                 logger.error(f"Admin notification for refund failed: {e}")
 
+        await _notify_admin(
+            request_type="Refund",
+            details={
+                "customer_name": data.name or "Anónimo",
+                "phone": data.phone or "N/A",
+                "amount": data.amount,
+                "machine_number": data.machine_number,
+            },
+            admin_phones=ADMIN_PHONES,
+            notifications_enabled=notifications_enabled,
+            skip_server_notifications=skip_server_notifications
+        )
+
         return {
             "success": True,
             "message": "Solicitud de reembolso recibida. Pronto nos pondremos en contacto contigo."
         }
 
     # =========================================================================
-    # 10. ADMIN GET ENDPOINTS (SIN CAMBIOS)
+    # 10. ADMIN GET ENDPOINTS
     # =========================================================================
     @router.get("/admin/suggestions")
     async def list_suggestions(user: dict = Depends(get_current_user)):
@@ -1234,5 +1496,110 @@ PERSONALITY GUIDELINES:
         if result.matched_count == 0:
             raise HTTPException(status_code=404, detail="Refund not found")
         return {"success": True}
+
+    # =========================================================================
+    # ENDPOINTS DE PRUEBA
+    # =========================================================================
+    @router.get("/test-sms-direct")
+    async def test_sms_direct():
+        from notifications import send_sms
+        success = await send_sms("+18056262524", "🧪 Prueba directa de SMS")
+        return {"success": success, "phone": "+18056262524"}
+
+    @router.get("/test-notify-admin")
+    async def test_notify_admin():
+        await _notify_admin(
+            request_type="Test",
+            details={
+                "order_number": "TEST-123",
+                "customer_name": "Cliente de prueba",
+                "phone": "+19514845088",
+                "email": "test@example.com",
+                "address": "123 Test St",
+                "date": "2026-05-13",
+                "time": "10:00 AM",
+            },
+            admin_phones=ADMIN_PHONES,
+            notifications_enabled=True,
+            skip_server_notifications=False
+        )
+        return {"success": True}
+
+    # =========================================================================
+    # 11. SURVEY RESPONSE ENDPOINT (para guardar respuestas de encuestas)
+    # =========================================================================
+    class SurveyResponseCreate(BaseModel):
+        customer_id: str
+        orders_count_at_send: int
+        # Section 1
+        satisfaction_score: int  # 1-5
+        valued_aspects: List[str]  # máximo 2
+        # Section 2
+        quality_rating: str  # "excellent", "good", "average", "needs_improvement"
+        issues_experienced: List[str]
+        # Section 3
+        used_other_service_before: bool
+        reason_to_try_us: Optional[str] = None
+        # Section 4
+        improvement_suggestion: Optional[str] = None
+        recommendation_score: int  # 0-10
+        interested_in: List[str]
+        submitted_at: Optional[str] = None
+
+    @router.post("/public/survey-response")
+    async def submit_survey_response(data: SurveyResponseCreate):
+        """Guardar respuestas de encuesta de satisfacción"""
+        now = datetime.now(timezone.utc).isoformat()
+        
+        # Verificar que el customer_id existe
+        customer = await db.customers.find_one({"id": data.customer_id}, {"_id": 0})
+        if not customer:
+            raise HTTPException(status_code=404, detail="Customer not found")
+        
+        # Verificar que no haya respondido antes para este mismo hit
+        existing = await db.survey_responses.find_one({
+            "customer_id": data.customer_id,
+            "orders_count_at_send": data.orders_count_at_send
+        })
+        if existing:
+            raise HTTPException(status_code=400, detail="Survey already submitted for this cycle")
+        
+        response_doc = {
+            "id": str(uuid.uuid4()),
+            "customer_id": data.customer_id,
+            "customer_name": customer.get("name"),
+            "customer_email": customer.get("email"),
+            "orders_count_at_send": data.orders_count_at_send,
+            "satisfaction_score": data.satisfaction_score,
+            "valued_aspects": data.valued_aspects,
+            "quality_rating": data.quality_rating,
+            "issues_experienced": data.issues_experienced,
+            "used_other_service_before": data.used_other_service_before,
+            "reason_to_try_us": data.reason_to_try_us,
+            "improvement_suggestion": data.improvement_suggestion,
+            "recommendation_score": data.recommendation_score,
+            "interested_in": data.interested_in,
+            "submitted_at": data.submitted_at or now,
+            "created_at": now
+        }
+        
+        await db.survey_responses.insert_one(response_doc)
+        
+        # Marcar en customer_surveys que ya respondió
+        await db.customer_surveys.update_one(
+            {"customer_id": data.customer_id, "orders_count_at_send": data.orders_count_at_send},
+            {"$set": {"status": "responded", "responded_at": now}}
+        )
+        
+        # Registrar auditoría
+        await create_audit_log(
+            "SURVEY_RESPONSE_SUBMITTED",
+            "survey",
+            response_doc["id"],
+            None,
+            {"customer_id": data.customer_id, "score": data.satisfaction_score}
+        )
+        
+        return {"success": True, "message": "Survey response saved"}
 
     return router

@@ -495,7 +495,7 @@ export default function LandingPage() {
         */}
         <div className="absolute inset-0 opacity-[0.035] pointer-events-none will-change-transform"
           style={{
-            backgroundImage: `url(https://images.squarespace-cdn.com/content/v1/696c559a4b2b9b1b0febf8d7/8f9faf72-9068-4289-8f90-869a9b1b00d2/background.png)`,
+            backgroundImage: `url(https://images.unsplash.com/photo-1579267217516-b73084bd79a6?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8Ymx1ZXxlbnwwfHwwfHx8MA%3D%3D)`,
             backgroundSize: "cover",
             backgroundPosition: "center",
             transform: `translateY(${scrollY * 0.18}px)`,

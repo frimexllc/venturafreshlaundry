@@ -11,6 +11,7 @@ import shutil
 import secrets
 import string
 import hashlib
+import math
 from fastapi import File, UploadFile, Form
 from pathlib import Path
 import openrouteservice
@@ -25,6 +26,33 @@ logger = logging.getLogger(__name__)
 
 UPLOAD_DIR = Path("uploads/products")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+# Google Maps API Configuration
+GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY", "")
+USE_GOOGLE_MAPS = bool(GOOGLE_MAPS_API_KEY)
+
+# Store location (point of origin)
+STORE_LOCATION = {
+    "lat": 34.26417467703335,
+    "lng": -119.213714473368,
+    "address": "5722 Telephone Rd Suite 5, Ventura, CA 93003"
+}
+
+# Delivery configuration
+DELIVERY_CONFIG = {
+    "free_miles": 3,
+    "rate_per_mile": 1.50,        # ya no se usa (para tiered, ignóralo)
+    "max_fee": 25,                # ya no se usa
+    "max_service_miles": 15,      # ← Cambiado de 10 a 15
+    "tolerance": 0.3,
+    "fee_tiers": [                # ← Rangos de tarifa
+        {"max_miles": 3,   "fee": 0.00},
+        {"max_miles": 5,   "fee": 1.99},
+        {"max_miles": 8,   "fee": 2.99},
+        {"max_miles": 12,  "fee": 4.99},
+        {"max_miles": 15,  "fee": 8.99},
+    ]
+}
 
 # Stripe integration
 try:
@@ -120,7 +148,7 @@ def is_paid(payment_status: Optional[str], session_status: Optional[str] = None)
 
 
 def get_store_config():
-    store_address = os.environ.get("STORE_ADDRESS")
+    store_address = os.environ.get("STORE_ADDRESS", STORE_LOCATION["address"])
     ors_api_key = os.environ.get("ORS_API_KEY")
     rate_per_km = os.environ.get("SHIPPING_RATE_PER_KM")
     min_fee = os.environ.get("SHIPPING_MIN_FEE")
@@ -251,6 +279,16 @@ def haversine_km(coord1: List[float], coord2: List[float]) -> float:
     return 2 * r * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
+def haversine_miles(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Calculate straight-line distance in miles using Haversine formula"""
+    R = 3958.8  # Earth radius in miles
+    dlat = (lat2 - lat1) * math.pi / 180
+    dlon = (lon2 - lon1) * math.pi / 180
+    a = math.sin(dlat/2)**2 + math.cos(lat1 * math.pi/180) * math.cos(lat2 * math.pi/180) * math.sin(dlon/2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+    return R * c
+
+
 def point_in_polygon(point: List[float], polygon: List[List[float]]) -> bool:
     x, y = point
     inside = False
@@ -339,6 +377,105 @@ async def apply_stock_deduction(items: List[Dict]):
         if new_stock <= 0:
             update_doc["is_active"] = False
         await db.products.update_one({"id": product_id}, {"$set": update_doc})
+
+
+# ==================== GOOGLE MAPS GEOCODING (BACKEND) ====================
+
+def geocode_address_gmaps(address: str) -> Optional[Dict[str, float]]:
+    """Geocode address using Google Maps API (called from backend, safe)"""
+    if not USE_GOOGLE_MAPS or not GOOGLE_MAPS_API_KEY:
+        return None
+    
+    try:
+        # Import googlemaps only if available
+        import googlemaps
+        gmaps = googlemaps.Client(key=GOOGLE_MAPS_API_KEY)
+        result = gmaps.geocode(address)
+        
+        if result and len(result) > 0:
+            location = result[0]['geometry']['location']
+            return {"lat": location['lat'], "lng": location['lng']}
+    except ImportError:
+        logger.warning("googlemaps package not installed")
+    except Exception as e:
+        logger.error(f"Google Maps geocode error: {e}")
+    
+    return None
+
+
+# ==================== CORRECCIÓN PRINCIPAL: CÁLCULO CON TIERS ====================
+
+async def calculate_shipping_distance(address: str) -> Dict:
+    """Calculate straight-line distance and delivery fee using tiered pricing"""
+    try:
+        # Try Google Maps first
+        coords = geocode_address_gmaps(address)
+        
+        # Fallback to ORS geocoding if Google Maps fails
+        if not coords:
+            try:
+                dest_coords = geocode_address(address)
+                if dest_coords and len(dest_coords) >= 2:
+                    coords = {"lat": dest_coords[1], "lng": dest_coords[0]}
+            except Exception as e:
+                logger.warning(f"ORS geocode fallback failed: {e}")
+        
+        if not coords:
+            raise HTTPException(status_code=400, detail="Could not geocode address. Please provide a more precise address (street number + name + city + state + ZIP).")
+        
+        # Calculate straight-line distance using Haversine formula
+        straight_line_miles = haversine_miles(
+            STORE_LOCATION["lat"], STORE_LOCATION["lng"],
+            coords["lat"], coords["lng"]
+        )
+        straight_line_miles = round(straight_line_miles * 100) / 100
+        
+        config = DELIVERY_CONFIG
+        
+        # 🛡️ VALIDACIÓN ESTRICTA: fuera del rango máximo (ahora 15 millas)
+        if straight_line_miles > config["max_service_miles"]:
+            return {
+                "straight_line_miles": straight_line_miles,
+                "fee": 0,
+                "within_range": False,
+                "free_miles": config["free_miles"],
+                "rate_per_mile": config["rate_per_mile"],
+                "max_fee": config["max_fee"],
+                "max_service_miles": config["max_service_miles"],
+                "store_location": STORE_LOCATION,
+                "error": f"Address is {straight_line_miles:.1f} miles away. Maximum distance is {config['max_service_miles']} miles.",
+                "fee_tiers": config.get("fee_tiers", [])
+            }
+        
+        # ✅ Calcular tarifa basada en rangos (tiers)
+        fee = 0.00
+        for tier in config.get("fee_tiers", []):
+            if straight_line_miles <= tier["max_miles"]:
+                fee = tier["fee"]
+                break
+        
+        # Nota: la tolerancia (config["tolerance"]) se ignora para los tiers.
+        # Si necesitas mantener la tolerancia, puedes aplicarla antes de la comparación:
+        #   adjusted = max(0, straight_line_miles - config["tolerance"])
+        # y luego usar adjusted en lugar de straight_line_miles en el loop.
+        
+        return {
+            "straight_line_miles": straight_line_miles,
+            "fee": fee,
+            "within_range": True,
+            "free_miles": config["free_miles"],
+            "rate_per_mile": config["rate_per_mile"],
+            "max_fee": config["max_fee"],
+            "max_service_miles": config["max_service_miles"],
+            "store_location": STORE_LOCATION,
+            "fee_tiers": config.get("fee_tiers", [])   # Opcional: enviar al frontend
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Shipping distance calculation error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ==================== MODELS ====================
@@ -465,66 +602,7 @@ async def seed_products():
     count = await db.products.count_documents({})
     if count == 0:
         products = [
-            {
-                "id": str(uuid.uuid4()),
-                "name": "Bolsa de Lavandería Premium",
-                "description": "Bolsa de malla resistente para transportar tu ropa",
-                "price": 12.99,
-                "category": "accesorios",
-                "image_url": None,
-                "stock": 50,
-                "is_active": True,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "updated_at": datetime.now(timezone.utc).isoformat()
-            },
-            {
-                "id": str(uuid.uuid4()),
-                "name": "Detergente Ecológico 1L",
-                "description": "Detergente biodegradable para pieles sensibles",
-                "price": 8.99,
-                "category": "detergentes",
-                "image_url": None,
-                "stock": 100,
-                "is_active": True,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "updated_at": datetime.now(timezone.utc).isoformat()
-            },
-            {
-                "id": str(uuid.uuid4()),
-                "name": "Suavizante Premium 500ml",
-                "description": "Suavizante con aroma a lavanda",
-                "price": 6.99,
-                "category": "suavizantes",
-                "image_url": None,
-                "stock": 75,
-                "is_active": True,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "updated_at": datetime.now(timezone.utc).isoformat()
-            },
-            {
-                "id": str(uuid.uuid4()),
-                "name": "Quitamanchas Profesional",
-                "description": "Elimina manchas difíciles de grasa y vino",
-                "price": 14.99,
-                "category": "quitamanchas",
-                "image_url": None,
-                "stock": 40,
-                "is_active": True,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "updated_at": datetime.now(timezone.utc).isoformat()
-            },
-            {
-                "id": str(uuid.uuid4()),
-                "name": "Pack Inicial Lavandería",
-                "description": "Incluye: bolsa, detergente y suavizante",
-                "price": 24.99,
-                "category": "packs",
-                "image_url": None,
-                "stock": 30,
-                "is_active": True,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "updated_at": datetime.now(timezone.utc).isoformat()
-            }
+           
         ]
         await db.products.insert_many(products)
 
@@ -544,12 +622,14 @@ async def list_products(category: Optional[str] = None, active_only: bool = True
     return products
 
 
+
 @store_router.get("/products/{product_id}", response_model=ProductResponse)
 async def get_product(product_id: str):
     product = await db.products.find_one({"id": product_id}, {"_id": 0})
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
     return product
+
 
 
 @store_router.post("/products", response_model=ProductResponse)
@@ -562,8 +642,12 @@ async def create_product(
     stock: int = Form(0),
     is_active: bool = Form(True),
     image_url: Optional[str] = Form(None),
-    image: Optional[UploadFile] = File(None)
+    image: Optional[UploadFile] = File(None),
+    current_user: dict = Depends(get_current_user),
 ):
+    if current_user.get("role") not in ["admin", "operator"]:
+        raise HTTPException(status_code=403, detail="Admin or operator access required")
+ 
     now = datetime.now(timezone.utc).isoformat()
     final_image_url = normalize_spaces(image_url)
     if image and image.filename:
@@ -577,7 +661,7 @@ async def create_product(
             final_image_url = f"{base_url}/uploads/products/{filename}"
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error saving image: {str(e)}")
-    
+ 
     product_doc = {
         "id": str(uuid.uuid4()),
         "name": name,
@@ -588,7 +672,7 @@ async def create_product(
         "stock": stock,
         "is_active": is_active if stock > 0 else False,
         "created_at": now,
-        "updated_at": now
+        "updated_at": now,
     }
     await db.products.insert_one(product_doc)
     del product_doc["_id"]
@@ -606,12 +690,16 @@ async def update_product(
     stock: int = Form(0),
     is_active: bool = Form(True),
     image_url: Optional[str] = Form(None),
-    image: Optional[UploadFile] = File(None)
+    image: Optional[UploadFile] = File(None),
+    current_user: dict = Depends(get_current_user),
 ):
+    if current_user.get("role") not in ["admin", "operator"]:
+        raise HTTPException(status_code=403, detail="Admin or operator access required")
+ 
     existing = await db.products.find_one({"id": product_id})
     if not existing:
         raise HTTPException(status_code=404, detail="Product not found")
-    
+ 
     now = datetime.now(timezone.utc).isoformat()
     final_image_url = normalize_spaces(image_url) or existing.get("image_url")
     if image and image.filename:
@@ -630,7 +718,7 @@ async def update_product(
             final_image_url = f"{base_url}/uploads/products/{filename}"
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error saving image: {str(e)}")
-    
+ 
     update_data = {
         "name": name,
         "description": description,
@@ -639,18 +727,29 @@ async def update_product(
         "image_url": final_image_url,
         "stock": stock,
         "is_active": is_active if stock > 0 else False,
-        "updated_at": now
+        "updated_at": now,
     }
     await db.products.update_one({"id": product_id}, {"$set": update_data})
     updated = await db.products.find_one({"id": product_id}, {"_id": 0})
     return updated
 
 
+
 @store_router.delete("/products/{product_id}")
-async def delete_product(product_id: str, current_user: dict = Depends(require_admin)):
+async def delete_product(
+    product_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Elimina un producto. Solo admins pueden hacerlo.
+    """
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required to delete products")
+ 
     result = await db.products.delete_one({"id": product_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Product not found")
+ 
     return {"message": "Product deleted successfully"}
 
 
@@ -797,23 +896,65 @@ async def get_shipping_quote(payload: ShippingQuoteRequest):
     return result
 
 
+@store_router.post("/shipping/calculate")
+async def calculate_shipping_distance_endpoint(request: Request):
+    """Calculate straight-line distance and delivery fee (no CORS issues)"""
+    try:
+        body = await request.json()
+        address = body.get("address")
+        
+        if not address:
+            raise HTTPException(status_code=400, detail="Address required")
+        
+        result = await calculate_shipping_distance(address)
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Shipping calculation endpoint error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 class AddressCheckRequest(BaseModel):
     address: str
 
+
 @store_router.post("/check-address")
 async def check_address(request: AddressCheckRequest):
+    """
+    Valida si una dirección está dentro del área de servicio.
+    Usa el mismo cálculo de distancia que el endpoint /shipping/calculate.
+    """
     try:
-        result = await calculate_shipping_fee(request.address)
-        return {
-            "valid": True,
-            "distance_km": result["distance_km"],
-            "zone_id": result["zone_id"],
-            "zone_name": result["zone_name"]
-        }
+        result = await calculate_shipping_distance(request.address)
+        
+        if result.get("within_range", False):
+            return {
+                "valid": True,
+                "distance_miles": result.get("straight_line_miles", 0),
+                "delivery_fee": result.get("fee", 0),
+                "within_range": True,
+                "fee_tiers": result.get("fee_tiers", [])   # Opcional: para mostrar tabla en frontend
+            }
+        else:
+            return {
+                "valid": False,
+                "error": result.get("error", f"Address is outside our service area. Maximum distance is {DELIVERY_CONFIG['max_service_miles']} miles from our store at {STORE_LOCATION['address']}. Your address is approximately {result.get('straight_line_miles', 0):.1f} miles away."),
+                "distance_miles": result.get("straight_line_miles", 0),
+                "max_service_miles": DELIVERY_CONFIG["max_service_miles"],
+                "within_range": False
+            }
     except HTTPException as e:
         return {
             "valid": False,
-            "error": e.detail
+            "error": str(e.detail)
+        }
+    except Exception as e:
+        logger.error(f"Address check error: {e}")
+        return {
+            "valid": False,
+            "error": "Could not validate address. Please ensure it's a complete address with street number, city, state, and ZIP code."
         }
 
 
@@ -1000,6 +1141,7 @@ async def create_checkout_session(checkout: CheckoutRequest, request: Request):
             "amount": total,
             "currency": "usd",
             "customer_email": normalized_email,
+            "customer_phone": normalized_phone or customer.get("phone", ""),
             "payment_status": "initiated",
             "metadata": {
                 "cart_id": checkout.cart_id,
@@ -1059,7 +1201,7 @@ async def create_manual_checkout(checkout: ManualCheckoutRequest):
     total = round(subtotal + shipping_fee, 2)
 
     payment_method = normalize_spaces(checkout.payment_method).lower()
-    if payment_method not in ["cash", "transfer", "other"]:
+    if payment_method not in ["cash", "transfer", "other", "card"]:
         raise HTTPException(status_code=400, detail="Invalid payment method")
 
     now = datetime.now(timezone.utc).isoformat()
@@ -1075,6 +1217,8 @@ async def create_manual_checkout(checkout: ManualCheckoutRequest):
         "instructions": normalize_spaces(checkout.delivery_instructions) if checkout.delivery_instructions else None
     }
 
+    is_card_payment = payment_method == "card"
+    
     order_doc = {
         "id": str(uuid.uuid4()),
         "order_number": order_number,
@@ -1091,71 +1235,74 @@ async def create_manual_checkout(checkout: ManualCheckoutRequest):
         "delivery_zone_name": delivery_zone_name,
         "fulfillment_type": fulfillment_type,
         "total": total,
-        "payment_status": "paid",
+        "payment_status": "pending" if is_card_payment else "paid",
         "payment_method": payment_method,
         "stripe_session_id": None,
         "shipping_address": shipping_address,
         "notes": normalize_spaces(checkout.notes) if checkout.notes else None,
-        "status": "confirmed",
+        "status": "pending" if is_card_payment else "confirmed",
         "created_at": now,
         "updated_at": now
     }
 
     await db.store_orders.insert_one(order_doc)
-    payment_doc = {
-        "id": str(uuid.uuid4()),
-        "session_id": f"manual-{order_doc['id']}",
-        "order_id": order_doc["id"],
-        "order_number": order_number,
-        "amount": total,
-        "currency": "usd",
-        "customer_email": normalized_email,
-        "payment_status": "paid",
-        "metadata": {
-            "cart_id": checkout.cart_id,
-            "items_count": len(cart["items"]),
-            "payment_method": payment_method
-        },
-        "created_at": now,
-        "updated_at": now
-    }
-    await db.payment_transactions.insert_one(payment_doc)
 
-    finance_entry = {
-        "id": str(uuid.uuid4()),
-        "type": "income",
-        "category": "store_sale",
-        "description": f"Venta tienda {order_number}",
-        "amount": float(total),
-        "payment_method": payment_method,
-        "order_id": order_doc["id"],
-        "order_number": order_number,
-        "customer_name": order_doc.get("customer_name"),
-        "date": now[:10],
-        "created_at": now,
-        "updated_at": now,
-    }
-    await db.finances.insert_one(finance_entry)
-
-    await apply_stock_deduction(order_doc.get("items", []))
-    customer_snapshot = build_customer_snapshot({
-        "customer_name": order_doc.get("customer_name"),
-        "customer_email": order_doc.get("customer_email"),
-        "customer_phone": order_doc.get("customer_phone"),
-        "preferred_contact": order_doc.get("preferred_contact")
-    })
-    await notify_store_order(customer_snapshot, order_doc)
-
-    await db.carts.update_one(
-        {"id": checkout.cart_id},
-        {
-            "$set": {
-                "items": [],
-                "total": 0.0,
-                "updated_at": datetime.now(timezone.utc).isoformat()
-            }
+    if not is_card_payment:
+        payment_doc = {
+            "id": str(uuid.uuid4()),
+            "session_id": f"manual-{order_doc['id']}",
+            "order_id": order_doc["id"],
+            "order_number": order_number,
+            "amount": total,
+            "currency": "usd",
+            "customer_email": normalized_email,
+            "customer_phone": normalized_phone or customer.get("phone", ""),
+            "payment_status": "paid",
+            "metadata": {
+                "cart_id": checkout.cart_id,
+                "items_count": len(cart["items"]),
+                "payment_method": payment_method
+            },
+            "created_at": now,
+            "updated_at": now
         }
-    )
+        await db.payment_transactions.insert_one(payment_doc)
+
+        finance_entry = {
+            "id": str(uuid.uuid4()),
+            "type": "income",
+            "category": "store_sale",
+            "description": f"Venta tienda {order_number}",
+            "amount": float(total),
+            "payment_method": payment_method,
+            "order_id": order_doc["id"],
+            "order_number": order_number,
+            "customer_name": order_doc.get("customer_name"),
+            "date": now[:10],
+            "created_at": now,
+            "updated_at": now,
+        }
+        await db.finances.insert_one(finance_entry)
+
+        await apply_stock_deduction(order_doc.get("items", []))
+        customer_snapshot = build_customer_snapshot({
+            "customer_name": order_doc.get("customer_name"),
+            "customer_email": order_doc.get("customer_email"),
+            "customer_phone": order_doc.get("customer_phone"),
+            "preferred_contact": order_doc.get("preferred_contact")
+        })
+        await notify_store_order(customer_snapshot, order_doc)
+
+        await db.carts.update_one(
+            {"id": checkout.cart_id},
+            {
+                "$set": {
+                    "items": [],
+                    "total": 0.0,
+                    "updated_at": datetime.now(timezone.utc).isoformat()
+                }
+            }
+        )
 
     return {
         "order_id": order_doc["id"],
@@ -1163,7 +1310,8 @@ async def create_manual_checkout(checkout: ManualCheckoutRequest):
         "total": total,
         "shipping_fee": shipping_fee,
         "shipping_distance_km": shipping_distance_km,
-        "status": "paid"
+        "status": "pending" if is_card_payment else "paid",
+        "requires_payment": is_card_payment
     }
 
 
@@ -1239,21 +1387,18 @@ async def get_checkout_status(session_id: str):
         raise HTTPException(status_code=500, detail=f"Failed to get checkout status: {str(e)}")
 
 
-# ==================== STORE ORDERS ENDPOINTS (CORREGIDOS) ====================
-
-# En store.py, reemplaza estos endpoints:
+# ==================== STORE ORDERS ENDPOINTS ====================
 
 @store_router.get("/orders", response_model=List[StoreOrderResponse])
 async def list_store_orders(
     status: Optional[str] = None, 
     limit: int = 50,
-    current_user: dict = Depends(get_current_user)   # ← Cambiado
+    current_user: dict = Depends(get_current_user)
 ):
     """List store orders - admin y operator"""
     if db is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
     
-    # Permitir admin y operator
     if current_user.get("role") not in ["admin", "operator"]:
         raise HTTPException(status_code=403, detail="Permission denied")
     
@@ -1271,28 +1416,12 @@ async def list_store_orders(
 
 @store_router.get("/orders/{order_id}", response_model=StoreOrderResponse)
 async def get_store_order(order_id: str, current_user: dict = Depends(get_current_user)):
-    """Get a store order by ID"""
     if current_user.get("role") not in ["admin", "operator"]:
         raise HTTPException(status_code=403, detail="Permission denied")
     
     order = await db.store_orders.find_one({"id": order_id}, {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    
-    # Si es operator, puede ver cualquier orden (o limitar según negocio)
-    return order
-
-
-@store_router.get("/orders/{order_id}", response_model=StoreOrderResponse)
-async def get_store_order(order_id: str, current_user: dict = Depends(get_current_user)):
-    order = await db.store_orders.find_one({"id": order_id}, {"_id": 0})
-    if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
-    
-    if current_user.get("role") != "admin":
-        if order.get("customer_email") != current_user.get("email"):
-            raise HTTPException(status_code=403, detail="Not authorized to view this order")
-    
     return order
 
 
@@ -1781,6 +1910,7 @@ async def create_membership_checkout(checkout: MembershipCheckoutRequest, reques
             "amount": price,
             "currency": "usd",
             "customer_email": normalized_email,
+            "customer_phone": normalized_phone or customer.get("phone", ""),
             "payment_type": "membership",
             "plan_name": plan.get("name"),
             "payment_status": "initiated",
@@ -1965,78 +2095,82 @@ async def complete_membership_registration(session_id: str):
 
     existing = await db.customers.find_one({"email": email})
     temp_password = None
+    customer_id = None
 
-    if existing and existing.get("password_hash"):
+    if existing:
         customer_id = existing["id"]
-        await db.customers.update_one(
-            {"id": customer_id},
-            {
-                "$set": {
-                    "name": full_name or existing.get("name"),
-                    "phone": phone or existing.get("phone"),
-                    "address": full_address or existing.get("address"),
-                    "city": reg.get("city") or existing.get("city"),
-                    "state": reg.get("state") or existing.get("state"),
-                    "zip_code": reg.get("zip_code") or existing.get("zip_code"),
-                    "is_member": True,
-                    "membership_plan": plan_name,
-                    "membership_status": "active",
-                    "updated_at": now,
-                }
-            },
-        )
+        has_active_membership = is_active_member(None, existing)
+        
+        update_fields = {
+            "name": full_name or existing.get("name"),
+            "phone": phone or existing.get("phone"),
+            "address": full_address or existing.get("address"),
+            "city": reg.get("city") or existing.get("city"),
+            "state": reg.get("state") or existing.get("state"),
+            "zip_code": reg.get("zip_code") or existing.get("zip_code"),
+            "is_member": True,
+            "membership_plan": plan_name,
+            "membership_status": "active",
+            "updated_at": now,
+        }
+        
+        if not has_active_membership:
+            update_fields["membership_start_date"] = now
+            
+        await db.customers.update_one({"id": customer_id}, {"$set": update_fields})
+        
+        if has_active_membership:
+            logger.info(f"Membership updated for existing customer {customer_id}: {plan_name}")
+        else:
+            logger.info(f"Membership activated for existing customer {customer_id}: {plan_name}")
+            
     else:
         temp_password = _generate_temp_password()
-        if existing:
-            customer_id = existing["id"]
-            await db.customers.update_one(
-                {"id": customer_id},
-                {
-                    "$set": {
-                        "name": full_name,
-                        "phone": phone,
-                        "address": full_address,
-                        "city": reg.get("city"),
-                        "state": reg.get("state"),
-                        "zip_code": reg.get("zip_code"),
-                        "password_hash": hash_password(temp_password),
-                        "is_member": True,
-                        "membership_plan": plan_name,
-                        "membership_status": "active",
-                        "updated_at": now,
-                    }
-                },
-            )
-        else:
-            customer_id = str(uuid.uuid4())
-            customer_doc = {
-                "id": customer_id,
-                "name": full_name,
-                "email": email,
-                "phone": phone,
-                "address": full_address,
-                "city": reg.get("city"),
-                "state": reg.get("state"),
-                "zip_code": reg.get("zip_code"),
-                "preferred_contact": reg.get("contact_method", "email"),
-                "sms_consent": reg.get("sms_consent", False),
-                "notes": None,
-                "status": "active",
-                "is_member": True,
-                "membership_plan": plan_name,
-                "membership_status": "active",
-                "membership_start_date": now,
-                "total_orders": 0,
-                "password_hash": hash_password(temp_password),
-                "created_at": now,
-                "updated_at": now,
-            }
-            await db.customers.insert_one(customer_doc)
+        customer_id = str(uuid.uuid4())
+        
+        customer_doc = {
+            "id": customer_id,
+            "name": full_name,
+            "email": email,
+            "phone": phone,
+            "address": full_address,
+            "city": reg.get("city"),
+            "state": reg.get("state"),
+            "zip_code": reg.get("zip_code"),
+            "preferred_contact": reg.get("contact_method", "email"),
+            "sms_consent": reg.get("sms_consent", False),
+            "notes": None,
+            "status": "active",
+            "is_member": True,
+            "membership_plan": plan_name,
+            "membership_status": "active",
+            "membership_start_date": now,
+            "total_orders": 0,
+            "password_hash": hash_password(temp_password),
+            "created_at": now,
+            "updated_at": now,
+        }
+        await db.customers.insert_one(customer_doc)
+        logger.info(f"New customer created with membership: {customer_id}")
 
     existing_membership = await db.memberships.find_one(
-        {"stripe_session_id": session_id}
+        {"customer_id": customer_id, "status": "active"}
     )
-    if not existing_membership:
+    
+    if existing_membership:
+        await db.memberships.update_one(
+            {"id": existing_membership["id"]},
+            {
+                "$set": {
+                    "plan": plan_name,
+                    "plan_id": plan_id,
+                    "status": "active",
+                    "updated_at": now,
+                    "preferences": preferences,
+                }
+            }
+        )
+    else:
         membership_doc = {
             "id": str(uuid.uuid4()),
             "customer_id": customer_id,
@@ -2132,7 +2266,50 @@ async def complete_membership_registration(session_id: str):
                 html,
             )
         except Exception as exc:
-            logger.error("Welcome email error: %s", exc)
+            logger.error(f"Welcome email error: {exc}")
+    else:
+        try:
+            from notifications import send_email
+            frontend_url = (
+                os.environ.get("FRONTEND_URL")
+                or os.environ.get("REACT_APP_BACKEND_URL")
+                or os.environ.get("BUSINESS_WEBSITE", "")
+            )
+            login_url = f"{frontend_url}/account"
+            html = f"""
+            <div style="font-family:system-ui,-apple-system,sans-serif;max-width:520px;margin:0 auto;padding:24px;">
+              <div style="background:linear-gradient(135deg,#0284c7,#0ea5e9);border-radius:16px 16px 0 0;padding:32px 24px;text-align:center;">
+                <h1 style="color:white;font-size:24px;margin:0;font-weight:800;">Ventura Fresh Laundry</h1>
+                <p style="color:rgba(255,255,255,0.8);font-size:14px;margin:8px 0 0;">¡Tu membresía ha sido activada!</p>
+              </div>
+              <div style="background:#ffffff;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 16px 16px;padding:32px 24px;">
+                <p style="color:#1e293b;font-size:16px;font-weight:600;">Hola {first_name} 👋</p>
+                <p style="color:#64748b;font-size:14px;line-height:1.7;">
+                  Tu membresía <strong>{plan_name}</strong> ha sido activada exitosamente.
+                </p>
+                <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:12px;padding:20px;margin:20px 0;text-align:center;">
+                  <p style="margin:4px 0;color:#1e293b;font-size:15px;"><strong>Plan:</strong> {plan_name}</p>
+                  <p style="margin:8px 0 4px;color:#1e293b;font-size:15px;"><strong>Correo:</strong> {email}</p>
+                </div>
+                <div style="text-align:center;margin:28px 0 16px;">
+                  <a href="{login_url}" style="display:inline-block;background:#0284c7;color:white;padding:14px 36px;border-radius:12px;text-decoration:none;font-weight:700;font-size:15px;">
+                    Acceder a mi cuenta →
+                  </a>
+                </div>
+                <p style="color:#94a3b8;font-size:12px;text-align:center;">
+                  Como miembro disfrutas de precios especiales en todos tus pedidos.
+                </p>
+              </div>
+            </div>
+            """
+            await send_email(
+                email,
+                f"¡Tu membresía {plan_name} está activa! — Ventura Fresh Laundry",
+                f"Hola {first_name}, tu membresía {plan_name} ha sido activada exitosamente.",
+                html,
+            )
+        except Exception as exc:
+            logger.error(f"Membership confirmation email error: {exc}")
 
     customer_data = await db.customers.find_one(
         {"id": customer_id}, {"_id": 0, "password_hash": 0}

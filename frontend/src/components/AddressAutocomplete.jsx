@@ -10,13 +10,48 @@ function debounce(fn, ms) {
 
 function parseAddress(item) {
   const a = item.address || {};
+  
+  // Construir una dirección más limpia
+  let street = "";
+  if (a.road) street = a.road;
+  else if (a.pedestrian) street = a.pedestrian;
+  else if (a.footway) street = a.footway;
+  
   const house = a.house_number || "";
-  const road = a.road || a.pedestrian || a.footway || "";
-  const street = [house, road].filter(Boolean).join(" ");
-  const city = a.city || a.town || a.village || a.hamlet || a.county || "";
-  const state = a.state || "";
+  if (house && street) {
+    street = `${house} ${street}`;
+  } else if (house && !street) {
+    street = house;
+  }
+  
+  // Para direcciones sin número de calle (pueblos, ciudades, etc.)
+  if (!street && (a.city || a.town || a.village)) {
+    street = a.city || a.town || a.village;
+  }
+  
+  // Construir la ciudad/localidad
+  const city = a.city || a.town || a.village || a.hamlet || a.suburb || "";
+  
+  // Estado/Provincia
+  const state = a.state || a.province || "";
+  
+  // Código postal
   const zip = a.postcode || "";
-  return { street, city, state, zip, display: item.display_name };
+  
+  // País (opcional, si lo necesitas)
+  const country = a.country || "";
+  
+  return { 
+    street, 
+    city, 
+    state, 
+    zip,
+    country,
+    // Para mostrar en el dropdown
+    display: item.display_name,
+    // Dirección completa limpia
+    formatted: [street, city, state, zip].filter(Boolean).join(", ")
+  };
 }
 
 /**
@@ -64,7 +99,11 @@ export default function AddressAutocomplete({
 
   const fetchSuggestions = useCallback(
     debounce(async (query) => {
-      if (!query || query.length < 3) { setSuggestions([]); setOpen(false); return; }
+      if (!query || query.length < 3) { 
+        setSuggestions([]); 
+        setOpen(false); 
+        return; 
+      }
       setLoading(true);
       try {
         const params = new URLSearchParams({
@@ -99,7 +138,33 @@ export default function AddressAutocomplete({
 
   const handleSelect = (item) => {
     const parsed = parseAddress(item);
-    onSelect(parsed);
+    // Limpiar direcciones que tengan demasiados detalles
+    const cleanAddress = {
+      street: parsed.street || "",
+      city: parsed.city || "",
+      state: parsed.state || "",
+      zip: parsed.zip || "",
+      country: parsed.country || "",
+      // Si la calle está vacía pero hay ciudad, usar la ciudad como dirección principal
+      address: parsed.street ? 
+        [parsed.street, parsed.city].filter(Boolean).join(", ") : 
+        parsed.city || parsed.display.split(",")[0].trim(),
+      // Para mostrar en el input
+      displayName: parsed.street ? 
+        [parsed.street, parsed.city, parsed.state].filter(Boolean).join(", ") : 
+        [parsed.city, parsed.state].filter(Boolean).join(", ")
+    };
+    
+    // Actualizar el input con una dirección más limpia
+    onChange(cleanAddress.displayName);
+    
+    // Enviar los datos limpios al padre
+    onSelect({
+      ...parsed,
+      fullAddress: cleanAddress.address,
+      displayAddress: cleanAddress.displayName
+    });
+    
     setOpen(false);
     setSuggestions([]);
   };
@@ -160,6 +225,10 @@ export default function AddressAutocomplete({
           <style>{`@keyframes fadeInSugg{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}`}</style>
           {suggestions.map((item, i) => {
             const parsed = parseAddress(item);
+            // Mostrar sugerencias más limpias
+            const displayStreet = parsed.street || parsed.city || item.display_name.split(",")[0];
+            const displayLocation = [parsed.city, parsed.state].filter(Boolean).join(", ");
+            
             return (
               <button
                 key={item.place_id}
@@ -173,11 +242,13 @@ export default function AddressAutocomplete({
                 <MapPin className="h-4 w-4 text-sky-500 mt-0.5 flex-shrink-0" />
                 <div className="min-w-0">
                   <div className="font-medium text-slate-800 truncate">
-                    {parsed.street || item.display_name.split(",")[0]}
+                    {displayStreet}
                   </div>
-                  <div className="text-xs text-slate-400 truncate">
-                    {[parsed.city, parsed.state, parsed.zip].filter(Boolean).join(", ")}
-                  </div>
+                  {displayLocation && (
+                    <div className="text-xs text-slate-400 truncate">
+                      {displayLocation}
+                    </div>
+                  )}
                 </div>
               </button>
             );

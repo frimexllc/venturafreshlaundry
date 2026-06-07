@@ -1,4 +1,4 @@
-// src/pages/Finances.jsx — Rediseñado CON OCR y attachments
+// src/pages/Finances.jsx — Rediseñado CON OCR y attachments (FULL RESPONSIVE)
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import axios from "axios";
@@ -157,20 +157,10 @@ const PortalModal = ({ open, onClose, children }) => {
   if (!open) return null;
   return createPortal(
     <div
-      className="fixed inset-0 z-[9000] flex items-center justify-center p-4"
-      style={{ background: "rgba(10,12,18,0.6)", backdropFilter: "blur(6px)" }}
+      className="modal-overlay"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div style={{
-        background: "var(--modal-bg, #fff)",
-        borderRadius: 20,
-        width: "100%",
-        maxWidth: 500,
-        maxHeight: "90vh",
-        overflowY: "auto",
-        boxShadow: "0 24px 80px rgba(0,0,0,0.18)",
-        border: "1px solid rgba(255,255,255,0.08)"
-      }}>
+      <div className="modal-container">
         {children}
       </div>
     </div>,
@@ -179,18 +169,15 @@ const PortalModal = ({ open, onClose, children }) => {
 };
 
 const ModalHeader = ({ title, onClose }) => (
-  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "22px 24px 0" }}>
-    <h2 style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", margin: 0 }}>{title}</h2>
-    <button onClick={onClose} style={{
-      width: 32, height: 32, borderRadius: 10, border: "1.5px solid #e2e8f0",
-      background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b"
-    }}><X size={15} /></button>
+  <div className="modal-header">
+    <h2>{title}</h2>
+    <button onClick={onClose}><X size={15} /></button>
   </div>
 );
 
 const Field = ({ label, children }) => (
-  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-    <label style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#94a3b8" }}>{label}</label>
+  <div className="form-field">
+    <label>{label}</label>
     {children}
   </div>
 );
@@ -214,46 +201,23 @@ const KPICard = ({ label, value, sub, icon: Icon, color, delta, index, onDragSta
       onDragEnter={() => onDragEnter(index)}
       onDragEnd={onDragEnd}
       onDragOver={(e) => e.preventDefault()}
-      style={{
-        background: "#fff",
-        borderRadius: 16,
-        border: "1.5px solid #f1f5f9",
-        padding: "20px",
-        cursor: "grab",
-        transition: "box-shadow 0.2s, transform 0.2s",
-        position: "relative",
-        overflow: "hidden",
-      }}
       className="finance-kpi-card"
     >
-      <div style={{
-        position: "absolute", top: 0, left: 0, right: 0, height: 3,
-        background: `linear-gradient(90deg, ${c.icon}, ${c.icon}88)`
-      }} />
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
-        <div style={{
-          width: 38, height: 38, borderRadius: 10,
-          background: c.bg, border: `1px solid ${c.border}`,
-          display: "flex", alignItems: "center", justifyContent: "center"
-        }}>
+      <div className="kpi-top-bar" style={{ background: `linear-gradient(90deg, ${c.icon}, ${c.icon}88)` }} />
+      <div className="kpi-header">
+        <div className="kpi-icon" style={{ background: c.bg, borderColor: c.border }}>
           <Icon size={17} color={c.icon} />
         </div>
         {delta !== undefined && (
-          <span style={{
-            fontSize: 11, fontWeight: 600,
-            color: isPositive ? "#10b981" : "#ef4444",
-            display: "flex", alignItems: "center", gap: 2,
-            background: isPositive ? "#ecfdf5" : "#fef2f2",
-            padding: "3px 8px", borderRadius: 20
-          }}>
+          <span className={`kpi-delta ${isPositive ? 'positive' : 'negative'}`}>
             {isPositive ? <ArrowUpRight size={11} /> : <ArrowDownRight size={11} />}
             {Math.abs(delta)}%
           </span>
         )}
       </div>
-      <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#94a3b8", margin: "0 0 4px" }}>{label}</p>
-      <p style={{ fontSize: 24, fontWeight: 800, color: "#0f172a", margin: 0, letterSpacing: "-0.02em" }}>{value}</p>
-      {sub && <p style={{ fontSize: 12, color: "#94a3b8", margin: "4px 0 0" }}>{sub}</p>}
+      <p className="kpi-label">{label}</p>
+      <p className="kpi-value">{value}</p>
+      {sub && <p className="kpi-sub">{sub}</p>}
     </div>
   );
 };
@@ -267,21 +231,16 @@ const Badge = ({ type }) => {
   };
   const c = cfg[type] || cfg.variable;
   return (
-    <span style={{
-      fontSize: 11, fontWeight: 600, padding: "3px 9px", borderRadius: 20,
-      background: c.bg, color: c.text, whiteSpace: "nowrap"
-    }}>{c.label}</span>
+    <span className="badge" style={{ background: c.bg, color: c.text }}>{c.label}</span>
   );
 };
 
 const StatusBadge = ({ status }) => {
   const isPaid = (status || "").toLowerCase() === "paid";
   return (
-    <span style={{
-      fontSize: 11, fontWeight: 600, padding: "3px 9px", borderRadius: 20,
-      background: isPaid ? "#ecfdf5" : "#fffbeb",
-      color: isPaid ? "#065f46" : "#78350f"
-    }}>{isPaid ? "Pagado" : "Pendiente"}</span>
+    <span className={`status-badge ${isPaid ? 'paid' : 'pending'}`}>
+      {isPaid ? "Pagado" : "Pendiente"}
+    </span>
   );
 };
 
@@ -347,7 +306,6 @@ export default function Finances() {
   useEffect(() => { attachmentsRef.current = attachments; }, [attachments]);
 
   const dragStat = useRef(null); const dragStatOv = useRef(null);
-  const dragRow  = useRef(null); const dragRowOv  = useRef(null);
   const [statOrder, setStatOrder] = useState([0, 1, 2, 3, 4]);
 
   // ─── Data fetching ──────────────────────────────────────────────────────
@@ -390,27 +348,17 @@ export default function Finances() {
   const fetchMileage   = useCallback(async () => { try { const r = await axios.get(`${API}/api/finances/mileage`, { headers: getAuth() }); setMileage(r.data); } catch {} }, []);
   const fetchVehicles  = useCallback(async () => { try { const r = await axios.get(`${API}/api/finances/vehicles`, { headers: getAuth() }); setVehicles(r.data); } catch {} }, []);
   
-  // CORREGIDO: URL con /api/ y manejo de error silencioso
   const fetchTransactions = useCallback(async () => {
     try {
       const token = localStorage.getItem("token");
-      if (!token) {
-        console.warn("No token found, skipping transactions fetch");
-        return;
-      }
+      if (!token) return;
       const response = await fetch(`${API}/api/store/transactions`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
       });
       if (response.ok) {
         const data = await response.json();
         setTransactions(Array.isArray(data) ? data : []);
-      } else if (response.status === 401 || response.status === 403) {
-        console.warn("Unauthorized to fetch transactions");
-        setTransactions([]);
       } else {
-        console.error("Error fetching transactions:", response.status);
         setTransactions([]);
       }
     } catch (err) {
@@ -476,7 +424,6 @@ export default function Finances() {
             return u;
           });
           
-          // OCR for images
           if (file.type.startsWith("image/") && modal === "expense") {
             setOcrLoading(true);
             try {
@@ -559,7 +506,6 @@ export default function Finances() {
       if (r.status === 200 || r.status === 201) {
         const savedId = editingItem.id || r.data.id;
         
-        // Link uploaded files
         if (attachmentsRef.current.some(a => a.uploaded)) {
           await linkFiles(savedId);
         }
@@ -794,7 +740,7 @@ export default function Finances() {
     a.download = filename; a.click();
   };
 
-  // ─── Styles ───────────────────────────────────────────────────────────────
+  // ─── Styles (inline base + responsive classes) ─────────────────────────────
   const inputStyle = {
     height: 38, borderRadius: 10, border: "1.5px solid #e2e8f0",
     padding: "0 12px", fontSize: 14, outline: "none", width: "100%",
@@ -829,25 +775,259 @@ export default function Finances() {
   const tdStyle = { padding: "12px 16px", fontSize: 13, color: "#334155", verticalAlign: "middle" };
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f8fafc", fontFamily: "system-ui, -apple-system, sans-serif" }}>
+    <div className="finances-page">
       <style>{`
-        .finance-kpi-card:hover { box-shadow: 0 8px 30px rgba(0,0,0,0.08); transform: translateY(-2px); }
-        .finance-kpi-card { transition: box-shadow 0.2s, transform 0.2s; }
-        .finance-tab-btn { border: none; cursor: pointer; transition: all 0.15s; }
+        /* ----- ESTILOS GLOBALES Y RESPONSIVE ----- */
+        .finances-page {
+          min-height: 100vh;
+          background: #f8fafc;
+          font-family: system-ui, -apple-system, sans-serif;
+        }
+
+        .finances-container {
+          max-width: 1280px;
+          margin: 0 auto;
+          padding: 28px 20px;
+          display: flex;
+          flex-direction: column;
+          gap: 24px;
+        }
+
+        /* KPI Cards */
+        .finance-kpi-card {
+          background: #fff;
+          border-radius: 16px;
+          border: 1.5px solid #f1f5f9;
+          padding: 20px;
+          cursor: grab;
+          transition: box-shadow 0.2s, transform 0.2s;
+          position: relative;
+          overflow: hidden;
+        }
+        .finance-kpi-card:hover {
+          box-shadow: 0 8px 30px rgba(0,0,0,0.08);
+          transform: translateY(-2px);
+        }
+        .kpi-top-bar { position: absolute; top: 0; left: 0; right: 0; height: 3px; }
+        .kpi-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; }
+        .kpi-icon { width: 38px; height: 38px; border-radius: 10px; border: 1px solid; display: flex; align-items: center; justify-content: center; }
+        .kpi-delta { font-size: 11px; font-weight: 600; display: flex; align-items: center; gap: 2px; padding: 3px 8px; border-radius: 20px; }
+        .kpi-delta.positive { background: #ecfdf5; color: #10b981; }
+        .kpi-delta.negative { background: #fef2f2; color: #ef4444; }
+        .kpi-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #94a3b8; margin: 0 0 4px; }
+        .kpi-value { font-size: 24px; font-weight: 800; color: #0f172a; margin: 0; letter-spacing: -0.02em; }
+        .kpi-sub { font-size: 12px; color: #94a3b8; margin: 4px 0 0; }
+
+        /* KPIs grid responsive */
+        .kpis-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+          gap: 14px;
+        }
+
+        /* Tab bar */
+        .finance-tab-btn {
+          border: none;
+          cursor: pointer;
+          transition: all 0.15s;
+          flex: 1;
+          padding: 9px 12px;
+          border-radius: 10px;
+          font-size: 13px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+        }
         .finance-tab-btn:hover { color: #0f172a !important; }
+
+        /* Tables and rows */
         .finance-row:hover td { background: #f8fafc !important; }
         .action-btn { opacity: 0; transition: opacity 0.15s; }
         .finance-row:hover .action-btn { opacity: 1; }
         .sort-btn { cursor: pointer; user-select: none; }
         .sort-btn:hover { color: #0f172a; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        @media (max-width: 640px) { .hide-mobile { display: none !important; } }
+
+        /* Badges */
+        .badge { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 20px; white-space: nowrap; }
+        .status-badge { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 20px; }
+        .status-badge.paid { background: #ecfdf5; color: #065f46; }
+        .status-badge.pending { background: #fffbeb; color: #78350f; }
+
+        /* Modales responsivos */
+        .modal-overlay {
+          position: fixed;
+          inset: 0;
+          z-index: 9000;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 1rem;
+          background: rgba(10,12,18,0.6);
+          backdrop-filter: blur(6px);
+        }
+        .modal-container {
+          background: var(--modal-bg, #fff);
+          border-radius: 20px;
+          width: 100%;
+          max-width: 500px;
+          max-height: 90vh;
+          overflow-y: auto;
+          box-shadow: 0 24px 80px rgba(0,0,0,0.18);
+          border: 1px solid rgba(255,255,255,0.08);
+        }
+        .modal-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 22px 24px 0;
+        }
+        .modal-header h2 {
+          font-size: 16px;
+          font-weight: 700;
+          color: #0f172a;
+          margin: 0;
+        }
+        .modal-header button {
+          width: 32px;
+          height: 32px;
+          border-radius: 10px;
+          border: 1.5px solid #e2e8f0;
+          background: transparent;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #64748b;
+        }
+        .form-field {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+        .form-field label {
+          font-size: 11px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+          color: #94a3b8;
+        }
+
+        /* Layouts responsivos */
+        .dashboard-subgrid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 20px;
+        }
+        .machine-income-form-grid {
+          display: grid;
+          grid-template-columns: 2fr 1.2fr 1.2fr auto;
+          gap: 12px;
+          align-items: flex-end;
+        }
+        .expense-filters-bar {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+          align-items: center;
+          background: #fafafa;
+          padding: 14px 16px;
+          border-bottom: 1.5px solid #f1f5f9;
+        }
+        .expense-filters-bar .search-wrapper {
+          position: relative;
+          flex: 1 1 200px;
+        }
+        .expense-filters-bar .search-wrapper input {
+          padding-left: 32px;
+        }
+        .tx-filters-bar {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+          align-items: center;
+          background: #fafafa;
+          padding: 14px 16px;
+          border-bottom: 1.5px solid #f1f5f9;
+        }
+
+        /* Responsive Media Queries */
+        @media (max-width: 768px) {
+          .finances-container {
+            padding: 20px 16px;
+          }
+          .kpis-grid {
+            grid-template-columns: 1fr;
+          }
+          .dashboard-subgrid {
+            grid-template-columns: 1fr;
+          }
+          .machine-income-form-grid {
+            grid-template-columns: 1fr;
+            gap: 12px;
+          }
+          .expense-filters-bar, .tx-filters-bar {
+            flex-direction: column;
+            align-items: stretch;
+          }
+          .expense-filters-bar .search-wrapper {
+            width: 100%;
+          }
+          .expense-filters-bar select, .expense-filters-bar button,
+          .tx-filters-bar select, .tx-filters-bar button {
+            width: 100%;
+            justify-content: center;
+          }
+          .modal-container {
+            max-width: 95%;
+            margin: 0 auto;
+          }
+          .modal-header {
+            padding: 18px 20px 0;
+          }
+          /* Ajuste de tablas: scroll horizontal ya está en contenedor, solo reducimos padding de celdas */
+          th, td {
+            padding: 8px 12px !important;
+          }
+          .finance-kpi-card {
+            padding: 16px;
+          }
+          .kpi-value {
+            font-size: 20px;
+          }
+        }
+
+        @media (max-width: 480px) {
+          .finances-container {
+            padding: 16px 12px;
+          }
+          .hide-mobile {
+            display: none !important;
+          }
+          .btn-primary, .btn-outline {
+            width: 100%;
+            justify-content: center;
+          }
+          .btn-outline, .btn-primary {
+            height: 42px;
+          }
+          .kpi-icon {
+            width: 32px;
+            height: 32px;
+          }
+          .kpi-label {
+            font-size: 10px;
+          }
+        }
+
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
       `}</style>
 
-      <div style={{ maxWidth: 1280, margin: "0 auto", padding: "28px 20px", display: "flex", flexDirection: "column", gap: 24 }}>
-
+      <div className="finances-container">
         {/* ── Header ────────────────────────────────────────────────────── */}
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 16 }}>
+        <div className="flex-header" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 16 }}>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
               <div style={{ width: 36, height: 36, borderRadius: 10, background: "#ecfdf5", border: "1.5px solid #a7f3d0", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -891,10 +1071,10 @@ export default function Finances() {
             <div style={{ width: 36, height: 36, border: "3px solid #e2e8f0", borderTop: "3px solid #0f172a", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
           </div>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 14 }}>
+          <div className="kpis-grid">
             {statOrder.map((idx) => (
               <KPICard
-                key={kpis.key}
+                key={kpis[idx].key}
                 index={idx}
                 {...kpis[idx]}
                 onDragStart={onStatDragStart}
@@ -916,11 +1096,9 @@ export default function Finances() {
                 className="finance-tab-btn"
                 onClick={() => setActiveTab(tab.key)}
                 style={{
-                  flex: 1, padding: "9px 12px", borderRadius: 10,
                   background: active ? "#0f172a" : "transparent",
                   color: active ? "#fff" : "#64748b",
-                  fontSize: 13, fontWeight: active ? 700 : 500,
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: 6
+                  fontWeight: active ? 700 : 500,
                 }}
               >
                 <Icon size={14} />
@@ -933,7 +1111,7 @@ export default function Finances() {
         {/* ════════════ TAB: DASHBOARD ════════════ */}
         {activeTab === "dashboard" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14 }}>
+            <div className="dashboard-subgrid">
               {[
                 { label: "Órdenes de servicio", val: summary.order_revenue },
                 { label: "Membresías", val: summary.membership_revenue },
@@ -947,7 +1125,7 @@ export default function Finances() {
               ))}
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+            <div className="dashboard-subgrid">
               {Object.keys(summary.by_category).length > 0 && (
                 <div style={card}>
                   <div style={{ padding: "18px 20px 14px", borderBottom: "1.5px solid #f1f5f9" }}>
@@ -1047,14 +1225,14 @@ export default function Finances() {
         {/* ════════════ TAB: EXPENSES ════════════ */}
         {activeTab === "expenses" && (
           <div style={card}>
-            <div style={{ padding: "14px 16px", borderBottom: "1.5px solid #f1f5f9", display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", background: "#fafafa" }}>
-              <div style={{ position: "relative", flex: "1 1 200px" }}>
+            <div className="expense-filters-bar">
+              <div className="search-wrapper">
                 <Search size={14} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#94a3b8" }} />
                 <input
+                  style={inputStyle}
                   placeholder="Buscar gasto o proveedor..."
                   value={expenseFilters.search}
                   onChange={e => setExpenseFilters(f => ({ ...f, search: e.target.value }))}
-                  style={{ ...inputStyle, paddingLeft: 32 }}
                 />
               </div>
               <select value={expenseFilters.type} onChange={e => setExpenseFilters(f => ({ ...f, type: e.target.value }))} style={{ ...inputStyle, width: 140 }}>
@@ -1068,7 +1246,7 @@ export default function Finances() {
                   {selectedExpenses.size} seleccionados
                 </span>
               )}
-              <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+              <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                 <span style={{ fontSize: 12, color: "#94a3b8" }}>{sortedExpenses.length} resultados</span>
                 <select value={String(expensePageSize)} onChange={e => { setExpensePageSize(Number(e.target.value)); setExpensePage(1); }} style={{ ...inputStyle, width: 70 }}>
                   <option value="10">10</option><option value="25">25</option><option value="50">50</option>
@@ -1106,7 +1284,7 @@ export default function Finances() {
                       <td style={{ ...tdStyle, width: 36 }}>
                         <input type="checkbox" checked={selectedExpenses.has(exp.id)}
                           onChange={() => setSelectedExpenses(s => { const n = new Set(s); n.has(exp.id) ? n.delete(exp.id) : n.add(exp.id); return n; })} style={{ cursor: "pointer" }} />
-                      </td>
+                       </td>
                       <td style={{ ...tdStyle, color: "#64748b", whiteSpace: "nowrap" }}>{fmtShortDate(exp.date)}</td>
                       <td style={tdStyle}><Badge type={exp.expense_type} /></td>
                       <td style={tdStyle}>
@@ -1147,23 +1325,18 @@ export default function Finances() {
         {/* ════════════ TAB: MACHINES ════════════ */}
         {activeTab === "machines" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-            <div style={{ ...card, padding: "0" }}>
-              <div style={{
-                padding: "14px 20px",
-                borderBottom: "1.5px solid #f1f5f9",
-                background: "#fafafa",
-                display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: 12
-              }}>
+            <div style={card}>
+              <div style={{ padding: "14px 20px", borderBottom: "1.5px solid #f1f5f9", background: "#fafafa", display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: 12 }}>
                 <div>
-                  <label style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#94a3b8", display: "block", marginBottom: 6 }}>Desde</label>
+                  <label style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "#94a3b8", display: "block", marginBottom: 6 }}>Desde</label>
                   <input type="date" value={machineFilterStart} onChange={e => setMachineFilterStart(e.target.value)} style={{ ...inputStyle, width: 148 }} />
                 </div>
                 <div>
-                  <label style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#94a3b8", display: "block", marginBottom: 6 }}>Hasta</label>
+                  <label style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "#94a3b8", display: "block", marginBottom: 6 }}>Hasta</label>
                   <input type="date" value={machineFilterEnd} onChange={e => setMachineFilterEnd(e.target.value)} style={{ ...inputStyle, width: 148 }} />
                 </div>
                 <button style={{ ...btnOutline, alignSelf: "flex-end" }} onClick={fetchMachineIncome}><Filter size={14} />Filtrar</button>
-                <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignSelf: "flex-end" }}>
+                <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignSelf: "flex-end", flexWrap: "wrap" }}>
                   <button style={btnOutline} onClick={() => { setEditingMachine({}); setModal("machineForm"); }}><Plus size={14} />Nueva máquina</button>
                   <button style={btnPrimary} onClick={() => setShowBulkModal(true)}><FileSpreadsheet size={14} />Ingreso masivo</button>
                 </div>
@@ -1174,20 +1347,20 @@ export default function Finances() {
                   <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#10b981", display: "inline-block" }} />
                   Registrar ingreso por máquina
                 </p>
-                <div style={{ display: "grid", gridTemplateColumns: "2fr 1.2fr 1.2fr auto", gap: 12, alignItems: "flex-end" }}>
+                <div className="machine-income-form-grid">
                   <div>
-                    <label style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#94a3b8", display: "block", marginBottom: 6 }}>Máquina</label>
+                    <label style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "#94a3b8", display: "block", marginBottom: 6 }}>Máquina</label>
                     <select value={machineIncomeForm.machine_id} onChange={e => setMachineIncomeForm(f => ({ ...f, machine_id: e.target.value }))} style={inputStyle}>
                       <option value="">Seleccionar…</option>
                       {machines.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#94a3b8", display: "block", marginBottom: 6 }}>Fecha</label>
+                    <label style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "#94a3b8", display: "block", marginBottom: 6 }}>Fecha</label>
                     <input type="date" value={machineIncomeForm.date} onChange={e => setMachineIncomeForm(f => ({ ...f, date: e.target.value }))} style={inputStyle} />
                   </div>
                   <div>
-                    <label style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#94a3b8", display: "block", marginBottom: 6 }}>Monto</label>
+                    <label style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "#94a3b8", display: "block", marginBottom: 6 }}>Monto</label>
                     <input type="number" step="0.01" placeholder="$0.00" value={machineIncomeForm.amount} onChange={e => setMachineIncomeForm(f => ({ ...f, amount: e.target.value }))} style={inputStyle} />
                   </div>
                   <button style={{ ...btnPrimary, background: "#10b981", whiteSpace: "nowrap", height: 38 }} onClick={addMachineIncome}>
@@ -1303,7 +1476,7 @@ export default function Finances() {
             {mileage.map(m => {
               const miles = ((m.end_odometer || 0) - (m.start_odometer || 0));
               return (
-                <div key={m.id} style={{ ...card, padding: "16px 20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div key={m.id} style={{ ...card, padding: "16px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                     <div style={{ width: 40, height: 40, borderRadius: 10, background: "#eff6ff", display: "flex", alignItems: "center", justifyContent: "center" }}>
                       <Car size={18} color="#3b82f6" />
@@ -1332,14 +1505,14 @@ export default function Finances() {
         {/* ════════════ TAB: TRANSACTIONS ════════════ */}
         {activeTab === "transactions" && (
           <div style={card}>
-            <div style={{ padding: "14px 16px", borderBottom: "1.5px solid #f1f5f9", display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", background: "#fafafa" }}>
-              <div style={{ position: "relative", flex: "1 1 200px" }}>
+            <div className="tx-filters-bar">
+              <div className="search-wrapper" style={{ position: "relative", flex: "1 1 200px" }}>
                 <Search size={14} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#94a3b8" }} />
                 <input
+                  style={{ ...inputStyle, paddingLeft: 32 }}
                   placeholder="Buscar por cliente o referencia..."
                   value={txFilters.search}
                   onChange={e => setTxFilters(f => ({ ...f, search: e.target.value }))}
-                  style={{ ...inputStyle, paddingLeft: 32 }}
                 />
               </div>
               <select value={txFilters.status} onChange={e => setTxFilters(f => ({ ...f, status: e.target.value }))} style={{ ...inputStyle, width: 130 }}>
@@ -1348,7 +1521,7 @@ export default function Finances() {
               <select value={txFilters.type} onChange={e => setTxFilters(f => ({ ...f, type: e.target.value }))} style={{ ...inputStyle, width: 140 }}>
                 <option value="all">Todos los tipos</option><option value="service">Servicio</option><option value="store">Tienda</option><option value="membership">Membresía</option>
               </select>
-              <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+              <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                 <span style={{ fontSize: 12, color: "#94a3b8" }}>{filteredTx.length} resultados</span>
                 <button style={btnOutline} onClick={() => exportCSV(
                   filteredTx.map(tx => [fmtShortDate(tx.created_at), tx.payment_type, tx.order_number, tx.customer_name, tx.amount, tx.payment_status]),
@@ -1446,7 +1619,7 @@ export default function Finances() {
           
           {/* Sección de comprobantes con OCR */}
           <Field label="Comprobantes">
-            <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <button style={btnOutline} onClick={() => cameraRef.current?.click()}><Camera size={14} />Tomar foto</button>
               <button style={btnOutline} onClick={() => fileRef.current?.click()}><Paperclip size={14} />Adjuntar archivos</button>
             </div>
@@ -1548,7 +1721,7 @@ export default function Finances() {
             ["Método de pago", detailExpense?.payment_method || "—"],
             ["Notas", detailExpense?.notes || "—"],
           ].map(([label, val]) => (
-            <div key={label} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, borderBottom: "1px solid #f1f5f9", paddingBottom: 8 }}>
+            <div key={label} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, borderBottom: "1px solid #f1f5f9", paddingBottom: 8, flexWrap: "wrap" }}>
               <span style={{ color: "#94a3b8", fontWeight: 600 }}>{label}</span>
               <span style={{ color: "#334155", fontWeight: 500 }}>{val}</span>
             </div>
@@ -1666,7 +1839,7 @@ export default function Finances() {
       {deleteTarget && (
         <PortalModal open onClose={() => setDeleteTarget(null)}>
           <div style={{ padding: "28px 24px" }}>
-            <div style={{ display: "flex", gap: 14, marginBottom: 20 }}>
+            <div style={{ display: "flex", gap: 14, marginBottom: 20, flexWrap: "wrap" }}>
               <div style={{ width: 44, height: 44, borderRadius: 12, background: "#fef2f2", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                 <AlertTriangle size={22} color="#dc2626" />
               </div>
@@ -1678,7 +1851,7 @@ export default function Finances() {
             <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, padding: "12px 14px", fontSize: 13, color: "#991b1b", marginBottom: 20, wordBreak: "break-word" }}>
               "{deleteTarget.name}"
             </div>
-            <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <button style={{ ...btnOutline, flex: 1, justifyContent: "center" }} onClick={() => setDeleteTarget(null)}>Cancelar</button>
               <button style={{ ...btnPrimary, flex: 1, justifyContent: "center", background: "#dc2626" }} onClick={async () => {
                 try {
