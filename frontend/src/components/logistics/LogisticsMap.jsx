@@ -1093,6 +1093,68 @@ export function LogisticsMap() {
             navigationActive={navigationMode}
           />
 
+          {/* 🏆 Cheapest gas station floating banner */}
+          {showGasStations && (() => {
+            const priced = (gasStations || []).filter(s => typeof s.price === 'number' && !isNaN(s.price) && s.price > 0);
+            if (priced.length < 2) return null;
+            const cheapest = priced.reduce((m, s) => (s.price < m.price ? s : m), priced[0]);
+            const avg = priced.reduce((sum, s) => sum + s.price, 0) / priced.length;
+            const savings = (avg - cheapest.price).toFixed(2);
+            const isRealPrice =
+              cheapest.price_source === 'google_places' ||
+              cheapest.price_source === 'fuelapi';
+            return (
+              <div
+                className="absolute top-3 left-3 z-[1000] bg-white/95 backdrop-blur-md rounded-xl shadow-lg border border-emerald-200 px-3 py-2 max-w-[280px]"
+                data-testid="cheapest-gas-banner"
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-lg leading-none">🏆</span>
+                  <div className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">
+                    Más barata en tu ruta
+                  </div>
+                </div>
+                <div className="text-xs font-semibold text-gray-900 truncate mb-0.5">
+                  {cheapest.name}
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-xl font-bold text-emerald-600 font-mono leading-none">
+                    ${cheapest.price.toFixed(2)}
+                  </span>
+                  <span className="text-[10px] text-gray-500">/gal regular</span>
+                  {parseFloat(savings) > 0.05 && (
+                    <span className="ml-auto text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">
+                      −${savings} vs promedio
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 mt-1.5 text-[10px] text-gray-500">
+                  {typeof cheapest.distanceToRouteKm === 'number' && (
+                    <span>📍 {cheapest.distanceToRouteKm.toFixed(1)} km de la ruta</span>
+                  )}
+                  {isRealPrice ? (
+                    <span className="text-emerald-600 font-medium">● en vivo</span>
+                  ) : (
+                    <span className="text-gray-400">≈ estimado</span>
+                  )}
+                </div>
+                <button
+                  onClick={() => {
+                    const map = googleMapRef.current;
+                    if (map?.panTo) {
+                      map.panTo({ lat: cheapest.lat, lng: cheapest.lng });
+                      if (map.setZoom) map.setZoom(Math.max(map.getZoom?.() || 14, 16));
+                    }
+                  }}
+                  data-testid="cheapest-gas-locate"
+                  className="mt-2 w-full text-[10px] font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-md py-1 transition-colors"
+                >
+                  Ver en el mapa →
+                </button>
+              </div>
+            );
+          })()}
+
           {/* Desktop type filter */}
           {!isMobile && (
             <div className="absolute top-3 right-3 z-[1000] bg-white/95 backdrop-blur-sm rounded-xl shadow-lg border px-3 py-2">

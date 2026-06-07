@@ -188,7 +188,11 @@ export function useGasStations(hq, routeWaypoints, enabled = true, vehicleMpg = 
       if (isMounted) {
         setStations(withDist);
         if (!withDist.length) {
-          setError("No se encontraron gasolineras en el área.");
+          if (data?.source === "none") {
+            setError("Habilita 'Places API (New)' en Google Cloud Console para ver precios.");
+          } else {
+            setError("No se encontraron gasolineras en el área.");
+          }
         }
       }
     };
@@ -197,7 +201,7 @@ export function useGasStations(hq, routeWaypoints, enabled = true, vehicleMpg = 
       .catch((err) => {
         console.warn("[GasStations] backend error:", err.message);
         if (isMounted) {
-          setError("No se pudieron cargar gasolineras. Verifica tu conexión.");
+          setError("Error de conexión con el servidor.");
           setStations([]);
         }
       })
@@ -281,7 +285,9 @@ export function GasStationsSidebar({ stations, loading, error, basePrice }) {
 
   const sorted = [...validStations].sort((a, b) => a.price - b.price);
   const bestPrice = sorted[0]?.price;
-  const hasRealPrices = sorted.some((s) => s.price_source === "fuelapi");
+  const hasRealPrices = sorted.some(
+    (s) => s.price_source === "google_places" || s.price_source === "fuelapi"
+  );
   const bestSavings = sorted.find((s) => s.isWorth && Number(s.savings) > 0);
   const displayed = expanded ? sorted : sorted.slice(0, PREVIEW);
 
@@ -326,7 +332,9 @@ export function GasStationsSidebar({ stations, loading, error, basePrice }) {
       <div className="px-3 pb-2 space-y-1">
         {displayed.map((station, idx) => {
           const isBest = station.price === bestPrice && idx === 0;
-          const isReal = station.price_source === "fuelapi";
+          const isReal =
+            station.price_source === "google_places" ||
+            station.price_source === "fuelapi";
           return (
             <div
               key={station.id}

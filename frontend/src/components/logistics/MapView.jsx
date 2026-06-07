@@ -328,32 +328,107 @@ export const MapView = forwardRef(({
     const hqIw = createInfoWindow(`<div><b>Ventura Fresh Laundry HQ</b><br/>5722 Telephone Rd, Ventura</div>`, hqM.getPosition());
     hqM.addListener('click', () => hqIw.open(mapRef.current));
 
-    // ── Gas stations ────────────────────────────────────────────────────────
-    const validGasStations = gasStations.filter(s => typeof s.price === 'number' && !isNaN(s.price));
-    validGasStations.forEach(station => {
-      const isCheapest = cheapestIds.has(station.id);
-      const priceStr = station.price.toFixed(2);
+    // ── Gas stations (Google Places + fallback) ─────────────────────────────
+    // Mostrar TODAS las gasolineras: con precio real (verde si más barata, ámbar otras)
+    // o sin precio (gris claro). Click abre InfoWindow nativa estilo Google Maps.
+    const allStations = gasStations.filter(s => s.lat != null && s.lng != null);
+    allStations.forEach(station => {
+      const hasPrice = typeof station.price === 'number' && !isNaN(station.price) && station.price > 0;
+      const isCheapest = hasPrice && cheapestIds.has(station.id);
+      const priceStr = hasPrice ? station.price.toFixed(2) : null;
+
+      // Color marker: verde=más barata, ámbar=otras con precio, gris=sin precio
+      const markerColor = isCheapest ? '#10b981' : (hasPrice ? '#f59e0b' : '#94a3b8');
+      const labelText = hasPrice ? `$${priceStr}` : '⛽';
+      const labelHeight = hasPrice ? 11 : 0;
+      const svgH = hasPrice ? 50 : 38;
 
       const gIcon = {
         url: `data:image/svg+xml,${encodeURIComponent(`
-          <svg width="38" height="50" viewBox="0 0 38 50" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="19" cy="19" r="17" fill="${isCheapest ? '#10b981' : '#f59e0b'}" stroke="white" stroke-width="3"/>
+          <svg width="38" height="${svgH}" viewBox="0 0 38 ${svgH}" xmlns="http://www.w3.org/2000/svg">
+            ${isCheapest ? `<circle cx="19" cy="19" r="18" fill="${markerColor}" opacity="0.25"/>` : ''}
+            <circle cx="19" cy="19" r="17" fill="${markerColor}" stroke="white" stroke-width="3"/>
             <text x="19" y="25" text-anchor="middle" font-size="14" fill="white" font-weight="bold">⛽</text>
-            <rect x="4" y="38" width="30" height="11" rx="3" fill="white" stroke="#333" stroke-width="1"/>
-            <text x="19" y="47" text-anchor="middle" font-size="9" fill="#111" font-weight="bold">$${priceStr}</text>
+            ${hasPrice ? `<rect x="2" y="38" width="34" height="${labelHeight}" rx="3" fill="white" stroke="${markerColor}" stroke-width="1.5"/>
+            <text x="19" y="47" text-anchor="middle" font-size="9" fill="#111" font-weight="bold">${labelText}</text>` : ''}
+            ${isCheapest ? `<text x="32" y="14" text-anchor="middle" font-size="13">🏆</text>` : ''}
           </svg>
         `)}`,
-        scaledSize: new window.google.maps.Size(38, 50),
+        scaledSize: new window.google.maps.Size(38, svgH),
       };
 
-      const gm = manager.addMarker({ position: { lat: station.lat, lng: station.lng }, icon: gIcon, map: mapRef.current, zIndex: 50 });
+      const gm = manager.addMarker({
+        position: { lat: station.lat, lng: station.lng },
+        icon: gIcon,
+        map: mapRef.current,
+        zIndex: isCheapest ? 100 : (hasPrice ? 50 : 20),
+        title: station.name,
+      });
+
+      // ── InfoWindow estilo Google Maps nativa con desglose de precios ──────
+      const fuelPrices = station.fuel_prices || {};
+      const fuelTypeLabels = {
+        regular: "Regular", midgrade: "Plus", premium: "Premium",
+        diesel: "Diésel", e85: "E85", lpg: "LPG", methane: "Metano",
+      };
+      const priceRows = Object.entries(fuelPrices)
+        .filter(([, v]) => v?.price)
+        .sort(([a], [b]) => {
+          const order = ['regular', 'midgrade', 'premium', 'diesel', 'e85', 'lpg'];
+          return order.indexOf(a) - order.indexOf(b);
+        })
+        .map(([type, v]) => `
+          <tr>
+            <td style="padding:3px 8px 3px 0;font-size:11px;color:#6b7280">${fuelTypeLabels[type] || type}</td>
+            <td style="padding:3px 0;font-size:12px;font-weight:700;color:#111;text-align:right">$${Number(v.price).toFixed(2)}</td>
+          </tr>`).join("");
+
+      const lastUpdated = station.last_updated
+        ? new Date(station.last_updated).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+        : null;
+      const openNowBadge = station.open_now === true
+        ? `<span style="background:#10b981;color:white;font-size:9px;padding:2px 6px;border-radius:4px;font-weight:600">Abierto</span>`
+        : station.open_now === false
+        ? `<span style="background:#ef4444;color:white;font-size:9px;padding:2px 6px;border-radius:4px;font-weight:600">Cerrado</span>`
+        : '';
+
+      const sourceLabel = station.price_source === 'google_places'
+        ? '<span style="font-size:9px;color:#059669;display:inline-flex;align-items:center;gap:3px">● en vivo</span>'
+        : station.price_source === 'google_places_area_avg'
+        ? '<span style="font-size:9px;color:#d97706">≈ promedio del área</span>'
+        : '<span style="font-size:9px;color:#6b7280">≈ estimado regional</span>';
 
       const infoContent = `
-        <div style="min-width:220px; font-family:system-ui">
-          <b>${station.name}</b><br/>
-          ${station.brand ? `<small>${station.brand}</small><br/>` : ''}
-          <span style="color:${isCheapest ? '#10b981' : '#f59e0b'}; font-size:18px; font-weight:800">$${priceStr}/gal</span>
-          ${onSelectGasStation ? `<button id="gas-${station.id}" style="margin-top:10px; width:100%; padding:8px; background:#2563eb; color:white; border:none; border-radius:6px; font-weight:600">Seleccionar esta gasolinera</button>` : ''}
+        <div style="min-width:240px;max-width:280px;font-family:'Roboto','system-ui',sans-serif;padding:4px 2px">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+            ${isCheapest ? '<span style="font-size:14px">🏆</span>' : ''}
+            <div style="font-weight:600;font-size:14px;color:#202124;line-height:1.2;flex:1">${station.name}</div>
+            ${openNowBadge}
+          </div>
+          ${station.brand ? `<div style="font-size:11px;color:#5f6368;margin-bottom:6px">${station.brand}${station.address ? ` · ${station.address.slice(0,50)}` : ''}</div>` : (station.address ? `<div style="font-size:11px;color:#5f6368;margin-bottom:6px">${station.address.slice(0,60)}</div>` : '')}
+          ${hasPrice ? `
+            <div style="display:flex;align-items:baseline;gap:4px;margin:6px 0">
+              <span style="color:${markerColor};font-size:22px;font-weight:700;line-height:1">$${priceStr}</span>
+              <span style="color:#5f6368;font-size:11px">/gal regular</span>
+            </div>
+          ` : `
+            <div style="background:#f1f5f9;border:1px dashed #cbd5e1;border-radius:6px;padding:6px 8px;margin:4px 0;font-size:11px;color:#64748b">
+              Sin precio en Google. Estimación regional EIA.
+            </div>
+          `}
+          ${priceRows ? `
+            <table style="width:100%;border-collapse:collapse;margin-top:4px;border-top:1px solid #e5e7eb;padding-top:4px">
+              ${priceRows}
+            </table>
+          ` : ''}
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;padding-top:6px;border-top:1px solid #f1f5f9">
+            ${sourceLabel}
+            ${lastUpdated ? `<span style="font-size:9px;color:#9ca3af">${lastUpdated}</span>` : ''}
+          </div>
+          <div style="display:flex;gap:6px;margin-top:8px">
+            <a href="https://www.google.com/maps/dir/?api=1&destination=${station.lat},${station.lng}" target="_blank" rel="noopener" style="flex:1;text-align:center;padding:6px 8px;background:#1a73e8;color:white;text-decoration:none;border-radius:6px;font-size:11px;font-weight:600">Cómo llegar</a>
+            ${onSelectGasStation ? `<button id="gas-${station.id}" style="flex:1;padding:6px 8px;background:white;color:#1a73e8;border:1px solid #1a73e8;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer">+ Ruta</button>` : ''}
+          </div>
         </div>`;
 
       const giw = createInfoWindow(infoContent, gm.getPosition());
@@ -452,8 +527,8 @@ export const MapView = forwardRef(({
         }
       });
       // Include gas stations in bounds so markers are visible
-      if (validGasStations.length > 0) {
-        validGasStations.slice(0, 10).forEach(s => {
+      if (allStations.length > 0) {
+        allStations.slice(0, 10).forEach(s => {
           bounds.extend({ lat: s.lat, lng: s.lng });
         });
       }

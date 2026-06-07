@@ -216,6 +216,19 @@ NEW -> CONFIRMED -> PROCESSING -> READY -> COMPLETED
 - Mensaje claro al usuario si Places API no está habilitada: "No se encontraron gasolineras en el área."
 - Verificado: cero errores Overpass en consola, mapa carga correctamente con HQ marker.
 
+### UI mejoras de gasolineras (2026-02-07)
+- **Banner flotante "🏆 Más barata en tu ruta"** sobre el mapa (top-left). Muestra: nombre, precio regular, savings vs promedio del área, distancia a la ruta, indicador "● en vivo" / "≈ estimado". Botón "Ver en el mapa →" hace pan + zoom al marcador.
+- **InfoWindow nativa estilo Google Maps** con:
+  - Badge "Abierto" / "Cerrado" desde `regularOpeningHours.openNow`
+  - Precio destacado en grande + tabla con todos los tipos (Regular/Plus/Premium/Diésel/E85/LPG)
+  - Última actualización (`updateTime`) formateada en es-MX
+  - Origen del precio ("● en vivo", "≈ promedio del área", "≈ estimado regional")
+  - Botón "Cómo llegar" → Google Maps directions deeplink
+  - Botón "+ Ruta" → añade a la ruta optimizada
+- **Markers**: 🏆 dorado sobre la más barata, verde para top con halo, ámbar para otras con precio, gris claro para sin precio. Todas siempre visibles (no se filtran las sin precio).
+- **Sidebar** reconoce `google_places` como precio real (antes solo `fuelapi`).
+- **fitBounds** incluye gasolineras para que sean visibles en pantalla.
+
 ### Pre-requisito que el usuario debe configurar en Google Cloud
 - **Habilitar "Places API (New)"** en https://console.developers.google.com/apis/api/places.googleapis.com/overview?project=86523291175 (mismo project del Maps JS API).
 - El error "Places API (New) has not been used in project... or it is disabled" se resuelve activando esa API.
