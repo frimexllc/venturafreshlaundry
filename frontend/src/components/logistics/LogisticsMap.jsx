@@ -125,19 +125,67 @@ function buildGoogleMapsUrl(stops) {
   return `https://www.google.com/maps/dir/?api=1&${params.toString()}`;
 }
 
-function optimizeOrders(allOrders, vehicleMpg, fuelPrice) {
-  // Solo órdenes que requieren ruta (excluye drop-off W&F y self-service)
-  const routeOrders = allOrders.filter(
-    o => (o.status === 'pending' || o.status === 'ready') &&
-         o.type !== 'wash-fold' &&
-         o.type !== 'self-service'
-  );
+function optimizeOrders(allOrders, vehicleMpg, fuelPrice, phase = 'both') {
+  // ── Filtrado por status canónico (los que están "activos" en logística) ──
+  // Después de la normalización del backend, los status son lowercase canonicos.
+  const ACTIVE_LOGISTICS_STATUSES = new Set([
+    'new', 'confirmed', 'pickup_scheduled',
+    'picked_up', 'processing', 'ready', 'out_for_delivery',
+  ]);
+
+  // Selecciona qué órdenes incluir según la fase activa del filtro
+  const isPickupStatus = (s) => ['new', 'confirmed', 'pickup_scheduled'].includes(s);
+  const isDeliveryStatus = (s) => ['ready', 'out_for_delivery'].includes(s);
+  const inTransitStatus = (s) => ['picked_up', 'processing'].includes(s); // intermedios
+
+  const routeOrders = allOrders
+    .filter(o => {
+      const st = (o.status || '').toLowerCase();
+      if (!ACTIVE_LOGISTICS_STATUSES.has(st)) return false;
+      if (o.type === 'wash-fold' || o.type === 'self-service') return false;
+      // Fase-aware: si el filtro está en "pickup", excluye órdenes ya recogidas
+      if (phase === 'pickup' && !isPickupStatus(st)) return false;
+      if (phase === 'delivery' && !isDeliveryStatus(st) && !inTransitStatus(st)) return false;
+      return true;
+    })
+    .map(o => {
+      // ── Ajuste de coordenadas según fase ─────────────────────────────
+      // En pickup, usar pickup_address. En delivery, usar delivery_address.
+      // Si la orden no tiene coords específicas, fallback a location actual.
+      const useDelivery = phase === 'delivery' ||
+        (phase === 'both' && (isDeliveryStatus((o.status || '').toLowerCase()) || inTransitStatus((o.status || '').toLowerCase())));
+
+      // Backend ya envía location con la dirección relevante; mantenemos pero anotamos
+      return {
+        ...o,
+        _routePhase: useDelivery ? 'delivery' : 'pickup',
+        // Time window relevante para esta fase
+        schedule: {
+          ...(o.schedule || {}),
+          pickupTime: useDelivery
+            ? (o.schedule?.deliveryTime || o.schedule?.pickupTime || '12:00 PM - 03:00 PM')
+            : (o.schedule?.pickupTime  || '09:00 AM - 12:00 PM'),
+        },
+      };
+    });
+
   if (routeOrders.length === 0) return null;
-  // Convertir mpg → km/L y precio USD/gal → MXN/L equivalente para mantener cálculo internamente
-  // optimizeRouteAdvanced acepta options como tercer argumento
-  const kmPerLiter = (vehicleMpg || 12) * 0.425144; // mpg → km/L
-  const pricePerLiter = (fuelPrice || 4.89) / 3.78541; // USD/gal → USD/L
-  return optimizeRouteAdvanced(routeOrders, HQ, {
+
+  // ── Boost de prioridad para Express y Premium ────────────────────────
+  // Express = same-day → máxima urgencia. Premium = 12-24h → alta.
+  // Se aplica como ajuste del tipo efectivo para que `TYPE_PRIORITY` lo recoja.
+  const boostedOrders = routeOrders.map(o => {
+    const plan = (o.service_plan || '').toLowerCase();
+    let typeBoost = o.type;
+    if (plan === 'express') typeBoost = 'airbnb'; // prioridad 6 (crítica)
+    else if (plan === 'premium' && o.type !== 'airbnb' && o.type !== 'b2b') typeBoost = 'b2b'; // prioridad 5
+    return { ...o, type: typeBoost, _originalType: o.type, _servicePlan: plan };
+  });
+
+  const kmPerLiter = (vehicleMpg || 12) * 0.425144;     // mpg → km/L
+  const pricePerLiter = (fuelPrice || 4.89) / 3.78541;  // USD/gal → USD/L
+
+  return optimizeRouteAdvanced(boostedOrders, HQ, {
     vehicleKmPerLiter: kmPerLiter,
     fuelPricePerLiter: pricePerLiter,
   });
@@ -394,11 +442,12 @@ export function LogisticsMap() {
   const productsCount = productsList.length;
 
   // ── Route optimization ───────────────────────────────────────────────
+  // Re-optimiza automáticamente cuando cambian: órdenes, fase, ventana horaria, servicio.
   useEffect(() => {
     if (!loadingBackend && !loadingSettings) {
-      setRouteResult(optimizeOrders(displayedOrders, vehicleMpg, fuelPrice));
+      setRouteResult(optimizeOrders(displayedOrders, vehicleMpg, fuelPrice, mapFilters.phase));
     }
-  }, [loadingBackend, loadingSettings, displayedOrders, vehicleMpg, fuelPrice]);
+  }, [loadingBackend, loadingSettings, displayedOrders, vehicleMpg, fuelPrice, mapFilters.phase, mapFilters.time_window, mapFilters.service_type]);
 
   useEffect(() => {
     const timer = setTimeout(() => window.dispatchEvent(new Event('resize')), 100);
@@ -480,7 +529,7 @@ export function LogisticsMap() {
   function handleReoptimize() {
     setOptimizing(true);
     setTimeout(() => {
-      const result = optimizeOrders(displayedOrders, vehicleMpg, fuelPrice);
+      const result = optimizeOrders(displayedOrders, vehicleMpg, fuelPrice, mapFilters.phase);
       setRouteResult(result);
       setOptimizing(false);
       if (result) {
@@ -554,7 +603,7 @@ export function LogisticsMap() {
       }).catch(() => {});
     }
     setTimeout(() => {
-      setOrders(current => { setRouteResult(optimizeOrders(current, vehicleMpg, fuelPrice)); return current; });
+      setOrders(current => { setRouteResult(optimizeOrders(current, vehicleMpg, fuelPrice, mapFilters.phase)); return current; });
     }, 0);
     toast.success(`Estado → ${ORDER_STATUS_LABELS[newStatus] ?? newStatus}`);
   }
