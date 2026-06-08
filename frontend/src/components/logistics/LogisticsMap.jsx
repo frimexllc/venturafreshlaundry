@@ -1288,37 +1288,37 @@ export function LogisticsMap() {
             const isRealPrice = !!cheapest.isRealPrice;
             return (
               <div
-                className="absolute top-3 left-3 z-[1000] bg-white/95 backdrop-blur-md rounded-xl shadow-lg border border-emerald-200 px-3 py-2 max-w-[280px]"
+                className="absolute top-3 left-3 z-[1000] bg-white/95 backdrop-blur-md rounded-lg shadow-md border border-slate-200 px-3 py-2 max-w-[260px]"
                 data-testid="cheapest-gas-banner"
               >
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-lg leading-none">🏆</span>
-                  <div className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">
-                    Más barata en tu ruta
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                  <div className="text-[9px] font-semibold text-slate-500 uppercase tracking-[0.12em]">
+                    Más barata en ruta
                   </div>
                 </div>
-                <div className="text-xs font-semibold text-gray-900 truncate mb-0.5">
+                <div className="text-[13px] font-semibold text-slate-900 truncate leading-tight">
                   {cheapest.name}
                 </div>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-xl font-bold text-emerald-600 font-mono leading-none">
+                <div className="flex items-baseline gap-1.5 mt-0.5">
+                  <span className="text-lg font-bold text-emerald-600 font-mono leading-none tracking-tight">
                     ${cheapest.price.toFixed(2)}
                   </span>
-                  <span className="text-[10px] text-gray-500">/gal regular</span>
+                  <span className="text-[10px] text-slate-400">/gal</span>
                   {parseFloat(savings) > 0.05 && (
-                    <span className="ml-auto text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">
-                      −${savings} vs promedio
+                    <span className="ml-auto text-[10px] font-semibold text-emerald-700">
+                      −${savings}
                     </span>
                   )}
                 </div>
-                <div className="flex items-center gap-2 mt-1.5 text-[10px] text-gray-500">
+                <div className="flex items-center gap-2 mt-1 text-[9px] text-slate-400">
                   {typeof cheapest.distanceToRouteKm === 'number' && (
-                    <span>📍 {cheapest.distanceToRouteKm.toFixed(1)} km de la ruta</span>
+                    <span>{cheapest.distanceToRouteKm.toFixed(1)} km</span>
                   )}
                   {isRealPrice ? (
-                    <span className="text-emerald-600 font-medium">● en vivo</span>
+                    <span className="text-emerald-600 font-medium">· en vivo</span>
                   ) : (
-                    <span className="text-gray-400">≈ estimado</span>
+                    <span>· estimado</span>
                   )}
                 </div>
                 <button
@@ -1330,9 +1330,9 @@ export function LogisticsMap() {
                     }
                   }}
                   data-testid="cheapest-gas-locate"
-                  className="mt-2 w-full text-[10px] font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-md py-1 transition-colors"
+                  className="mt-1.5 w-full text-[10px] font-medium text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 rounded py-1 transition-colors"
                 >
-                  Ver en el mapa →
+                  Ver en el mapa
                 </button>
               </div>
             );

@@ -337,24 +337,27 @@ export const MapView = forwardRef(({
       const isCheapest = hasPrice && cheapestIds.has(station.id);
       const priceStr = hasPrice ? station.price.toFixed(2) : null;
 
-      // Color marker: verde=más barata, ámbar=otras con precio, gris=sin precio
-      const markerColor = isCheapest ? '#10b981' : (hasPrice ? '#f59e0b' : '#94a3b8');
-      const labelText = hasPrice ? `$${priceStr}` : '⛽';
-      const labelHeight = hasPrice ? 11 : 0;
-      const svgH = hasPrice ? 50 : 38;
+      // ── Marker minimalista (pin con gota + tag de precio) ────────────────
+      // Color: verde = más barata, slate = otras con precio, gris claro = sin precio
+      const markerColor = isCheapest ? '#059669' : (hasPrice ? '#475569' : '#94a3b8');
+      const accentColor = isCheapest ? '#10b981' : (hasPrice ? '#64748b' : '#cbd5e1');
+      const svgH = hasPrice ? 44 : 28;
+      const svgW = hasPrice ? 44 : 22;
 
       const gIcon = {
         url: `data:image/svg+xml,${encodeURIComponent(`
-          <svg width="38" height="${svgH}" viewBox="0 0 38 ${svgH}" xmlns="http://www.w3.org/2000/svg">
-            ${isCheapest ? `<circle cx="19" cy="19" r="18" fill="${markerColor}" opacity="0.25"/>` : ''}
-            <circle cx="19" cy="19" r="17" fill="${markerColor}" stroke="white" stroke-width="3"/>
-            <text x="19" y="25" text-anchor="middle" font-size="14" fill="white" font-weight="bold">⛽</text>
-            ${hasPrice ? `<rect x="2" y="38" width="34" height="${labelHeight}" rx="3" fill="white" stroke="${markerColor}" stroke-width="1.5"/>
-            <text x="19" y="47" text-anchor="middle" font-size="9" fill="#111" font-weight="bold">${labelText}</text>` : ''}
-            ${isCheapest ? `<text x="32" y="14" text-anchor="middle" font-size="13">🏆</text>` : ''}
-          </svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}">
+  ${isCheapest ? `<circle cx="${svgW/2}" cy="11" r="10.5" fill="${accentColor}" opacity="0.18"/>` : ''}
+  <circle cx="${svgW/2}" cy="11" r="${hasPrice ? 7 : 6}" fill="${markerColor}" stroke="#fff" stroke-width="${hasPrice ? 2 : 1.6}"/>
+  ${isCheapest ? `<circle cx="${svgW/2}" cy="11" r="2.5" fill="#fff"/>` : ''}
+  ${hasPrice ? `
+  <rect x="2" y="22" width="${svgW-4}" height="18" rx="9" fill="#fff" stroke="${markerColor}" stroke-width="1.4"/>
+  <text x="${svgW/2}" y="34.5" text-anchor="middle" font-family="-apple-system,Inter,Roboto,sans-serif" font-size="10.5" font-weight="700" fill="${markerColor}">$${priceStr}</text>
+  ` : ''}
+</svg>
         `)}`,
-        scaledSize: new window.google.maps.Size(38, svgH),
+        scaledSize: new window.google.maps.Size(svgW, svgH),
+        anchor: new window.google.maps.Point(svgW/2, hasPrice ? 22 : 18),
       };
 
       const gm = manager.addMarker({
