@@ -50,6 +50,24 @@ function fmtTime(seconds) {
 // ── Component ─────────────────────────────────────────────────────────────
 
 export function InternalNavigation({ stops = [], hqLocation, mapRef, onClose, onStepComplete }) {
+  // ── Construir lista efectiva de paradas: original + retorno al HQ ──────
+  // El "regreso" se añade como una parada virtual al final con tipo "return-to-hq"
+  // para que la navegación incluya el viaje completo round-trip.
+  const effectiveStops = [
+    ...stops,
+    {
+      order: {
+        id: '__return-hq__',
+        status: 'return',
+        type: 'return-to-hq',
+        customer: { name: 'Tienda (HQ)', phone: '', email: '' },
+        location: { lat: hqLocation.lat, lng: hqLocation.lng, address: 'Ventura Fresh Laundry' },
+      },
+      eta: '—',
+      distance: 0,
+    },
+  ];
+
   const [currentStopIdx, setCurrentStopIdx] = useState(0);
   const [steps, setSteps]                   = useState([]);
   const [stepIdx, setStepIdx]               = useState(0);
@@ -113,13 +131,13 @@ export function InternalNavigation({ stops = [], hqLocation, mapRef, onClose, on
 
   // ── 3. Fetch leg when stop changes ───────────────────────────────────
   const fetchLeg = useCallback(() => {
-    if (!mapReady || !svcRef.current || !stops.length) return;
-    const stop = stops[currentStopIdx];
+    if (!mapReady || !svcRef.current || !effectiveStops.length) return;
+    const stop = effectiveStops[currentStopIdx];
     if (!stop) return;
 
     const originCoord = currentStopIdx === 0
       ? { lat: hqLocation.lat, lng: hqLocation.lng }
-      : stops[currentStopIdx - 1].order.location;
+      : effectiveStops[currentStopIdx - 1].order.location;
     const destCoord = stop.order.location;
 
     setLoading(true);
@@ -169,10 +187,10 @@ export function InternalNavigation({ stops = [], hqLocation, mapRef, onClose, on
   }, [stepIdx, steps, mapRef]);
 
   // ── Derived ───────────────────────────────────────────────────────────
-  const currentStop = stops[currentStopIdx];
+  const currentStop = effectiveStops[currentStopIdx];
   const currentStep = steps[stepIdx];
   const nextStep    = steps[stepIdx + 1];
-  const isLastStop  = currentStopIdx === stops.length - 1;
+  const isLastStop  = currentStopIdx === effectiveStops.length - 1;
   const isLastStep  = stepIdx === steps.length - 1;
   const isPickup    = currentStop?.order?.status === 'pending';
   const isFuel      = currentStop?.order?.type   === 'fuel-stop';
@@ -193,7 +211,7 @@ export function InternalNavigation({ stops = [], hqLocation, mapRef, onClose, on
     setSteps([]); setStepIdx(0); setLegSummary(null); setLoading(true);
   }
 
-  const progressPct = Math.round((currentStopIdx / stops.length) * 100);
+  const progressPct = Math.round((currentStopIdx / effectiveStops.length) * 100);
 
   // ── Collapsed mini-bar ────────────────────────────────────────────────
   if (collapsed) {
@@ -208,7 +226,7 @@ export function InternalNavigation({ stops = [], hqLocation, mapRef, onClose, on
           </div>
           <div className="flex-1 min-w-0">
             <div className="text-[10px] text-indigo-300">
-              Parada {currentStopIdx + 1}/{stops.length} · {legSummary?.duration ?? '…'}
+              Parada {currentStopIdx + 1}/{effectiveStops.length} · {legSummary?.duration ?? '…'}
             </div>
             <div className="text-sm font-semibold truncate">
               {loading ? 'Calculando ruta…' : currentStep ? stripHtml(currentStep.instructions) : currentStop?.order?.customer?.name ?? 'En ruta'}
@@ -256,7 +274,7 @@ export function InternalNavigation({ stops = [], hqLocation, mapRef, onClose, on
           </div>
           <div className="flex-1 min-w-0">
             <div className="text-[10px] text-gray-400 leading-none">
-              Parada {currentStopIdx + 1} de {stops.length}
+              Parada {currentStopIdx + 1} de {effectiveStops.length}
             </div>
             <div className="text-xs font-bold truncate leading-tight">
               {currentStop?.order?.customer?.name ?? 'Destino'}
@@ -265,14 +283,14 @@ export function InternalNavigation({ stops = [], hqLocation, mapRef, onClose, on
 
           {/* Stop dots */}
           <div className="flex items-center gap-0.5 mx-1">
-            {stops.slice(0, Math.min(stops.length, 8)).map((_, i) => (
+            {effectiveStops.slice(0, Math.min(effectiveStops.length, 8)).map((_, i) => (
               <div key={i} className={`rounded-full transition-all ${
                 i < currentStopIdx  ? 'w-2 h-2 bg-green-400' :
                 i === currentStopIdx? 'w-3 h-3 bg-indigo-400 ring-2 ring-indigo-400/30' :
                                       'w-1.5 h-1.5 bg-gray-700'
               }`} />
             ))}
-            {stops.length > 8 && <span className="text-[9px] text-gray-500 ml-0.5">+{stops.length - 8}</span>}
+            {effectiveStops.length > 8 && <span className="text-[9px] text-gray-500 ml-0.5">+{effectiveStops.length - 8}</span>}
           </div>
 
           <button

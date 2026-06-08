@@ -18,6 +18,7 @@ import { MapView } from './MapView';
 import { TimAssistant } from './TimAssistant';
 import { QuickSaleModal } from './QuickSaleModal';
 import { InternalNavigation } from './InternalNavigation';
+import VehicleSelectorModal from './VehicleSelectorModal';
 import {
   Navigation, Package, Loader2, Clock, TrendingDown, AlertTriangle,
   ChevronDown, ChevronUp, ExternalLink, PlayCircle, RefreshCw,
@@ -254,6 +255,10 @@ export function LogisticsMap() {
   const [showGasStations, setShowGasStations] = useState(true);
   const [navigationMode, setNavigationMode]   = useState(false);
   const [currentStep, setCurrentStep]         = useState(0);
+
+  // ── Vehicle / Driver pre-flight ───────────────────────────────────────
+  const [showVehicleModal, setShowVehicleModal] = useState(false);
+  const [activeTrip, setActiveTrip]             = useState(null); // {vehicle_id, vehicle_name, driver_name, mpg}
 
   const routeWaypoints = useMemo(() => {
     const routeOrdersList = routeResult?.stops.map(s => s.order) ?? [];
@@ -518,11 +523,93 @@ export function LogisticsMap() {
 
   // ── Internal navigation ───────────────────────────────────────────────
   function startInternalNavigation() {
-    if (routeResult?.stops.length) {
-      setNavigationMode(true); setCurrentStep(0);
-    } else {
+    if (!routeResult?.stops.length) {
       toast.info('No hay ruta activa para navegar');
+      return;
     }
+    // Pre-flight: pedir vehículo + nombre del driver
+    setShowVehicleModal(true);
+  }
+
+  // Confirma vehículo y arranca navegación
+  function handleVehicleConfirm(tripInfo) {
+    setActiveTrip(tripInfo);
+    setShowVehicleModal(false);
+    if (tripInfo.mpg && tripInfo.mpg !== vehicleMpg) {
+      setVehicleMpg(tripInfo.mpg); // ajusta consumo según vehículo elegido
+    }
+    setNavigationMode(true);
+    setCurrentStep(0);
+    toast.success(`🚐 Ruta iniciada — ${tripInfo.vehicle_name}`);
+  }
+
+  // Cierra navegación. Si hubo ruta activa, registra el viaje round-trip en finanzas.
+  async function handleNavigationClose() {
+    setNavigationMode(false);
+    setCurrentStep(0);
+
+    if (!activeTrip || !routeResult) {
+      setActiveTrip(null);
+      return;
+    }
+
+    // ── Round-trip: distancia outbound + retorno al HQ ─────────────────
+    const outboundMiles = Number(routeResult.totalDistanceMiles || routeResult.totalDistance || 0);
+    // Distancia del último stop al HQ (haversine como aproximación; el algoritmo
+    // de optimización ya devuelve "totalDistanceMiles" como round-trip si está
+    // configurado así, pero garantizamos sumando el retorno explícito)
+    const lastStop = routeResult.stops[routeResult.stops.length - 1]?.order?.location;
+    let returnMiles = 0;
+    if (lastStop) {
+      returnMiles = haversineDistance(
+        lastStop.lat, lastStop.lng, HQ.lat, HQ.lng
+      ) * 0.621371; // km → mi
+    }
+    const totalMiles = outboundMiles + returnMiles;
+    const mpg = activeTrip.mpg || vehicleMpg || 22;
+    const gallons = totalMiles / mpg;
+    const cost = gallons * fuelPrice;
+
+    const token = localStorage.getItem('token');
+    if (!token) {
+      setActiveTrip(null);
+      return;
+    }
+    try {
+      const res = await fetch(`${API_URL}/api/logistics/route-trips`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          vehicle_id: activeTrip.vehicle_id,
+          vehicle_name: activeTrip.vehicle_name,
+          driver_name: activeTrip.driver_name,
+          miles_outbound: Number(outboundMiles.toFixed(2)),
+          miles_return: Number(returnMiles.toFixed(2)),
+          total_miles: Number(totalMiles.toFixed(2)),
+          fuel_mpg: mpg,
+          gallons_used: Number(gallons.toFixed(3)),
+          fuel_price_per_gallon: fuelPrice,
+          total_cost_usd: Number(cost.toFixed(2)),
+          stops_count: routeResult.stops.length,
+          route_date: mapFilters.date || new Date().toISOString().slice(0, 10),
+          notes: `Filtros: ${mapFilters.service_type || 'all'} / ${mapFilters.phase || 'both'}${mapFilters.time_window ? ' / ' + mapFilters.time_window : ''}`,
+        }),
+      });
+      if (res.ok) {
+        toast.success(
+          `🚐 Viaje registrado: ${totalMiles.toFixed(1)} mi · ${gallons.toFixed(2)} gal · $${cost.toFixed(2)} (gasto en finanzas)`
+        );
+      } else {
+        toast.error('No se pudo registrar el viaje en finanzas');
+      }
+    } catch (err) {
+      console.warn('route-trips error:', err);
+      toast.error('Error de red al registrar el viaje');
+    }
+    setActiveTrip(null);
   }
 
   // ── Stop handlers ─────────────────────────────────────────────────────
@@ -1407,13 +1494,20 @@ export function LogisticsMap() {
           stops={routeResult.stops}
           hqLocation={HQ}
           mapRef={googleMapRef}
-          onClose={() => { setNavigationMode(false); setCurrentStep(0); }}
+          onClose={handleNavigationClose}
           onStepComplete={stopIndex => {
             const stop = routeResult.stops[stopIndex];
             if (stop) handleCompleteStop(stop.order.id);
           }}
         />
       )}
+
+      {/* Vehicle selector (pre-flight) */}
+      <VehicleSelectorModal
+        open={showVehicleModal}
+        onClose={() => setShowVehicleModal(false)}
+        onConfirm={handleVehicleConfirm}
+      />
 
       {/* Modals */}
       <EndOfDayModal

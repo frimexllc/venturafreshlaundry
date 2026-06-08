@@ -824,6 +824,126 @@ async def create_fuel_log(log: dict, current_user: dict = Depends(get_current_us
     return log
 
 
+# ==================== ROUTE TRIPS (consumo + registro automático en finanzas) ====================
+@router.post("/route-trips")
+async def create_route_trip(
+    payload: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Registra el resultado de un viaje completo (round-trip):
+    - Guarda el log de combustible consumido
+    - Crea automáticamente un gasto en finanzas (category=fuel)
+    - Devuelve el resumen
+
+    Body esperado:
+    {
+      "vehicle_id": "...",
+      "vehicle_name": "Toyota Sienna",
+      "driver_name": "Alejandro",
+      "miles_outbound": 7.1,
+      "miles_return": 6.8,
+      "total_miles": 13.9,
+      "fuel_mpg": 22,
+      "gallons_used": 0.63,
+      "fuel_price_per_gallon": 4.89,
+      "total_cost_usd": 3.10,
+      "stops_count": 3,
+      "route_date": "2026-06-08",
+      "notes": "Ruta matutina"
+    }
+    """
+    from datetime import date as date_cls
+
+    trip_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+
+    trip_doc = {
+        "id": trip_id,
+        "vehicle_id": payload.get("vehicle_id"),
+        "vehicle_name": payload.get("vehicle_name", ""),
+        "driver_name": payload.get("driver_name") or current_user.get("name", ""),
+        "driver_email": current_user.get("email", ""),
+        "miles_outbound": float(payload.get("miles_outbound", 0)),
+        "miles_return": float(payload.get("miles_return", 0)),
+        "total_miles": float(payload.get("total_miles", 0)),
+        "fuel_mpg": float(payload.get("fuel_mpg", 22)),
+        "gallons_used": float(payload.get("gallons_used", 0)),
+        "fuel_price_per_gallon": float(payload.get("fuel_price_per_gallon", 4.89)),
+        "total_cost_usd": round(float(payload.get("total_cost_usd", 0)), 2),
+        "stops_count": int(payload.get("stops_count", 0)),
+        "route_date": payload.get("route_date") or date_cls.today().isoformat(),
+        "notes": payload.get("notes", ""),
+        "created_at": now,
+    }
+
+    await db.route_trips.insert_one(trip_doc)
+
+    # ── Registrar gasto automático en finanzas ───────────────────────────
+    expense_doc = {
+        "id": str(uuid.uuid4()),
+        "date": trip_doc["route_date"],
+        "category": "fuel",
+        "description": (
+            f"Ruta {trip_doc['stops_count']} paradas — "
+            f"{trip_doc['total_miles']:.1f} mi — "
+            f"{trip_doc['vehicle_name'] or 'Vehículo'}"
+        ),
+        "amount": trip_doc["total_cost_usd"],
+        "expense_type": "variable",
+        "vendor": "Operación",
+        "payment_method": "card",
+        "receipt_url": "",
+        "notes": f"Trip ID: {trip_id}. Driver: {trip_doc['driver_name']}. {trip_doc['notes']}",
+        "recurring": False,
+        "recurring_frequency": "",
+        "created_by": current_user.get("email", ""),
+        "created_at": now,
+        "updated_at": now,
+        "auto_generated": True,
+        "trip_id": trip_id,
+    }
+
+    if expense_doc["amount"] > 0:
+        await db.expenses.insert_one(expense_doc)
+        trip_doc["expense_id"] = expense_doc["id"]
+
+    # ── También guardar como mileage log (para reportes IRS) ──────────────
+    mileage_doc = {
+        "id": str(uuid.uuid4()),
+        "date": trip_doc["route_date"],
+        "vehicle_id": trip_doc["vehicle_id"],
+        "vehicle_name": trip_doc["vehicle_name"],
+        "driver_name": trip_doc["driver_name"],
+        "start_odometer": 0,  # no rastreamos odómetro en navegación
+        "end_odometer": trip_doc["total_miles"],
+        "total_miles": trip_doc["total_miles"],
+        "purpose": f"Ruta logística — {trip_doc['stops_count']} paradas",
+        "notes": trip_doc["notes"],
+        "created_at": now,
+        "trip_id": trip_id,
+    }
+    await db.mileage_logs.insert_one(mileage_doc)
+
+    logger.info(
+        f"Route trip registered: {trip_id} — "
+        f"{trip_doc['total_miles']:.1f}mi, ${trip_doc['total_cost_usd']:.2f}, "
+        f"vehicle={trip_doc['vehicle_name']}"
+    )
+
+    return trip_doc
+
+
+@router.get("/route-trips")
+async def list_route_trips(
+    limit: int = 50,
+    current_user: dict = Depends(get_current_user)
+):
+    """Lista los viajes recientes (para reportes)"""
+    trips = await db.route_trips.find({}, {"_id": 0}).sort("created_at", -1).to_list(limit)
+    return trips
+
+
 @router.get("/fuel-logs")
 async def list_fuel_logs(vehicle_id: Optional[str] = None, current_user: dict = Depends(get_current_user)):
     """Lista registros de combustible"""
