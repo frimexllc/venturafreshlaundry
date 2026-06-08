@@ -82,24 +82,35 @@ export function InternalNavigation({ stops = [], hqLocation, mapRef, onClose, on
   const fallbackPolyRef = useRef(null);
   const pollRef     = useRef(null);
 
-  // ── 1. Poll for google.maps.Map ──────────────────────────────────────
+  // ── 1. Detectar el mapa con polling tolerante ────────────────────────
+  // Aceptamos cualquier instancia válida de Google Map. Si no aparece en 4s,
+  // entramos en "modo lista" que no requiere mapa (driver ve stops + abre
+  // Google Maps externo para turn-by-turn).
   useEffect(() => {
     let tries = 0;
-    pollRef.current = setInterval(() => {
+    const checkMap = () => {
       tries++;
-      // mapRef is { current: google.maps.Map } via useImperativeHandle
       const map = mapRef?.current;
-      const isRealMap = map && window.google?.maps && typeof map.getCenter === 'function';
-      if (isRealMap) {
+      // Aceptamos cualquier objeto con setCenter (interfaz mínima de Google Map)
+      const isValidMap = map && (
+        typeof map.setCenter === 'function' ||
+        typeof map.panTo === 'function' ||
+        typeof map.getCenter === 'function'
+      );
+      if (isValidMap) {
         clearInterval(pollRef.current);
         setMapReady(true);
+        return;
       }
-      if (tries > 60) { // 12 s
+      if (tries > 20) { // 4 s — luego entramos en modo lista
         clearInterval(pollRef.current);
-        setError('El mapa no está disponible. Cierra y vuelve a intentar.');
+        setMapReady(false);
         setLoading(false);
+        // NO seteamos error: el componente sigue funcionando en modo lista
       }
-    }, 200);
+    };
+    checkMap(); // primer intento inmediato
+    pollRef.current = setInterval(checkMap, 200);
     return () => clearInterval(pollRef.current);
   }, [mapRef]);
 
@@ -136,7 +147,7 @@ export function InternalNavigation({ stops = [], hqLocation, mapRef, onClose, on
 
   // ── 3. Fetch leg when stop changes ───────────────────────────────────
   const fetchLeg = useCallback(() => {
-    if (!mapReady || !svcRef.current || !effectiveStops.length) return;
+    if (!effectiveStops.length) return;
     const stop = effectiveStops[currentStopIdx];
     if (!stop) return;
 
@@ -145,10 +156,41 @@ export function InternalNavigation({ stops = [], hqLocation, mapRef, onClose, on
       : effectiveStops[currentStopIdx - 1].order.location;
     const destCoord = stop.order.location;
 
+    // Helper: estimar distancia + duración sin mapa
+    const estimate = () => {
+      const R = 6371;
+      const dLat = (destCoord.lat - originCoord.lat) * Math.PI / 180;
+      const dLng = (destCoord.lng - originCoord.lng) * Math.PI / 180;
+      const a = Math.sin(dLat/2)**2 + Math.cos(originCoord.lat*Math.PI/180) * Math.cos(destCoord.lat*Math.PI/180) * Math.sin(dLng/2)**2;
+      const km = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      const minutes = Math.max(2, Math.round(km / 30 * 60));
+      return { km, minutes };
+    };
+
     setLoading(true);
     setError(null);
     setSteps([]);
     setStepIdx(0);
+
+    // ── Modo LISTA (sin mapa disponible): muestra info + botón Google Maps ─
+    if (!mapReady || !svcRef.current) {
+      const { km, minutes } = estimate();
+      setLoading(false);
+      setLegSummary({
+        dist: `${km.toFixed(1)} km`,
+        duration: `${minutes} min`,
+        durationSec: minutes * 60,
+      });
+      setSteps([{
+        instructions: `Dirígete a <b>${stop.order.customer?.name || 'destino'}</b><br/>` +
+          `<small style="color:#64748b">${stop.order.location?.address || ''}</small>`,
+        distance: { text: `${km.toFixed(1)} km` },
+        duration: { text: `${minutes} min` },
+        start_location: originCoord,
+        end_location: destCoord,
+      }]);
+      return;
+    }
 
     svcRef.current.route(
       {
@@ -403,15 +445,27 @@ export function InternalNavigation({ stops = [], hqLocation, mapRef, onClose, on
             </div>
           )}
 
-          {/* Error */}
+          {/* Error (modo simplificado) */}
           {!loading && error && (
-            <div className="flex items-start gap-2 text-red-400 text-xs py-3">
+            <div className="flex items-start gap-2 text-amber-300 text-xs py-3 bg-amber-950/30 border border-amber-800/40 rounded-xl px-3">
               <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-              <div>
-                <p>{error}</p>
-                <button onClick={fetchLeg} className="mt-1.5 text-indigo-400 underline">
-                  Reintentar
-                </button>
+              <div className="flex-1">
+                <p className="text-amber-200">{error}</p>
+                <div className="flex gap-2 mt-2">
+                  <button onClick={fetchLeg} className="text-indigo-300 hover:text-indigo-200 underline text-[11px]">
+                    Reintentar
+                  </button>
+                  {currentStop?.order?.location && (
+                    <a
+                      href={`https://www.google.com/maps/dir/?api=1&destination=${currentStop.order.location.lat},${currentStop.order.location.lng}&travelmode=driving`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="ml-auto text-[11px] font-semibold text-emerald-300 hover:text-emerald-200 underline"
+                    >
+                      Abrir Google Maps →
+                    </a>
+                  )}
+                </div>
               </div>
             </div>
           )}
