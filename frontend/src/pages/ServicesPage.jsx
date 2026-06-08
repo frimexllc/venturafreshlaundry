@@ -20,7 +20,7 @@ const AD_CONFIG = {
     cta: "Ver membresías",
     ctaUrl: "/membership",
     accent: "#0ea5e9",
-    overlayFrom: "#0c4a6e",
+    overlayFrom: "#f3f5f619",
     overlayTo: "#0369a1",
   },
   right: {

@@ -604,7 +604,8 @@ async def seed_products():
         products = [
            
         ]
-        await db.products.insert_many(products)
+        if products:  # MongoDB no acepta insert_many con lista vacía
+            await db.products.insert_many(products)
 
 
 # ==================== PRODUCT ENDPOINTS ====================
