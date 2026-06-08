@@ -79,6 +79,7 @@ export function InternalNavigation({ stops = [], hqLocation, mapRef, onClose, on
 
   const svcRef      = useRef(null);
   const rendererRef = useRef(null);
+  const fallbackPolyRef = useRef(null);
   const pollRef     = useRef(null);
 
   // ── 1. Poll for google.maps.Map ──────────────────────────────────────
@@ -126,6 +127,10 @@ export function InternalNavigation({ stops = [], hqLocation, mapRef, onClose, on
         rendererRef.current.setMap(null);
         rendererRef.current = null;
       }
+      if (fallbackPolyRef.current) {
+        fallbackPolyRef.current.setMap(null);
+        fallbackPolyRef.current = null;
+      }
     };
   }, [mapReady, mapRef]);
 
@@ -158,8 +163,62 @@ export function InternalNavigation({ stops = [], hqLocation, mapRef, onClose, on
       (result, status) => {
         setLoading(false);
         if (status !== 'OK' || !result?.routes?.[0]) {
-          setError(`No se pudo calcular ruta (${status}).`);
+          // ── Fallback: dibujar línea directa en el mapa cuando Directions falla ──
+          // (e.g. Directions API no habilitada todavía, cache, cuota)
+          const map = mapRef.current;
+          if (map && window.google) {
+            // Limpiar renderer previo
+            if (rendererRef.current) rendererRef.current.setDirections({ routes: [] });
+            // Polyline geodésica como fallback visible
+            if (fallbackPolyRef.current) fallbackPolyRef.current.setMap(null);
+            fallbackPolyRef.current = new window.google.maps.Polyline({
+              path: [originCoord, destCoord],
+              geodesic: true,
+              strokeColor: '#6366f1',
+              strokeOpacity: 0.85,
+              strokeWeight: 6,
+              icons: [{
+                icon: { path: window.google.maps.SymbolPath.FORWARD_OPEN_ARROW, scale: 2 },
+                offset: '50%',
+              }],
+              map,
+            });
+            map.panTo(destCoord);
+            map.setZoom(15);
+          }
+          // Distancia + duración estimadas con haversine
+          const km = (() => {
+            const R = 6371;
+            const dLat = (destCoord.lat - originCoord.lat) * Math.PI / 180;
+            const dLng = (destCoord.lng - originCoord.lng) * Math.PI / 180;
+            const a = Math.sin(dLat/2)**2 + Math.cos(originCoord.lat*Math.PI/180) * Math.cos(destCoord.lat*Math.PI/180) * Math.sin(dLng/2)**2;
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+          })();
+          const minutes = Math.max(2, Math.round(km / 30 * 60)); // 30 km/h promedio urbano
+          setSteps([{
+            instructions: `Dirígete a <b>${stop.order.customer?.name || 'destino'}</b><br/>` +
+              `<small style="color:#64748b">${stop.order.location?.address || ''}</small>`,
+            distance: { text: `${km.toFixed(1)} km` },
+            duration: { text: `${minutes} min` },
+            start_location: new window.google.maps.LatLng(originCoord.lat, originCoord.lng),
+            end_location: new window.google.maps.LatLng(destCoord.lat, destCoord.lng),
+          }]);
+          setLegSummary({
+            dist: `${km.toFixed(1)} km`,
+            duration: `${minutes} min`,
+            durationSec: minutes * 60,
+          });
+          setError(
+            status === 'REQUEST_DENIED'
+              ? 'Modo simplificado: habilita Directions API o pulsa "Google Maps" para turn-by-turn.'
+              : `Modo simplificado (${status}). Pulsa "Google Maps" para indicaciones detalladas.`
+          );
           return;
+        }
+        // Cleanup fallback si tuvimos éxito
+        if (fallbackPolyRef.current) {
+          fallbackPolyRef.current.setMap(null);
+          fallbackPolyRef.current = null;
         }
         if (rendererRef.current) rendererRef.current.setDirections(result);
         const leg = result.routes[0].legs[0];
