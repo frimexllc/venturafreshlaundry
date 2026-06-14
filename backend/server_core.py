@@ -617,6 +617,52 @@ async def serve_account():
     raise HTTPException(status_code=404, detail="Page not found")
 
 
+# ==================== REACT SPA FRONTEND ====================
+
+FRONTEND_BUILD_DIR = ROOT_DIR / "static"
+FRONTEND_INDEX_FILE = FRONTEND_BUILD_DIR / "index.html"
+FRONTEND_STATIC_DIR = FRONTEND_BUILD_DIR / "static"
+FRONTEND_RESERVED_PREFIXES = ("api", "web", "uploads", "docs", "redoc")
+
+if FRONTEND_STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(FRONTEND_STATIC_DIR)), name="frontend-static")
+
+
+def _frontend_candidate(path_value: str) -> Optional[Path]:
+    candidate = (FRONTEND_BUILD_DIR / path_value).resolve()
+    try:
+        candidate.relative_to(FRONTEND_BUILD_DIR.resolve())
+    except ValueError:
+        return None
+    return candidate
+
+
+@app.get("/", include_in_schema=False)
+@app.get("/{full_path:path}", include_in_schema=False)
+async def serve_react_app(full_path: str = ""):
+    """
+    Serve the compiled React app from the backend in production.
+    API, legacy website and uploads routes keep their own handlers.
+    """
+    if not FRONTEND_INDEX_FILE.exists():
+        raise HTTPException(status_code=404, detail="Frontend build not found")
+
+    normalized_path = full_path.strip("/")
+
+    if normalized_path:
+        if any(
+            normalized_path == prefix or normalized_path.startswith(f"{prefix}/")
+            for prefix in FRONTEND_RESERVED_PREFIXES
+        ):
+            raise HTTPException(status_code=404, detail="Path not found")
+
+        candidate = _frontend_candidate(normalized_path)
+        if candidate and candidate.is_file():
+            return FileResponse(candidate)
+
+    return FileResponse(FRONTEND_INDEX_FILE)
+
+
 # ==================== SHUTDOWN EVENT ====================
 
 @app.on_event("shutdown")
