@@ -6,7 +6,7 @@ import {
   CalendarDays, Settings, ExternalLink, Store, BookOpen, Zap,
   Layers, Star, Bot, Shield, DollarSign, BarChart3, ShieldCheck,
   MapPin, Package, Warehouse, Boxes, ShoppingCart, Building2,
-  ScanLine, Bell, ArrowLeftRight, Search,
+  ScanLine, Bell, ArrowLeftRight, Search, Layout as LayoutIcon,
   PanelLeftClose, PanelLeftOpen,
   // Tool icons
   Calculator, StickyNote, Timer, CheckSquare,
@@ -68,10 +68,11 @@ const navigationGroups = [
   {
     title: "SALES & GROWTH", emoji: "📦",
     items: [
-      { path: "/admin/store",    icon: Store,    key: "store",      adminOnly: true },
-      { path: "/admin/leads",    icon: UserPlus, key: "leads",      adminOnly: true },
-      { path: "/admin/quotes",   icon: FileText, key: "b2b_quotes", adminOnly: true },
-      { path: "/admin/services", icon: Layers,   key: "services",   adminOnly: true },
+      { path: "/admin/store",         icon: Store,       key: "store",        adminOnly: true },
+      { path: "/admin/leads",         icon: UserPlus,    key: "leads",        adminOnly: true },
+      { path: "/admin/quotes",        icon: FileText,    key: "b2b_quotes",   adminOnly: true },
+      { path: "/admin/services",      icon: Layers,      key: "services",     adminOnly: true },
+      { path: "/admin/services-page", icon: LayoutIcon,  key: "services_page", adminOnly: true },
     ],
   },
   {
@@ -103,16 +104,16 @@ const navigationGroups = [
     items: [
       { path: "/admin/quick-approval", icon: ShieldCheck,     key: "quick_approval", highlight: true },
       { path: "/admin/tickets",        icon: HeadphonesIcon,  key: "support" },
-      { path: "/survey",               icon: ClipboardList,   key: "survey_form" },   // 👈 Encuesta cliente
+      { path: "/survey",               icon: ClipboardList,   key: "survey_form" },
     ],
   },
   {
     title: "SYSTEM / ADMIN", emoji: "🧩",
     items: [
-      { path: "/admin/users",     icon: Shield,      key: "users",     adminOnly: true },
-      { path: "/admin/audit-log", icon: ClipboardList,key: "audit_log", adminOnly: true },
-      { path: "/admin/settings",  icon: Settings,    key: "settings",  adminOnly: true },
-      { path: "/admin/blog",      icon: BookOpen,    key: "blog",      adminOnly: true },
+      { path: "/admin/users",     icon: Shield,        key: "users",     adminOnly: true },
+      { path: "/admin/audit-log", icon: ClipboardList, key: "audit_log", adminOnly: true },
+      { path: "/admin/settings",  icon: Settings,      key: "settings",  adminOnly: true },
+      { path: "/admin/blog",      icon: BookOpen,      key: "blog",      adminOnly: true },
     ],
   },
 ];
@@ -147,6 +148,7 @@ navigationGroups.flatMap(g => g.items).forEach(item => {
     b2b_quotes:          ["B2B Quotes",       "Cotizaciones B2B"],
     leads:               ["Leads",            "Prospectos"],
     services:            ["Services",         "Servicios"],
+    services_page:       ["Services Page",    "Página de Servicios"],
     finances:            ["Finances",         "Finanzas"],
     financesreport:      ["Financesreport",   "Finanzas reporte"],
     ai_metrics:          ["AI Metrics",       "Métricas IA"],
@@ -385,8 +387,7 @@ function LayoutInner() {
 
   const { t } = useLocale();
 
-  // 🔥 Modificación: solo los grupos MAIN y OPERATIONS se abren por defecto.
-  // Todos los demás (incluyendo SYSTEM / ADMIN) estarán cerrados inicialmente.
+  // Solo los grupos MAIN y OPERATIONS se abren por defecto
   const [openGroups, setOpenGroups] = useState(() => {
     const defaults = {};
     navigationGroups.forEach((group, idx) => {
@@ -396,7 +397,7 @@ function LayoutInner() {
   });
 
   const toggleGroup = (idx) => {
-    if (collapsed) return; // groups always show as icons when collapsed
+    if (collapsed) return;
     setOpenGroups(prev => ({ ...prev, [idx]: !prev[idx] }));
   };
 
@@ -500,7 +501,6 @@ function LayoutInner() {
 
                 {/* Group header */}
                 {collapsed ? (
-                  /* Collapsed: just a thin divider with emoji tooltip */
                   <div
                     title={group.title}
                     className="flex items-center justify-center py-1 mb-0.5"
@@ -585,7 +585,6 @@ function LayoutInner() {
           {/* User section */}
           <div className={`border-t border-slate-100 flex-shrink-0 ${collapsed ? "p-2" : "p-4"}`}>
             {collapsed ? (
-              /* Collapsed: just avatar + logout */
               <div className="flex flex-col items-center gap-2">
                 <div className="h-8 w-8 rounded-full bg-sky-100 flex items-center justify-center" title={user?.name}>
                   <span className="text-sky-700 font-semibold text-sm">{user?.name?.charAt(0).toUpperCase()}</span>

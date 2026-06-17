@@ -27,6 +27,7 @@ import Finances from "./pages/Finances";
 import AiMetrics from "./pages/AiMetrics";
 import QuickApproval from "./pages/QuickApproval";
 import Layout from "./components/Layout";
+import AdminServicesPage from "./pages/AdminServicesPage";
 
 // Public pages
 import LandingPage from "./pages/LandingPage";
@@ -191,6 +192,7 @@ function AppRoutes() {
         <Route path="tickets" element={<Tickets />} />
         <Route path="services" element={<AdminServices />} />
         <Route path="memberships" element={<AdminMemberships />} />
+        <Route path="services-page" element={<AdminServicesPage />} />
         <Route path="ai" element={<AdminAi />} />
         <Route path="store" element={<AdminStore />} />
         <Route path="blog" element={<AdminBlog />} />
