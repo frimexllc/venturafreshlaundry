@@ -17,7 +17,7 @@ from pathlib import Path
 import openrouteservice
 import requests
 from motor.motor_asyncio import AsyncIOMotorClient
-from utils import normalize_email, normalize_phone, normalize_spaces, normalize_preference_dict
+from utils import normalize_email, normalize_phone, normalize_spaces, normalize_preference_dict, is_active_member
 from notifications import notify_store_order
 from auth import get_current_user, require_admin
 import logging
@@ -1911,7 +1911,7 @@ async def create_membership_checkout(checkout: MembershipCheckoutRequest, reques
             "amount": price,
             "currency": "usd",
             "customer_email": normalized_email,
-            "customer_phone": normalized_phone or customer.get("phone", ""),
+            "customer_phone": normalized_phone or checkout.customer_phone or "",
             "payment_type": "membership",
             "plan_name": plan.get("name"),
             "payment_status": "initiated",
