@@ -35,9 +35,13 @@ async def get_notification_settings(current_user: dict = Depends(get_current_use
 
 @router.get("/settings/rules")
 async def get_business_rules(current_user: dict = Depends(get_current_user)):
-    require_admin(current_user)
-    rules = await get_or_seed_business_rules()
-    return rules
+    try:
+        require_admin(current_user)
+        rules = await get_or_seed_business_rules()
+        return rules
+    except Exception as e:
+        logger.error(f"Error getting business rules: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.put("/settings/rules")

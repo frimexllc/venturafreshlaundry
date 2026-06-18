@@ -751,6 +751,7 @@ async def get_public_services(active_only: bool = True):
 # ============================================================
 
 @router.get("/api/services/membership-section", response_model=MembershipSectionResponse)
+@router.get("/api/memberships/section", response_model=MembershipSectionResponse)
 async def get_membership_section(current_user: dict = Depends(get_current_user)):
     section = await db.membership_section.find_one({"id": "default"}, {"_id": 0})
     if not section:
@@ -760,6 +761,7 @@ async def get_membership_section(current_user: dict = Depends(get_current_user))
 
 
 @router.put("/api/services/membership-section", response_model=MembershipSectionResponse)
+@router.put("/api/memberships/section", response_model=MembershipSectionResponse)
 async def update_membership_section(
     data: MembershipSectionUpdate,
     current_user: dict = Depends(get_current_user),
@@ -805,6 +807,7 @@ async def create_membership_plan(
 
 
 @router.get("/api/services/membership-plans", response_model=List[MembershipPlanResponse])
+@router.get("/api/memberships/plans", response_model=List[MembershipPlanResponse])
 async def get_membership_plans(
     active_only: bool = True,
     current_user: dict = Depends(get_current_user),
