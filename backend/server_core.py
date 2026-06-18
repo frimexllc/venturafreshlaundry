@@ -89,48 +89,75 @@ except ImportError:
     logger.warning("Store module not available")
 
 # Stripe Checkout integration (service orders)
-try:
-    from emergentintegrations.payments.stripe.checkout import (
-        StripeCheckout,
-        CheckoutSessionResponse,
-        CheckoutStatusResponse,
-        CheckoutSessionRequest,
-    )
-    STRIPE_CHECKOUT_AVAILABLE = True
-except ImportError:
-    STRIPE_CHECKOUT_AVAILABLE = False
+import stripe
+from stripe.error import StripeError
 
-    class CheckoutSessionRequest(BaseModel):
-        amount: float
-        currency: str
-        success_url: str
-        cancel_url: str
-        metadata: Optional[Dict[str, str]] = None
+class CheckoutSessionRequest(BaseModel):
+    amount: float
+    currency: str
+    success_url: str
+    cancel_url: str
+    metadata: Optional[Dict[str, str]] = None
 
-    class CheckoutSessionResponse(BaseModel):
-        url: str = ""
-        session_id: str = ""
+class CheckoutSessionResponse(BaseModel):
+    url: str = ""
+    session_id: str = ""
 
-    class CheckoutStatusResponse(BaseModel):
-        status: str = ""
-        payment_status: str = ""
-        amount_total: int = 0
-        currency: str = ""
-        metadata: Dict[str, str] = {}
+class CheckoutStatusResponse(BaseModel):
+    status: str = ""
+    payment_status: str = ""
+    amount_total: int = 0
+    currency: str = ""
+    metadata: Dict[str, str] = {}
 
-    class StripeCheckout:
-        def __init__(self, api_key: str, webhook_url: str):
-            self.api_key = api_key
-            self.webhook_url = webhook_url
+class StripeCheckout:
+    def __init__(self, api_key: str, webhook_url: str):
+        stripe.api_key = api_key
+        self.webhook_url = webhook_url
 
-        async def create_checkout_session(self, request: CheckoutSessionRequest):
-            raise RuntimeError("Stripe integration not available")
+    async def create_checkout_session(self, request: CheckoutSessionRequest):
+        session = stripe.checkout.Session.create(
+            payment_method_types=["card"],
+            line_items=[{
+                "price_data": {
+                    "currency": request.currency,
+                    "product_data": {
+                        "name": "Servicio de Lavandería",
+                    },
+                    "unit_amount": int(request.amount * 100),
+                },
+                "quantity": 1,
+            }],
+            mode="payment",
+            success_url=request.success_url,
+            cancel_url=request.cancel_url,
+            metadata=request.metadata or {},
+        )
+        return CheckoutSessionResponse(
+            url=session.url,
+            session_id=session.id,
+        )
 
-        async def get_checkout_status(self, checkout_session_id: str):
-            raise RuntimeError("Stripe integration not available")
+    async def get_checkout_status(self, checkout_session_id: str):
+        session = stripe.checkout.Session.retrieve(checkout_session_id)
+        return CheckoutStatusResponse(
+            status=session.status,
+            payment_status=session.payment_status,
+            amount_total=session.amount_total,
+            currency=session.currency,
+            metadata=session.metadata,
+        )
 
-        async def handle_webhook(self, payload: bytes, signature: str):
-            raise RuntimeError("Stripe integration not available")
+    async def handle_webhook(self, payload: bytes, signature: str):
+        webhook_secret = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+        event = stripe.Webhook.construct_event(
+            payload,
+            signature,
+            webhook_secret
+        )
+        return event
+
+STRIPE_CHECKOUT_AVAILABLE = True
 
 # Import blog module
 try:
