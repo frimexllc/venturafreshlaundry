@@ -33,6 +33,7 @@ frontend/.env
 !package.json
 !frontend/package.json
 !frontend/package-lock.json
+!backend/static/manifest.json
 *.pack
 *.pem
 *.tsbuildinfo
