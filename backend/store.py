@@ -56,7 +56,6 @@ DELIVERY_CONFIG = {
 
 # Stripe integration (native)
 import stripe
-from stripe.error import StripeError
 
 class CheckoutSessionRequest(BaseModel):
     amount: float

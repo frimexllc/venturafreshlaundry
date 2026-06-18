@@ -90,7 +90,6 @@ except ImportError:
 
 # Stripe Checkout integration (service orders)
 import stripe
-from stripe.error import StripeError
 
 class CheckoutSessionRequest(BaseModel):
     amount: float

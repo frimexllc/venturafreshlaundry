@@ -66,7 +66,6 @@ except ImportError:
 
 # ── Stripe Checkout (native) ─────────────────────────────────────────────────
 import stripe
-from stripe.error import StripeError
 
 class CheckoutSessionRequest(BaseModel):
     amount: float
