@@ -217,12 +217,12 @@ export function LogisticsMap() {
   const [selectedOrder, setSelectedOrder]     = useState(null);
   const [modalOpen, setModalOpen]             = useState(false);
   const [routeResult, setRouteResult]         = useState(null);
-  const [showStops, setShowStops]             = useState(true);
+  const [showStops, setShowStops]             = useState(false);
   const [filterType, setFilterType]           = useState('all');
   const [optimizing, setOptimizing]           = useState(false);
   const [notified, setNotified]               = useState(new Set());
   const [trafficEvents, setTrafficEvents]     = useState([]);
-  const [showTraffic, setShowTraffic]         = useState(true);
+  const [showTraffic, setShowTraffic]         = useState(false);
   const [sidebarOpen, setSidebarOpen]         = useState(false);
   const [sheetHeight, setSheetHeight]         = useState(260);
   const [completedStops, setCompletedStops]   = useState(new Set());
@@ -254,7 +254,7 @@ export function LogisticsMap() {
   const [loadingSettings, setLoadingSettings] = useState(true);
 
   // ── Gas stations ──────────────────────────────────────────────────────
-  const [showGasStations, setShowGasStations] = useState(true);
+  const [showGasStations, setShowGasStations] = useState(false);
   const [navigationMode, setNavigationMode]   = useState(false);
   const [currentStep, setCurrentStep]         = useState(0);
 
