@@ -827,57 +827,65 @@ export function LogisticsMap() {
       )}
 
       {/* Traffic alerts */}
-      {trafficEvents.length > 0 && (
-        <div className="px-3 pt-3 pb-3 border-b bg-red-50 dark:bg-red-950/20">
-          <button
-            onClick={() => setShowTraffic(v => !v)}
-            className="w-full flex items-center gap-1.5 text-xs font-semibold text-red-800 dark:text-red-400 mb-2"
-          >
-            <Radio className="w-3.5 h-3.5 animate-pulse" /> Tráfico en tiempo real
+      <div className="px-3 pt-3 pb-3 border-b bg-gray-50 dark:bg-gray-800/30">
+        <button
+          onClick={() => setShowTraffic(v => !v)}
+          className="w-full flex items-center gap-1.5 text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2"
+        >
+          <Radio className={`w-3.5 h-3.5 ${trafficEvents.length > 0 ? 'animate-pulse' : ''} ${trafficEvents.length > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-400'}`} /> Tráfico en tiempo real
+          {trafficEvents.length > 0 && (
             <span className="ml-1 bg-red-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">
               {trafficEvents.length}
             </span>
-            <span className="ml-auto text-red-400">
-              {showTraffic ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-            </span>
-          </button>
-          {showTraffic && (
-            <div className="space-y-1.5">
-              {trafficEvents.map(event => (
-                <div
-                  key={event.id}
-                  className={`rounded-lg border px-2.5 py-2 flex items-start gap-2 ${SEVERITY_BG[event.severity]}`}
-                >
-                  <div
-                    className="w-2 h-2 rounded-full mt-0.5 shrink-0"
-                    style={{ background: SEVERITY_COLORS[event.severity] }}
-                  />
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] font-bold text-gray-700 truncate">{event.road}</span>
-                      <span
-                        className="text-[9px] font-bold px-1.5 py-0.5 rounded-full text-white shrink-0"
-                        style={{ background: SEVERITY_COLORS[event.severity] }}
-                      >
-                        {SEVERITY_LABELS[event.severity]}
-                      </span>
-                    </div>
-                    <div className="text-[10px] text-gray-500">{event.description}</div>
-                    <div className="text-[10px] font-semibold text-red-600 mt-0.5">+{event.delayMinutes} min</div>
-                  </div>
-                </div>
-              ))}
-              <button
-                onClick={handleReoptimize}
-                className="w-full mt-1 flex items-center justify-center gap-1.5 text-[10px] font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg py-1.5 transition-colors"
-              >
-                <RefreshCw className="w-3 h-3" /> Ajustar ruta por tráfico
-              </button>
-            </div>
           )}
-          <p className="text-[9px] text-red-400 mt-2">Actualiza c/5 min · +{trafficDelay} min total</p>
-        </div>
-      )}
+          <span className="ml-auto text-gray-400">
+            {showTraffic ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+          </span>
+        </button>
+        {showTraffic && (
+          <div className="space-y-1.5">
+            {trafficEvents.length === 0 ? (
+              <div className="text-[10px] text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-700/50 rounded-lg px-2.5 py-2">
+                No hay incidentes de tráfico reportados en este momento.
+              </div>
+            ) : (
+              <>
+                {trafficEvents.map(event => (
+                  <div
+                    key={event.id}
+                    className={`rounded-lg border px-2.5 py-2 flex items-start gap-2 ${SEVERITY_BG[event.severity]}`}
+                  >
+                    <div
+                      className="w-2 h-2 rounded-full mt-0.5 shrink-0"
+                      style={{ background: SEVERITY_COLORS[event.severity] }}
+                    />
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-bold text-gray-700 dark:text-gray-200 truncate">{event.road}</span>
+                        <span
+                          className="text-[9px] font-bold px-1.5 py-0.5 rounded-full text-white shrink-0"
+                          style={{ background: SEVERITY_COLORS[event.severity] }}
+                        >
+                          {SEVERITY_LABELS[event.severity]}
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-gray-500 dark:text-gray-400">{event.description}</div>
+                      <div className="text-[10px] font-semibold text-red-600 dark:text-red-400 mt-0.5">+{event.delayMinutes} min</div>
+                    </div>
+                  </div>
+                ))}
+                <button
+                  onClick={handleReoptimize}
+                  className="w-full mt-1 flex items-center justify-center gap-1.5 text-[10px] font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg py-1.5 transition-colors"
+                >
+                  <RefreshCw className="w-3 h-3" /> Ajustar ruta por tráfico
+                </button>
+              </>
+            )}
+          </div>
+        )}
+        <p className="text-[9px] text-gray-400 mt-2">Actualiza c/5 min · {trafficDelay > 0 ? `+${trafficDelay} min total` : 'Sin retrasos'}</p>
+      </div>
 
       {/* Nearby opportunities */}
       {nearbyWashFold.length > 0 && (
