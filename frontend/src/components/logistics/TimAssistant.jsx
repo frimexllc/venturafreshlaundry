@@ -103,7 +103,7 @@ function parseCompleteStopCommand(text) {
   return null;
 }
 
-export function TimAssistant({ routeResult, trafficEvents, nearbyOpportunities, totalTrafficDelay, timRef, onCompleteStop, onUpdateOrderStatus, orders = [], fuelAnalysis }) {
+export function TimAssistant({ routeResult, trafficEvents = [], nearbyOpportunities = [], totalTrafficDelay = 0, timRef, onCompleteStop, onUpdateOrderStatus, orders = [], fuelAnalysis }) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState(() => {
     try { const raw = localStorage.getItem(TIM_MEMORY_KEY); if (!raw) return []; const parsed = JSON.parse(raw); return Array.isArray(parsed) ? parsed.slice(-MAX_MEMORY_MSGS) : []; } catch { return []; }

@@ -52,6 +52,7 @@ export function LogisticsMap() {
   const [showDashboard, setShowDashboard] = useState(false);
   const [showTim, setShowTim] = useState(false);
   const [showGasStations, setShowGasStations] = useState(false);
+  const [orderFilter, setOrderFilter] = useState('all'); // 'all', 'pending', 'in-progress', 'completed'
   const googleMapRef = useRef(null);
 
   // Vehicle settings
@@ -197,14 +198,18 @@ export function LogisticsMap() {
   }, [completedStops, routeResult]);
 
   const filteredOrders = useMemo(() => {
-    if (!searchQuery) return orders;
+    let result = orders;
+    if (orderFilter !== 'all') {
+      result = orders.filter(o => o.status === orderFilter);
+    }
+    if (!searchQuery) return result;
     const q = searchQuery.toLowerCase();
-    return orders.filter(o =>
+    return result.filter(o =>
       o.customer?.name?.toLowerCase().includes(q) ||
       o.location?.address?.toLowerCase().includes(q) ||
       o.orderNumber?.toLowerCase().includes(q)
     );
-  }, [orders, searchQuery]);
+  }, [orders, searchQuery, orderFilter]);
 
   const trafficDelay = totalTrafficDelay(trafficEvents, routeWaypoints, 3.0);
 
@@ -249,7 +254,7 @@ export function LogisticsMap() {
           <div className="flex-1 overflow-y-auto">
             {/* Search */}
             <div className="p-4">
-              <div className="relative">
+              <div className="relative mb-3">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
                   type="text"
@@ -258,6 +263,33 @@ export function LogisticsMap() {
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full pl-9 pr-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-700 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
+              </div>
+              {/* Filter Buttons */}
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => setOrderFilter('all')}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${orderFilter === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'}`}
+                >
+                  Todas
+                </button>
+                <button
+                  onClick={() => setOrderFilter('pending')}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${orderFilter === 'pending' ? 'bg-orange-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'}`}
+                >
+                  Pendientes
+                </button>
+                <button
+                  onClick={() => setOrderFilter('in-progress')}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${orderFilter === 'in-progress' ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'}`}
+                >
+                  En Proceso
+                </button>
+                <button
+                  onClick={() => setOrderFilter('completed')}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${orderFilter === 'completed' ? 'bg-green-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'}`}
+                >
+                  Completadas
+                </button>
               </div>
             </div>
 
@@ -358,6 +390,14 @@ export function LogisticsMap() {
                             <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-600 text-gray-600 dark:text-gray-300">
                               {ORDER_TYPE_LABELS[order.type] || order.type}
                             </span>
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+                              order.status === 'pending' ? 'bg-orange-100 text-orange-700' : 
+                              order.status === 'in-progress' ? 'bg-blue-100 text-blue-700' : 
+                              order.status === 'completed' ? 'bg-green-100 text-green-700' : 
+                              'bg-gray-100 text-gray-700'
+                            }`}>
+                              {ORDER_STATUS_LABELS[order.status] || order.status}
+                            </span>
                             {order.schedule?.pickupTime && (
                               <span className="text-xs text-gray-500">
                                 <Clock className="w-3 h-3 inline mr-1" />
@@ -370,6 +410,11 @@ export function LogisticsMap() {
                     </button>
                   );
                 })}
+                {!loadingBackend && (routeResult ? routeResult.stops : filteredOrders).length === 0 && (
+                  <div className="text-center py-8 text-gray-400">
+                    No hay órdenes con este filtro
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -476,7 +521,15 @@ export function LogisticsMap() {
               </button>
             </div>
             <div className="p-4 h-80 overflow-y-auto">
-              <TimAssistant />
+              <TimAssistant 
+                routeResult={routeResult} 
+                trafficEvents={trafficEvents} 
+                nearbyOpportunities={[]} 
+                totalTrafficDelay={trafficDelay} 
+                orders={filteredOrders} 
+                onUpdateOrderStatus={handleStatusChange}
+                onCompleteStop={handleMarkComplete}
+              />
             </div>
           </div>
         )}
