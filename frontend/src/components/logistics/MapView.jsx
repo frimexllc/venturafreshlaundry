@@ -31,6 +31,7 @@ class MapManager {
     this.polylines = [];
     this.circles = [];
     this.infowindows = [];
+    this.trafficLayer = null;
   }
 
   clear() {
@@ -196,7 +197,7 @@ export const MapView = forwardRef(({
       mapTypeControl: true,
       fullscreenControl: true,
       styles: [
-        { featureType: 'poi.business', stylers: [{ visibility: 'off' }],
+        { featureType: 'poi.business', stylers: [{ visibility: 'off' }] }
       ],
     });
 
