@@ -140,7 +140,7 @@ async function enrichOrderCoordinates(orders, geocoder) {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export const MapView = forwardRef(({
+export const MapView = forwardRef(({ 
   orders = [],
   hqLocation,
   routeOrders = [],
@@ -157,6 +157,7 @@ export const MapView = forwardRef(({
   const containerRef = useRef(null);
   const managerRef = useRef(null);
   const geocoderRef = useRef(null);
+  const trafficLayerRef = useRef(null);
 
   const [isLoaded, setIsLoaded] = useState(false);
   const [loadError, setLoadError] = useState(null);
@@ -183,7 +184,7 @@ export const MapView = forwardRef(({
       });
   }, [apiKey]);
 
-  // ── 2. Initialise map & geocoder ───────────────────────────────────────────
+  // ── 2. Initialise map & geocoder ──────────────────────────────────────────
   useEffect(() => {
     if (!isLoaded || !containerRef.current || !hqLocation) return;
 
@@ -195,8 +196,7 @@ export const MapView = forwardRef(({
       mapTypeControl: true,
       fullscreenControl: true,
       styles: [
-        { featureType: 'poi.business', stylers: [{ visibility: 'off' }] },
-        { featureType: 'transit', elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
+        { featureType: 'poi.business', stylers: [{ visibility: 'off' }],
       ],
     });
 
@@ -204,8 +204,16 @@ export const MapView = forwardRef(({
     managerRef.current = new MapManager(map);
     geocoderRef.current = new window.google.maps.Geocoder();
 
+    // Add real-time traffic layer
+    const trafficLayer = new window.google.maps.TrafficLayer();
+    trafficLayer.setMap(map);
+    trafficLayerRef.current = trafficLayer;
+
     return () => {
       managerRef.current?.clear();
+      if (trafficLayerRef.current) {
+        trafficLayerRef.current.setMap(null);
+      }
       mapRef.current = null;
       geocoderRef.current = null;
     };
