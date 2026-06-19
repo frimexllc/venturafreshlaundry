@@ -39,7 +39,7 @@ function VehicleSelectorModal({ open, onClose, onConfirm }) {
     const token = localStorage.getItem("token");
     if (!token) return;
     setLoading(true);
-    fetch(`${API_URL}/api/logistics/vehicles`, {
+    fetch(`${API_URL}/api/finances/vehicles`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then(r => r.ok ? r.json() : [])
@@ -50,7 +50,7 @@ function VehicleSelectorModal({ open, onClose, onConfirm }) {
           .map(v => ({
             id: v.id || v._id || v.name,
             name: v.name,
-            mpg: Number(v.mpg ?? v.fuel_mpg ?? 22),
+            mpg: Number(v.mpg ?? v.fuel_mpg ?? v.avg_mpg ?? 22),
             plate: v.plate || v.license_plate || "—",
           }));
         if (normalized.length) setVehicles(normalized);
