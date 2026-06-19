@@ -19,6 +19,7 @@ import { TimAssistant } from './TimAssistant';
 import { QuickSaleModal } from './QuickSaleModal';
 import { InternalNavigation } from './InternalNavigation';
 import VehicleSelectorModal from './VehicleSelectorModal';
+import { LogisticsDashboard } from './LogisticsDashboard';
 import {
   Navigation, Package, Loader2, Clock, TrendingDown, AlertTriangle,
   ChevronDown, ChevronUp, ExternalLink, PlayCircle, RefreshCw,
@@ -244,6 +245,7 @@ export function LogisticsMap() {
   const [productSearch, setProductSearch]     = useState('');
   const [productsList, setProductsList]       = useState([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
+  const [showDashboard, setShowDashboard]     = useState(false);
   const googleMapRef = useRef(null);
 
   // ── Vehicle settings ──────────────────────────────────────────────────
@@ -1205,6 +1207,13 @@ export function LogisticsMap() {
             <History className="w-4 h-4" />
           </button>
           <button
+            onClick={() => setShowDashboard(true)}
+            className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg border transition-colors bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
+          >
+            <BarChart2 className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Panel</span>
+          </button>
+          <button
             onClick={() => setDarkMode(v => !v)}
             className="p-1.5 rounded-lg border bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-500 hover:bg-gray-100 transition-colors"
           >
@@ -1510,6 +1519,11 @@ export function LogisticsMap() {
       />
 
       {/* Modals */}
+      {showDashboard && (
+        <LogisticsDashboard
+          onClose={() => setShowDashboard(false)}
+        />
+      )}
       <EndOfDayModal
         open={showEndOfDay}
         onClose={() => setShowEndOfDay(false)}

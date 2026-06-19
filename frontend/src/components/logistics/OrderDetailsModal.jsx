@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Badge } from '../ui/badge';
 import { Separator } from '../ui/separator';
 import { StripePaymentModal } from './StripePaymentModal';
-import { MapPin, Phone, Mail, Calendar, Clock, Package, CreditCard, AlertCircle, CheckCircle, Truck, FileText, ChevronRight, ChevronLeft, Zap } from 'lucide-react';
+import { MapPin, Phone, Mail, Calendar, Clock, Package, CreditCard, AlertCircle, CheckCircle, Truck, FileText, ChevronRight, ChevronLeft, Zap, User } from 'lucide-react';
 import { ORDER_TYPE_LABELS, ORDER_STATUS_LABELS, PAYMENT_METHOD_LABELS } from '../../utils/orders';
 
 const STATUS_FLOW = ['pending', 'picked-up', 'in-process', 'ready', 'shipping', 'delivered'];
@@ -52,24 +52,24 @@ export function OrderDetailsModal({ order, open, onClose, onStatusChange, onPaym
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="order-details-modal">
-        <DialogHeader>
+        <DialogHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 -mx-6 -mt-6 px-6 py-6 border-b">
           <div className="flex items-center justify-between flex-wrap gap-2">
-            <DialogTitle className="text-2xl">Orden {order.orderNumber}</DialogTitle>
+            <DialogTitle className="text-2xl font-bold text-gray-900 dark:text-white">Orden {order.orderNumber}</DialogTitle>
             <div className="flex items-center gap-2 flex-wrap">
-              <Badge className={STATUS_COLORS[order.status]}>{ORDER_STATUS_LABELS[order.status] || order.status}</Badge>
+              <Badge className={`${STATUS_COLORS[order.status]} font-semibold px-3 py-1`}>{ORDER_STATUS_LABELS[order.status] || order.status}</Badge>
               {onStatusChange && (
                 <div className="flex items-center gap-1">
-                  <button disabled={!canRetreat} onClick={() => prevStatus && onStatusChange(prevStatus)} data-testid="status-prev-btn" className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                  <button disabled={!canRetreat} onClick={() => prevStatus && onStatusChange(prevStatus)} data-testid="status-prev-btn" className="p-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
                     <ChevronLeft className="w-3.5 h-3.5" />
                   </button>
-                  <button disabled={!canAdvance} onClick={() => nextStatus && onStatusChange(nextStatus)} data-testid="status-next-btn" className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                  <button disabled={!canAdvance} onClick={() => nextStatus && onStatusChange(nextStatus)} data-testid="status-next-btn" className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-sm">
                     Avanzar <ChevronRight className="w-3 h-3" />
                   </button>
                 </div>
               )}
             </div>
           </div>
-          <DialogDescription>{ORDER_TYPE_LABELS[order.type] || order.type} - {order.customer?.name}</DialogDescription>
+          <DialogDescription className="text-gray-600 dark:text-gray-300 mt-2">{ORDER_TYPE_LABELS[order.type] || order.type} - {order.customer?.name}</DialogDescription>
         </DialogHeader>
         <div className="space-y-6">
           <div>
@@ -78,23 +78,38 @@ export function OrderDetailsModal({ order, open, onClose, onStatusChange, onPaym
           </div>
           <Separator />
           <div>
-            <h3 className="text-sm font-medium text-gray-500 mb-3">Informacion del Cliente</h3>
-            <div className="space-y-2">
-              <div className="flex items-center gap-2"><Package className="w-4 h-4 text-gray-400" /><span>{order.customer?.name}</span></div>
+            <h3 className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
+              <User className="w-4 h-4" /> Información del Cliente
+            </h3>
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 bg-gray-50 dark:bg-gray-800 p-3 rounded-xl">
+                <Package className="w-4 h-4 text-gray-400" />
+                <span className="font-medium text-gray-900 dark:text-white">{order.customer?.name}</span>
+              </div>
               {order.customer?.phone && (
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-2 flex-wrap bg-gray-50 dark:bg-gray-800 p-3 rounded-xl">
                   <Phone className="w-4 h-4 text-gray-400 shrink-0" />
-                  <span className="flex-1">{order.customer.phone}</span>
-                  <a href={`tel:${phoneClean}`} data-testid="call-btn" className="flex items-center gap-1 bg-green-500 hover:bg-green-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors"><Phone className="w-3 h-3" /> Llamar</a>
-                  <a href={`sms:${phoneClean}`} data-testid="sms-btn" className="flex items-center gap-1 bg-blue-500 hover:bg-blue-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors"><Mail className="w-3 h-3" /> SMS</a>
+                  <span className="flex-1 font-medium">{order.customer.phone}</span>
+                  <a href={`tel:${phoneClean}`} data-testid="call-btn" className="flex items-center gap-1 bg-green-500 hover:bg-green-600 text-white text-xs font-bold px-3 py-1.5 rounded-xl transition-colors shadow-sm">
+                    <Phone className="w-3 h-3" /> Llamar
+                  </a>
+                  <a href={`sms:${phoneClean}`} data-testid="sms-btn" className="flex items-center gap-1 bg-blue-500 hover:bg-blue-600 text-white text-xs font-bold px-3 py-1.5 rounded-xl transition-colors shadow-sm">
+                    <Mail className="w-3 h-3" /> SMS
+                  </a>
                 </div>
               )}
               {order.customer?.email && (
-                <div className="flex items-center gap-2"><Mail className="w-4 h-4 text-gray-400" /><a href={`mailto:${order.customer.email}`} className="text-blue-600 hover:underline">{order.customer.email}</a></div>
+                <div className="flex items-center gap-3 bg-gray-50 dark:bg-gray-800 p-3 rounded-xl">
+                  <Mail className="w-4 h-4 text-gray-400" />
+                  <a href={`mailto:${order.customer.email}`} className="text-blue-600 hover:underline font-medium">{order.customer.email}</a>
+                </div>
               )}
-              <div className="flex items-start gap-2">
+              <div className="flex items-start gap-3 bg-gray-50 dark:bg-gray-800 p-3 rounded-xl">
                 <MapPin className="w-4 h-4 text-gray-400 mt-1" />
-                <div><p>{order.location?.address}</p>{order.location?.zipCode && <p className="text-sm text-gray-500">CP: {order.location.zipCode}</p>}</div>
+                <div>
+                  <p className="font-medium text-gray-900 dark:text-white">{order.location?.address}</p>
+                  {order.location?.zipCode && <p className="text-sm text-gray-500">CP: {order.location.zipCode}</p>}
+                </div>
               </div>
             </div>
           </div>
@@ -139,12 +154,25 @@ export function OrderDetailsModal({ order, open, onClose, onStatusChange, onPaym
             </>
           )}
           <div>
-            <h3 className="text-sm font-medium text-gray-500 mb-3">Desglose de Precios</h3>
-            <div className="bg-gray-50 rounded-lg p-4 space-y-2">
-              <div className="flex justify-between text-sm"><span>Subtotal:</span><span>${order.pricing?.subtotal?.toFixed(2) || '0.00'}</span></div>
-              <div className="flex justify-between text-sm"><span>Impuestos (7.75%):</span><span>${order.pricing?.tax?.toFixed(2) || '0.00'}</span></div>
-              <Separator />
-              <div className="flex justify-between font-semibold text-lg"><span>TOTAL:</span><span>${order.pricing?.total?.toFixed(2) || '0.00'}</span></div>
+            <h3 className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
+              <CreditCard className="w-4 h-4" /> Desglose de Precios
+            </h3>
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 rounded-2xl p-5 border border-blue-100 dark:border-blue-800">
+              <div className="space-y-3">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600 dark:text-gray-400">Subtotal:</span>
+                  <span className="font-medium text-gray-900 dark:text-white">${order.pricing?.subtotal?.toFixed(2) || '0.00'}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600 dark:text-gray-400">Impuestos (7.75%):</span>
+                  <span className="font-medium text-gray-900 dark:text-white">${order.pricing?.tax?.toFixed(2) || '0.00'}</span>
+                </div>
+                <Separator className="bg-blue-200 dark:bg-blue-800" />
+                <div className="flex justify-between font-bold text-xl text-gray-900 dark:text-white">
+                  <span>TOTAL:</span>
+                  <span className="text-blue-600 dark:text-blue-400">${order.pricing?.total?.toFixed(2) || '0.00'}</span>
+                </div>
+              </div>
             </div>
           </div>
           <Separator />

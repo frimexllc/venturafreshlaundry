@@ -92,21 +92,21 @@ function VehicleSelectorModal({ open, onClose, onConfirm }) {
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="bg-gradient-to-br from-indigo-600 to-indigo-700 px-5 py-4 text-white relative">
+        <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-5 py-5 text-white relative">
           <button
             onClick={onClose}
-            className="absolute top-3 right-3 p-1.5 hover:bg-white/20 rounded-lg transition"
+            className="absolute top-4 right-4 p-2 hover:bg-white/20 rounded-xl transition"
             data-testid="vehicle-modal-close"
           >
             <X className="w-5 h-5" />
           </button>
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-white/20 rounded-xl">
-              <Truck className="w-6 h-6" />
+            <div className="p-3 bg-white/20 rounded-2xl">
+              <Truck className="w-7 h-7" />
             </div>
             <div>
-              <h2 className="text-lg font-bold">Antes de empezar la ruta</h2>
-              <p className="text-xs text-indigo-100 opacity-90">
+              <h2 className="text-xl font-bold">Antes de empezar la ruta</h2>
+              <p className="text-xs text-blue-100 mt-1">
                 Confirma vehículo y conductor para registrar consumo
               </p>
             </div>
@@ -136,30 +136,34 @@ function VehicleSelectorModal({ open, onClose, onConfirm }) {
             <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide flex items-center gap-1.5 mb-1.5">
               <Truck className="w-3.5 h-3.5" /> Vehículo {loading && <span className="text-gray-400 normal-case font-normal">(cargando…)</span>}
             </label>
-            <div className="space-y-2">
+            <div className="space-y-3">
               {vehicles.map((v) => (
                 <button
                   key={v.id}
                   type="button"
                   onClick={() => setSelectedId(v.id)}
                   data-testid={`vehicle-option-${v.id}`}
-                  className={`w-full text-left flex items-center justify-between px-3 py-2.5 rounded-xl border transition ${
+                  className={`w-full text-left flex items-center justify-between px-4 py-3 rounded-2xl border transition-all shadow-sm ${
                     selectedId === v.id
-                      ? "border-indigo-500 bg-indigo-50 ring-2 ring-indigo-200"
-                      : "border-gray-200 hover:border-gray-300 bg-white"
+                      ? "border-blue-500 bg-blue-50 ring-2 ring-blue-200 shadow-md"
+                      : "border-gray-200 hover:border-blue-300 hover:bg-gray-50 bg-white"
                   }`}
                 >
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl">🚐</span>
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl ${
+                      selectedId === v.id ? "bg-blue-100" : "bg-gray-100"
+                    }`}>
+                      🚐
+                    </div>
                     <div>
-                      <div className="text-sm font-semibold text-gray-900">{v.name}</div>
-                      <div className="text-[10px] text-gray-500">Placa: {v.plate} · {v.mpg} mpg</div>
+                      <div className="text-sm font-bold text-gray-900">{v.name}</div>
+                      <div className="text-[11px] text-gray-500 mt-0.5">Placa: {v.plate} · {v.mpg} mpg</div>
                     </div>
                   </div>
-                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                    selectedId === v.id ? "border-indigo-500 bg-indigo-500" : "border-gray-300"
+                  <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
+                    selectedId === v.id ? "border-blue-500 bg-blue-500" : "border-gray-300"
                   }`}>
-                    {selectedId === v.id && <span className="w-2 h-2 bg-white rounded-full" />}
+                    {selectedId === v.id && <span className="w-2.5 h-2.5 bg-white rounded-full" />}
                   </div>
                 </button>
               ))}
@@ -200,11 +204,11 @@ function VehicleSelectorModal({ open, onClose, onConfirm }) {
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-3 bg-gray-50 border-t border-gray-200 flex gap-2">
+        <div className="px-5 py-4 bg-gray-50 border-t border-gray-200 flex gap-3">
           <button
             onClick={onClose}
             data-testid="vehicle-modal-cancel"
-            className="flex-1 py-2.5 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-100"
+            className="flex-1 py-3 rounded-2xl text-sm font-medium text-gray-600 hover:bg-gray-200 transition-colors"
           >
             Cancelar
           </button>
@@ -212,7 +216,7 @@ function VehicleSelectorModal({ open, onClose, onConfirm }) {
             onClick={handleConfirm}
             disabled={!driverName.trim() || !selected}
             data-testid="vehicle-modal-confirm"
-            className="flex-[2] py-2.5 rounded-xl text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition shadow-sm"
+            className="flex-[2] py-3 rounded-2xl text-sm font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all shadow-lg"
           >
             Empezar ruta →
           </button>
