@@ -145,6 +145,37 @@ export default function Settings() {
     }
   };
 
+  const [backupLoading, setBackupLoading] = useState(false);
+  const handleFullBackup = async () => {
+    setBackupLoading(true);
+    try {
+      const res = await axios.get(`${API}/admin/backup`, { responseType: 'blob' });
+      const blob = new Blob([res.data], { type: 'application/zip' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      link.setAttribute('download', `vfl_backup_${ts}.zip`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      const total = res.headers?.['x-backup-documents'];
+      toast.success(
+        total
+          ? t(`Backup ready (${total} documents)`, `Respaldo listo (${total} documentos)`)
+          : t("Backup downloaded", "Respaldo descargado")
+      );
+    } catch (error) {
+      const msg = error.response?.status === 403
+        ? t("Only admins can download backups", "Solo administradores pueden descargar respaldos")
+        : t("Error generating backup", "Error generando el respaldo");
+      toast.error(msg);
+    } finally {
+      setBackupLoading(false);
+    }
+  };
+
   const handleTestEmail = async () => {
     if (!testEmail) return;
     setSending(true);
@@ -327,6 +358,47 @@ export default function Settings() {
               <h2 className="text-lg font-semibold text-slate-900">{t("Export Data", "Exportar Datos")}</h2>
               <p className="text-sm text-slate-500">{t("Download data in CSV format", "Descargar datos en formato CSV")}</p>
             </div>
+          </div>
+
+          {/* Full DB backup — admin only */}
+          <div className="mb-4 p-4 rounded-xl bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-200">
+            <div className="flex items-start gap-3 mb-3">
+              <div className="h-9 w-9 rounded-lg bg-indigo-600 flex items-center justify-center shrink-0">
+                <Download className="h-4 w-4 text-white" />
+              </div>
+              <div className="flex-1">
+                <div className="font-semibold text-slate-900 text-sm">
+                  {t("Full Database Backup", "Respaldo completo de la base de datos")}
+                </div>
+                <div className="text-xs text-slate-600 mt-0.5 leading-snug">
+                  {t(
+                    "Downloads a ZIP with all collections (orders, customers, finances, etc.) as JSON. Restorable via mongorestore.",
+                    "Descarga un ZIP con todas las colecciones (órdenes, clientes, finanzas, etc.) en JSON. Restaurable vía mongorestore."
+                  )}
+                </div>
+              </div>
+            </div>
+            <Button
+              onClick={handleFullBackup}
+              disabled={backupLoading}
+              data-testid="admin-backup-btn"
+              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold"
+            >
+              {backupLoading ? (
+                <>
+                  <svg className="animate-spin h-4 w-4 mr-2" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
+                  </svg>
+                  {t("Generating backup…", "Generando respaldo…")}
+                </>
+              ) : (
+                <>
+                  <Download className="h-4 w-4 mr-2" />
+                  {t("Download Full Backup (.zip)", "Descargar respaldo completo (.zip)")}
+                </>
+              )}
+            </Button>
           </div>
 
           <div className="space-y-3">

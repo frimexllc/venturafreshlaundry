@@ -1,5 +1,7 @@
-// OrderDetailDialog.jsx — FIXED: no flash, no disappear, stable dialog state
+// OrderDetailDialog.jsx — ADDED: Manual add-on price editing
+// FIXED: no flash, no disappear, stable dialog state
 // ADDED: Recurrence information display
+// ADDED: Custom price per add-on item
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
@@ -13,7 +15,7 @@ import {
   ChevronDown, ChevronUp, User, MapPin, Calendar, StickyNote,
   Hash, Award, Plus, Minus, Trash2, Info, Camera, ZoomIn,
   ChevronLeft, ChevronRight, AlertCircle, Phone, Mail,
-  CheckCircle, Repeat, CalendarDays, CalendarRange,
+  CheckCircle, Repeat, CalendarDays, CalendarRange, Edit2,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -70,7 +72,7 @@ function calculateOrderTotal(order, payMethod) {
   const extraCharge = Number(order.extra_charge || 0);
   const deliveryFee = Number(order.delivery_fee || calcDeliveryFee(order.distance_miles));
   const addonsTotal = (order.addon_services || []).reduce(
-    (s, a) => s + Number(a.price || 0) * Number(a.qty || a.quantity || 1), 0
+    (s, a) => s + Number(a.custom_price || a.price || 0) * Number(a.qty || a.quantity || 1), 0
   );
   if (extraCharge > 0) {
     const baseTotal = extraCharge + deliveryFee + addonsTotal;
@@ -97,7 +99,8 @@ function calculateOrderTotal(order, payMethod) {
   };
 }
 
-const ADDON_CATALOG = [
+// Default catalog with standard prices
+const DEFAULT_ADDON_CATALOG = [
   { id: "bath_mat",       name: "Bath Mat",         price: 8.00,   category: "home_essentials" },
   { id: "Oven Mitt",      name: "Cojín para horno", price: 8.00,   category: "home_essentials" },
   { id: "pet_bed_s",      name: "Pet Bed (S)",       price: 15.00,  category: "home_essentials" },
@@ -109,8 +112,11 @@ const ADDON_CATALOG = [
   { id: "comforter_tdq",  name: "Comforter T/D/Q",  price: 25.00,  category: "comforters" },
   { id: "comforter_king", name: "Comforter King",   price: 30.00,  category: "comforters" },
   { id: "mattress_cover", name: "Mattress Cover",   price: 25.00,  category: "comforters" },
-  { id: "down_comforter", name: "Down Comforter",   price: 450.00, category: "comforters" },
+  { id: "down_comforter", name: "Down Comforter",   price: 45.00, category: "comforters" },
 ];
+
+// We'll load dynamic prices from the config later
+let ADDON_CATALOG = [...DEFAULT_ADDON_CATALOG];
 
 const CAT_LABELS = {
   home_essentials: { en: "Home Essentials", es: "Artículos del hogar" },
@@ -321,6 +327,40 @@ function ReceiptCard({ receipt, onValidate, validating }) {
   );
 }
 
+// ─── ADD-ON PRICE EDITOR COMPONENT ────────────────────────────────────────────
+function AddonPriceEditor({ addon, onSave, onCancel }) {
+  const [customPrice, setCustomPrice] = useState(String(addon.custom_price || addon.price || 0));
+  
+  return (
+    <div className="absolute top-full right-0 mt-1 z-20 bg-white border border-slate-200 rounded-xl shadow-lg p-2 min-w-[140px]">
+      <div className="flex items-center gap-1">
+        <span className="text-xs text-slate-500">$</span>
+        <Input
+          type="number"
+          step="0.01"
+          min="0"
+          value={customPrice}
+          onChange={(e) => setCustomPrice(e.target.value)}
+          className="h-7 text-xs w-24 rounded"
+          autoFocus
+        />
+        <button
+          onClick={() => onSave(Number(customPrice))}
+          className="w-7 h-7 bg-sky-600 text-white rounded-lg hover:bg-sky-700 flex items-center justify-center"
+        >
+          <CheckCircle2 className="w-3.5 h-3.5" />
+        </button>
+        <button
+          onClick={onCancel}
+          className="w-7 h-7 bg-slate-100 text-slate-500 rounded-lg hover:bg-slate-200 flex items-center justify-center"
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── RECURRENCE COMPONENT ──────────────────────────────────────────────────────
 function RecurrenceInfo({ order, t, locale }) {
   const [upcomingOrders, setUpcomingOrders] = useState([]);
@@ -465,8 +505,42 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
   const [imageList, setImageList]           = useState([]);
   const [customerCycleUsage, setCustomerCycleUsage] = useState(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  const [editingAddonPrice, setEditingAddonPrice] = useState(null); // { id, currentPrice }
 
   const currentOrderIdRef = useRef(null);
+
+  // Load dynamic add-on prices from services page config
+  useEffect(() => {
+    const loadAddonPrices = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/public/services-page-config`);
+        if (res.ok) {
+          const config = await res.json();
+          if (config.per_piece_categories && Array.isArray(config.per_piece_categories)) {
+            const priceMap = {};
+            for (const cat of config.per_piece_categories) {
+              if (cat.items && Array.isArray(cat.items)) {
+                for (const item of cat.items) {
+                  const price = parseFloat(String(item.price).replace(/[^0-9.-]/g, ''));
+                  if (!isNaN(price)) {
+                    priceMap[item.name.toLowerCase()] = price;
+                  }
+                }
+              }
+            }
+            // Update catalog with dynamic prices
+            ADDON_CATALOG = DEFAULT_ADDON_CATALOG.map(item => ({
+              ...item,
+              price: priceMap[item.name.toLowerCase()] || item.price,
+            }));
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load addon prices:", err);
+      }
+    };
+    loadAddonPrices();
+  }, []);
 
   const hasMembership = Boolean(localOrder?.membership_plan) &&
     !["inactive", "cancelled", "canceled", "expired"].includes(
@@ -480,7 +554,14 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
       setLocalOrder(order);
       setLbs(String(order.actual_lbs ?? order.estimated_lbs ?? ""));
       setAmtReceived("");
-      setAddons((order.addon_services || []).map(a => ({ ...a, qty: a.qty || a.quantity || 1 })));
+      // Load addons with custom price support
+      const loadedAddons = (order.addon_services || []).map(a => ({ 
+        ...a, 
+        qty: a.qty || a.quantity || 1,
+        custom_price: a.custom_price || a.price,
+        original_price: a.price,
+      }));
+      setAddons(loadedAddons);
       setCustomerCycleUsage(null);
       setIsOpen(true);
     }
@@ -497,7 +578,12 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
         if (currentOrderIdRef.current === oid) {
           setLocalOrder(data);
           setLbs(String(data.actual_lbs ?? data.estimated_lbs ?? ""));
-          setAddons((data.addon_services || []).map(a => ({ ...a, qty: a.qty || a.quantity || 1 })));
+          setAddons((data.addon_services || []).map(a => ({ 
+            ...a, 
+            qty: a.qty || a.quantity || 1,
+            custom_price: a.custom_price || a.price,
+            original_price: a.price,
+          })));
         }
       }
     } catch (err) {
@@ -566,29 +652,80 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
     onClose();
   }, [onClose]);
 
-  // ─── Add-on handlers ──────────────────────────────────────────────────────
+  // ─── Add-on handlers with custom price support ─────────────────────────────
 
-  const handleAddAddon = (item) => {
-    const ex = addons.find(a => a.id === item.id);
-    if (ex) setAddons(prev => prev.map(a => a.id === item.id ? { ...a, qty: (a.qty || 1) + 1 } : a));
-    else setAddons(prev => [...prev, { ...item, qty: 1 }]);
-  };
-
+// Modifica handleAddAddon para mostrar advertencia
+const handleAddAddon = (item) => {
+  // Para servicios Wash & Fold, mostrar advertencia si el artículo es per-piece
+  if (isWF && isPerPieceItem(item)) {
+    const confirmAdd = window.confirm(
+      `${item.name} is typically included in the weight-based pricing for Wash & Fold.\n\n` +
+      `Adding it as an extra item will charge it separately ($${item.price.toFixed(2)}).\n\n` +
+      `Are you sure you want to add it as an extra charge?`
+    );
+    if (!confirmAdd) return;
+  }
+  
+  const ex = addons.find(a => a.id === item.id);
+  if (ex) {
+    setAddons(prev => prev.map(a => a.id === item.id ? { ...a, qty: (a.qty || 1) + 1 } : a));
+  } else {
+    setAddons(prev => [...prev, { 
+      ...item, 
+      qty: 1,
+      custom_price: item.custom_price || item.price,
+      original_price: item.price,
+      is_per_piece: isPerPieceItem(item),
+    }]);
+  }
+};
   const handleUpdateAddonQty = (id, newQty) => {
-    if (newQty <= 0) setAddons(prev => prev.filter(a => a.id !== id));
-    else setAddons(prev => prev.map(a => a.id === id ? { ...a, qty: newQty } : a));
+    if (newQty <= 0) {
+      setAddons(prev => prev.filter(a => a.id !== id));
+    } else {
+      setAddons(prev => prev.map(a => a.id === id ? { ...a, qty: newQty } : a));
+    }
   };
+
+  const handleUpdateAddonPrice = (id, newPrice) => {
+    setAddons(prev => prev.map(a => 
+      a.id === id ? { ...a, custom_price: newPrice } : a
+    ));
+    setEditingAddonPrice(null);
+  };
+
+  const getEffectivePrice = (addon) => {
+    return addon.custom_price !== undefined && addon.custom_price !== null 
+      ? addon.custom_price 
+      : (addon.price || 0);
+  };
+  const isPerPieceItem = (item) => {
+  // Los artículos de las categorías "comforters", "bedding" son per-piece
+  // y NO deben cobrarse por separado en Wash & Fold porque ya están incluidos en el peso
+  const perPieceCategories = ["comforters", "bedding"];
+  return perPieceCategories.includes(item.category);
+};
 
   const saveAddonsList = useCallback(async (list) => {
     const oid = localOrder?.id;
     if (!oid) return false;
     setSavingAddons(true);
     try {
+      // Prepare addons for backend - include custom prices
+      const addonsToSave = list.map(a => ({
+        id: a.id,
+        name: a.name,
+        price: getEffectivePrice(a),
+        custom_price: a.custom_price !== a.original_price ? getEffectivePrice(a) : undefined,
+        qty: a.qty || 1,
+        category: a.category,
+      }));
+      
       const res = await fetch(`${API_URL}/api/orders/${oid}`, {
         method: "PUT",
         headers: authHdrs(),
         body: JSON.stringify({
-          addon_services: list.map(a => ({ ...a, price: Number(a.price), quantity: a.qty || 1 })),
+          addon_services: addonsToSave,
         }),
       });
       if (handle401(res)) return false;
@@ -1069,7 +1206,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
   const isWF             = isWashFoldService(o.service_type);
   const deliveryFee      = calcDeliveryFee(o.distance_miles);
   const verifiedReceipts = receipts.filter(r => r.ai_validation_status === "verified_paid");
-  const addonTotal       = addons.reduce((s, a) => s + Number(a.price || 0) * Number(a.qty || 1), 0);
+  const addonTotal       = addons.reduce((s, a) => s + getEffectivePrice(a) * Number(a.qty || 1), 0);
   const catLabel         = (cat) => locale === "es" ? CAT_LABELS[cat]?.es : CAT_LABELS[cat]?.en;
   const statusKey        = (o.status || "new").toLowerCase().replace(/ /g, "_");
   const statusCls        = STATUS_CONFIG[statusKey]?.color || "bg-slate-100 text-slate-700 border-slate-200";
@@ -1294,7 +1431,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
               </div>
             </Section>
 
-            {/* ── Add-ons ── */}
+            {/* ── Add-ons with manual price editing ── */}
             <Section
               icon={<Package className="w-4 h-4" />}
               title={t("Individual Items / Add-ons", "Artículos / Extras")}
@@ -1306,7 +1443,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
               }
             >
               <div className="space-y-4">
-                {/* Current add-ons */}
+                {/* Current add-ons with price editing */}
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">{t("Saved items", "Artículos guardados")}</p>
                   {addons.length === 0 ? (
@@ -1319,22 +1456,47 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
                       {Object.entries(groupedAddons).map(([cat, items]) => (
                         <div key={cat} className="mb-3 last:mb-0">
                           <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 ml-1">{catLabel(cat)}</p>
-                          {items.map(a => (
-                            <div key={a.id} className="flex items-center justify-between bg-sky-50 border border-sky-100 rounded-xl px-3 py-2.5 mb-1.5 last:mb-0">
-                              <span className="text-sm text-slate-700 font-medium">
-                                {a.name}{a.qty > 1 && <span className="ml-1 text-sky-500 font-bold">×{a.qty}</span>}
-                              </span>
-                              <div className="flex items-center gap-2">
-                                <div className="flex items-center gap-1">
-                                  <button onClick={() => handleUpdateAddonQty(a.id, (a.qty||1)-1)} className="w-6 h-6 rounded-lg text-slate-400 hover:text-sky-600 hover:bg-sky-100 flex items-center justify-center"><Minus className="w-3 h-3" /></button>
-                                  <span className="w-6 text-center text-xs font-bold">{a.qty||1}</span>
-                                  <button onClick={() => handleUpdateAddonQty(a.id, (a.qty||1)+1)} className="w-6 h-6 rounded-lg text-slate-400 hover:text-sky-600 hover:bg-sky-100 flex items-center justify-center"><Plus className="w-3 h-3" /></button>
+                          {items.map(a => {
+                            const effectivePrice = getEffectivePrice(a);
+                            const hasCustomPrice = a.custom_price !== undefined && a.custom_price !== null && a.custom_price !== a.original_price;
+                            return (
+                              <div key={a.id} className="flex items-center justify-between bg-sky-50 border border-sky-100 rounded-xl px-3 py-2.5 mb-1.5 last:mb-0 relative">
+                                <div className="flex-1">
+                                  <span className="text-sm text-slate-700 font-medium">
+                                    {a.name}{a.qty > 1 && <span className="ml-1 text-sky-500 font-bold">×{a.qty}</span>}
+                                  </span>
+                                  {hasCustomPrice && (
+                                    <span className="ml-2 text-[10px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full">
+                                      ${a.original_price?.toFixed(2)} → ${effectivePrice.toFixed(2)}
+                                    </span>
+                                  )}
                                 </div>
-                                <span className="text-sm font-bold text-slate-800 min-w-[60px] text-right">{formatCurrency((a.price||0)*(a.qty||1))}</span>
-                                <button onClick={() => setAddons(prev => prev.filter(x => x.id !== a.id))} className="w-6 h-6 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 flex items-center justify-center"><Trash2 className="w-3.5 h-3.5" /></button>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => setEditingAddonPrice({ id: a.id, currentPrice: effectivePrice })}
+                                    className="w-6 h-6 rounded-lg text-slate-400 hover:text-sky-600 hover:bg-sky-100 flex items-center justify-center"
+                                    title={t("Edit price", "Editar precio")}
+                                  >
+                                    <Edit2 className="w-3 h-3" />
+                                  </button>
+                                  {editingAddonPrice?.id === a.id && (
+                                    <AddonPriceEditor
+                                      addon={a}
+                                      onSave={(newPrice) => handleUpdateAddonPrice(a.id, newPrice)}
+                                      onCancel={() => setEditingAddonPrice(null)}
+                                    />
+                                  )}
+                                  <div className="flex items-center gap-1">
+                                    <button onClick={() => handleUpdateAddonQty(a.id, (a.qty||1)-1)} className="w-6 h-6 rounded-lg text-slate-400 hover:text-sky-600 hover:bg-sky-100 flex items-center justify-center"><Minus className="w-3 h-3" /></button>
+                                    <span className="w-6 text-center text-xs font-bold">{a.qty||1}</span>
+                                    <button onClick={() => handleUpdateAddonQty(a.id, (a.qty||1)+1)} className="w-6 h-6 rounded-lg text-slate-400 hover:text-sky-600 hover:bg-sky-100 flex items-center justify-center"><Plus className="w-3 h-3" /></button>
+                                  </div>
+                                  <span className="text-sm font-bold text-slate-800 min-w-[70px] text-right">{formatCurrency(effectivePrice * (a.qty||1))}</span>
+                                  <button onClick={() => setAddons(prev => prev.filter(x => x.id !== a.id))} className="w-6 h-6 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 flex items-center justify-center"><Trash2 className="w-3.5 h-3.5" /></button>
+                                </div>
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       ))}
                     </div>
@@ -1350,7 +1512,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
                   </div>
                 </div>
 
-                {/* Catalog */}
+                {/* Catalog with dynamic prices */}
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">{t("Add available items", "Agregar artículos disponibles")}</p>
                   <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
@@ -1361,11 +1523,12 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
                           {items.map(item => {
                             const ex = addons.find(a => a.id === item.id);
                             const qty = ex?.qty || 0;
+                            const currentPrice = ex?.custom_price || item.price;
                             return (
                               <div key={item.id} className="flex items-center justify-between border border-slate-100 rounded-xl px-2 py-1.5 bg-white hover:border-sky-200 transition-colors">
                                 <div className="min-w-0 flex-1 mr-1">
                                   <p className="text-[11px] text-slate-700 truncate">{item.name}</p>
-                                  <p className="text-[10px] text-slate-400">{formatCurrency(item.price)}</p>
+                                  <p className="text-[10px] text-slate-400">{formatCurrency(currentPrice)}</p>
                                 </div>
                                 <div className="flex items-center gap-0.5 shrink-0">
                                   {qty > 0 && (

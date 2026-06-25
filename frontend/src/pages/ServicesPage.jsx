@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
-import { ChevronDown, Check, Star, Clock, Shield, Truck, ArrowRight, Zap, X, Sparkles, Package } from "lucide-react";
+import {
+  ChevronDown, Check, Star, Clock, Shield, Truck,
+  ArrowRight, Zap, X, Sparkles, Package, RefreshCw
+} from "lucide-react";
 import PublicNav from "../components/PublicNav";
 import PublicFooter from "../components/PublicFooter";
 import { useLocale } from "../context/LocaleContext";
@@ -16,11 +19,10 @@ const AD_CONFIG = {
     badge: "Dry Cleaning",
     title: "Coming soon",
     subtitle: "Premium care for your garments coming soon to Ventura.",
-    description: "",
     cta: "Ver membresías",
     ctaUrl: "/membership",
     accent: "#0ea5e9",
-    overlayFrom: "#f3f5f619",
+    overlayFrom: "#0c4a6e",
     overlayTo: "#0369a1",
   },
   right: {
@@ -28,7 +30,6 @@ const AD_CONFIG = {
     badge: "Shoe cleaning",
     title: "Coming soon",
     subtitle: "Premium care for your shoes coming soon at Ventura Fresh Laundry.",
-    description: "",
     cta: "Reservar Express",
     ctaUrl: "/schedule-pickup?express=true",
     accent: "#f59e0b",
@@ -37,7 +38,7 @@ const AD_CONFIG = {
   },
 };
 
-// ─── IntersectionObserver hook ────────────────────────────────────────────────
+// ─── Hooks ────────────────────────────────────────────────────────────────────
 function useInView(threshold = 0.08) {
   const ref = useRef(null);
   const [v, setV] = useState(false);
@@ -86,7 +87,14 @@ const Mag = ({ children, className = "", strength = 0.28, as: Tag = "div", ...p 
     if (ref.current) ref.current.style.transform = "translate(0,0)";
   }, []);
   return (
-    <Tag ref={ref} className={className} style={{ transition: "transform 500ms cubic-bezier(0.34,1.56,0.64,1)" }} onMouseMove={onMove} onMouseLeave={onLeave} {...p}>
+    <Tag
+      ref={ref}
+      className={className}
+      style={{ transition: "transform 500ms cubic-bezier(0.34,1.56,0.64,1)" }}
+      onMouseMove={onMove}
+      onMouseLeave={onLeave}
+      {...p}
+    >
       {children}
     </Tag>
   );
@@ -147,44 +155,168 @@ const Marquee = ({ items }) => (
   </div>
 );
 
+const PlanBadge = ({ type, t }) => {
+  const configs = {
+    standard: { label: t ? t("36 h", "36 h") : "36 h", cls: "bg-slate-100 text-slate-500 border border-slate-200" },
+    premium:  { label: t ? t("24 h", "24 h") : "24 h", cls: "bg-sky-100 text-sky-700 border border-sky-200" },
+    express:  { label: t ? t("Same day", "Mismo día") : "Same day", cls: "bg-amber-100 text-amber-700 border border-amber-200" },
+    popular:  { label: t ? t("Most popular", "Más popular") : "Most popular", cls: "bg-sky-100 text-sky-700 border border-sky-200" },
+  };
+  const c = configs[type] || configs.standard;
+  return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap ${c.cls}`}>{c.label}</span>;
+};
+
 const AccordionItem = ({ title, children, isOpen, onClick, variant = "light" }) => {
   const isDark = variant === "dark";
   return (
-    <div className={`border-b ${isDark ? "border-white/20" : "border-slate-200/70"} last:border-0`}>
-      <button onClick={onClick} className="w-full py-4 flex items-center justify-between text-left group focus:outline-none min-h-[52px] touch-manipulation" aria-expanded={isOpen}>
-        <span className={`text-sm sm:text-base font-semibold transition-colors duration-200 pr-4 ${isDark ? "text-white/80" : "text-slate-800"}`}>{title}</span>
-        <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-all duration-300 ${isOpen ? isDark ? "bg-sky-400 text-white rotate-180" : "bg-primary text-white rotate-180" : isDark ? "bg-white/10 text-white/50" : "bg-slate-100 text-slate-400"}`}>
-          <ChevronDown className="w-4 h-4" />
+    <div className={`border-b last:border-0 ${isDark ? "border-white/10" : "border-slate-200/70"}`}>
+      <button
+        onClick={onClick}
+        className="w-full py-4 flex items-center justify-between text-left focus:outline-none min-h-[52px] touch-manipulation"
+        aria-expanded={isOpen}
+      >
+        <span className={`text-sm sm:text-base font-semibold pr-4 transition-colors duration-200 ${isDark ? "text-white/90" : "text-slate-800"}`}>
+          {title}
+        </span>
+        <div className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center transition-all duration-300 border ${
+          isOpen
+            ? isDark ? "bg-white/15 border-white/25 rotate-180" : "bg-primary border-primary rotate-180"
+            : isDark ? "bg-white/8 border-white/12" : "bg-slate-100 border-transparent"
+        }`}>
+          <ChevronDown className={`w-4 h-4 ${isDark ? "text-white/80" : isOpen ? "text-white" : "text-slate-400"}`} />
         </div>
       </button>
-      <div className={`overflow-hidden transition-all duration-500 ease-in-out ${isOpen ? "max-h-[600px] pb-4 opacity-100" : "max-h-0 opacity-0"}`}>
+      <div className={`overflow-hidden transition-all duration-500 ease-in-out ${isOpen ? "max-h-[600px] pb-5 opacity-100" : "max-h-0 opacity-0"}`}>
         {children}
       </div>
     </div>
   );
 };
 
-const PlanBadge = ({ type, t }) => {
-  const fallbackLabels = { standard: "36 h", premium: "24 h", express: "Same day", popular: "Most popular" };
-  if (!t || typeof t !== 'function') {
-    const label = fallbackLabels[type] || "36 h";
-    const cls = type === 'popular' || type === 'premium' ? "bg-sky-100 text-sky-700 border border-sky-200" : type === 'express' ? "bg-amber-100 text-amber-700 border border-amber-200" : "bg-slate-100 text-slate-500 border border-slate-200";
-    return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap ${cls}`}>{label}</span>;
-  }
-  const configs = {
-    standard: { label: t("36 h", "36 h"), cls: "bg-slate-100 text-slate-500 border border-slate-200" },
-    premium:  { label: t("24 h", "24 h"), cls: "bg-sky-100 text-sky-700 border border-sky-200" },
-    express:  { label: t("Same day", "Mismo día"), cls: "bg-amber-100 text-amber-700 border border-amber-200" },
-    popular:  { label: t("Most popular", "Más popular"), cls: "bg-sky-100 text-sky-700 border border-sky-200" },
-  };
-  const c = configs[type] || configs.standard;
-  return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap ${c.cls}`}>{c.label}</span>;
+// ═══════════════════════════════════════════════════════════════
+//  DARK SECTION — imagen visible + cards glass mate
+// ═══════════════════════════════════════════════════════════════
+const DarkSection = ({ children, bgImage, scrollY = 0, parallaxStrength = 0.15, tint = "rgba(3,15,35,0.30)" }) => (
+  <section className="py-20 sm:py-28 relative overflow-hidden">
+    <div
+      className="absolute inset-0 will-change-transform"
+      style={{
+        backgroundImage: `url('${bgImage}')`,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        transform: `translateY(${scrollY * parallaxStrength}px) scale(1.05)`,
+      }}
+    />
+    <div className="absolute inset-0" style={{ background: tint }} />
+    <div className="absolute inset-0" style={{
+      background: "linear-gradient(to bottom, rgba(0,0,0,0.15) 0%, transparent 20%, transparent 80%, rgba(0,0,0,0.20) 100%)"
+    }} />
+    <div className="relative z-10 max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
+      {children}
+    </div>
+  </section>
+);
+
+const GlassCard = ({ children, className = "" }) => (
+  <div
+    className={`rounded-2xl ${className}`}
+    style={{
+      background: "rgba(8, 20, 48, 0.42)",
+      backdropFilter: "blur(28px) saturate(180%)",
+      WebkitBackdropFilter: "blur(28px) saturate(180%)",
+      border: "1px solid rgba(255,255,255,0.13)",
+      boxShadow: "0 8px 40px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.08)",
+    }}
+  >
+    {children}
+  </div>
+);
+
+// ═══════════════════════════════════════════════════════════════
+//  AD BANNERS
+// ═══════════════════════════════════════════════════════════════
+const AdBannerHorizontal = ({ config }) => {
+  const [hovered, setHovered] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+  if (dismissed) return null;
+  return (
+    <div
+      className="relative rounded-2xl overflow-hidden cursor-pointer"
+      style={{
+        minHeight: "88px",
+        boxShadow: hovered ? `0 12px 40px -8px ${config.accent}55, 0 4px 16px rgba(0,0,0,0.14)` : "0 2px 12px rgba(0,0,0,0.09)",
+        transform: hovered ? "translateY(-3px)" : "translateY(0)",
+        transition: "all 0.35s cubic-bezier(0.34,1.56,0.64,1)",
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onClick={() => window.location.href = config.ctaUrl}
+      role="link" tabIndex={0}
+      onKeyDown={e => e.key === "Enter" && (window.location.href = config.ctaUrl)}
+    >
+      <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url('${config.image}')`, transform: hovered ? "scale(1.07)" : "scale(1.02)", transition: "transform 0.6s ease" }} />
+      <div className="absolute inset-0" style={{ background: `linear-gradient(100deg, ${config.overlayFrom}f0 0%, ${config.overlayTo}cc 55%, rgba(0,0,0,0.45) 100%)` }} />
+      <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: `linear-gradient(to right, ${config.accent}, transparent)`, opacity: 0.9 }} />
+      <div className="relative h-full flex items-center gap-3 px-4 py-3">
+        <div className="flex-1 min-w-0">
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wide mb-1" style={{ background: `${config.accent}28`, border: `1px solid ${config.accent}55`, color: config.accent }}>{config.badge}</span>
+          <h3 className="text-white font-black text-base leading-tight" style={{ textShadow: "0 1px 6px rgba(0,0,0,0.5)" }}>{config.title}</h3>
+          <p className="text-white/60 text-xs leading-tight line-clamp-2 mt-0.5">{config.subtitle}</p>
+        </div>
+        <button
+          onClick={e => { e.stopPropagation(); setDismissed(true); }}
+          className="absolute top-2 right-2 w-6 h-6 rounded-full flex items-center justify-center bg-black/30 hover:bg-black/50 transition-colors touch-manipulation"
+          aria-label="Cerrar"
+        >
+          <X className="w-3 h-3 text-white/70" />
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const AdBannerVertical = ({ config }) => {
+  const [hovered, setHovered] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+  if (dismissed) return null;
+  return (
+    <div className="hidden xl:flex flex-col flex-shrink-0 w-[200px] sticky top-6 self-start" style={{ zIndex: 10 }}>
+      <div className="flex items-center justify-between mb-2 px-1">
+        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400/70 select-none">Publicidad</span>
+        <button onClick={() => setDismissed(true)} className="text-slate-300 hover:text-slate-500 transition-colors rounded-full p-0.5 hover:bg-slate-100 touch-manipulation" aria-label="Cerrar"><X className="w-3 h-3" /></button>
+      </div>
+      <div
+        className="relative rounded-2xl overflow-hidden cursor-pointer select-none"
+        style={{ height: "380px", boxShadow: hovered ? `0 24px 60px -10px ${config.accent}50, 0 8px 24px rgba(0,0,0,0.18)` : "0 4px 20px rgba(0,0,0,0.10)", transform: hovered ? "translateY(-5px) scale(1.015)" : "translateY(0) scale(1)", transition: "all 0.45s cubic-bezier(0.34,1.56,0.64,1)" }}
+        onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
+        onClick={() => window.location.href = config.ctaUrl}
+        role="link" tabIndex={0}
+        onKeyDown={e => e.key === "Enter" && (window.location.href = config.ctaUrl)}
+      >
+        <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url('${config.image}')`, transform: hovered ? "scale(1.1)" : "scale(1.02)", transition: "transform 0.7s cubic-bezier(0.25,0.46,0.45,0.94)" }} />
+        <div className="absolute inset-0" style={{ background: `linear-gradient(155deg, ${config.overlayFrom}e0 0%, ${config.overlayTo}90 55%, transparent 100%)` }} />
+        <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.2) 55%, transparent 100%)" }} />
+        <div className="absolute inset-0 rounded-2xl pointer-events-none transition-all duration-300" style={{ boxShadow: hovered ? `inset 0 0 0 1.5px ${config.accent}90` : "inset 0 0 0 1px rgba(255,255,255,0.08)" }} />
+        <div className="absolute top-0 left-0 right-0 h-0.5 transition-all duration-500" style={{ background: `linear-gradient(to right, transparent, ${config.accent}, transparent)`, opacity: hovered ? 1 : 0.3 }} />
+        <div className="absolute inset-0 flex flex-col justify-between p-4">
+          <div>
+            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wide backdrop-blur-sm" style={{ background: `${config.accent}22`, border: `1px solid ${config.accent}55`, color: config.accent }}>{config.badge}</span>
+          </div>
+          <div>
+            <div className="w-8 h-0.5 mb-3 rounded-full" style={{ background: config.accent }} />
+            <h3 className="text-white font-black leading-[1.1] mb-1.5" style={{ fontSize: "1.5rem", textShadow: "0 2px 12px rgba(0,0,0,0.6)" }}>{config.title}</h3>
+            <p className="text-xs font-bold mb-1.5 uppercase tracking-wider" style={{ color: config.accent }}>{config.subtitle}</p>
+          </div>
+        </div>
+      </div>
+      <p className="text-center text-[10px] text-slate-400/60 mt-1.5 select-none">Ventura Fresh Laundry</p>
+    </div>
+  );
 };
 
 // ═══════════════════════════════════════════════════════════════
-//  DYNAMIC ADMIN SERVICES SECTION
+//  DYNAMIC ADMIN SERVICES
 // ═══════════════════════════════════════════════════════════════
-
 const PRICE_UNIT_LABELS = {
   per_lb:    { en: "/ lb",    es: "/ lb" },
   per_order: { en: "/ order", es: "/ orden" },
@@ -193,17 +325,10 @@ const PRICE_UNIT_LABELS = {
 };
 
 const SERVICE_CATEGORY_ICONS = {
-  "wash & fold": "🧺",
-  "pickup": "🚚",
-  "delivery": "🚚",
-  "dry cleaning": "👔",
-  "shoe": "👟",
-  "ironing": "🔄",
-  "bedding": "🛏️",
-  "membership": "⭐",
-  "express": "⚡",
-  "commercial": "🏢",
-  "airbnb": "🏠",
+  "wash & fold": "🧺", "pickup": "🚚", "delivery": "🚚",
+  "dry cleaning": "👔", "shoe": "👟", "ironing": "🔄",
+  "bedding": "🛏️", "membership": "⭐", "express": "⚡",
+  "commercial": "🏢", "airbnb": "🏠",
 };
 
 function getServiceIcon(name = "", category = "") {
@@ -229,22 +354,17 @@ const AdminServiceCard = ({ service, t, locale }) => {
   const icon = getServiceIcon(service.name, service.category);
   const unitLabel = PRICE_UNIT_LABELS[service.price_unit] || { en: "", es: "" };
   const unit = locale === "es" ? unitLabel.es : unitLabel.en;
-
   return (
     <Tilt depth={3}>
       <div
         className={`relative bg-white rounded-2xl h-full flex flex-col overflow-hidden border transition-all duration-300 ${h ? "border-primary/30 shadow-xl shadow-sky-100/60" : "border-slate-100 shadow-md"}`}
-        onMouseEnter={() => setH(true)}
-        onMouseLeave={() => setH(false)}
+        onMouseEnter={() => setH(true)} onMouseLeave={() => setH(false)}
       >
         <div className={`absolute top-0 left-6 right-6 h-px bg-gradient-to-r from-transparent via-primary to-transparent transition-all duration-500 ${h ? "opacity-100" : "opacity-0"}`} />
         <div className={`absolute inset-0 bg-gradient-to-br from-sky-50/40 to-transparent transition-opacity duration-500 pointer-events-none ${h ? "opacity-100" : "opacity-0"}`} />
-
         <div className="relative p-5 flex flex-col gap-3 flex-grow">
           <div className="flex items-start justify-between gap-3">
-            <div className={`w-11 h-11 flex items-center justify-center text-xl rounded-xl flex-shrink-0 transition-all duration-300 ${h ? "bg-primary/15 scale-110 rotate-3" : "bg-slate-50"}`}>
-              {icon}
-            </div>
+            <div className={`w-11 h-11 flex items-center justify-center text-xl rounded-xl flex-shrink-0 transition-all duration-300 ${h ? "bg-primary/15 scale-110 rotate-3" : "bg-slate-50"}`}>{icon}</div>
             {service.price != null && (
               <div className="text-right flex-shrink-0">
                 <div className="text-xl font-black text-primary leading-none">${service.price}</div>
@@ -252,27 +372,15 @@ const AdminServiceCard = ({ service, t, locale }) => {
               </div>
             )}
           </div>
-
           <div className="flex-grow">
-            <h3 className={`text-base font-bold mb-1 transition-colors duration-200 leading-tight ${h ? "text-primary" : "text-slate-900"}`}>
-              {service.name}
-            </h3>
-            {service.description && (
-              <p className="text-slate-400 text-xs leading-relaxed line-clamp-3">{service.description}</p>
-            )}
+            <h3 className={`text-base font-bold mb-1 transition-colors duration-200 leading-tight ${h ? "text-primary" : "text-slate-900"}`}>{service.name}</h3>
+            {service.description && <p className="text-slate-400 text-xs leading-relaxed line-clamp-3">{service.description}</p>}
           </div>
         </div>
-
         <div className="relative px-5 pb-5">
           <Link to="/schedule-pickup">
-            <button
-              className="group w-full flex items-center justify-center gap-2 bg-primary text-white rounded-xl px-4 py-2.5 text-xs font-bold uppercase tracking-wider hover:bg-primary/90 active:scale-95 transition-all duration-300 shadow-sm shadow-primary/20 overflow-hidden relative touch-manipulation"
-              style={{ minHeight: "40px" }}
-            >
-              <span className="relative z-10 flex items-center gap-2">
-                {t("Book Now", "Reservar")}
-                <ArrowRight className="w-3.5 h-3.5 transition-transform duration-200 group-hover:translate-x-1" />
-              </span>
+            <button className="group w-full flex items-center justify-center gap-2 bg-primary text-white rounded-xl px-4 py-2.5 text-xs font-bold uppercase tracking-wider hover:bg-primary/90 active:scale-95 transition-all duration-300 shadow-sm shadow-primary/20 overflow-hidden relative touch-manipulation" style={{ minHeight: "40px" }}>
+              <span className="relative z-10 flex items-center gap-2">{t("Book Now", "Reservar")}<ArrowRight className="w-3.5 h-3.5 transition-transform duration-200 group-hover:translate-x-1" /></span>
               <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
             </button>
           </Link>
@@ -285,57 +393,29 @@ const AdminServiceCard = ({ service, t, locale }) => {
 const AdminServicesSection = ({ t, locale }) => {
   const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(true);
-
   useEffect(() => {
     const load = async () => {
       try {
         const res = await fetch(`${API}/public/services?active_only=true`);
-        if (res.ok) {
-          const data = await res.json();
-          setServices(data);
-        }
-      } catch (err) {
-        // Silent fail
-      } finally {
-        setLoading(false);
-      }
+        if (res.ok) setServices(await res.json());
+      } catch { } finally { setLoading(false); }
     };
     load();
   }, []);
-
   if (loading || services.length === 0) return null;
-
   const groups = groupByCategory(services);
-
   return (
     <section className="py-12 sm:py-20 bg-gradient-to-b from-slate-50/60 to-white relative overflow-hidden">
       <div className="absolute inset-0 opacity-[0.35]" style={{ backgroundImage: "radial-gradient(rgba(14,165,233,0.07) 1px,transparent 1px)", backgroundSize: "24px 24px" }} />
       <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-12">
-
         <Reveal dir="blur">
           <div className="flex items-center justify-center gap-3 mb-3">
-            <div className="h-px w-8 bg-primary/30" />
-            <Package className="w-4 h-4 text-primary/50" />
-            <div className="h-px w-8 bg-primary/30" />
+            <div className="h-px w-8 bg-primary/30" /><Package className="w-4 h-4 text-primary/50" /><div className="h-px w-8 bg-primary/30" />
           </div>
-          <p className="text-center text-[11px] font-bold uppercase tracking-[0.18em] text-primary/50 mb-3">
-            {t("Additional Services", "Servicios Adicionales")}
-          </p>
+          <p className="text-center text-[11px] font-bold uppercase tracking-[0.18em] text-primary/50 mb-3">{t("Additional Services", "Servicios Adicionales")}</p>
         </Reveal>
-
-        <Reveal delay={80}>
-          <h2 className="text-2xl sm:text-4xl lg:text-5xl font-bold text-slate-900 text-center mb-3 leading-tight">
-            {t("More ways we", "Más formas en que")}
-            <span className="block text-primary font-bold">{t("can help.", "podemos ayudarte.")}</span>
-          </h2>
-        </Reveal>
-
-        <Reveal delay={140}>
-          <p className="text-slate-500 text-center mb-10 max-w-xl mx-auto text-sm sm:text-base">
-            {t("Specialized care for every garment and need.", "Cuidado especializado para cada prenda y necesidad.")}
-          </p>
-        </Reveal>
-
+        <Reveal delay={80}><h2 className="text-2xl sm:text-4xl lg:text-5xl font-bold text-slate-900 text-center mb-3 leading-tight">{t("More ways we", "Más formas en que")}<span className="block text-primary font-bold">{t("can help.", "podemos ayudarte.")}</span></h2></Reveal>
+        <Reveal delay={140}><p className="text-slate-500 text-center mb-10 max-w-xl mx-auto text-sm sm:text-base">{t("Specialized care for every garment and need.", "Cuidado especializado para cada prenda y necesidad.")}</p></Reveal>
         {Object.entries(groups).map(([category, svcs], gi) => (
           <div key={category} className="mb-10 last:mb-0">
             {Object.keys(groups).length > 1 && (
@@ -355,19 +435,11 @@ const AdminServicesSection = ({ t, locale }) => {
             </div>
           </div>
         ))}
-
         <Reveal delay={200} dir="scale">
           <div className="mt-10 text-center">
             <Link to="/schedule-pickup">
-              <Mag
-                as="div"
-                strength={0.2}
-                className="inline-flex items-center gap-2 overflow-hidden relative bg-primary text-white rounded-full px-8 py-3.5 text-sm font-bold uppercase tracking-widest shadow-lg shadow-primary/25 cursor-pointer hover:-translate-y-0.5 transition-transform duration-300 active:scale-95 group touch-manipulation"
-              >
-                <span className="relative z-10 flex items-center gap-2">
-                  {t("Book Any Service", "Reservar Cualquier Servicio")}
-                  <ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-1" />
-                </span>
+              <Mag as="div" strength={0.2} className="inline-flex items-center gap-2 overflow-hidden relative bg-primary text-white rounded-full px-8 py-3.5 text-sm font-bold uppercase tracking-widest shadow-lg shadow-primary/25 cursor-pointer hover:-translate-y-0.5 transition-transform duration-300 active:scale-95 group touch-manipulation">
+                <span className="relative z-10 flex items-center gap-2">{t("Book Any Service", "Reservar Cualquier Servicio")}<ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-1" /></span>
                 <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
               </Mag>
             </Link>
@@ -378,189 +450,14 @@ const AdminServicesSection = ({ t, locale }) => {
   );
 };
 
-// ════════════════════════════════════════════════════════════════════════════
-//  AD BANNERS
-// ════════════════════════════════════════════════════════════════════════════
-
-const AdBannerHorizontal = ({ config }) => {
-  const [hovered, setHovered] = useState(false);
-  const [dismissed, setDismissed] = useState(false);
-  if (dismissed) return null;
-  return (
-    <div
-      className="relative rounded-2xl overflow-hidden cursor-pointer"
-      style={{ minHeight: "88px", boxShadow: hovered ? `0 12px 40px -8px ${config.accent}55, 0 4px 16px rgba(0,0,0,0.14)` : "0 2px 12px rgba(0,0,0,0.09)", transform: hovered ? "translateY(-3px)" : "translateY(0)", transition: "all 0.35s cubic-bezier(0.34,1.56,0.64,1)" }}
-      onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
-      onClick={() => window.location.href = config.ctaUrl}
-      role="link" tabIndex={0} onKeyDown={e => e.key === "Enter" && (window.location.href = config.ctaUrl)}
-    >
-      <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url('${config.image}')`, transform: hovered ? "scale(1.07)" : "scale(1.02)", transition: "transform 0.6s ease" }} />
-      <div className="absolute inset-0" style={{ background: `linear-gradient(100deg, ${config.overlayFrom}f2 0%, ${config.overlayTo}cc 55%, rgba(0,0,0,0.45) 100%)` }} />
-      <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: `linear-gradient(to right, ${config.accent}, transparent)`, opacity: 0.9 }} />
-      <div className="relative h-full flex items-center gap-3 px-4 py-3">
-        <div className="flex-1 min-w-0">
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wide mb-1" style={{ background: `${config.accent}28`, border: `1px solid ${config.accent}55`, color: config.accent }}>{config.badge}</span>
-          <h3 className="text-white font-black text-base leading-tight" style={{ textShadow: "0 1px 6px rgba(0,0,0,0.5)" }}>{config.title}</h3>
-          <p className="text-white/60 text-xs leading-tight line-clamp-2 mt-0.5">{config.subtitle}</p>
-        </div>
-        <div className="w-px h-10 bg-white/20 flex-shrink-0 hidden sm:block" />
-        <button onClick={e => { e.stopPropagation(); setDismissed(true); }} className="absolute top-2 right-2 w-6 h-6 rounded-full flex items-center justify-center bg-black/30 hover:bg-black/50 transition-colors touch-manipulation" aria-label="Cerrar"><X className="w-3 h-3 text-white/70" /></button>
-        <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(100deg, transparent 30%, rgba(255,255,255,0.07) 50%, transparent 70%)", transform: hovered ? "translateX(200%)" : "translateX(-200%)", transition: "transform 0.8s ease" }} />
-      </div>
-    </div>
-  );
-};
-
-const AdBannerVertical = ({ config }) => {
-  const [hovered, setHovered] = useState(false);
-  const [dismissed, setDismissed] = useState(false);
-  if (dismissed) return null;
-  return (
-    <div className="hidden xl:flex flex-col flex-shrink-0 w-[200px] sticky top-6 self-start" style={{ zIndex: 10 }}>
-      <div className="flex items-center justify-between mb-2 px-1">
-        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400/70 select-none">Publicidad</span>
-        <button onClick={() => setDismissed(true)} className="text-slate-300 hover:text-slate-500 transition-colors rounded-full p-0.5 hover:bg-slate-100 touch-manipulation" aria-label="Cerrar"><X className="w-3 h-3" /></button>
-      </div>
-      <div
-        className="relative rounded-2xl overflow-hidden cursor-pointer select-none"
-        style={{ height: "380px", boxShadow: hovered ? `0 24px 60px -10px ${config.accent}50, 0 8px 24px rgba(0,0,0,0.18)` : "0 4px 20px rgba(0,0,0,0.10)", transform: hovered ? "translateY(-5px) scale(1.015)" : "translateY(0) scale(1)", transition: "all 0.45s cubic-bezier(0.34,1.56,0.64,1)" }}
-        onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
-        onClick={() => window.location.href = config.ctaUrl}
-        role="link" tabIndex={0} onKeyDown={e => e.key === "Enter" && (window.location.href = config.ctaUrl)}
-      >
-        <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url('${config.image}')`, transform: hovered ? "scale(1.1)" : "scale(1.02)", transition: "transform 0.7s cubic-bezier(0.25,0.46,0.45,0.94)" }} />
-        <div className="absolute inset-0" style={{ background: `linear-gradient(155deg, ${config.overlayFrom}e0 0%, ${config.overlayTo}90 55%, transparent 100%)` }} />
-        <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.2) 55%, transparent 100%)" }} />
-        <div className="absolute inset-0 rounded-2xl pointer-events-none transition-all duration-300" style={{ boxShadow: hovered ? `inset 0 0 0 1.5px ${config.accent}90` : "inset 0 0 0 1px rgba(255,255,255,0.08)" }} />
-        <div className="absolute top-0 left-0 right-0 h-0.5 transition-all duration-500" style={{ background: `linear-gradient(to right, transparent, ${config.accent}, transparent)`, opacity: hovered ? 1 : 0.3 }} />
-        <div className="absolute top-3 right-3 transition-all duration-300" style={{ opacity: hovered ? 1 : 0, transform: hovered ? "scale(1)" : "scale(0.5)" }}>
-          <Sparkles className="w-4 h-4" style={{ color: config.accent }} />
-        </div>
-        <div className="absolute inset-0 flex flex-col justify-between p-4">
-          <div>
-            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wide backdrop-blur-sm" style={{ background: `${config.accent}22`, border: `1px solid ${config.accent}55`, color: config.accent }}>{config.badge}</span>
-          </div>
-          <div>
-            <div className="w-8 h-0.5 mb-3 rounded-full" style={{ background: config.accent }} />
-            <h3 className="text-white font-black leading-[1.1] mb-1.5" style={{ fontSize: "1.5rem", textShadow: "0 2px 12px rgba(0,0,0,0.6)" }}>{config.title}</h3>
-            <p className="text-xs font-bold mb-1.5 uppercase tracking-wider" style={{ color: config.accent }}>{config.subtitle}</p>
-            <p className="text-white/60 text-[11px] leading-relaxed mb-4">{config.description}</p>
-          </div>
-        </div>
-        <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(105deg, transparent 30%, rgba(255,255,255,0.07) 50%, transparent 70%)", transform: hovered ? "translateX(200%)" : "translateX(-200%)", transition: "transform 0.8s ease" }} />
-      </div>
-      <p className="text-center text-[10px] text-slate-400/60 mt-1.5 select-none">Ventura Fresh Laundry</p>
-    </div>
-  );
-};
-
 // ─── Service Cards ────────────────────────────────────────────────────────────
-const PickupDeliveryServiceCard = ({ t }) => {
-  const [h, setH] = useState(false);
-  const rows = [
-    { plan: t("Standard", "Estándar"), badge: "standard", memberPrice: "$2.50/lb", regularPrice: "$2.75/lb" },
-    { plan: t("Premium", "Premium"),   badge: "premium",  memberPrice: "$2.75/lb", regularPrice: "$3.00/lb", isPopular: true },
-    { plan: t("Express", "Express"),   badge: "express",  memberPrice: "$3.00/lb", regularPrice: "$3.25/lb" },
-  ];
-  return (
-    <Tilt depth={4}>
-      <div className={`relative bg-white rounded-2xl h-full flex flex-col overflow-hidden border transition-all duration-300 ${h ? "border-primary/30 shadow-2xl shadow-sky-100/60" : "border-slate-100 shadow-lg"}`} onMouseEnter={() => setH(true)} onMouseLeave={() => setH(false)}>
-        <div className={`absolute top-0 left-6 right-6 h-px bg-gradient-to-r from-transparent via-primary to-transparent transition-all duration-500 ${h ? "opacity-100" : "opacity-0"}`} />
-        <div className={`absolute inset-0 bg-gradient-to-br from-sky-50/40 to-transparent transition-opacity duration-500 pointer-events-none ${h ? "opacity-100" : "opacity-0"}`} />
-        <div className="relative px-5 sm:px-7 pt-6 pb-4 border-b border-slate-100">
-          <div className={`w-12 h-12 flex items-center justify-center text-2xl mb-3 rounded-2xl transition-all duration-300 ${h ? "bg-primary/15 scale-110 rotate-3" : "bg-slate-50"}`}>🚚</div>
-          <h3 className={`text-xl sm:text-2xl font-bold mb-1 transition-colors duration-200 ${h ? "text-primary" : "text-slate-900"}`}>{t("Pickup & Delivery", "Recogida y Entrega")}</h3>
-          <p className="text-slate-400 text-sm">{t("Laundry, fully automated on your schedule.", "Lavandería automatizada en tu horario.")}</p>
-        </div>
-        <div className="flex-grow divide-y divide-slate-50">
-          {rows.map((row, i) => (
-            <div key={i} className={`px-5 py-3 ${row.isPopular ? "bg-sky-50/60" : ""}`}>
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className={`text-sm font-semibold ${row.isPopular ? "text-primary" : "text-slate-700"}`}>{row.plan}</span>
-                  {row.isPopular && <span className="text-[11px] font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded-full">⭐</span>}
-                  <PlanBadge type={row.badge} t={t} />
-                </div>
-                <div className="flex items-center gap-3 ml-auto">
-                  <div className="flex items-center gap-1"><Star className="w-3 h-3 text-primary fill-primary/40" /><span className="text-sm font-black text-primary">{row.memberPrice}</span></div>
-                  <div className="flex items-center gap-1"><span className="text-xs text-slate-400">{t("Regular", "Regular")}</span><span className="text-sm font-semibold text-slate-500">{row.regularPrice}</span></div>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-        <div className="relative px-5 py-3 bg-slate-50 border-t border-slate-100">
-          <ul className="space-y-1">
-            {[
-              t("✅ FREE delivery (0–3 miles)", "✅ Entrega GRATIS (0–3 millas)"),
-              t("🚗 Delivery: $1.99 (3–5 mi) · $2.99 (5–8 mi) · $4.99 (8–12 mi) · $8.99 (12–15 mi)",
-                 "🚗 Entrega: $1.99 (3–5 mi) · $2.99 (5–8 mi) · $4.99 (8–12 mi) · $8.99 (12–15 mi)"),
-              t("📦 Min. order $40", "📦 Pedido mínimo $40"),
-            ].map((item, i) => (
-              <li key={i} className="text-xs text-slate-500">{item}</li>
-            ))}
-          </ul>
-        </div>
-        <div className="relative px-5 sm:px-7 pb-6 pt-4">
-          <Link to="/schedule-pickup">
-            <button className="group w-full flex items-center justify-center gap-2 bg-primary text-white rounded-xl px-6 py-3.5 text-sm font-bold uppercase tracking-wider hover:bg-primary/90 active:scale-95 transition-all duration-300 shadow-md shadow-primary/20 overflow-hidden relative touch-manipulation" style={{ minHeight: "48px" }}>
-              <span className="relative z-10 flex items-center gap-2">{t("SCHEDULE PICK-UP", "PROGRAMAR RECOGIDA")}<ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-1" /></span>
-              <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
-            </button>
-          </Link>
-        </div>
-      </div>
-    </Tilt>
-  );
-};
-
-const WashFoldServiceCard = ({ t }) => {
-  const [h, setH] = useState(false);
-  const rows = [
-    { plan: t("Standard", "Estándar"), badge: "standard", price: "$2.25/lb", bestFor: t("Budget-friendly", "Económico") },
-    { plan: t("Premium", "Premium"),   badge: "premium",  price: "$2.50/lb", bestFor: t("Most popular", "Más popular"), isPopular: true },
-    { plan: t("Express", "Express"),   badge: "express",  price: "$2.75/lb", bestFor: t("Urgent orders", "Urgentes") },
-  ];
-  return (
-    <Tilt depth={4}>
-      <div className={`relative bg-white rounded-2xl h-full flex flex-col overflow-hidden border transition-all duration-300 ${h ? "border-primary/30 shadow-2xl shadow-sky-100/60" : "border-slate-100 shadow-lg"}`} onMouseEnter={() => setH(true)} onMouseLeave={() => setH(false)}>
-        <div className={`absolute top-0 left-6 right-6 h-px bg-gradient-to-r from-transparent via-primary to-transparent transition-all duration-500 ${h ? "opacity-100" : "opacity-0"}`} />
-        <div className={`absolute inset-0 bg-gradient-to-br from-sky-50/40 to-transparent transition-opacity duration-500 pointer-events-none ${h ? "opacity-100" : "opacity-0"}`} />
-        <div className="relative px-5 sm:px-7 pt-6 pb-4 border-b border-slate-100">
-          <div className={`w-12 h-12 flex items-center justify-center text-2xl mb-3 rounded-2xl transition-all duration-300 ${h ? "bg-primary/15 scale-110 rotate-3" : "bg-slate-50"}`}>🧺</div>
-          <h3 className={`text-xl sm:text-2xl font-bold mb-1 transition-colors duration-200 ${h ? "text-primary" : "text-slate-900"}`}>{t("Wash • Dry • Fold", "Lavar • Secar • Doblar")}</h3>
-          <p className="text-slate-400 text-sm">{t("Professional care without lifting a finger.", "Cuidado profesional sin mover un dedo.")}</p>
-        </div>
-        <div className="flex-grow divide-y divide-slate-50">
-          {rows.map((row, i) => (
-            <div key={i} className={`px-5 py-3 flex items-center justify-between gap-2 ${row.isPopular ? "bg-sky-50/60" : ""}`}>
-              <div className="flex items-center gap-2 flex-wrap min-w-0">
-                <span className={`text-sm font-semibold ${row.isPopular ? "text-primary" : "text-slate-700"}`}>{row.plan}</span>
-                {row.isPopular && <span className="text-[11px] font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded-full">⭐</span>}
-                <PlanBadge type={row.badge} t={t} />
-              </div>
-              <span className="text-lg font-black text-primary ml-2 whitespace-nowrap">{row.price}</span>
-            </div>
-          ))}
-        </div>
-        <div className="relative px-5 py-2 bg-slate-50 border-t border-slate-100 text-xs text-slate-500">{t("Professional care · Minimum 10 lb per order", "Cuidado profesional · Mínimo 10 lb por orden")}</div>
-        <div className="relative px-5 py-2 bg-slate-50 border-t border-slate-100 text-xs text-slate-500">{t("Monday – Sunday · 8:00 AM – 6:00 PM", "Lunes – Domingo · 8:00 AM – 6:00 PM")}</div>
-        <div className="relative px-5 sm:px-7 pb-6 pt-4">
-          <Link to="/wash-fold">
-            <button className="group w-full flex items-center justify-center gap-2 bg-slate-900 text-white rounded-xl px-6 py-3.5 text-sm font-bold uppercase tracking-wider hover:bg-slate-800 active:scale-95 transition-all duration-300 shadow-md overflow-hidden relative touch-manipulation" style={{ minHeight: "48px" }}>
-              <span className="relative z-10 flex items-center gap-2">{t("DROP OFF / SCHEDULE", "ENTREGA / PROGRAMAR")}<ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-1" /></span>
-              <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
-            </button>
-          </Link>
-        </div>
-      </div>
-    </Tilt>
-  );
-};
-
 const PickupDeliveryServiceCardHead = ({ t }) => {
   const [h, setH] = useState(false);
-  const tiers = [{ name: t("Standard", "Estándar"), time: "36 h" }, { name: t("Premium", "Premium"), time: "24 h" }, { name: t("Express", "Express"), time: t("Same day","Mismo día") }];
+  const tiers = [
+    { name: t("Standard", "Estándar"), time: "36 h" },
+    { name: t("Premium", "Premium"), time: "24 h" },
+    { name: t("Express", "Express"), time: t("Same day", "Mismo día") },
+  ];
   return (
     <Tilt depth={4}>
       <div className={`relative bg-white rounded-2xl h-full flex flex-col overflow-hidden border transition-all duration-300 ${h ? "border-primary/30 shadow-2xl shadow-sky-100/60" : "border-slate-100 shadow-lg"}`} onMouseEnter={() => setH(true)} onMouseLeave={() => setH(false)}>
@@ -581,14 +478,14 @@ const PickupDeliveryServiceCardHead = ({ t }) => {
         </div>
         <div className="relative px-5 py-3 bg-slate-50 border-t border-slate-100">
           <ul className="space-y-1.5">
-            <li className="text-xs text-slate-600 flex items-center gap-2"><span className="text-green-600 text-sm">✅</span> {t("FREE delivery (0–3 miles)", "Entrega GRATIS (0–3 millas)")}</li>
-            <li className="text-xs text-slate-600 flex items-center gap-2"><span className="text-red-500 text-sm">❌</span> {t("$1.99 (3–5 mi) · $2.99 (5–8 mi) · $4.99 (8–12 mi) · $8.99 (12–15 mi)", "$1.99 (3–5 mi) · $2.99 (5–8 mi) · $4.99 (8–12 mi) · $8.99 (12–15 mi)")}</li>
-            <li className="text-xs text-slate-600 flex items-center gap-2"><span className="text-amber-500 text-sm">⚠️</span> {t("Min. order $40", "Pedido mínimo $40")}</li>
+            <li className="text-xs text-slate-600 flex items-start gap-2"><span className="text-green-600 text-sm mt-0.5">✅</span>{t("FREE delivery (0–3 miles)", "Entrega GRATIS (0–3 millas)")}</li>
+            <li className="text-xs text-slate-600 flex items-start gap-2"><span className="text-slate-400 text-sm mt-0.5">🚗</span>{t("3–15 Miles | $1.99–$8.99", "3–15 Miles | $1.99–$8.99")}</li>
+            <li className="text-xs text-slate-600 flex items-start gap-2"><span className="text-amber-500 text-sm mt-0.5">⚠️</span>{t("Min. order $40", "Pedido mínimo $40")}</li>
           </ul>
         </div>
         <div className="relative px-5 py-3 bg-white border-t border-slate-100 flex justify-between items-center">
-          <span className="text-base font-medium text-black-600">{t("Regular", "Regular")}</span>
-          <span className="text-base font-medium text-sky-600">{t("Member", "Miembro")}</span>
+          <span className="text-sm font-semibold text-slate-600">{t("Regular", "Regular")}</span>
+          <span className="text-sm font-semibold text-sky-600">{t("Member", "Miembro")}</span>
         </div>
         <div className="relative px-5 sm:px-7 pb-6 pt-2">
           <Link to="/schedule-pickup">
@@ -605,7 +502,11 @@ const PickupDeliveryServiceCardHead = ({ t }) => {
 
 const WashFoldServiceCardHead = ({ t }) => {
   const [h, setH] = useState(false);
-  const tiers = [{ name: t("Standard", "Estándar"), time: "24–36 h", isPopular: false }, { name: t("Premium", "Premium"), time: "12–24 h", isPopular: true }, { name: t("Express", "Express"), time: t("Same day", "Mismo día"), isPopular: false }];
+  const tiers = [
+    { name: t("Standard", "Estándar"), time: "24–36 h" },
+    { name: t("Premium", "Premium"), time: "12–24 h", isPopular: true },
+    { name: t("Express", "Express"), time: t("Same day", "Mismo día") },
+  ];
   return (
     <Tilt depth={4}>
       <div className={`relative bg-white rounded-2xl h-full flex flex-col overflow-hidden border transition-all duration-300 ${h ? "border-primary/30 shadow-2xl shadow-sky-100/60" : "border-slate-100 shadow-lg"}`} onMouseEnter={() => setH(true)} onMouseLeave={() => setH(false)}>
@@ -620,7 +521,6 @@ const WashFoldServiceCardHead = ({ t }) => {
           {tiers.map((tier, idx) => (
             <div key={idx} className="px-3 py-4 text-center">
               <div className="text-sm font-semibold text-slate-700 mb-1">{tier.name}{tier.isPopular && <span className="ml-1 text-primary text-xs">⭐</span>}</div>
-              <div className="text-xl font-black text-primary mb-0.5">{tier.price}</div>
               <div className="text-xs text-slate-400">{tier.time}</div>
             </div>
           ))}
@@ -641,512 +541,217 @@ const WashFoldServiceCardHead = ({ t }) => {
 };
 
 // ═══════════════════════════════════════════════════════════════
-//  MEMBERSHIP CARD — CORREGIDA PARA MÓVIL Y REDIRECCIÓN CORRECTA
+//  COMPONENTES DINÁMICOS QUE CARGAN DATOS DEL BACKEND
 // ═══════════════════════════════════════════════════════════════
 
-const MembershipCard = ({ plan, price, image, features, isPopular, lbs_allowance, onSelectPlan }) => {
-  const { t } = useLocale();
-  const [h, setH] = useState(false);
-  const [showFeatures, setShowFeatures] = useState(false);
-  const [isTouchDevice, setIsTouchDevice] = useState(false);
-  const [imageError, setImageError] = useState(false);
-  const [imageLoaded, setImageLoaded] = useState(false);
+const DynamicExpressServiceBlock = ({ t }) => {
+  const [chips, setChips] = useState([
+    { label: "In-Store", label_es: "En Tienda", price: "$2.75/lb" },
+    { label: "Members P&D", label_es: "Miembros R&E", price: "$3.00/lb" },
+    { label: "Regular P&D", label_es: "Regular R&E", price: "$3.25/lb" }
+  ]);
+  const [features, setFeatures] = useState([
+    "Priority processing", "Fast turnaround", "Limited capacity"
+  ]);
+  const [loading, setLoading] = useState(true);
+  const { locale } = useLocale();
 
-  // Detectar si es dispositivo táctil
   useEffect(() => {
-    setIsTouchDevice('ontouchstart' in window || navigator.maxTouchPoints > 0);
+    const loadExpressConfig = async () => {
+      try {
+        const res = await fetch(`${API}/public/services-page-config`);
+        if (res.ok) {
+          const config = await res.json();
+          if (config.express_chips && config.express_chips.length > 0) {
+            setChips(config.express_chips);
+          }
+          if (config.express_features && config.express_features.length > 0) {
+            setFeatures(config.express_features);
+          }
+        }
+      } catch (error) {
+        console.error("Error loading express config:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadExpressConfig();
   }, []);
 
-  // Extraer número limpio del precio
-  const priceNum = typeof price === "string" ? price.split("/")[0].trim() : price;
-
-  // Icono dinámico según contenido del feature
-  const featureIcon = (f = "") => {
-    const fl = f.toLowerCase();
-    if (fl.includes("standard") || fl.includes("estándar") || fl.includes("36h") || fl.includes("turnaround"))
-      return <Clock className="w-4 h-4 flex-shrink-0 text-slate-400 mt-0.5" />;
-    if (fl.includes("priority") || fl.includes("priorit") || fl.includes("handling"))
-      return <Zap className="w-4 h-4 flex-shrink-0 text-amber-400 mt-0.5" />;
-    if (fl.includes("emergency") || fl.includes("emergencia") || fl.includes("pickup"))
-      return <Truck className="w-4 h-4 flex-shrink-0 text-sky-400 mt-0.5" />;
-    if (fl.includes("perfect") || fl.includes("ideal") || fl.includes("great") || fl.includes("best") || fl.includes("airbnb") || fl.includes("families") || fl.includes("familias") || fl.includes("individuals") || fl.includes("professionals"))
-      return <Star className="w-4 h-4 flex-shrink-0 text-slate-300 mt-0.5" />;
-    return <Check className="w-4 h-4 flex-shrink-0 text-sky-400 mt-0.5" />;
+  const getChipLabel = (chip) => {
+    return locale === "es" && chip.label_es ? chip.label_es : chip.label;
   };
 
-  // Función para redirigir a la página de membresía
-  const redirectToMembership = () => {
-    if (onSelectPlan) {
-      onSelectPlan(plan, price, lbs_allowance, features);
-    } else {
-      // Redirección directa a la página de membresía
-      window.location.href = `/membership-signup?plan=${encodeURIComponent(plan)}&price=${encodeURIComponent(price)}&lbs=${lbs_allowance || ''}`;
-    }
-  };
-
-  // Manejar hover para mostrar características (solo desktop)
-  const handleMouseEnter = () => {
-    setH(true);
-    if (!isTouchDevice) setShowFeatures(true);
-  };
-
-  const handleMouseLeave = () => {
-    setH(false);
-    if (!isTouchDevice) setShowFeatures(false);
-  };
-
-  // Manejar tap en móvil - SOLO expande características, NO redirige
-  const handleTouchTap = (e) => {
-    // Si el tap fue en el botón, no hacer nada aquí (el botón manejará su propio click)
-    if (e.target.closest('button')) return;
-    
-    if (isTouchDevice) {
-      e.preventDefault();
-      e.stopPropagation();
-      setShowFeatures(!showFeatures);
-    }
-  };
-
-  // Manejar clic en toda la card (solo para desktop)
-  const handleCardClick = (e) => {
-    // En móvil, no redirigir al hacer clic en la card (solo el botón redirige)
-    if (isTouchDevice) return;
-    // En desktop, redirigir al hacer clic en la card
-    redirectToMembership();
-  };
-
-  // Mostrar solo primeras 2 características en vista normal
-  const visibleFeatures = showFeatures ? features : features.slice(0, 2);
-  const hasMoreFeatures = features.length > 2;
-
-  // Colores de fondo por defecto para cards sin imagen
-  const getDefaultGradient = () => {
-    const gradients = [
-      "from-sky-100 to-sky-200",
-      "from-indigo-100 to-indigo-200",
-      "from-purple-100 to-purple-200",
-      "from-pink-100 to-pink-200",
-      "from-amber-100 to-amber-200",
-      "from-emerald-100 to-emerald-200",
-    ];
-    const index = (plan?.length || 0) % gradients.length;
-    return gradients[index];
-  };
+  if (loading) {
+    return (
+      <div className="my-6 sm:my-10 rounded-2xl overflow-hidden shadow-2xl bg-slate-800 p-12 text-center">
+        <RefreshCw className="w-6 h-6 animate-spin mx-auto text-white" />
+      </div>
+    );
+  }
 
   return (
-    <Tilt depth={isPopular ? 4 : 3}>
-      <div
-        onClick={handleCardClick}
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
-        onTouchStart={handleTouchTap}
-        className={`relative bg-white rounded-2xl overflow-hidden h-full flex flex-col transition-all duration-300 ${!isTouchDevice ? 'cursor-pointer' : ''}
-          ${isPopular
-            ? "border-2 border-primary shadow-2xl shadow-primary/20 sm:scale-105 z-10"
-            : "border border-slate-200 shadow-lg hover:shadow-xl"
-          } ${h ? "-translate-y-1" : ""}`}
-        role={!isTouchDevice ? "button" : undefined}
-        tabIndex={!isTouchDevice ? 0 : undefined}
-        onKeyDown={(e) => {
-          if (!isTouchDevice && (e.key === 'Enter' || e.key === ' ')) {
-            e.preventDefault();
-            redirectToMembership();
-          }
-        }}
-      >
-        {/* Badge Most Popular */}
-        {isPopular && (
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
-            <div className="flex items-center gap-1.5 bg-gradient-to-r from-primary to-sky-400 text-white px-3 sm:px-4 py-1.5 rounded-full text-[11px] font-black uppercase tracking-widest shadow-lg whitespace-nowrap">
-              <Star className="w-3 h-3 fill-white flex-shrink-0" />
-              {t("MOST POPULAR", "MÁS POPULAR")}
-            </div>
+    <div className="my-6 sm:my-10 rounded-2xl overflow-hidden shadow-2xl">
+      <div className="bg-gradient-to-r from-sky-900 to-blue-900 p-6 sm:p-8 md:p-12 text-center text-white relative">
+        <div className="absolute inset-0 opacity-10 bg-[url('https://images.unsplash.com/photo-1545173168-9f1947eebb7f?w=1920&h=1080&fit=crop')] bg-cover bg-center" />
+        <div className="relative z-10">
+          <div className="inline-flex items-center gap-2 bg-white/20 backdrop-blur-sm rounded-full px-4 py-1.5 mb-4 sm:mb-6">
+            <Zap className="w-4 h-4 text-yellow-300 fill-yellow-300 flex-shrink-0" />
+            <span className="text-[11px] font-bold uppercase tracking-wider">{t("Express Service", "Servicio Express")}</span>
           </div>
-        )}
-
-        {/* IMAGEN CON FALLBACK */}
-        <div className={`relative h-40 w-full overflow-hidden bg-gradient-to-br flex-shrink-0 ${getDefaultGradient()}`}>
-          {image && !imageError ? (
-            <>
-              {!imageLoaded && (
-                <div className="absolute inset-0 flex items-center justify-center bg-slate-100 z-10">
-                  <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-                </div>
-              )}
-              <img
-                src={image}
-                alt={`${plan} – Ventura Fresh Laundry`}
-                className={`absolute inset-0 w-full h-full object-cover object-center transition-all duration-500 ${h ? "scale-105" : "scale-100"} ${imageLoaded ? "opacity-100" : "opacity-0"}`}
-                loading="lazy"
-                onLoad={() => setImageLoaded(true)}
-                onError={(e) => {
-                  console.warn(`Failed to load image for plan: ${plan}`, image);
-                  setImageError(true);
-                  setImageLoaded(true);
-                  e.currentTarget.style.display = "none";
-                }}
-              />
-            </>
-          ) : (
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <div className="w-16 h-16 rounded-full bg-white/30 backdrop-blur-sm flex items-center justify-center mb-2">
-                <span className="text-3xl">🧺</span>
+          <h3 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-2 sm:mb-3">{t("⚡ Need it today?", "⚡ ¿Lo necesitas hoy?")}</h3>
+          <p className="text-white/80 text-sm sm:text-lg mb-5 sm:mb-8">{t("Same Day Service Available", "Servicio disponible el mismo día")}</p>
+          <div className="flex flex-col sm:flex-row justify-center gap-2 sm:gap-4 mb-5 sm:mb-8">
+            {chips.map((chip, i) => (
+              <div key={i} className="bg-white/15 backdrop-blur-sm border border-white/25 rounded-xl px-5 py-3 flex sm:flex-col items-center justify-between sm:justify-center gap-2 sm:gap-1 sm:min-w-[110px]">
+                <p className="text-xs text-white/60 uppercase tracking-wider">{getChipLabel(chip)}</p>
+                <p className="text-xl font-black text-white">{chip.price}</p>
               </div>
-              <span className="text-xs font-semibold text-slate-600 bg-white/50 px-2 py-1 rounded-full">
-                {plan?.split(' ').slice(0, 2).join(' ') || "Plan"}
-              </span>
-            </div>
-          )}
-          <div className="absolute inset-0 bg-gradient-to-t from-white via-white/20 to-transparent pointer-events-none" />
-          <div className="absolute bottom-0 left-0 right-0 px-4 pb-2 pointer-events-none">
-            <h2 className={`text-base sm:text-lg font-black transition-colors duration-200 ${h ? "text-primary" : "text-slate-900"}`}>
-              {plan}
-            </h2>
+            ))}
           </div>
-        </div>
-
-        {/* Contenido debajo de la imagen */}
-        <div className="px-4 sm:px-5 pb-5 pt-2 flex flex-col flex-grow">
-          {/* Precio */}
-          <div className="flex items-baseline gap-1.5 mb-3">
-            <span className={`text-2xl sm:text-3xl font-black leading-none transition-colors duration-200 ${h ? "text-primary" : "text-slate-900"}`}>
-              {priceNum}
-            </span>
-            <span className="text-sm font-semibold text-slate-400 pb-1">
-              / {t("month", "mes")}
-            </span>
-          </div>
-
-          {/* LBS badge */}
-          {lbs_allowance && (
-            <div className="inline-flex items-center gap-1.5 bg-primary text-white rounded-full px-3 py-1.5 mb-3 self-start pointer-events-none">
-              <span className="text-xs font-bold leading-none">
-                {t(`Up to ${lbs_allowance} lbs included`, `Hasta ${lbs_allowance} lbs incluidas`)}
-              </span>
-            </div>
-          )}
-
-          {/* Indicador hover/tap para ver más características */}
-          {hasMoreFeatures && !showFeatures && (
-            <div className="text-center mb-2">
-              <span className="text-[10px] text-slate-400 bg-slate-100 px-2 py-1 rounded-full inline-flex items-center gap-1">
-                <span className="animate-pulse">👆</span> {isTouchDevice ? t("Tap to see more", "Toca para ver más") : t("Hover to see more", "Pasa el mouse para ver más")}
-              </span>
-            </div>
-          )}
-
-          {/* Features con animación */}
-          <div 
-            className="overflow-hidden transition-all duration-300 ease-in-out" 
-            style={{ 
-              maxHeight: showFeatures ? `${Math.min(features.length * 36, 300)}px` : '76px',
-              transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)'
-            }}
-          >
-            <ul className="space-y-2.5">
-              {visibleFeatures.map((f, i) => (
-                <li key={i} className="flex items-start gap-2.5 text-xs sm:text-sm text-slate-600 leading-snug">
-                  {featureIcon(f)}
-                  <span className="flex-1">{f}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          {/* Indicador de más características */}
-          {hasMoreFeatures && !showFeatures && (
-            <div className="text-center mt-1">
-              <span className="text-[10px] text-primary/60 font-medium">
-                +{features.length - 2} {t("more", "más")}...
-              </span>
-            </div>
-          )}
-
-          {/* Botón BECOME A MEMBER - SIEMPRE redirige */}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              redirectToMembership();
-            }}
-            className="mt-4 w-full bg-gradient-to-r from-primary to-primary/90 text-white py-2.5 rounded-lg font-semibold hover:from-primary/90 hover:to-primary transition-all duration-200 text-sm shadow-md hover:shadow-lg active:scale-95"
-          >
-            {t("👉 BECOME A MEMBER", "👉 CONVIÉRTETE EN MIEMBRO")}
-          </button>
-        </div>
-      </div>
-    </Tilt>
-  );
-};
-
-// ═══════════════════════════════════════════════════════════════
-//  SECCIÓN GLOBAL: UPGRADE OPTIONS + ADDITIONAL LBS
-// ═══════════════════════════════════════════════════════════════
-
-const MembershipExtrasSection = ({ t }) => (
-  <div className="mt-8 sm:mt-10 grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 max-w-5xl mx-auto">
-    <div className="bg-white rounded-2xl border border-slate-100 shadow-md p-5 sm:p-6 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300">
-      <div className="flex items-center gap-3 mb-5">
-        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
-          <Sparkles className="w-5 h-5 text-primary" />
-        </div>
-        <h4 className="font-black text-slate-900 uppercase tracking-wide text-sm">
-          {t("Upgrade Options", "Opciones de Mejora")}
-        </h4>
-      </div>
-      <div className="space-y-1">
-        <div className="flex items-center justify-between py-3 border-b border-slate-50">
-          <div className="flex items-center gap-2.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-violet-400 flex-shrink-0" />
-            <span className="text-sm text-slate-700">{t("Premium Service (24h)", "Servicio Premium (24h)")}</span>
-          </div>
-          <span className="text-sm font-black text-slate-800">+$0.25<span className="text-xs font-normal text-slate-400">/lb</span></span>
-        </div>
-        <div className="flex items-center justify-between py-3">
-          <div className="flex items-center gap-2.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-rose-400 flex-shrink-0" />
-            <span className="text-sm text-slate-700">{t("Express Service (Same Day)", "Servicio Express (Mismo Día)")}</span>
-          </div>
-          <span className="text-sm font-black text-slate-800">+$0.50<span className="text-xs font-normal text-slate-400">/lb</span></span>
-        </div>
-      </div>
-      <p className="text-xs text-slate-400 mt-3 pt-3 border-t border-slate-50">
-        {t("Need faster service? Upgrade anytime.", "¿Necesitas más rapidez? Mejora en cualquier momento.")}
-      </p>
-    </div>
-
-    <div className="bg-white rounded-2xl border border-slate-100 shadow-md p-5 sm:p-6 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300">
-      <div className="flex items-center gap-3 mb-5">
-        <div className="w-10 h-10 rounded-xl bg-sky-50 flex items-center justify-center flex-shrink-0">
-          <svg className="w-5 h-5 text-sky-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M3 6l9-3 9 3M3 6v12l9 3 9-3V6M12 3v18" />
-          </svg>
-        </div>
-        <h4 className="font-black text-slate-900 uppercase tracking-wide text-sm">
-          {t("Additional lbs After Allowance", "Lbs Adicionales Después del Límite")}
-        </h4>
-      </div>
-      <div className="space-y-1">
-        {[
-          { dot: "bg-blue-500",   label: t("Standard", "Estándar"), price: "$2.75" },
-          { dot: "bg-violet-500", label: t("Premium", "Premium"),   price: "$3.00" },
-          { dot: "bg-rose-400",   label: t("Express", "Express"),   price: "$3.25" },
-        ].map((row, i, arr) => (
-          <div key={i} className={`flex items-center justify-between py-3 ${i < arr.length - 1 ? "border-b border-slate-50" : ""}`}>
-            <div className="flex items-center gap-2.5">
-              <span className={`w-2.5 h-2.5 rounded-full ${row.dot} flex-shrink-0`} />
-              <span className="text-sm text-slate-700">{row.label}</span>
-            </div>
-            <span className="text-sm font-black text-slate-800">{row.price}<span className="text-xs font-normal text-slate-400">/lb</span></span>
-          </div>
-        ))}
-      </div>
-      <p className="text-xs text-slate-400 mt-3 pt-3 border-t border-slate-50">
-        {t("Additional charges apply per pound.", "Se aplican cargos adicionales por libra.")}
-      </p>
-    </div>
-  </div>
-);
-
-// ═══════════════════════════════════════════════════════════════
-//  SECCIÓN GLOBAL: WHAT'S INCLUDED IN ALL MEMBERSHIPS
-// ═══════════════════════════════════════════════════════════════
-
-const MembershipIncludedSection = ({ t }) => {
-  const items = [
-    { icon: "🛡️", label: t("Professional Wash, Dry & Fold", "Lavado, Secado y Doblado Profesional") },
-    { icon: "🧴", label: t("High-Quality Detergents (Free & Clear Available)", "Detergentes de Alta Calidad") },
-    { icon: "👕", label: t("Care for All Fabric Types", "Cuidado para Todo Tipo de Tela") },
-    { icon: "📦", label: t("Neatly Folded & Ready to Use", "Perfectamente Doblado y Listo") },
-    { icon: "✅", label: t("Consistent & Reliable Service", "Servicio Consistente y Confiable") },
-    { icon: "❤️", label: t("100% Satisfaction Guaranteed", "100% Satisfacción Garantizada") },
-  ];
-  return (
-    <div className="mt-6 sm:mt-8 max-w-5xl mx-auto">
-      <div className="bg-gradient-to-br from-sky-50 to-white rounded-2xl border border-sky-100 shadow-sm p-6 sm:p-8">
-        <h4 className="text-center text-sm font-black uppercase tracking-widest text-primary mb-6">
-          {t("What's Included in All Memberships", "Qué Incluyen Todas las Membresías")}
-        </h4>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-5">
-          {items.map((item, i) => (
-            <div key={i} className="flex flex-col items-center text-center gap-2.5">
-              <div className="w-12 h-12 rounded-2xl bg-white shadow-sm border border-sky-100 flex items-center justify-center text-2xl">
-                {item.icon}
-              </div>
-              <span className="text-xs font-semibold text-slate-600 leading-tight">{item.label}</span>
-            </div>
-          ))}
-        </div>
-        <p className="text-center text-xs text-slate-400 mt-6 pt-4 border-t border-sky-100">
-          {t("Memberships are prepaid. No monthly commitments.", "Las membresías son prepagadas. Sin compromisos mensuales.")}
-        </p>
-      </div>
-    </div>
-  );
-};
-
-const WashFoldTable = ({ t }) => {
-  const rows = [
-    { plan: t("Standard", "Estándar"), badge: "standard", price: "$2.25/lb", bestFor: t("Budget-friendly", "Económico") },
-    { plan: t("Premium", "Premium"),   badge: "premium",  price: "$2.50/lb", bestFor: t("Most popular", "Más popular"), isPopular: true },
-    { plan: t("Express", "Express"),   badge: "express",  price: "$2.75/lb", bestFor: t("Urgent orders", "Urgentes") },
-  ];
-  return (
-    <div className="bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 h-full flex flex-col">
-      <div className="px-5 pt-5 pb-3 border-b border-slate-100">
-        <p className="text-[11px] font-bold uppercase tracking-widest text-primary/50 mb-1">{t("In-Store Service", "Servicio en Tienda")}</p>
-        <h3 className="text-lg sm:text-xl font-bold text-slate-900">{t("🧼 Wash & Fold", "🧼 Lavado y Doblado")}</h3>
-      </div>
-      <div className="flex-grow divide-y divide-slate-50">
-        {rows.map((row, i) => (
-          <div key={i} className={`px-5 py-3 flex items-center justify-between gap-2 ${row.isPopular ? "bg-sky-50/50" : ""}`}>
-            <div className="flex items-center gap-2 flex-wrap min-w-0">
-              <span className={`text-sm font-semibold ${row.isPopular ? "text-primary" : "text-slate-700"}`}>{row.plan}</span>
-              {row.isPopular && <span className="text-[11px] font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded-full">⭐</span>}
-              <PlanBadge type={row.badge} t={t} />
-            </div>
-            <div className="flex flex-col items-end">
-              <span className="text-base font-black text-primary whitespace-nowrap">{row.price}</span>
-              <span className="text-xs text-slate-400">{row.bestFor}</span>
-            </div>
-          </div>
-        ))}
-      </div>
-      <div className="px-5 py-3 bg-slate-50 border-t border-slate-100"><p className="text-xs text-slate-400">{t("Professional care · minimum 10 lb per order", "Cuidado profesional · mínimo 10 lb por orden")}</p></div>
-    </div>
-  );
-};
-
-const PickupDeliveryTable = ({ t }) => {
-  const rows = [
-    { plan: t("Standard", "Estándar"), badge: "standard", memberPrice: "$2.50/lb", regularPrice: "$2.75/lb" },
-    { plan: t("Premium", "Premium"),   badge: "premium",  memberPrice: "$2.75/lb", regularPrice: "$3.00/lb", isPopular: true },
-    { plan: t("Express", "Express"),   badge: "express",  memberPrice: "$3.00/lb", regularPrice: "$3.25/lb" },
-  ];
-  return (
-    <div className="bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 h-full flex flex-col">
-      <div className="px-5 pt-5 pb-3 border-b border-slate-100">
-        <p className="text-[11px] font-bold uppercase tracking-widest text-primary/50 mb-1">{t("Door to Door", "Puerta a Puerta")}</p>
-        <h3 className="text-lg sm:text-xl font-bold text-slate-900">{t("🚚 Pickup & Delivery", "🚚 Recogida y Entrega")}</h3>
-      </div>
-      <div className="flex-grow divide-y divide-slate-50">
-        {rows.map((row, i) => (
-          <div key={i} className={`px-5 py-3 ${row.isPopular ? "bg-sky-50/50" : ""}`}>
-            <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <span className={`text-sm font-semibold ${row.isPopular ? "text-primary" : "text-slate-700"}`}>{row.plan}</span>
-              {row.isPopular && <span className="text-[11px] font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded-full">⭐</span>}
-              <PlanBadge type={row.badge} t={t} />
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5"><Star className="w-3 h-3 text-primary fill-primary/40 flex-shrink-0" /><span className="text-xs text-slate-500">{t("Members", "Miembros")}</span><span className="text-sm font-black text-primary">{row.memberPrice}</span></div>
-              <div className="flex items-center gap-1.5"><span className="text-xs text-slate-400">{t("Regular", "Regular")}</span><span className="text-sm font-semibold text-slate-500">{row.regularPrice}</span></div>
-            </div>
-          </div>
-        ))}
-      </div>
-      <div className="border-t border-slate-100">
-        <div className="px-5 py-3 bg-sky-50/30">
-          <p className="text-[11px] font-bold uppercase tracking-widest text-primary/60 mb-1.5 flex items-center gap-1"><Star className="w-3 h-3 fill-primary/30 text-primary" />{t("Members", "Miembros")}</p>
-          <ul className="space-y-0.5">
-            {[
-              t("✅ FREE (0–3 miles)", "✅ GRATIS (0–3 millas)"),
-              t("🚗 $1.99 (3–5 mi) · $2.99 (5–8 mi) · $4.99 (8–12 mi) · $8.99 (12–15 mi)",
-                 "🚗 $1.99 (3–5 mi) · $2.99 (5–8 mi) · $4.99 (8–12 mi) · $8.99 (12–15 mi)"),
-              t("📦 Min. order $40", "📦 Pedido mínimo $40"),
-            ].map((item, i) => <li key={i} className="text-xs text-slate-600">{item}</li>)}
+          <ul className="flex flex-wrap justify-center gap-3 sm:gap-6 text-xs sm:text-sm mb-5 sm:mb-8">
+            {features.map((item, i) => (
+              <li key={i} className="flex items-center gap-1.5 sm:gap-2">
+                <Check className="w-4 h-4 text-sky-300 flex-shrink-0" />
+                {t(item, item)}
+              </li>
+            ))}
           </ul>
+          <Link to="/schedule-pickup?express=true">
+            <Mag as="div" strength={0.2} className="inline-flex items-center gap-2 bg-white text-sky-900 rounded-full px-6 sm:px-8 py-3 font-bold text-sm uppercase tracking-wider shadow-lg hover:shadow-xl transition-all hover:-translate-y-0.5 active:scale-95 touch-manipulation" style={{ minHeight: "48px" }}>
+              {t("Book Express Service", "Reservar Servicio Express")} <ArrowRight className="w-4 h-4" />
+            </Mag>
+          </Link>
         </div>
       </div>
     </div>
   );
 };
 
-const ExpressServiceBlock = ({ t }) => (
-  <div className="my-6 sm:my-10 rounded-2xl overflow-hidden shadow-2xl">
-    <div className="bg-gradient-to-r from-sky-900 to-blue-900 p-6 sm:p-8 md:p-12 text-center text-white relative">
-      <div className="absolute inset-0 opacity-10 bg-[url('https://images.unsplash.com/photo-1545173168-9f1947eebb7f?w=1920&h=1080&fit=crop')] bg-cover bg-center" />
-      <div className="relative z-10">
-        <div className="inline-flex items-center gap-2 bg-white/20 backdrop-blur-sm rounded-full px-4 py-1.5 mb-4 sm:mb-6"><Zap className="w-4 h-4 text-yellow-300 fill-yellow-300 flex-shrink-0" /><span className="text-[11px] font-bold uppercase tracking-wider">{t("Express Service", "Servicio Express")}</span></div>
-        <h3 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-2 sm:mb-3">{t("⚡ Need it today?", "⚡ ¿Lo necesitas hoy?")}</h3>
-        <p className="text-white/80 text-sm sm:text-lg mb-5 sm:mb-8">{t("Same Day Service Available", "Servicio disponible el mismo día")}</p>
-        <div className="flex flex-col sm:flex-row justify-center gap-2 sm:gap-4 mb-5 sm:mb-8">
-          {[{ label: t("In-Store", "En Tienda"), price: "$2.75/lb" }, { label: t("Members P&D", "Miembros R&E"), price: "$3.00/lb" }, { label: t("Regular P&D", "Regular R&E"), price: "$3.25/lb" }].map((chip, i) => (
-            <div key={i} className="bg-white/15 backdrop-blur-sm border border-white/25 rounded-xl px-5 py-3 flex sm:flex-col items-center justify-between sm:justify-center gap-2 sm:gap-1 sm:min-w-[110px]">
-              <p className="text-xs text-white/60 uppercase tracking-wider">{chip.label}</p>
-              <p className="text-xl font-black text-white">{chip.price}</p>
-            </div>
-          ))}
+const DynamicSelfServiceTable = ({ t, locale }) => {
+  const [washerPrices, setWasherPrices] = useState([]);
+  const [dryerPrices, setDryerPrices] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [hours, setHours] = useState({ open: "6:00 AM", close: "10:00 PM" });
+
+  useEffect(() => {
+    const loadPrices = async () => {
+      try {
+        const res = await fetch(`${API}/public/services-page-config`);
+        if (res.ok) {
+          const config = await res.json();
+          setWasherPrices(config.washers || []);
+          setDryerPrices(config.dryers || []);
+          setHours({
+            open: config.self_service_hours_open || "6:00 AM",
+            close: config.self_service_hours_close || "10:00 PM"
+          });
+        }
+      } catch (error) {
+        console.error("Error loading self-service prices:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadPrices();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-lg p-8 text-center">
+        <RefreshCw className="w-6 h-6 animate-spin mx-auto text-primary" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 h-full flex flex-col">
+      <div className="px-5 pt-5 pb-3 border-b border-slate-100">
+        <p className="text-[11px] font-bold uppercase tracking-widest text-primary/50 mb-1">{t("Walk-in", "Presencial")}</p>
+        <h3 className="text-lg sm:text-xl font-bold text-slate-900">{t("🏪 Self-Service", "🏪 Autoservicio")}</h3>
+        <p className="text-slate-400 text-xs mt-1">
+          {t(`Open ${hours.open} – ${hours.close}`, `Abierto ${hours.open} – ${hours.close}`)}
+        </p>
+      </div>
+      <div className="flex-grow grid grid-cols-2 divide-x divide-slate-100">
+        <div className="p-4">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-3 flex items-center gap-1.5">
+            <span className="w-0.5 h-4 bg-primary rounded-full inline-block flex-shrink-0" />{t("Washers", "Lavadoras")}
+          </p>
+          <table className="w-full">
+            <tbody>
+              {washerPrices.map((it, i) => (
+                <tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-sky-50/30 transition-colors group">
+                  <td className="py-2 text-xs text-slate-500 group-hover:text-slate-700 pr-1">
+                    {locale === "es" && it.size_es ? it.size_es : it.size}
+                  </td>
+                  <td className="py-2 text-right text-xs font-bold text-slate-800 group-hover:text-primary transition-colors whitespace-nowrap">{it.price}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-        <ul className="flex flex-wrap justify-center gap-3 sm:gap-6 text-xs sm:text-sm mb-5 sm:mb-8">
-          {[t("Priority processing", "Procesamiento prioritario"), t("Fast turnaround", "Respuesta rápida"), t("Limited capacity", "Capacidad limitada")].map((item, i) => (
-            <li key={i} className="flex items-center gap-1.5 sm:gap-2"><Check className="w-4 h-4 text-sky-300 flex-shrink-0" />{item}</li>
-          ))}
-        </ul>
-        <Link to="/schedule-pickup?express=true">
-          <Mag as="div" strength={0.2} className="inline-flex items-center gap-2 bg-white text-sky-900 rounded-full px-6 sm:px-8 py-3 font-bold text-sm uppercase tracking-wider shadow-lg hover:shadow-xl transition-all hover:-translate-y-0.5 active:scale-95 touch-manipulation" style={{ minHeight: "48px" }}>
-            {t("Book Express Service", "Reservar Servicio Express")} <ArrowRight className="w-4 h-4" />
-          </Mag>
-        </Link>
-      </div>
-    </div>
-  </div>
-);
-
-const SelfServiceTable = ({ t, washerPrices, dryerPrices }) => (
-  <div className="bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 h-full flex flex-col">
-    <div className="px-5 pt-5 pb-3 border-b border-slate-100">
-      <p className="text-[11px] font-bold uppercase tracking-widest text-primary/50 mb-1">{t("Walk-in", "Presencial")}</p>
-      <h3 className="text-lg sm:text-xl font-bold text-slate-900">{t("🏪 Self-Service", "🏪 Autoservicio")}</h3>
-      <p className="text-slate-400 text-xs mt-1">{t("Open 6:00 AM – 10:00 PM", "Abierto 6:00 AM – 10:00 PM")}</p>
-    </div>
-    <div className="flex-grow grid grid-cols-2 divide-x divide-slate-100">
-      <div className="p-4">
-        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-3 flex items-center gap-1.5">
-          <span className="w-0.5 h-4 bg-primary rounded-full inline-block flex-shrink-0" />
-          {t("Washers", "Lavadoras")}
-        </p>
-        <table className="w-full">
-          <tbody>
-            {washerPrices.map((it, i) => (
-              <tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-sky-50/30 transition-colors group">
-                <td className="py-2 text-xs text-slate-500 group-hover:text-slate-700 pr-1">{it.size}</td>
-                <td className="py-2 text-right text-xs font-bold text-slate-800 group-hover:text-primary transition-colors whitespace-nowrap">{it.price}</td>
+        <div className="p-4">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-3 flex items-center gap-1.5">
+            <span className="w-0.5 h-4 bg-sky-300 rounded-full inline-block flex-shrink-0" />{t("Dryers", "Secadoras")}
+          </p>
+          <table className="w-full">
+            <thead>
+              <tr>
+                <th className="text-left py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">{t("Size", "Tamaño")}</th>
+                <th className="text-left py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">{t("Time", "Tiempo")}</th>
+                <th className="text-right py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">{t("Price", "Precio")}</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="p-4">
-        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-3 flex items-center gap-1.5">
-          <span className="w-0.5 h-4 bg-sky-300 rounded-full inline-block flex-shrink-0" />
-          {t("Dryers", "Secadoras")}
-        </p>
-        <table className="w-full">
-          <thead>
-            <tr>
-              <th className="text-left py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">{t("Size", "Tamaño")}</th>
-              <th className="text-left py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">{t("Time", "Tiempo")}</th>
-              <th className="text-right py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">{t("Price", "Precio")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {dryerPrices.map((it, i) => (
-              <tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-sky-50/30 transition-colors group">
-                <td className="py-2 text-xs text-slate-500 group-hover:text-slate-700 pr-1 whitespace-nowrap">{it.size}</td>
-                <td className="py-2 text-xs text-slate-500 group-hover:text-slate-700 pr-1 whitespace-nowrap">{it.time}</td>
-                <td className="py-2 text-right text-xs font-bold text-slate-800 group-hover:text-primary transition-colors whitespace-nowrap">{it.price}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <p className="text-[11px] text-slate-400 mt-2">{t("+5 min extra: $0.25", "+5 min extra: $0.25")}</p>
+            </thead>
+            <tbody>
+              {dryerPrices.map((it, i) => (
+                <tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-sky-50/30 transition-colors group">
+                  <td className="py-2 text-xs text-slate-500 group-hover:text-slate-700 pr-1 whitespace-nowrap">{it.size}</td>
+                  <td className="py-2 text-xs text-slate-500 group-hover:text-slate-700 pr-1 whitespace-nowrap">{it.time}</td>
+                  <td className="py-2 text-right text-xs font-bold text-slate-800 group-hover:text-primary transition-colors whitespace-nowrap">{it.price}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="text-[11px] text-slate-400 mt-2">{t("+5 min extra: $0.25", "+5 min extra: $0.25")}</p>
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
-const PerPieceTable = ({ t, categories }) => {
+const DynamicPerPieceTable = ({ t, locale }) => {
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const res = await fetch(`${API}/public/services-page-config`);
+        if (res.ok) {
+          const config = await res.json();
+          setCategories(config.per_piece_categories || []);
+        }
+      } catch (error) {
+        console.error("Error loading per-piece categories:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadCategories();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-lg p-8 text-center">
+        <RefreshCw className="w-6 h-6 animate-spin mx-auto text-primary" />
+      </div>
+    );
+  }
+
   const mainCategories = categories.slice(0, 3);
   const extraCategories = categories.slice(3);
+
   return (
     <div className="bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 h-full flex flex-col">
       <div className="px-5 pt-5 pb-3 border-b border-slate-100">
@@ -1157,12 +762,16 @@ const PerPieceTable = ({ t, categories }) => {
         <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-slate-100">
           {mainCategories.map((cat, ci) => (
             <div key={ci} className="p-4">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b-2 border-primary/15 pb-2 mb-3">{cat.category}</p>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b-2 border-primary/15 pb-2 mb-3">
+                {locale === "es" && cat.category_es ? cat.category_es : cat.category}
+              </p>
               <table className="w-full">
                 <tbody>
                   {cat.items.map((it, i) => (
                     <tr key={i} className="border-b border-slate-50 last:border-0 hover:bg-sky-50/30 transition-colors group">
-                      <td className="py-2 text-xs text-slate-500 group-hover:text-slate-700 pr-2 leading-tight">{it.name}</td>
+                      <td className="py-2 text-xs text-slate-500 group-hover:text-slate-700 pr-2 leading-tight">
+                        {locale === "es" && it.name_es ? it.name_es : it.name}
+                      </td>
                       <td className="py-2 text-right text-xs font-bold text-slate-800 group-hover:text-primary transition-colors whitespace-nowrap">{it.price}</td>
                     </tr>
                   ))}
@@ -1173,19 +782,22 @@ const PerPieceTable = ({ t, categories }) => {
         </div>
         {mainCategories.length >= 3 && (
           <div className="px-4 py-2 text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg mx-4 my-2">
-            💡 {t("Please note: Bed sheet sets and regular clothing are charged by weight at our standard Wash & Fold rate.",
-                   "Nota: Los juegos de sábanas y la ropa común se cobran por peso a nuestra tarifa estándar de Lavado y Doblado.")}
+            💡 {t("Bed sheet sets and regular clothing are charged by weight at our standard Wash & Fold rate.", "Los juegos de sábanas y la ropa común se cobran por peso a nuestra tarifa estándar.")}
           </div>
         )}
         {extraCategories.length > 0 && (
           <div className="border-t border-slate-100 p-4">
             {extraCategories.map((cat, ci) => (
               <div key={ci}>
-                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b-2 border-primary/15 pb-2 mb-3">{cat.category}</p>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b-2 border-primary/15 pb-2 mb-3">
+                  {locale === "es" && cat.category_es ? cat.category_es : cat.category}
+                </p>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-1">
                   {cat.items.map((it, i) => (
                     <div key={i} className="flex justify-between items-center py-2 border-b border-slate-50 last:border-0 hover:bg-sky-50/30 transition-colors px-1">
-                      <span className="text-xs text-slate-600">{it.name}</span>
+                      <span className="text-xs text-slate-600">
+                        {locale === "es" && it.name_es ? it.name_es : it.name}
+                      </span>
                       <span className="text-xs font-bold text-slate-800 whitespace-nowrap">{it.price}</span>
                     </div>
                   ))}
@@ -1205,20 +817,358 @@ const PerPieceTable = ({ t, categories }) => {
   );
 };
 
-const DarkSection = ({ children, bgImage, from = "from-sky-950/92", to = "to-sky-900/88", scrollY = 0, parallaxStrength = 0.15 }) => (
-  <section className="py-16 sm:py-20 relative overflow-hidden bg-sky-950">
-    <div className="absolute inset-0 will-change-transform" style={{ backgroundImage: `url('${bgImage}')`, backgroundSize: "cover", backgroundPosition: "center", transform: `translateY(${scrollY * parallaxStrength}px) scale(1.08)` }} />
-    <div className="absolute inset-0 bg-sky-950/80" />
-    <div className={`absolute inset-0 bg-gradient-to-br ${from} ${to}`} />
-    <div className="absolute inset-0 opacity-[0.04]" style={{ backgroundImage: "radial-gradient(rgba(255,255,255,0.8) 1px,transparent 1px)", backgroundSize: "28px 28px" }} />
-    <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">{children}</div>
-  </section>
+const DynamicDarkSection = ({ sectionType, defaultData, scrollY = 0, t }) => {
+  const [sectionData, setSectionData] = useState(defaultData);
+  const [loading, setLoading] = useState(true);
+  const { locale } = useLocale();
+
+  useEffect(() => {
+    const loadSection = async () => {
+      try {
+        const res = await fetch(`${API}/public/services-page-config`);
+        if (res.ok) {
+          const config = await res.json();
+          const sectionKey = `${sectionType}_section`;
+          if (config[sectionKey]) {
+            setSectionData(config[sectionKey]);
+          }
+        }
+      } catch (error) {
+        console.error(`Error loading ${sectionType} section:`, error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadSection();
+  }, [sectionType]);
+
+  const getText = (field) => {
+    if (locale === "es" && sectionData[`${field}_es`]) {
+      return sectionData[`${field}_es`];
+    }
+    return sectionData[field] || defaultData[field];
+  };
+
+  const getFeatures = () => {
+    if (locale === "es" && sectionData.features_es && sectionData.features_es.length > 0) {
+      return sectionData.features_es;
+    }
+    return sectionData.features || defaultData.features || [];
+  };
+
+  const bgImage = sectionData.bg_image_url || defaultData.bg_image_url;
+  const tint = sectionData.tint || defaultData.tint || "rgba(3, 15, 40, 0.68)";
+
+  if (loading) {
+    return (
+      <section className="py-20 sm:py-28 relative overflow-hidden bg-slate-800">
+        <div className="relative z-10 max-w-3xl mx-auto px-4 text-center">
+          <RefreshCw className="w-8 h-8 animate-spin mx-auto text-white/50" />
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <DarkSection bgImage={bgImage} scrollY={scrollY} parallaxStrength={0.03} tint={tint}>
+      <Reveal dir="blur">
+        <div className="flex items-center justify-center gap-2 mb-4">
+          <div className="h-px w-8 bg-white/30" />
+          <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/70">
+            {sectionType === "airbnb" ? t("Airbnb & Rentals", "Airbnb y Alquileres") : 
+             sectionType === "b2b" ? t("Commercial Services", "Servicios Comerciales") : 
+             t("Commercial Services", "Servicios Comerciales")}
+          </span>
+          <div className="h-px w-8 bg-white/30" />
+        </div>
+      </Reveal>
+      <Reveal delay={80}>
+        <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-white text-center mb-4 leading-tight" style={{ textShadow: "0 2px 20px rgba(0,0,0,0.4)" }}>
+          {getText("heading")}
+        </h2>
+      </Reveal>
+      <Reveal delay={160}>
+        <p className="text-white/80 text-center mb-8 max-w-lg mx-auto text-sm sm:text-base leading-relaxed" style={{ textShadow: "0 1px 8px rgba(0,0,0,0.5)" }}>
+          {getText("subheading")}
+        </p>
+      </Reveal>
+      <Reveal delay={240} dir="scale">
+        <GlassCard className="p-4 sm:p-6 mb-8">
+          <AccordionItem 
+            title={t("Key Features", "Características Clave")} 
+            isOpen={true} 
+            onClick={() => {}} 
+            variant="dark"
+          >
+            <ul className="space-y-2.5 pt-1">
+              {getFeatures().map((item, i) => (
+                <li key={i} className="flex items-start gap-2.5 text-sm text-white/75">
+                  <Check className="w-4 h-4 text-sky-400 flex-shrink-0 mt-0.5" />{item}
+                </li>
+              ))}
+            </ul>
+          </AccordionItem>
+        </GlassCard>
+      </Reveal>
+      <Reveal delay={340}>
+        <div className="text-center">
+          <Link to={sectionData.cta_url || defaultData.cta_url || "/schedule-pickup"}>
+            <Mag as="div" strength={0.2} className="inline-flex items-center gap-2 overflow-hidden relative bg-white rounded-full px-7 sm:px-10 py-3.5 sm:py-4 text-sm font-bold uppercase tracking-widest shadow-xl cursor-pointer hover:-translate-y-0.5 transition-transform duration-300 active:scale-95 group touch-manipulation">
+              <span className="relative z-10 flex items-center gap-2">{getText("cta_label")}<ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-1" /></span>
+              <span className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/8 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
+            </Mag>
+          </Link>
+        </div>
+      </Reveal>
+    </DarkSection>
+  );
+};
+
+// Datos por defecto para secciones oscuras
+const DARK_SECTION_DEFAULTS = {
+  airbnb: {
+    heading: "Premium Laundry for Airbnb Hosts.",
+    heading_es: "Lavandería Premium para Anfitriones Airbnb.",
+    subheading: "Spotless linens. Five-star guest experiences. Zero hassle.",
+    subheading_es: "Ropa de cama impecable. Experiencias de cinco estrellas. Cero complicaciones.",
+    features: ["Customized programs for Airbnb hosts", "Professional cleaning & sanitization", "Scheduled pickup aligned with turnover", "Consistent quality for 5-star reviews", "Save time, eliminate laundry stress"],
+    features_es: ["Programas personalizados para anfitriones", "Limpieza y sanitización profesional", "Recogida alineada con tu calendario", "Calidad constante para reseñas de 5 estrellas", "Ahorra tiempo, elimina el estrés"],
+    cta_label: "SCHEDULE PICK-UP",
+    cta_label_es: "PROGRAMAR RECOGIDA",
+    cta_url: "/schedule-pickup",
+    bg_image_url: "https://images.unsplash.com/photo-1561053720-76cd73ff22c3?q=80&w=1170&auto=format&fit=crop",
+    tint: "rgba(3, 15, 40, 0.68)",
+  },
+  b2b: {
+    heading: "High-Performance B2B Laundry.",
+    heading_es: "Alto Rendimiento Lavandería B2B.",
+    subheading: "Reliable, scalable, professional — built to handle volume every day.",
+    subheading_es: "Confiable, escalable, profesional — para manejar volumen todos los días.",
+    features: ["Customized programs for all business sizes", "Commercial-grade washing & stain removal", "Scheduled pickup & delivery", "Flexible volume, no long-term commitments", "Priority support for business clients"],
+    features_es: ["Programas para empresas de todos los tamaños", "Lavado comercial y eliminación de manchas", "Recogida y entrega programadas", "Volumen flexible, sin compromisos a largo plazo", "Soporte prioritario para clientes empresariales"],
+    cta_label: "REQUEST A QUOTE",
+    cta_label_es: "SOLICITAR COTIZACIÓN",
+    cta_url: "/request-quote",
+    bg_image_url: "https://images.unsplash.com/photo-1545173168-9f1947eebb7f?w=600&auto=format&fit=crop",
+    tint: "rgba(3, 15, 40, 0.68)",
+  },
+  commercial: {
+    heading: "Commercial Laundry You Can Depend On.",
+    heading_es: "Lavandería Comercial en la que Puedes Confiar.",
+    subheading: "Volume, quality, reliability — every single day.",
+    subheading_es: "Volumen, calidad, confiabilidad — todos los días.",
+    features: ["Restaurants, hotels, spas, gyms, offices", "High-volume processing with commercial equipment", "Specialized care for uniforms and delicates", "Reliable pickup & delivery, strict quality control", "Flexible billing and service plans"],
+    features_es: ["Restaurantes, hoteles, spas, gimnasios, oficinas", "Procesamiento de alto volumen con equipo comercial", "Cuidado especializado para uniformes y delicados", "Recogida confiable y control de calidad estricto", "Facturación y planes de servicio flexibles"],
+    cta_label: "REQUEST A QUOTE",
+    cta_label_es: "SOLICITAR COTIZACIÓN",
+    cta_url: "/request-quote",
+    bg_image_url: "https://plus.unsplash.com/premium_photo-1664372899366-d5fb20b332d1?w=600&auto=format&fit=crop",
+    tint: "rgba(3, 17, 48, 0.74)",
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════
+//  MEMBERSHIP
+// ═══════════════════════════════════════════════════════════════
+const MembershipCard = ({ plan, price, image, features, isPopular, lbs_allowance, onSelectPlan }) => {
+  const { t } = useLocale();
+  const [h, setH] = useState(false);
+  const [showFeatures, setShowFeatures] = useState(false);
+  const [isTouchDevice, setIsTouchDevice] = useState(false);
+  const [imageError, setImageError] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
+
+  useEffect(() => {
+    setIsTouchDevice('ontouchstart' in window || navigator.maxTouchPoints > 0);
+  }, []);
+
+  const priceNum = typeof price === "string" ? price.split("/")[0].trim() : price;
+
+  const featureIcon = (f = "") => {
+    const fl = f.toLowerCase();
+    if (fl.includes("standard") || fl.includes("estándar") || fl.includes("36h") || fl.includes("turnaround"))
+      return <Clock className="w-4 h-4 flex-shrink-0 text-slate-400 mt-0.5" />;
+    if (fl.includes("priority") || fl.includes("priorit") || fl.includes("handling"))
+      return <Zap className="w-4 h-4 flex-shrink-0 text-amber-400 mt-0.5" />;
+    if (fl.includes("emergency") || fl.includes("emergencia") || fl.includes("pickup"))
+      return <Truck className="w-4 h-4 flex-shrink-0 text-sky-400 mt-0.5" />;
+    if (fl.includes("perfect") || fl.includes("ideal") || fl.includes("great") || fl.includes("best") || fl.includes("airbnb") || fl.includes("families") || fl.includes("professionals"))
+      return <Star className="w-4 h-4 flex-shrink-0 text-slate-300 mt-0.5" />;
+    return <Check className="w-4 h-4 flex-shrink-0 text-sky-400 mt-0.5" />;
+  };
+
+  const redirectToMembership = () => {
+    if (onSelectPlan) {
+      onSelectPlan(plan, price, lbs_allowance, features);
+    } else {
+      window.location.href = `/membership-signup?plan=${encodeURIComponent(plan)}&price=${encodeURIComponent(price)}&lbs=${lbs_allowance || ''}`;
+    }
+  };
+
+  const getDefaultGradient = () => {
+    const gradients = ["from-sky-100 to-sky-200", "from-indigo-100 to-indigo-200", "from-purple-100 to-purple-200", "from-pink-100 to-pink-200", "from-amber-100 to-amber-200", "from-emerald-100 to-emerald-200"];
+    return gradients[(plan?.length || 0) % gradients.length];
+  };
+
+  const visibleFeatures = showFeatures ? features : features.slice(0, 2);
+
+  return (
+    <Tilt depth={isPopular ? 4 : 3}>
+      <div
+        onClick={() => { if (!isTouchDevice) redirectToMembership(); }}
+        onMouseEnter={() => { setH(true); if (!isTouchDevice) setShowFeatures(true); }}
+        onMouseLeave={() => { setH(false); if (!isTouchDevice) setShowFeatures(false); }}
+        onTouchStart={(e) => { if (e.target.closest('button')) return; if (isTouchDevice) { e.preventDefault(); e.stopPropagation(); setShowFeatures(s => !s); } }}
+        className={`relative bg-white rounded-2xl overflow-hidden h-full flex flex-col transition-all duration-300 ${!isTouchDevice ? 'cursor-pointer' : ''} ${isPopular ? "border-2 border-primary shadow-2xl shadow-primary/20 sm:scale-105 z-10" : "border border-slate-200 shadow-lg hover:shadow-xl"} ${h ? "-translate-y-1" : ""}`}
+        role={!isTouchDevice ? "button" : undefined}
+        tabIndex={!isTouchDevice ? 0 : undefined}
+        onKeyDown={(e) => { if (!isTouchDevice && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); redirectToMembership(); } }}
+      >
+        {isPopular && (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
+            <div className="flex items-center gap-1.5 bg-gradient-to-r from-primary to-sky-400 text-white px-3 sm:px-4 py-1.5 rounded-full text-[11px] font-black uppercase tracking-widest shadow-lg whitespace-nowrap">
+              <Star className="w-3 h-3 fill-white flex-shrink-0" />{t("MOST POPULAR", "MÁS POPULAR")}
+            </div>
+          </div>
+        )}
+        <div className={`relative h-40 w-full overflow-hidden bg-gradient-to-br flex-shrink-0 ${getDefaultGradient()}`}>
+          {image && !imageError ? (
+            <>
+              {!imageLoaded && (
+                <div className="absolute inset-0 flex items-center justify-center bg-slate-100 z-10">
+                  <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                </div>
+              )}
+              <img
+                src={image}
+                alt={`${plan} – Ventura Fresh Laundry`}
+                className={`absolute inset-0 w-full h-full object-cover object-center transition-all duration-500 ${h ? "scale-105" : "scale-100"} ${imageLoaded ? "opacity-100" : "opacity-0"}`}
+                loading="lazy"
+                onLoad={() => setImageLoaded(true)}
+                onError={(e) => { setImageError(true); setImageLoaded(true); e.currentTarget.style.display = "none"; }}
+              />
+            </>
+          ) : (
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <div className="w-16 h-16 rounded-full bg-white/30 backdrop-blur-sm flex items-center justify-center mb-2"><span className="text-3xl">🧺</span></div>
+              <span className="text-xs font-semibold text-slate-600 bg-white/50 px-2 py-1 rounded-full">{plan?.split(' ').slice(0, 2).join(' ') || "Plan"}</span>
+            </div>
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-white via-white/20 to-transparent pointer-events-none" />
+          <div className="absolute bottom-0 left-0 right-0 px-4 pb-2 pointer-events-none">
+            <h2 className={`text-base sm:text-lg font-black transition-colors duration-200 ${h ? "text-primary" : "text-slate-900"}`}>{plan}</h2>
+          </div>
+        </div>
+        <div className="px-4 sm:px-5 pb-5 pt-2 flex flex-col flex-grow">
+          <div className="flex items-baseline gap-1.5 mb-3">
+            <span className={`text-2xl sm:text-3xl font-black leading-none transition-colors duration-200 ${h ? "text-primary" : "text-slate-900"}`}>{priceNum}</span>
+            <span className="text-sm font-semibold text-slate-400 pb-1">/ {t("month", "mes")}</span>
+          </div>
+          {lbs_allowance && (
+            <div className="inline-flex items-center gap-1.5 bg-primary text-white rounded-full px-3 py-1.5 mb-3 self-start pointer-events-none">
+              <span className="text-xs font-bold leading-none">{t(`Up to ${lbs_allowance} lbs included`, `Hasta ${lbs_allowance} lbs incluidas`)}</span>
+            </div>
+          )}
+          {features.length > 2 && !showFeatures && (
+            <div className="text-center mb-2">
+              <span className="text-[10px] text-slate-400 bg-slate-100 px-2 py-1 rounded-full inline-flex items-center gap-1">
+                <span className="animate-pulse">👆</span>{isTouchDevice ? t("Tap to see more", "Toca para ver más") : t("Hover to see more", "Pasa el mouse para ver más")}
+              </span>
+            </div>
+          )}
+          <div className="overflow-hidden transition-all duration-300 ease-in-out" style={{ maxHeight: showFeatures ? `${Math.min(features.length * 36, 300)}px` : '76px' }}>
+            <ul className="space-y-2.5">
+              {visibleFeatures.map((f, i) => (
+                <li key={i} className="flex items-start gap-2.5 text-xs sm:text-sm text-slate-600 leading-snug">
+                  {featureIcon(f)}<span className="flex-1">{f}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          {features.length > 2 && !showFeatures && (
+            <div className="text-center mt-1"><span className="text-[10px] text-primary/60 font-medium">+{features.length - 2} {t("more", "más")}...</span></div>
+          )}
+          <button
+            onClick={(e) => { e.stopPropagation(); redirectToMembership(); }}
+            className="mt-4 w-full bg-gradient-to-r from-primary to-primary/90 text-white py-2.5 rounded-lg font-semibold hover:from-primary/90 hover:to-primary transition-all duration-200 text-sm shadow-md hover:shadow-lg active:scale-95"
+          >
+            {t("👉 BECOME A MEMBER", "👉 CONVIÉRTETE EN MIEMBRO")}
+          </button>
+        </div>
+      </div>
+    </Tilt>
+  );
+};
+
+const MembershipExtrasSection = ({ t }) => (
+  <div className="mt-8 sm:mt-10 grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 max-w-5xl mx-auto">
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-md p-5 sm:p-6 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300">
+      <div className="flex items-center gap-3 mb-5">
+        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0"><Sparkles className="w-5 h-5 text-primary" /></div>
+        <h4 className="font-black text-slate-900 uppercase tracking-wide text-sm">{t("Upgrade Options", "Opciones de Mejora")}</h4>
+      </div>
+      <div className="space-y-1">
+        <div className="flex items-center justify-between py-3 border-b border-slate-50">
+          <div className="flex items-center gap-2.5"><span className="w-2.5 h-2.5 rounded-full bg-violet-400 flex-shrink-0" /><span className="text-sm text-slate-700">{t("Premium Service (24h)", "Servicio Premium (24h)")}</span></div>
+          <span className="text-sm font-black text-slate-800">+$0.25<span className="text-xs font-normal text-slate-400">/lb</span></span>
+        </div>
+        <div className="flex items-center justify-between py-3">
+          <div className="flex items-center gap-2.5"><span className="w-2.5 h-2.5 rounded-full bg-rose-400 flex-shrink-0" /><span className="text-sm text-slate-700">{t("Express Service (Same Day)", "Servicio Express (Mismo Día)")}</span></div>
+          <span className="text-sm font-black text-slate-800">+$0.50<span className="text-xs font-normal text-slate-400">/lb</span></span>
+        </div>
+      </div>
+      <p className="text-xs text-slate-400 mt-3 pt-3 border-t border-slate-50">{t("Need faster service? Upgrade anytime.", "¿Necesitas más rapidez? Mejora en cualquier momento.")}</p>
+    </div>
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-md p-5 sm:p-6 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300">
+      <div className="flex items-center gap-3 mb-5">
+        <div className="w-10 h-10 rounded-xl bg-sky-50 flex items-center justify-center flex-shrink-0">
+          <svg className="w-5 h-5 text-sky-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 6l9-3 9 3M3 6v12l9 3 9-3V6M12 3v18" /></svg>
+        </div>
+        <h4 className="font-black text-slate-900 uppercase tracking-wide text-sm">{t("Additional lbs After Allowance", "Lbs Adicionales Después del Límite")}</h4>
+      </div>
+      <div className="space-y-1">
+        {[{ dot: "bg-blue-500", label: t("Standard", "Estándar"), price: "$2.75" }, { dot: "bg-violet-500", label: t("Premium", "Premium"), price: "$3.00" }, { dot: "bg-rose-400", label: t("Express", "Express"), price: "$3.25" }].map((row, i, arr) => (
+          <div key={i} className={`flex items-center justify-between py-3 ${i < arr.length - 1 ? "border-b border-slate-50" : ""}`}>
+            <div className="flex items-center gap-2.5"><span className={`w-2.5 h-2.5 rounded-full ${row.dot} flex-shrink-0`} /><span className="text-sm text-slate-700">{row.label}</span></div>
+            <span className="text-sm font-black text-slate-800">{row.price}<span className="text-xs font-normal text-slate-400">/lb</span></span>
+          </div>
+        ))}
+      </div>
+      <p className="text-xs text-slate-400 mt-3 pt-3 border-t border-slate-50">{t("Additional charges apply per pound.", "Se aplican cargos adicionales por libra.")}</p>
+    </div>
+  </div>
 );
+
+const MembershipIncludedSection = ({ t }) => {
+  const items = [
+    { icon: "🛡️", label: t("Professional Wash, Dry & Fold", "Lavado, Secado y Doblado Profesional") },
+    { icon: "🧴", label: t("High-Quality Detergents (Free & Clear Available)", "Detergentes de Alta Calidad") },
+    { icon: "👕", label: t("Care for All Fabric Types", "Cuidado para Todo Tipo de Tela") },
+    { icon: "📦", label: t("Neatly Folded & Ready to Use", "Perfectamente Doblado y Listo") },
+    { icon: "✅", label: t("Consistent & Reliable Service", "Servicio Consistente y Confiable") },
+    { icon: "❤️", label: t("100% Satisfaction Guaranteed", "100% Satisfacción Garantizada") },
+  ];
+  return (
+    <div className="mt-6 sm:mt-8 max-w-5xl mx-auto">
+      <div className="bg-gradient-to-br from-sky-50 to-white rounded-2xl border border-sky-100 shadow-sm p-6 sm:p-8">
+        <h4 className="text-center text-sm font-black uppercase tracking-widest text-primary mb-6">{t("What's Included in All Memberships", "Qué Incluyen Todas las Membresías")}</h4>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-5">
+          {items.map((item, i) => (
+            <div key={i} className="flex flex-col items-center text-center gap-2.5">
+              <div className="w-12 h-12 rounded-2xl bg-white shadow-sm border border-sky-100 flex items-center justify-center text-2xl">{item.icon}</div>
+              <span className="text-xs font-semibold text-slate-600 leading-tight">{item.label}</span>
+            </div>
+          ))}
+        </div>
+        <p className="text-center text-xs text-slate-400 mt-6 pt-4 border-t border-sky-100">{t("Memberships are prepaid. No monthly commitments.", "Las membresías son prepagadas. Sin compromisos mensuales.")}</p>
+      </div>
+    </div>
+  );
+};
 
 // ═══════════════════════════════════════════════════════════════
 //  MAIN PAGE
 // ═══════════════════════════════════════════════════════════════
-
 export default function ServicesPage() {
   const { t, locale } = useLocale();
   const [openAccordions, setOpenAccordions] = useState({ b2b: 0, commercial: 0, airbnb: 0 });
@@ -1230,10 +1180,7 @@ export default function ServicesPage() {
   useEffect(() => {
     document.body.style.overflowY = "auto";
     document.documentElement.style.overflowY = "auto";
-    return () => {
-      document.body.style.overflowY = "";
-      document.documentElement.style.overflowY = "";
-    };
+    return () => { document.body.style.overflowY = ""; document.documentElement.style.overflowY = ""; };
   }, []);
 
   useEffect(() => {
@@ -1257,88 +1204,17 @@ export default function ServicesPage() {
   };
 
   const DEFAULT_MEMBERSHIP_PLANS = [
-    {
-      plan: t("SOLO ESSENTIAL", "SOLO ESSENTIAL"),
-      price: "$149 / month",
-      image: "https://images.unsplash.com/photo-1462556791646-c201b8241a94?q=80&w=1165&auto=format&fit=crop",
-      features: [
-        t("Included: Standard Service (36h turnaround)", "Incluido: Servicio Estándar (36h de entrega)"),
-        t("Perfect for individuals & couples.", "Perfecto para individuos y parejas."),
-      ],
-      isPopular: false,
-      lbs_allowance: 60,
-    },
-    {
-      plan: t("FAMILY PLUS", "FAMILY PLUS"),
-      price: "$219 / month",
-      image: "https://images.unsplash.com/photo-1462556791646-c201b8241a94?q=80&w=1165&auto=format&fit=crop",
-      features: [
-        t("Included: Standard Service (36h turnaround)", "Incluido: Servicio Estándar (36h de entrega)"),
-        t("Priority Scheduling Included", "Programación Prioritaria Incluida"),
-        t("Great for families, busy households & short-term rentals.", "Ideal para familias, hogares ocupados y alquileres."),
-      ],
-      isPopular: false,
-      lbs_allowance: 90,
-    },
-    {
-      plan: t("ELITE CONCIERGE", "ELITE CONCIERGE"),
-      price: "$299 / month",
-      image: "https://images.squarespace-cdn.com/content/v1/696c559a4b2b9b1b0febf8d7/13a4c501-7792-4f72-bf5c-072f95b5f995/ELITE+CONCIERGE.png",
-      features: [
-        t("Included: Standard Service (36h turnaround)", "Incluido: Servicio Estándar (36h de entrega)"),
-        t("Priority Handling & Saved Preferences", "Manejo Prioritario y Preferencias Guardadas"),
-        t("1 Emergency Pickup Included", "1 Recogida de Emergencia Incluida"),
-        t("Ideal for large families, busy professionals & high-volume laundry needs.", "Ideal para familias grandes y profesionales ocupados."),
-      ],
-      isPopular: true,
-      lbs_allowance: 120,
-    },
-    {
-      plan: t("ULTRA VOLUME", "ULTRA VOLUME"),
-      price: "$379 / month",
-      image: "https://images.unsplash.com/photo-1462556791646-c201b8241a94?q=80&w=1165&auto=format&fit=crop",
-      features: [
-        t("Included: Standard Service (36h turnaround)", "Incluido: Servicio Estándar (36h de entrega)"),
-        t("Priority Handling & Saved Preferences", "Manejo Prioritario y Preferencias Guardadas"),
-        t("2 Emergency Pickups Included", "2 Recogidas de Emergencia Incluidas"),
-        t("Ideal for Airbnb hosts, large households & commercial needs.", "Ideal para anfitriones Airbnb, hogares grandes y usos comerciales."),
-      ],
-      isPopular: false,
-      lbs_allowance: 150,
-    },
+    { plan: t("SOLO ESSENTIAL", "SOLO ESSENTIAL"), price: "$149 / month", image: "https://images.unsplash.com/photo-1462556791646-c201b8241a94?q=80&w=1165&auto=format&fit=crop", features: [t("Included: Standard Service (36h turnaround)", "Incluido: Servicio Estándar (36h de entrega)"), t("Perfect for individuals & couples.", "Perfecto para individuos y parejas.")], isPopular: false, lbs_allowance: 60 },
+    { plan: t("FAMILY PLUS", "FAMILY PLUS"), price: "$219 / month", image: "https://images.unsplash.com/photo-1462556791646-c201b8241a94?q=80&w=1165&auto=format&fit=crop", features: [t("Included: Standard Service (36h turnaround)", "Incluido: Servicio Estándar (36h de entrega)"), t("Priority Scheduling Included", "Programación Prioritaria Incluida"), t("Great for families, busy households & short-term rentals.", "Ideal para familias, hogares ocupados y alquileres.")], isPopular: false, lbs_allowance: 90 },
+    { plan: t("ELITE CONCIERGE", "ELITE CONCIERGE"), price: "$299 / month", image: "https://images.squarespace-cdn.com/content/v1/696c559a4b2b9b1b0febf8d7/13a4c501-7792-4f72-bf5c-072f95b5f995/ELITE+CONCIERGE.png", features: [t("Included: Standard Service (36h turnaround)", "Incluido: Servicio Estándar (36h de entrega)"), t("Priority Handling & Saved Preferences", "Manejo Prioritario y Preferencias Guardadas"), t("1 Emergency Pickup Included", "1 Recogida de Emergencia Incluida"), t("Ideal for large families, busy professionals & high-volume laundry needs.", "Ideal para familias grandes y profesionales ocupados.")], isPopular: true, lbs_allowance: 120 },
+    { plan: t("ULTRA VOLUME", "ULTRA VOLUME"), price: "$379 / month", image: "https://images.unsplash.com/photo-1462556791646-c201b8241a94?q=80&w=1165&auto=format&fit=crop", features: [t("Included: Standard Service (36h turnaround)", "Incluido: Servicio Estándar (36h de entrega)"), t("Priority Handling & Saved Preferences", "Manejo Prioritario y Preferencias Guardadas"), t("2 Emergency Pickups Included", "2 Recogidas de Emergencia Incluidas"), t("Ideal for Airbnb hosts, large households & commercial needs.", "Ideal para anfitriones Airbnb, hogares grandes y usos comerciales.")], isPopular: false, lbs_allowance: 150 },
   ];
 
   const PER_PIECE_CATEGORIES = [
-    { category: t("Home Essentials", "Artículos del hogar"), items: [
-      { name: t("Bath Mat", "Tapete de baño"), price: "$8.00" },
-      { name: t("Heavy Rubber Bath Mat", "Tapete de goma pesado"), price: "$13.00" },
-      { name: t("Oven Mitt", "Cojín para horno"), price: "$8.00" },
-      { name: t("Pet Bed (Small)", "Cama mascotas (S)"), price: "$15.00" },
-      { name: t("Pet Bed (M/L)", "Cama mascotas (M/L)"), price: "$18.00" }
-    ]},
-    { category: t("Bedding", "Ropa de cama"), items: [
-      { name: t("Standard Pillow", "Almohada estándar"), price: "$10.00" },
-      { name: t("Large Pillow", "Almohada grande"), price: "$15.00" },
-      { name: t("Duvet Cover", "Funda de edredón"), price: "$15.00" },
-      { name: t("Blanket (Small)", "Manta (pequeña)"), price: "$15.00" },
-      { name: t("Blanket (Large/Heavy)", "Manta (grande/pesada)"), price: "$25.00" }
-    ]},
-    { category: t("Comforters", "Edredones"), items: [
-      { name: t("Comforter Twin/Full", "Edredón Twin/Full"), price: "$22.00" },
-      { name: t("Comforter Queen", "Edredón Queen"), price: "$25.00" },
-      { name: t("Comforter King", "Edredón King"), price: "$30.00" },
-      { name: t("Mattress Cover", "Cubrecama"), price: "$25.00" },
-      { name: t("Down Comforter (Goose Down / Special Material)", "Edredón de plumas"), price: "$40.00" }
-    ]},
-    { category: t("Add-on Services", "Servicios adicionales"), items: [
-      { name: t("Same Day Service", "Servicio mismo día"), price: "$10.00" },
-      { name: t("Express Service", "Servicio Express"), price: "$15.00" },
-      { name: t("Hypoallergenic Detergent", "Detergente hipoalergénico"), price: "$5.00" },
-      { name: t("Premium Softener", "Suavizante premium"), price: "$4.00" },
-      { name: t("Pet Hair Removal", "Eliminación de pelo de mascotas"), price: "$10.00" },
-      { name: t("Heavy Soil Treatment", "Tratamiento de suciedad intensa"), price: "$15.00" },
-      { name: t("Oversized Item Fee", "Cargo por artículo grande"), price: "$10.00" }
-    ]}
+    { category: t("Home Essentials", "Artículos del hogar"), items: [{ name: t("Bath Mat", "Tapete de baño"), price: "$8.00" }, { name: t("Heavy Rubber Bath Mat", "Tapete de goma pesado"), price: "$13.00" }, { name: t("Oven Mitt", "Cojín para horno"), price: "$8.00" }, { name: t("Pet Bed (Small)", "Cama mascotas (S)"), price: "$15.00" }, { name: t("Pet Bed (M/L)", "Cama mascotas (M/L)"), price: "$18.00" }] },
+    { category: t("Bedding", "Ropa de cama"), items: [{ name: t("Standard Pillow", "Almohada estándar"), price: "$10.00" }, { name: t("Large Pillow", "Almohada grande"), price: "$15.00" }, { name: t("Duvet Cover", "Funda de edredón"), price: "$15.00" }, { name: t("Blanket (Small)", "Manta (pequeña)"), price: "$15.00" }, { name: t("Blanket (Large/Heavy)", "Manta (grande/pesada)"), price: "$25.00" }] },
+    { category: t("Comforters", "Edredones"), items: [{ name: t("Comforter Twin/Full", "Edredón Twin/Full"), price: "$22.00" }, { name: t("Comforter Queen", "Edredón Queen"), price: "$25.00" }, { name: t("Comforter King", "Edredón King"), price: "$30.00" }, { name: t("Mattress Cover", "Cubrecama"), price: "$25.00" }, { name: t("Down Comforter (Goose Down)", "Edredón de plumas"), price: "$40.00" }] },
+    { category: t("Add-on Services", "Servicios adicionales"), items: [{ name: t("Same Day Service", "Servicio mismo día"), price: "$10.00" }, { name: t("Express Service", "Servicio Express"), price: "$15.00" }, { name: t("Hypoallergenic Detergent", "Detergente hipoalergénico"), price: "$5.00" }, { name: t("Premium Softener", "Suavizante premium"), price: "$4.00" }, { name: t("Pet Hair Removal", "Eliminación de pelo de mascotas"), price: "$10.00" }, { name: t("Heavy Soil Treatment", "Tratamiento de suciedad intensa"), price: "$15.00" }, { name: t("Oversized Item Fee", "Cargo por artículo grande"), price: "$10.00" }] },
   ];
 
   const WASHER_PRICES = [
@@ -1350,12 +1226,11 @@ export default function ServicesPage() {
   ];
   const DRYER_PRICES = [
     { size: "30 lb", time: "10min", price: "$0.50" },
-    { size: "50 lb", time: "8min",  price: "$0.50" },
+    { size: "50 lb", time: "8min", price: "$0.50" },
   ];
 
   const toggleAcc = (sec, idx) => setOpenAccordions(p => ({ ...p, [sec]: p[sec] === idx ? -1 : idx }));
 
-  // CARGA DE DATOS
   useEffect(() => {
     const load = async () => {
       try {
@@ -1363,27 +1238,14 @@ export default function ServicesPage() {
           fetch(`${API}/public/membership-section`),
           fetch(`${API}/public/membership-plans`),
         ]);
-
         if (sR.ok) {
           const d = await sR.json();
           setMembershipSection({ ...d, heading: t(d.heading, d.heading) });
-        } else {
-          setMembershipSection(MEMBERSHIP_SECTION_DEFAULT);
-        }
-
+        } else { setMembershipSection(MEMBERSHIP_SECTION_DEFAULT); }
         if (pR.ok) {
           const d = await pR.json();
-          setMembershipPlans(d.map(p => ({
-            plan:          t(p.name, p.name),
-            price:         p.price,
-            image:         p.image_url,
-            features:      (p.features || []).map(f => t(f, f)),
-            isPopular:     p.is_popular,
-            lbs_allowance: p.lbs_allowance || null,
-          })));
-        } else {
-          setMembershipPlans(DEFAULT_MEMBERSHIP_PLANS);
-        }
+          setMembershipPlans(d.map(p => ({ plan: t(p.name, p.name), price: p.price, image: p.image_url, features: (p.features || []).map(f => t(f, f)), isPopular: p.is_popular, lbs_allowance: p.lbs_allowance || null })));
+        } else { setMembershipPlans(DEFAULT_MEMBERSHIP_PLANS); }
       } catch {
         setMembershipSection(MEMBERSHIP_SECTION_DEFAULT);
         setMembershipPlans(DEFAULT_MEMBERSHIP_PLANS);
@@ -1392,16 +1254,8 @@ export default function ServicesPage() {
     load();
   }, [locale, t]);
 
-  // Función para redirigir a la página de membresía con los datos del plan
   const handleSelectPlan = (planName, planPrice, lbsAllowance, featuresList) => {
-    // Guardar en sessionStorage para que la página de membresía pueda leerlo
-    sessionStorage.setItem('selectedMembershipPlan', JSON.stringify({
-      name: planName,
-      price: planPrice,
-      lbs_allowance: lbsAllowance,
-      features: featuresList
-    }));
-    // Redirigir a la página de membresía
+    sessionStorage.setItem('selectedMembershipPlan', JSON.stringify({ name: planName, price: planPrice, lbs_allowance: lbsAllowance, features: featuresList }));
     window.location.href = '/membership';
   };
 
@@ -1417,6 +1271,8 @@ export default function ServicesPage() {
     t("Ventura County", "Condado de Ventura"),
   ];
 
+  const darkCtaClass = "inline-flex items-center gap-2 overflow-hidden relative bg-white rounded-full px-7 sm:px-10 py-3.5 sm:py-4 text-sm font-bold uppercase tracking-widest shadow-xl cursor-pointer hover:-translate-y-0.5 transition-transform duration-300 active:scale-95 group touch-manipulation";
+
   return (
     <>
       <style>{`
@@ -1427,6 +1283,7 @@ export default function ServicesPage() {
         @keyframes fadeUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
       `}</style>
 
+      {/* Custom cursor — desktop only */}
       <div className="pointer-events-none fixed inset-0 z-[9999] hidden lg:block">
         <div ref={ring} className="absolute w-9 h-9 rounded-full border border-primary/50 will-change-transform" style={{ top: 0, left: 0 }} />
         <div ref={dot} className="absolute w-1.5 h-1.5 rounded-full bg-primary will-change-transform" style={{ top: 0, left: 0 }} />
@@ -1460,18 +1317,13 @@ export default function ServicesPage() {
 
         <Marquee items={marqueeItems} />
 
-        {/* SERVICES GRID */}
+        {/* CORE SERVICES */}
         <section className="py-12 sm:py-20 lg:py-24 relative overflow-hidden bg-white">
           <div className="relative z-10 max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-12">
             <Reveal dir="blur"><p className="text-center text-[11px] font-bold uppercase tracking-[0.18em] text-primary/50 mb-3">{t("Core Services", "Servicios Principales")}</p></Reveal>
             <Reveal delay={80}><h2 className="text-2xl sm:text-4xl lg:text-5xl font-bold text-slate-900 text-center mb-3 leading-tight">{t("Choose the option", "Elige la opción")}<span className="block text-primary font-bold">{t("that fits your day.", "que se adapte a tu día.")}</span></h2></Reveal>
             <Reveal delay={160}><p className="text-slate-500 text-center mb-6 sm:mb-8 max-w-xl mx-auto text-sm sm:text-lg">{t("Walk-in, drop-off, or pickup & delivery — we've got you covered.", "Presencial, entrega o recogida — aquí estamos.")}</p></Reveal>
-            <Reveal delay={180} dir="up" dur={500}>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6 xl:hidden">
-                <AdBannerHorizontal config={AD_CONFIG.left} />
-                <AdBannerHorizontal config={AD_CONFIG.right} />
-              </div>
-            </Reveal>
+
             <div className="flex gap-5 xl:gap-6 items-start">
               <AdBannerVertical config={AD_CONFIG.left} />
               <div className="flex-1 min-w-0">
@@ -1509,7 +1361,9 @@ export default function ServicesPage() {
               </div>
               <AdBannerVertical config={AD_CONFIG.right} />
             </div>
-            <Reveal delay={120} dir="up"><ExpressServiceBlock t={t} /></Reveal>
+            <Reveal delay={120} dir="up">
+              <DynamicExpressServiceBlock t={t} />
+            </Reveal>
           </div>
         </section>
 
@@ -1520,22 +1374,9 @@ export default function ServicesPage() {
         <section className="py-12 sm:py-20 lg:py-24 bg-gradient-to-b from-slate-50/60 to-white relative overflow-hidden">
           <div className="absolute inset-0 opacity-[0.4]" style={{ backgroundImage: "radial-gradient(rgba(14,165,233,0.08) 1px,transparent 1px)", backgroundSize: "24px 24px" }} />
           <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-12">
-
-            <Reveal dir="blur">
-              <p className="text-center text-[11px] font-bold uppercase tracking-[0.18em] text-primary/50 mb-3">
-                {t("Membership", "Membresía")}
-              </p>
-            </Reveal>
-            <Reveal delay={80}>
-              <h2 className="text-2xl sm:text-4xl lg:text-5xl font-bold text-slate-900 text-center mb-3">{MS.heading}</h2>
-            </Reveal>
-            {MS.subheading && (
-              <Reveal delay={140}>
-                <p className="text-slate-500 text-center text-sm sm:text-lg mb-5">{MS.subheading}</p>
-              </Reveal>
-            )}
-
-            {/* Oferta especial */}
+            <Reveal dir="blur"><p className="text-center text-[11px] font-bold uppercase tracking-[0.18em] text-primary/50 mb-3">{t("Membership", "Membresía")}</p></Reveal>
+            <Reveal delay={80}><h2 className="text-2xl sm:text-4xl lg:text-5xl font-bold text-slate-900 text-center mb-3">{MS.heading}</h2></Reveal>
+            {MS.subheading && <Reveal delay={140}><p className="text-slate-500 text-center text-sm sm:text-lg mb-5">{MS.subheading}</p></Reveal>}
             {(MS.special_title || MS.special_text) && (
               <Reveal delay={180} dir="scale">
                 <div className="relative overflow-hidden bg-gradient-to-r from-amber-50 to-yellow-50 rounded-2xl p-5 sm:p-6 max-w-2xl mx-auto border border-amber-200/60 mb-8 sm:mb-12 shadow-sm">
@@ -1545,207 +1386,147 @@ export default function ServicesPage() {
                 </div>
               </Reveal>
             )}
-
-            {/* CARDS: Grid responsivo 4 columnas */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-7xl mx-auto">
               {plans.map((plan, i) => (
                 <Reveal key={i} delay={i * 80} dir="up" dur={700}>
-                  <MembershipCard
-                    plan={plan.plan}
-                    price={plan.price}
-                    image={plan.image}
-                    features={plan.features}
-                    isPopular={plan.isPopular}
-                    lbs_allowance={plan.lbs_allowance}
-                    onSelectPlan={handleSelectPlan}
-                  />
+                  <MembershipCard plan={plan.plan} price={plan.price} image={plan.image} features={plan.features} isPopular={plan.isPopular} lbs_allowance={plan.lbs_allowance} onSelectPlan={handleSelectPlan} />
                 </Reveal>
               ))}
             </div>
-
-            {/* UPGRADE OPTIONS + ADDITIONAL LBS */}
-            <Reveal delay={200} dir="up">
-              <MembershipExtrasSection t={t} />
-            </Reveal>
-
-            {/* WHAT'S INCLUDED */}
-            <Reveal delay={260} dir="up">
-              <MembershipIncludedSection t={t} />
-            </Reveal>
-
-            {/* CTA CARD */}
+            <Reveal delay={200} dir="up"><MembershipExtrasSection t={t} /></Reveal>
+            <Reveal delay={260} dir="up"><MembershipIncludedSection t={t} /></Reveal>
             <Reveal delay={320} dir="scale">
               <div className="text-center bg-white rounded-2xl p-5 sm:p-8 shadow-lg max-w-2xl mx-auto border border-slate-100 hover:shadow-xl transition-shadow duration-300 mt-8 sm:mt-10">
-                <div className="w-10 h-10 sm:w-12 sm:h-12 mx-auto mb-4 bg-primary/10 rounded-2xl flex items-center justify-center">
-                  <Shield className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
-                </div>
-                {MS.cta_title && (
-                  <h4 className="text-base sm:text-lg font-bold text-slate-900 mb-2">{MS.cta_title}</h4>
-                )}
+                <div className="w-10 h-10 sm:w-12 sm:h-12 mx-auto mb-4 bg-primary/10 rounded-2xl flex items-center justify-center"><Shield className="w-5 h-5 sm:w-6 sm:h-6 text-primary" /></div>
+                {MS.cta_title && <h4 className="text-base sm:text-lg font-bold text-slate-900 mb-2">{MS.cta_title}</h4>}
                 {MS.cta_text && (
                   <p className="text-slate-500 text-sm mb-5 sm:mb-6">
                     {MS.cta_text}{" "}
-                    {MS.contact_phone && (
-                      <a href={`tel:${MS.contact_phone.replace(/[^\d]/g, "")}`} className="text-primary font-bold hover:underline">
-                        {MS.contact_phone}
-                      </a>
-                    )}
+                    {MS.contact_phone && <a href={`tel:${MS.contact_phone.replace(/[^\d]/g, "")}`} className="text-primary font-bold hover:underline">{MS.contact_phone}</a>}
                   </p>
                 )}
                 <div className="flex justify-center">
-                  <BecomeAMemberButton
-                    label={MS.cta_button_label || t("👉 BECOME A MEMBER", "👉 CONVIÉRTETE EN MIEMBRO")}
-                    className="shadow-lg shadow-primary/30"
-                  />
+                  <BecomeAMemberButton label={MS.cta_button_label || t("👉 BECOME A MEMBER", "👉 CONVIÉRTETE EN MIEMBRO")} className="shadow-lg shadow-primary/30" />
                 </div>
               </div>
             </Reveal>
           </div>
         </section>
 
-        {/* AIRBNB */}
-        <DarkSection bgImage="https://images.unsplash.com/photo-1556910103-1c02745a2384?w=1920&h=1080&fit=crop" from="from-sky-950/92" to="to-sky-900/88" scrollY={scrollY}>
-          <Reveal dir="blur"><p className="text-center text-[11px] font-bold uppercase tracking-[0.18em] text-sky-400/60 mb-4">{t("Airbnb & Rentals", "Airbnb y Alquileres")}</p></Reveal>
-          <Reveal delay={80}><h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-white text-center mb-4 leading-tight">{t("Premium Laundry for", "Lavandería Premium para")}<span className="block font-bold text-sky-300">{t("Airbnb Hosts.", "Anfitriones Airbnb.")}</span></h2></Reveal>
-          <Reveal delay={160}><p className="text-white/65 text-center mb-6 sm:mb-8 max-w-lg mx-auto text-sm sm:text-base leading-relaxed">{t("Spotless linens. Five-star guest experiences. Zero hassle.", "Ropa de cama impecable. Experiencias de cinco estrellas. Cero complicaciones.")}</p></Reveal>
-          <Reveal delay={240} dir="scale">
-            <div className="bg-sky-950/80 rounded-2xl border border-white/15 p-4 sm:p-6 mb-6 sm:mb-8">
-              <AccordionItem title={t("About This Service", "Sobre Este Servicio")} isOpen={openAccordions.airbnb === 0} onClick={() => toggleAcc("airbnb", 0)} variant="dark">
-                <p className="text-white/65 text-sm leading-relaxed pt-1">{t("Our Airbnb laundry service is built for hosts who want flawless turnovers and happier guests.", "Nuestro servicio está diseñado para anfitriones que quieren entregas impecables y huéspedes felices.")}</p>
-              </AccordionItem>
-              <AccordionItem title={t("Key Features", "Características Clave")} isOpen={openAccordions.airbnb === 1} onClick={() => toggleAcc("airbnb", 1)} variant="dark">
-                <ul className="space-y-2 pt-1">
-                  {[t("Customized programs for Airbnb hosts", "Programas personalizados"), t("Professional cleaning & sanitization", "Limpieza y sanitización profesional"), t("Scheduled pickup aligned with turnover", "Recogida alineada con tu horario"), t("Consistent quality for 5-star reviews", "Calidad constante para reseñas 5 estrellas"), t("Save time, eliminate laundry stress", "Ahorra tiempo, elimina el estrés")].map((item, i) => (
-                    <li key={i} className="flex items-start gap-2.5 text-sm text-white/65"><Check className="w-4 h-4 text-sky-400 flex-shrink-0 mt-0.5" />{item}</li>
-                  ))}
-                </ul>
-              </AccordionItem>
-            </div>
-          </Reveal>
-          <Reveal delay={340}>
-            <div className="text-center">
-              <Link to="/schedule-pickup">
-                <Mag as="div" strength={0.2} className="inline-flex items-center gap-2 overflow-hidden relative bg-white text-primary rounded-full px-7 sm:px-10 py-3.5 sm:py-4 text-sm font-bold uppercase tracking-widest shadow-xl cursor-pointer hover:-translate-y-0.5 transition-transform duration-300 active:scale-95 group touch-manipulation" style={{ minHeight: "48px" }}>
-                  <span className="relative z-10 flex items-center gap-2">🗓️ {t("SCHEDULE PICK-UP", "PROGRAMAR RECOGIDA")}<ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-1" /></span>
-                  <span className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/8 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
-                </Mag>
-              </Link>
-            </div>
-          </Reveal>
-        </DarkSection>
+        {/* SECCIONES OSCURAS DINÁMICAS */}
+        <DynamicDarkSection sectionType="airbnb" defaultData={DARK_SECTION_DEFAULTS.airbnb} scrollY={scrollY} t={t} />
+        <DynamicDarkSection sectionType="b2b" defaultData={DARK_SECTION_DEFAULTS.b2b} scrollY={scrollY} t={t} />
+        <DynamicDarkSection sectionType="commercial" defaultData={DARK_SECTION_DEFAULTS.commercial} scrollY={scrollY} t={t} />
 
-        {/* B2B */}
-        <DarkSection bgImage="https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=1920&h=1080&fit=crop" from="from-sky-950/92" to="to-indigo-950/88" scrollY={scrollY} parallaxStrength={0.12}>
-          <Reveal dir="blur"><p className="text-center text-[11px] font-bold uppercase tracking-[0.18em] text-sky-400/60 mb-4">{t("B2B Solutions", "Soluciones B2B")}</p></Reveal>
-          <Reveal delay={80}><h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-white text-center mb-4 leading-tight">{t("High-Performance", "Alto Rendimiento")}<span className="block font-bold text-sky-300">{t("B2B Laundry.", "Lavandería B2B.")}</span></h2></Reveal>
-          <Reveal delay={160}><p className="text-white/65 text-center mb-6 sm:mb-8 max-w-lg mx-auto text-sm sm:text-base leading-relaxed">{t("Reliable, scalable, professional — built to handle volume every day.", "Confiable, escalable, profesional — para manejar volumen todos los días.")}</p></Reveal>
-          <Reveal delay={240} dir="scale">
-            <div className="bg-sky-950/80 rounded-2xl border border-white/15 p-4 sm:p-6 mb-6 sm:mb-8">
-              <AccordionItem title={t("About B2B Services", "Sobre Servicios B2B")} isOpen={openAccordions.b2b === 0} onClick={() => toggleAcc("b2b", 0)} variant="dark">
-                <p className="text-white/65 text-sm leading-relaxed pt-1">{t("We provide tailored B2B solutions that help businesses maintain the highest cleanliness standards.", "Ofrecemos soluciones B2B a medida que ayudan a las empresas a mantener los más altos estándares.")}</p>
-              </AccordionItem>
-              <AccordionItem title={t("Key Features", "Características Clave")} isOpen={openAccordions.b2b === 1} onClick={() => toggleAcc("b2b", 1)} variant="dark">
-                <ul className="space-y-2 pt-1">
-                  {[t("Customized programs for all business sizes", "Programas para empresas de todos los tamaños"), t("Commercial-grade washing & stain removal", "Lavado comercial y eliminación de manchas"), t("Scheduled pickup & delivery", "Recogida y entrega programadas"), t("Flexible volume, no long-term commitments", "Volumen flexible, sin compromisos"), t("Priority support for business clients", "Soporte prioritario")].map((item, i) => (
-                    <li key={i} className="flex items-start gap-2.5 text-sm text-white/65"><Check className="w-4 h-4 text-sky-400 flex-shrink-0 mt-0.5" />{item}</li>
-                  ))}
-                </ul>
-              </AccordionItem>
-            </div>
-          </Reveal>
-          <Reveal delay={340}>
-            <div className="text-center">
-              <Link to="/request-quote">
-                <Mag as="div" data-testid="b2b-request-quote-button" strength={0.2} className="inline-flex items-center gap-2 overflow-hidden relative bg-white text-sky-700 rounded-full px-7 sm:px-10 py-3.5 sm:py-4 text-sm font-bold uppercase tracking-widest shadow-xl cursor-pointer hover:-translate-y-0.5 transition-transform duration-300 active:scale-95 group touch-manipulation" style={{ minHeight: "48px" }}>
-                  <span className="relative z-10 flex items-center gap-2">📊 {t("REQUEST A QUOTE", "SOLICITAR COTIZACIÓN")}<ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-1" /></span>
-                  <span className="absolute inset-0 bg-gradient-to-r from-transparent via-sky-100/30 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
-                </Mag>
-              </Link>
-            </div>
-          </Reveal>
-        </DarkSection>
-
-        {/* COMMERCIAL */}
-        <DarkSection bgImage="https://images.unsplash.com/photo-1521791055366-0d553872125f?w=1920&h=1080&fit=crop" from="from-sky-950/92" to="to-indigo-950/88" scrollY={scrollY} parallaxStrength={0.1}>
-          <Reveal dir="blur"><p className="text-center text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400/70 mb-4">{t("Commercial Services", "Servicios Comerciales")}</p></Reveal>
-          <Reveal delay={80}><h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-white text-center mb-4 leading-tight">{t("Commercial Laundry", "Lavandería Comercial")}<span className="block font-bold text-slate-300">{t("You Can Depend On.", "En la que Puedes Confiar.")}</span></h2></Reveal>
-          <Reveal delay={160}><p className="text-white/65 text-center mb-6 sm:mb-8 max-w-lg mx-auto text-sm sm:text-base leading-relaxed">{t("Volume, quality, reliability — every single day.", "Volumen, calidad, confiabilidad — todos los días.")}</p></Reveal>
-          <Reveal delay={240} dir="scale">
-            <div className="bg-sky-950/80 rounded-2xl border border-white/15 p-4 sm:p-6 mb-6 sm:mb-8">
-              <AccordionItem title={t("About Commercial Services", "Sobre Servicios Comerciales")} isOpen={openAccordions.commercial === 0} onClick={() => toggleAcc("commercial", 0)} variant="dark">
-                <p className="text-white/65 text-sm leading-relaxed pt-1">{t("Designed for high-traffic businesses — restaurants, hotels, spas, gyms, offices.", "Diseñado para negocios de alto tráfico — restaurantes, hoteles, spas, gimnasios.")}</p>
-              </AccordionItem>
-              <AccordionItem title={t("Key Features", "Características Clave")} isOpen={openAccordions.commercial === 1} onClick={() => toggleAcc("commercial", 1)} variant="dark">
-                <ul className="space-y-2 pt-1">
-                  {[t("Restaurants, hotels, spas, gyms, offices", "Restaurantes, hoteles, spas, gimnasios"), t("High-volume processing with commercial equipment", "Procesamiento de alto volumen"), t("Specialized care for uniforms and delicates", "Cuidado especializado para uniformes"), t("Reliable pickup & delivery, strict quality control", "Recogida confiable y control de calidad"), t("Flexible billing and service plans", "Facturación y planes flexibles")].map((item, i) => (
-                    <li key={i} className="flex items-start gap-2.5 text-sm text-white/65"><Check className="w-4 h-4 text-slate-400 flex-shrink-0 mt-0.5" />{item}</li>
-                  ))}
-                </ul>
-              </AccordionItem>
-            </div>
-          </Reveal>
-          <Reveal delay={340}>
-            <div className="text-center">
-              <Link to="/request-quote">
-                <Mag as="div" data-testid="commercial-request-quote-button" strength={0.2} className="inline-flex items-center gap-2 overflow-hidden relative bg-white text-slate-900 rounded-full px-7 sm:px-10 py-3.5 sm:py-4 text-sm font-bold uppercase tracking-widest shadow-xl cursor-pointer hover:-translate-y-0.5 transition-transform duration-300 active:scale-95 group touch-manipulation" style={{ minHeight: "48px" }}>
-                  <span className="relative z-10 flex items-center gap-2">📋 {t("REQUEST A QUOTE", "SOLICITAR COTIZACIÓN")}<ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-1" /></span>
-                  <span className="absolute inset-0 bg-gradient-to-r from-transparent via-slate-200/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
-                </Mag>
-              </Link>
-            </div>
-          </Reveal>
-        </DarkSection>
-
-        {/* QUOTE */}
-        <section className="relative py-20 sm:py-28 overflow-hidden bg-slate-950">
-          <div className="absolute inset-0 will-change-transform" style={{ backgroundImage: "url('https://images.unsplash.com/photo-1517677208171-0bc6725a3e60?w=1920&h=1080&fit=crop')", backgroundSize: "cover", backgroundPosition: "center", transform: `translateY(${scrollY * 0.18}px) scale(1.1)` }} />
-          <div className="absolute inset-0 bg-gradient-to-br from-black/85 to-black/70" />
-          <div className="relative z-10 max-w-3xl mx-auto px-4 sm:px-6 text-center">
-            <Reveal dir="scale" dur={900}>
-              <div>
-                <div className="flex items-center justify-center gap-4 mb-6 sm:mb-8">
-                  <div className="h-px w-10 sm:w-16 bg-gradient-to-r from-transparent to-primary/60" />
-                  <div className="w-2 h-2 rounded-full bg-primary/60 flex-shrink-0" />
-                  <div className="h-px w-10 sm:w-16 bg-gradient-to-l from-transparent to-primary/60" />
-                </div>
-                <h2 className="text-2xl sm:text-4xl md:text-5xl font-bold text-white mb-5 sm:mb-6 leading-tight">{t("If you care for your laundry,", "Si cuidas tu ropa,")}<span className="block font-bold text-white/75">{t("you'll notice the difference.", "notarás la diferencia.")}</span></h2>
-                <div className="w-16 h-px bg-gradient-to-r from-transparent via-primary to-transparent mx-auto mb-5 sm:mb-6" />
-                <p className="text-base sm:text-xl text-white/65 mb-8 sm:mb-10">{t("Clean linens, happy clients…", "Ropa de cama limpia, clientes felices…")}</p>
-                <div className="flex justify-center flex-wrap gap-4 sm:gap-6">
-                  {[{ icon: <Clock className="w-4 h-4 flex-shrink-0" />, text: t("Since 2020", "Desde 2020") }, { icon: <Star className="w-4 h-4 flex-shrink-0" />, text: t("5-Star Service", "Servicio 5 estrellas") }, { icon: <Truck className="w-4 h-4 flex-shrink-0" />, text: t("Free Pickup", "Recogida gratis") }].map((it, i) => (
-                    <div key={i} className="flex items-center gap-2 text-white/45 text-sm">{it.icon}{it.text}</div>
-                  ))}
-                </div>
-              </div>
-            </Reveal>
-          </div>
-        </section>
-
-        {/* PRICING */}
+        {/* PRICING SECTION */}
         <section className="py-12 sm:py-20 lg:py-24 bg-white">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-12">
             <Reveal dir="blur"><p className="text-center text-[11px] font-bold uppercase tracking-[0.18em] text-primary/50 mb-3">{t("Pricing", "Precios")}</p></Reveal>
             <Reveal delay={80}><h2 className="text-2xl sm:text-4xl lg:text-5xl font-bold text-slate-900 text-center mb-3 leading-tight">{t("Transparent", "Precios")}<span className="block text-primary font-bold">{t("Pricing.", "Transparentes.")}</span></h2></Reveal>
             <Reveal delay={160}><p className="text-slate-500 text-center mb-8 sm:mb-14 max-w-xl mx-auto text-sm sm:text-lg">{t("No surprises. Premium service you can count on.", "Sin sorpresas. Servicio premium en el que puedes confiar.")}</p></Reveal>
-            <div className="flex-1 min-w-0">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-8">
-                <Reveal delay={0} dir="up" dur={700}><PickupDeliveryServiceCard t={t} /></Reveal>
-                <Reveal delay={80} dir="up" dur={700}><WashFoldServiceCard t={t} /></Reveal>
-              </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-8">
+              <Reveal delay={0} dir="up" dur={700}>
+                <Tilt depth={4}>
+                  <div className="relative bg-white rounded-2xl h-full flex flex-col overflow-hidden border border-slate-100 shadow-lg hover:border-primary/30 hover:shadow-2xl hover:shadow-sky-100/60 transition-all duration-300 group">
+                    <div className="absolute top-0 left-6 right-6 h-px bg-gradient-to-r from-transparent via-primary to-transparent opacity-0 group-hover:opacity-100 transition-all duration-500" />
+                    <div className="relative px-5 sm:px-7 pt-6 pb-4 border-b border-slate-100">
+                      <div className="w-12 h-12 flex items-center justify-center text-2xl mb-3 rounded-2xl bg-slate-50 group-hover:bg-primary/15 group-hover:scale-110 group-hover:rotate-3 transition-all duration-300">🚚</div>
+                      <h3 className="text-xl sm:text-2xl font-bold mb-1 text-slate-900 group-hover:text-primary transition-colors duration-200">{t("Pickup & Delivery", "Recogida y Entrega")}</h3>
+                      <p className="text-slate-400 text-sm">{t("Laundry, fully automated on your schedule.", "Lavandería automatizada en tu horario.")}</p>
+                    </div>
+                    <div className="flex-grow divide-y divide-slate-50">
+                      {[
+                        { plan: t("Standard", "Estándar"), badge: "standard", memberPrice: "$2.50/lb", regularPrice: "$2.75/lb" },
+                        { plan: t("Premium", "Premium"), badge: "premium", memberPrice: "$2.75/lb", regularPrice: "$3.00/lb", isPopular: true },
+                        { plan: t("Express", "Express"), badge: "express", memberPrice: "$3.00/lb", regularPrice: "$3.25/lb" },
+                      ].map((row, i) => (
+                        <div key={i} className={`px-5 py-3 ${row.isPopular ? "bg-sky-50/60" : ""}`}>
+                          <div className="flex items-center justify-between flex-wrap gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className={`text-sm font-semibold ${row.isPopular ? "text-primary" : "text-slate-700"}`}>{row.plan}</span>
+                              {row.isPopular && <span className="text-[11px] font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded-full">⭐</span>}
+                              <PlanBadge type={row.badge} t={t} />
+                            </div>
+                            <div className="flex items-center gap-3 ml-auto">
+                              <div className="flex items-center gap-1"><Star className="w-3 h-3 text-primary fill-primary/40" /><span className="text-sm font-black text-primary">{row.memberPrice}</span></div>
+                              <div className="flex items-center gap-1"><span className="text-xs text-slate-400">{t("Regular", "Regular")}</span><span className="text-sm font-semibold text-slate-500">{row.regularPrice}</span></div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="relative px-5 py-3 bg-slate-50 border-t border-slate-100">
+                      <ul className="space-y-1">
+                        {[t("✅ FREE delivery (0–3 miles)", "✅ Entrega GRATIS (0–3 millas)"), t("🚗 3–15 Miles | $1.99–$8.99", "🚗 3–15 Miles | $1.99–$8.99"), t("📦 Min. order $40", "📦 Pedido mínimo $40")].map((item, i) => (
+                          <li key={i} className="text-xs text-slate-500">{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div className="relative px-5 sm:px-7 pb-6 pt-4">
+                      <Link to="/schedule-pickup">
+                        <button className="group w-full flex items-center justify-center gap-2 bg-primary text-white rounded-xl px-6 py-3.5 text-sm font-bold uppercase tracking-wider hover:bg-primary/90 active:scale-95 transition-all duration-300 shadow-md shadow-primary/20 overflow-hidden relative touch-manipulation" style={{ minHeight: "48px" }}>
+                          <span className="relative z-10 flex items-center gap-2">{t("SCHEDULE PICK-UP", "PROGRAMAR RECOGIDA")}<ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-1" /></span>
+                          <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
+                        </button>
+                      </Link>
+                    </div>
+                  </div>
+                </Tilt>
+              </Reveal>
+              <Reveal delay={80} dir="up" dur={700}>
+                <Tilt depth={4}>
+                  <div className="relative bg-white rounded-2xl h-full flex flex-col overflow-hidden border border-slate-100 shadow-lg hover:border-primary/30 hover:shadow-2xl hover:shadow-sky-100/60 transition-all duration-300 group">
+                    <div className="absolute top-0 left-6 right-6 h-px bg-gradient-to-r from-transparent via-primary to-transparent opacity-0 group-hover:opacity-100 transition-all duration-500" />
+                    <div className="relative px-5 sm:px-7 pt-6 pb-4 border-b border-slate-100">
+                      <div className="w-12 h-12 flex items-center justify-center text-2xl mb-3 rounded-2xl bg-slate-50 group-hover:bg-primary/15 group-hover:scale-110 group-hover:rotate-3 transition-all duration-300">🧺</div>
+                      <h3 className="text-xl sm:text-2xl font-bold mb-1 text-slate-900 group-hover:text-primary transition-colors duration-200">{t("Wash • Dry • Fold", "Lavar • Secar • Doblar")}</h3>
+                      <p className="text-slate-400 text-sm">{t("Professional care without lifting a finger.", "Cuidado profesional sin mover un dedo.")}</p>
+                    </div>
+                    <div className="flex-grow divide-y divide-slate-50">
+                      {[
+                        { plan: t("Standard", "Estándar"), badge: "standard", price: "$2.25/lb", bestFor: t("Budget-friendly", "Económico") },
+                        { plan: t("Premium", "Premium"), badge: "premium", price: "$2.50/lb", bestFor: t("Most popular", "Más popular"), isPopular: true },
+                        { plan: t("Express", "Express"), badge: "express", price: "$2.75/lb", bestFor: t("Urgent orders", "Urgentes") },
+                      ].map((row, i) => (
+                        <div key={i} className={`px-5 py-3 flex items-center justify-between gap-2 ${row.isPopular ? "bg-sky-50/60" : ""}`}>
+                          <div className="flex items-center gap-2 flex-wrap min-w-0">
+                            <span className={`text-sm font-semibold ${row.isPopular ? "text-primary" : "text-slate-700"}`}>{row.plan}</span>
+                            {row.isPopular && <span className="text-[11px] font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded-full">⭐</span>}
+                            <PlanBadge type={row.badge} t={t} />
+                          </div>
+                          <span className="text-lg font-black text-primary ml-2 whitespace-nowrap">{row.price}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="relative px-5 py-2 bg-slate-50 border-t border-slate-100 text-xs text-slate-500">{t("Professional care · Minimum 10 lb per order", "Cuidado profesional · Mínimo 10 lb por orden")}</div>
+                    <div className="relative px-5 py-2 bg-slate-50 border-t border-slate-100 text-xs text-slate-500">{t("Monday – Sunday · 8:00 AM – 6:00 PM", "Lunes – Domingo · 8:00 AM – 6:00 PM")}</div>
+                    <div className="relative px-5 sm:px-7 pb-6 pt-4">
+                      <Link to="/wash-fold">
+                        <button className="group w-full flex items-center justify-center gap-2 bg-slate-900 text-white rounded-xl px-6 py-3.5 text-sm font-bold uppercase tracking-wider hover:bg-slate-800 active:scale-95 transition-all duration-300 shadow-md overflow-hidden relative touch-manipulation" style={{ minHeight: "48px" }}>
+                          <span className="relative z-10 flex items-center gap-2">{t("DROP OFF / SCHEDULE", "ENTREGA / PROGRAMAR")}<ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-1" /></span>
+                          <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
+                        </button>
+                      </Link>
+                    </div>
+                  </div>
+                </Tilt>
+              </Reveal>
             </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
-              <Reveal dir="left" delay={0}><SelfServiceTable t={t} washerPrices={WASHER_PRICES} dryerPrices={DRYER_PRICES} /></Reveal>
-              <Reveal dir="right" delay={60}><PerPieceTable t={t} categories={PER_PIECE_CATEGORIES} /></Reveal>
+              <Reveal dir="left" delay={0}>
+                <DynamicSelfServiceTable t={t} locale={locale} />
+              </Reveal>
+              <Reveal dir="right" delay={60}>
+                <DynamicPerPieceTable t={t} locale={locale} />
+              </Reveal>
             </div>
 
             <Reveal delay={200} dir="scale">
               <div className="mt-12 sm:mt-16 text-center">
-                <p className="text-slate-500 text-sm mb-4">
-                  {t("Save on every order with a membership plan.", "Ahorra en cada orden con un plan de membresía.")}
-                </p>
-                <BecomeAMemberButton
-                  label={t("🌟 Become a Member & Save", "🌟 Conviértete en Miembro y Ahorra")}
-                />
+                <p className="text-slate-500 text-sm mb-4">{t("Save on every order with a membership plan.", "Ahorra en cada orden con un plan de membresía.")}</p>
+                <BecomeAMemberButton label={t("🌟 Become a Member & Save", "🌟 Conviértete en Miembro y Ahorra")} />
               </div>
             </Reveal>
           </div>

@@ -1,14 +1,11 @@
 /**
  * BillingBreakdown.jsx — CORREGIDO
- *
- * FUENTE DE VERDAD: usa los campos del backend (lbs_from_allowance, extra_lbs_billed,
- * extra_charge) cuando están disponibles.
- *
- * customerCycleUsage se usa SOLO para mostrar la barra de progreso del ciclo,
- * NO para decidir cuántas lbs están cubiertas en esta orden específica.
+ * 
+ * AHORA: Los add-ons de tipo "per_piece" NO se suman al total si el servicio es wash & fold
+ * ya que esos artículos ya están incluidos en el peso.
  */
 
-import { Award, AlertCircle, Truck, Package, CreditCard, TrendingUp, Calendar } from "lucide-react";
+import { Award, AlertCircle, Truck, Package, CreditCard, TrendingUp, Calendar, Info } from "lucide-react";
 import {
   formatCurrency,
   PD_MINIMUM_CHARGE,
@@ -16,6 +13,15 @@ import {
   MEMBERSHIP_ALLOWANCE_SURCHARGE,
   calcDeliveryFee,
 } from "./utils";
+
+// Lista de categorías que son "per piece" y NO deben duplicarse con el peso
+const PER_PIECE_CATEGORIES = ["comforters", "bedding", "home_essentials", "add_on_services"];
+
+// Función para determinar si un addon debe ser excluido del cálculo por peso
+function isPerPieceItem(addon) {
+  // Si el addon tiene la bandera is_per_piece o pertenece a una categoría especial
+  return addon.is_per_piece === true || PER_PIECE_CATEGORIES.includes(addon.category);
+}
 
 // Tabla de precios local
 function getRate(serviceType, plan, isMember) {
@@ -64,19 +70,15 @@ export default function BillingBreakdown({ order, t, hasMembership, customerCycl
   const allowanceSurcharge = MEMBERSHIP_ALLOWANCE_SURCHARGE[plan] || 0;
 
   // ─── FUENTE DE VERDAD: campos del backend ────────────────────────────────
-  // Estos campos los setea el backend al momento de calcular el cobro.
-  // Si existen, son la autoridad.
   const backendLbsCovered  = order.lbs_from_allowance != null ? Number(order.lbs_from_allowance) : null;
   const backendLbsExtra    = order.extra_lbs_billed    != null ? Number(order.extra_lbs_billed)   : null;
   const backendExtraCharge = order.extra_charge        != null ? Number(order.extra_charge)       : null;
 
-  // Determinar si usamos datos del backend
   const hasBackendData = (backendLbsCovered !== null || backendExtraCharge !== null) && lbs > 0;
 
   let lbsCovered, lbsExtra, extraCharge, allowanceExhausted;
 
   if (hasBackendData) {
-    // ✅ Usar datos exactos del backend
     lbsCovered = backendLbsCovered ?? 0;
     lbsExtra = backendLbsExtra ?? Math.max(0, lbs - lbsCovered);
     allowanceExhausted = isMember && lbsCovered === 0 && lbs > 0;
@@ -84,7 +86,6 @@ export default function BillingBreakdown({ order, t, hasMembership, customerCycl
       ? backendExtraCharge 
       : (allowanceExhausted ? lbs * regularRate : (lbsCovered * allowanceSurcharge) + (lbsExtra * regularRate));
   } else {
-    // ⚠️ Sin datos del backend (orden nueva sin peso registrado): mostrar estimación
     lbsCovered = 0;
     lbsExtra = lbs;
     allowanceExhausted = false;
@@ -98,9 +99,17 @@ export default function BillingBreakdown({ order, t, hasMembership, customerCycl
 
   const fullRegularPrice = lbs * regularRate;
   const addonServices    = order.addon_services || [];
-  const addonsTotal      = addonServices.reduce(
-    (s, a) => s + Number(a.price || 0) * Number(a.qty || a.quantity || 1), 0
-  );
+  
+  // 🔥 CORRECCIÓN CRÍTICA: Para wash & fold, los add-ons de tipo "per piece" YA ESTÁN incluidos en el peso
+  // No debemos cobrarlos por separado
+  const addonsTotal = isWF
+    ? addonServices
+        .filter(addon => !isPerPieceItem(addon))  // Excluir artículos "per piece" del cobro adicional
+        .reduce((s, a) => s + Number(a.custom_price || a.price || 0) * Number(a.qty || a.quantity || 1), 0)
+    : addonServices.reduce(
+        (s, a) => s + Number(a.custom_price || a.price || 0) * Number(a.qty || a.quantity || 1), 0
+      );
+  
   const deliveryFee = Number(order.delivery_fee ?? calcDeliveryFee(order.distance_miles) ?? 0);
 
   const hasAllowance = isMember && lbsCovered > 0;
@@ -116,7 +125,7 @@ export default function BillingBreakdown({ order, t, hasMembership, customerCycl
     ? 0
     : Math.round((extraCharge + deliveryFee + addonsTotal) * 100) / 100;
 
-  // Progreso del ciclo (solo visual, NO afecta cálculos de esta orden)
+  // Progreso del ciclo (solo visual)
   const allowanceProgress = customerCycleUsage && customerCycleUsage.lbs_allowance > 0
     ? Math.min((customerCycleUsage.lbs_used / customerCycleUsage.lbs_allowance) * 100, 100)
     : 0;
@@ -142,7 +151,7 @@ export default function BillingBreakdown({ order, t, hasMembership, customerCycl
         </div>
       )}
 
-      {/* Barra de progreso del ciclo (solo informativa - NO afecta cálculos) */}
+      {/* Barra de progreso del ciclo */}
       {isMember && customerCycleUsage && (
         <div className="px-4 py-3 bg-sky-50 border-b border-sky-100 space-y-2">
           <div className="flex flex-wrap justify-between items-center gap-2 text-xs text-sky-800">
@@ -169,7 +178,6 @@ export default function BillingBreakdown({ order, t, hasMembership, customerCycl
               style={{ width: `${allowanceProgress}%` }}
             />
           </div>
-          {/* Nota aclaratoria si esta orden se procesó antes de agotar el allowance */}
           {hasBackendData && lbsCovered > 0 && customerCycleUsage?.lbs_remaining <= 0 && (
             <p className="text-[10px] text-sky-700 font-medium">
               {t(
@@ -196,7 +204,6 @@ export default function BillingBreakdown({ order, t, hasMembership, customerCycl
             <>
               <p className={headerCls}>{t("Weight & Rate", "Peso y Tarifa")}</p>
 
-              {/* Precio regular de referencia */}
               <div className={rowCls}>
                 <span className={labelCls}>
                   {lbs} lbs × ${regularRate.toFixed(2)}/lb
@@ -205,7 +212,7 @@ export default function BillingBreakdown({ order, t, hasMembership, customerCycl
                 <span className={valueCls}>{formatCurrency(fullRegularPrice)}</span>
               </div>
 
-              {/* Miembro con allowance disponible en esta orden */}
+              {/* Miembro con allowance disponible */}
               {hasAllowance && (
                 <>
                   <div className={`${rowCls} bg-emerald-50 rounded-md px-2 -mx-2`}>
@@ -227,7 +234,6 @@ export default function BillingBreakdown({ order, t, hasMembership, customerCycl
                     </div>
                   )}
 
-                  {/* Libras extra fuera del allowance */}
                   {lbsExtra > 0 && (
                     <>
                       <div className={`${rowCls} bg-amber-50 rounded-md px-2 -mx-2`}>
@@ -246,7 +252,6 @@ export default function BillingBreakdown({ order, t, hasMembership, customerCycl
                     </>
                   )}
 
-                  {/* Todo cubierto sin cargo */}
                   {lbsExtra === 0 && allowanceSurcharge === 0 && (
                     <div className="text-emerald-600 text-xs mt-1 px-2 py-1 bg-emerald-50 rounded-md">
                       ✅ {t(
@@ -256,7 +261,6 @@ export default function BillingBreakdown({ order, t, hasMembership, customerCycl
                     </div>
                   )}
 
-                  {/* Ahorro total */}
                   {totalSavings > 0 && (
                     <div className="flex justify-end text-emerald-600 text-xs mt-1">
                       {t("You saved", "Ahorraste")}: {formatCurrency(totalSavings)}
@@ -265,7 +269,7 @@ export default function BillingBreakdown({ order, t, hasMembership, customerCycl
                 </>
               )}
 
-              {/* Miembro con allowance agotado en esta orden */}
+              {/* Miembro con allowance agotado */}
               {isMember && allowanceExhausted && (
                 <>
                   <div className={`${rowCls} bg-slate-100 rounded-md px-2 -mx-2`}>
@@ -304,13 +308,45 @@ export default function BillingBreakdown({ order, t, hasMembership, customerCycl
             </>
           )}
 
-          {/* ── Add-ons ──────────────────────────────────────── */}
+          {/* ── Add-ons (con corrección para wash & fold) ─────────────────── */}
           {addonServices.length > 0 && (
             <>
               <p className={headerCls}>{t("Individual items / Add-ons", "Artículos / Extras")}</p>
+              
+              {/* Mostrar advertencia si hay artículos "per piece" en wash & fold */}
+              {isWF && addonServices.some(a => isPerPieceItem(a)) && (
+                <div className="mb-2 p-2 bg-blue-50 rounded-md text-[10px] text-blue-700 flex items-center gap-1">
+                  <Info className="w-3 h-3" />
+                  {t(
+                    "Note: Per-piece items (comforters, bedding, etc.) are already included in the weight-based pricing for Wash & Fold.",
+                    "Nota: Los artículos por pieza (edredones, ropa de cama, etc.) ya están incluidos en el precio por peso para Wash & Fold."
+                  )}
+                </div>
+              )}
+              
               {addonServices.map((addon, idx) => {
                 const qty   = parseInt(addon.qty || addon.quantity || 1);
-                const price = parseFloat(addon.price || 0);
+                const price = parseFloat(addon.custom_price || addon.price || 0);
+                const isPerPiece = isPerPieceItem(addon);
+                const isExcluded = isWF && isPerPiece;  // Excluido del cobro en wash & fold
+                
+                // Si está excluido, no mostrar o mostrar como "incluido"
+                if (isExcluded) {
+                  return (
+                    <div key={idx} className={`${rowCls} opacity-60`}>
+                      <span className={labelCls}>
+                        <Package className="w-3.5 h-3.5 inline mr-1.5 text-slate-400 shrink-0" />
+                        {addon.name}
+                        {qty > 1 && <span className="ml-1 text-sky-600 font-semibold">×{qty}</span>}
+                        <span className="ml-1 text-emerald-600 text-[10px]">({t("included in weight", "incluido en peso")})</span>
+                      </span>
+                      <span className="font-semibold text-emerald-600 text-xs text-right">
+                        $0.00
+                      </span>
+                    </div>
+                  );
+                }
+                
                 return (
                   <div key={idx} className={rowCls}>
                     <span className={labelCls}>
@@ -369,6 +405,7 @@ export default function BillingBreakdown({ order, t, hasMembership, customerCycl
           </div>
 
           {/* Nota tarjeta */}
+          
           {!fullyCovered && total > 0 && (
             <div className="flex items-center gap-1.5 mt-2 text-[10px] text-slate-400">
               <CreditCard className="w-3.5 h-3.5 shrink-0" />
