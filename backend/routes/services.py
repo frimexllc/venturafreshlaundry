@@ -8,6 +8,16 @@ Combines:
 Endpoints:
 - ServicesPageConfig: GET/PUT public/admin config, section updates, reset
 - Services & Memberships: Full CRUD, membership plans, admin controls, Stripe integration
+
+FIX (2026-06-15): El frontend AdminMemberships.jsx llama a:
+  - GET/PUT  /api/memberships/section
+  - GET/POST /api/memberships/plans
+  - PUT/DELETE /api/memberships/plans/{plan_id}
+pero esas rutas solo existían como /api/services/membership-section y
+/api/services/membership-plans, causando 404 en loadData(). Como loadData()
+usa Promise.all(), ese 404 también impedía que se cargaran los CLIENTES con
+membresía (loadCustomers nunca se ejecutaba). Se agregaron alias de ruta
+apuntando a las mismas funciones, sin remover las rutas originales.
 """
 
 from fastapi import APIRouter, HTTPException, Depends, Query
@@ -749,6 +759,9 @@ async def get_public_services(active_only: bool = True):
 # ============================================================
 # MEMBERSHIP SECTION
 # ============================================================
+# NOTA: se agregan alias "/api/memberships/section" porque el frontend
+# (AdminMemberships.jsx) llama a esa ruta, no a "/api/services/membership-section".
+# Se mantienen ambas para no romper otros consumidores existentes.
 
 @router.get("/api/services/membership-section", response_model=MembershipSectionResponse)
 @router.get("/api/memberships/section", response_model=MembershipSectionResponse)
@@ -781,6 +794,7 @@ async def update_membership_section(
 
 
 @router.post("/api/services/membership-plans", response_model=MembershipPlanResponse)
+@router.post("/api/memberships/plans", response_model=MembershipPlanResponse)
 async def create_membership_plan(
     data: MembershipPlanCreate,
     current_user: dict = Depends(get_current_user),
@@ -825,6 +839,7 @@ async def get_membership_plans(
 
 
 @router.put("/api/services/membership-plans/{plan_id}", response_model=MembershipPlanResponse)
+@router.put("/api/memberships/plans/{plan_id}", response_model=MembershipPlanResponse)
 async def update_membership_plan(
     plan_id: str,
     data: MembershipPlanCreate,
@@ -843,6 +858,7 @@ async def update_membership_plan(
 
 
 @router.delete("/api/services/membership-plans/{plan_id}")
+@router.delete("/api/memberships/plans/{plan_id}")
 async def delete_membership_plan(
     plan_id: str,
     current_user: dict = Depends(get_current_user),

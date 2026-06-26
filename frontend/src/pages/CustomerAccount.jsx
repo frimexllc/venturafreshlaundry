@@ -614,6 +614,9 @@ const RecurrenceManager = ({ order, t, locale, onUpdate }) => {
 // ═════════════════════════════════════════════════════════════════════════════
 // ORDER DETAIL COMPONENT - USA VALORES DEL BACKEND
 // ═════════════════════════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════════════════
+// ORDER DETAIL COMPONENT - USA VALORES DEL BACKEND Y MUESTRA ADDONS
+// ═════════════════════════════════════════════════════════════════════════════
 function OrderDetail({ order, hasMembership, customerToken, t, isOrderCoveredByMembership, canShowPaymentButtons, isPendingVerification, handlePayStripe, payingOrderId, setPaymentModal, handleUploadReceipt, uploadingReceipt }) {
   const PICKUP_STATUSES   = ["picked_up","processing","ready","out_for_delivery","delivered","completed"];
   const DELIVERY_STATUSES = ["delivered","completed"];
@@ -630,31 +633,19 @@ function OrderDetail({ order, hasMembership, customerToken, t, isOrderCoveredByM
   const plan        = (order.service_plan || "standard").toLowerCase();
   const isExpress   = plan === "express";
   
-  // Tarifas (solo para visualización en breakdown)
-  const regularRate = {
-    standard: 2.75,
-    premium: 3.00,
-    express: 3.25
-  }[plan] || 2.75;
+  // Calcular total de addons
+  const addonsTotal = (order.addon_services || []).reduce(
+    (sum, addon) => sum + (Number(addon.custom_price || addon.price || 0) * Number(addon.qty || addon.quantity || 1)), 0
+  );
   
-  const memberRate = {
-    standard: 2.50,
-    premium: 2.75,
-    express: 3.00
-  }[plan] || 2.50;
+  // Total real incluyendo addons
+  const realTotal = extraCharge > 0 ? extraCharge + addonsTotal : totalAmount;
   
-  // Si NO es miembro, usar tarifa regular
-  const rate = hasMembership ? memberRate : regularRate;
-  
-  const delivery = order.delivery_fee || 0;
-  
-  // ★ EL MONTO SIN FEE ES EL QUE ENVÍA EL BACKEND ★
-  const amountWithoutFee = extraCharge > 0 ? extraCharge : (lbs * rate);
+  // Delivery fee
+  const delivery = order.delivery_fee || calcDeliveryFee(order.distance_miles) || 0;
   
   // Total sin fee de tarjeta
-  const totalWithoutCardFee = amountWithoutFee + delivery;
-  
-  const allowance = order.membership_plan ? (order.lbs_from_allowance || 0) : 0;
+  const totalWithoutCardFee = realTotal + delivery;
 
   return (
     <div className="mt-4 pt-4 border-t border-slate-100 space-y-3">
@@ -682,7 +673,32 @@ function OrderDetail({ order, hasMembership, customerToken, t, isOrderCoveredByM
         </div>
       )}
 
-      {/* Billing detail */}
+      {/* Add-ons display - NUEVO */}
+      {(order.addon_services || []).length > 0 && (
+        <div className="rounded-xl border border-slate-100 bg-white p-4">
+          <h4 className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-1.5">
+            <Package className="w-3 h-3" />{t("Add-on Items", "Artículos adicionales")}
+          </h4>
+          <div className="space-y-2">
+            {order.addon_services.map((addon, idx) => {
+              const qty = Number(addon.qty || addon.quantity || 1);
+              const price = Number(addon.custom_price || addon.price || 0);
+              const total = price * qty;
+              return (
+                <div key={idx} className="flex items-center justify-between py-2 border-b border-slate-100 last:border-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">{qty > 1 ? `×${qty}` : "•"}</span>
+                    <span className="text-sm text-slate-700">{addon.name}</span>
+                  </div>
+                  <span className="text-sm font-semibold text-slate-800">{formatCurrency(total)}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Billing detail - usando BillingBreakdown que ya maneja addons correctamente */}
       {lbs > 0 && (
         <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
           <h4 className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-1.5">
@@ -756,7 +772,16 @@ function OrderDetail({ order, hasMembership, customerToken, t, isOrderCoveredByM
                 {t("Pay for this order", "Pagar esta orden")}
               </h4>
               
-              {/* Métodos sin comisión (Zelle, Venmo, CashApp) - muestran el monto base */}
+              {/* Mostrar el total con addons incluidos */}
+              <div className="mb-3 p-2 bg-white rounded-lg text-center">
+                <span className="text-xs text-slate-500">{t("Total to pay", "Total a pagar")}:</span>
+                <span className="ml-2 font-bold text-slate-800">{formatCurrency(totalWithoutCardFee)}</span>
+                {addonsTotal > 0 && (
+                  <span className="ml-2 text-[10px] text-sky-500">({formatCurrency(addonsTotal)} {t("in add-ons", "en extras")})</span>
+                )}
+              </div>
+              
+              {/* Métodos sin comisión (Zelle, Venmo, CashApp) */}
               <div className="grid grid-cols-3 gap-2 mb-3">
                 {[
                   { method: "zelle",   label: "Zelle",    bg: "#6D1ED4", amount: totalWithoutCardFee },
@@ -1812,11 +1837,18 @@ export default function CustomerAccount() {
                                 </div>
                               </div>
                               <div className="flex items-center gap-2 flex-shrink-0">
-                                {order.total_amount != null && (
-                                  isOrderCoveredByMembership(order)
-                                    ? null
-                                    : <span className="font-black text-sky-600 text-lg tabular-nums">{formatCurrency(hasMembership && order.extra_charge != null ? order.extra_charge : order.total_amount)}</span>
-                                )}
+                               {order.total_amount != null && (
+  isOrderCoveredByMembership(order)
+    ? null
+    : (() => {
+        // Calcular total real incluyendo addons
+        const addonsTotal = (order.addon_services || []).reduce(
+          (sum, addon) => sum + (Number(addon.custom_price || addon.price || 0) * Number(addon.qty || addon.quantity || 1)), 0
+        );
+        const realTotal = (hasMembership && order.extra_charge != null ? order.extra_charge : order.total_amount) + addonsTotal;
+        return <span className="font-black text-sky-600 text-lg tabular-nums">{formatCurrency(realTotal)}</span>;
+      })()
+)}
                                 <button
                                   onClick={() => setViewingOrderDetails(prev => prev === order.id ? null : order.id)}
                                   className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200 ${isExpanded ? "bg-sky-100 text-sky-600" : "bg-slate-100 text-slate-400 hover:bg-slate-200"}`}>

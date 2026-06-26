@@ -8,20 +8,87 @@ let googleMapsPromise = null;
 
 function loadGoogleMaps(apiKey) {
   if (typeof window === 'undefined') return Promise.reject(new Error('No window'));
-  if (window.google?.maps) return Promise.resolve(window.google);
+  if (window.google?.maps?.Map && window.google?.maps?.marker?.AdvancedMarkerElement) {
+    return Promise.resolve(window.google);
+  }
   if (googleMapsPromise) return googleMapsPromise;
 
   googleMapsPromise = new Promise((resolve, reject) => {
+    const onReady = async () => {
+      try {
+        // Si `importLibrary` está disponible (loading=async), pedimos las libs.
+        // Si no (script tradicional), las libs ya vienen por la query string `libraries=`.
+        if (typeof window.google?.maps?.importLibrary === 'function') {
+          await Promise.all([
+            window.google.maps.importLibrary('maps'),
+            window.google.maps.importLibrary('marker'),
+            window.google.maps.importLibrary('places'),
+            window.google.maps.importLibrary('geometry'),
+          ]);
+        } else {
+          // Poll corto hasta que aparezca el constructor (max 4s)
+          let tries = 0;
+          while (
+            (!window.google?.maps?.Map || !window.google?.maps?.marker?.AdvancedMarkerElement) &&
+            tries < 40
+          ) {
+            await new Promise((r) => setTimeout(r, 100));
+            tries++;
+          }
+        }
+        if (!window.google?.maps?.Map) {
+          throw new Error('google.maps.Map no disponible tras la carga');
+        }
+        resolve(window.google);
+      } catch (e) {
+        reject(e);
+      }
+    };
+
+    // Si ya hay un script de Maps cargado por otra parte de la app, esperamos
+    if (window.google?.maps || document.querySelector('script[src*="maps.googleapis.com/maps/api/js"]')) {
+      onReady();
+      return;
+    }
+
     const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,geometry`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,geometry,marker&loading=async&v=weekly`;
     script.async = true;
     script.defer = true;
-    script.onload = () => resolve(window.google);
+    script.onload = onReady;
     script.onerror = () => reject(new Error('Failed to load Google Maps API'));
     document.head.appendChild(script);
   });
 
   return googleMapsPromise;
+}
+
+// ─── Marker compatibility layer ──────────────────────────────────────────────
+// Convierte opciones de google.maps.Marker (legacy) a AdvancedMarkerElement.
+// Soporta icon SVG (data URL), title, zIndex, click handlers, getPosition(), setMap.
+function buildMarkerContent(opts) {
+  // Si pasaron un icon (URL/data URL SVG), lo embebemos en <img>
+  if (opts.icon) {
+    const icon = opts.icon;
+    const url = typeof icon === 'string' ? icon : icon.url;
+    const size = (typeof icon === 'object' && icon.scaledSize)
+      ? { w: icon.scaledSize.width, h: icon.scaledSize.height }
+      : { w: 32, h: 40 };
+    const img = document.createElement('img');
+    img.src = url;
+    img.width = size.w;
+    img.height = size.h;
+    img.style.cssText = 'display:block;pointer-events:auto;user-select:none';
+    img.draggable = false;
+    return { content: img, anchor: icon.anchor };
+  }
+  // Default pin (cuando no se pasa icon): pin rojo nativo de Google
+  const pin = new window.google.maps.marker.PinElement({
+    background: '#dc2626',
+    borderColor: '#fff',
+    glyphColor: '#fff',
+  });
+  return { content: pin.element };
 }
 
 class MapManager {
@@ -35,7 +102,8 @@ class MapManager {
   }
 
   clear() {
-    this.markers.forEach(m => m.setMap(null));
+    // AdvancedMarkerElement: setMap(null) o map=null; ambos funcionan en weekly channel
+    this.markers.forEach(m => { if (m.setMap) m.setMap(null); else m.map = null; });
     this.polylines.forEach(p => p.setMap(null));
     this.circles.forEach(c => c.setMap(null));
     this.infowindows.forEach(iw => iw.close());
@@ -46,7 +114,39 @@ class MapManager {
   }
 
   addMarker(opts) {
-    const marker = new window.google.maps.Marker(opts);
+    // ── AdvancedMarkerElement (no-deprecation path) ─────────────────────
+    const { content, anchor } = buildMarkerContent(opts);
+    const marker = new window.google.maps.marker.AdvancedMarkerElement({
+      position: opts.position,
+      map: opts.map || this.map,
+      title: opts.title || '',
+      zIndex: opts.zIndex,
+      content,
+      gmpClickable: true,
+    });
+
+    // ── Backwards-compatibility shims ───────────────────────────────────
+    // Otros sitios del código llaman marker.addListener('click', fn) y
+    // marker.getPosition(); AdvancedMarkerElement usa eventos diferentes
+    // y `position` como prop, así que envolvemos.
+    const origAddListener = marker.addListener?.bind(marker);
+    marker.addListener = (event, handler) => {
+      const mapped = event === 'click' ? 'gmp-click' : event;
+      return origAddListener ? origAddListener(mapped, handler) : null;
+    };
+    if (!marker.getPosition) {
+      marker.getPosition = () => {
+        const p = marker.position;
+        if (!p) return null;
+        return new window.google.maps.LatLng(p.lat ?? p.lat?.(), p.lng ?? p.lng?.());
+      };
+    }
+    // setMap ya existe nativamente en AdvancedMarkerElement
+    if (anchor && marker.content) {
+      // Compensar el anchor del SVG legacy con transform CSS
+      marker.content.style.transform = `translate(${-anchor.x}px, ${-anchor.y}px)`;
+    }
+
     this.markers.push(marker);
     return marker;
   }
@@ -192,6 +292,11 @@ export const MapView = forwardRef(({
     const map = new window.google.maps.Map(containerRef.current, {
       center: { lat: hqLocation.lat, lng: hqLocation.lng },
       zoom: 12,
+      // mapId requerido por AdvancedMarkerElement.
+      // 'DEMO_MAP_ID' es público de Google y permite AdvancedMarkers sin custom styling.
+      // Para custom map styles en producción, crear un mapId propio en Cloud Console
+      // → Maps Management → Map Styles, y reemplazar aquí.
+      mapId: process.env.REACT_APP_GOOGLE_MAP_ID || 'DEMO_MAP_ID',
       zoomControl: true,
       streetViewControl: false,
       mapTypeControl: true,
@@ -199,6 +304,8 @@ export const MapView = forwardRef(({
       styles: [
         { featureType: 'poi.business', stylers: [{ visibility: 'off' }] }
       ],
+      // Nota: cuando se usa mapId, los `styles` inline se ignoran (Google los aplica
+      // desde el cloud styling del mapId). Los dejamos por compat si vuelves al modo legacy.
     });
 
     mapRef.current = map;
