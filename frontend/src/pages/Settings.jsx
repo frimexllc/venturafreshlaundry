@@ -17,7 +17,9 @@ import {
   ShoppingBag,
   FileText,
   UserPlus,
-  HeadphonesIcon
+  HeadphonesIcon,
+  Upload,
+  AlertTriangle
 } from "lucide-react";
 import { useLocale } from "../context/LocaleContext";
 
@@ -42,6 +44,13 @@ export default function Settings() {
     notify_self_service: "ready"
   });
   const [showAdvanced, setShowAdvanced] = useState(false);
+  
+  // Restore functionality state
+  const [restoreLoading, setRestoreLoading] = useState(false);
+  const [restoreZipFile, setRestoreZipFile] = useState(null);
+  const [selectedCsvCollection, setSelectedCsvCollection] = useState("customers");
+  const [restoreCsvFile, setRestoreCsvFile] = useState(null);
+  const [showRestoreWarning, setShowRestoreWarning] = useState(false);
 
   useEffect(() => {
     fetchSettings();
@@ -173,6 +182,79 @@ export default function Settings() {
       toast.error(msg);
     } finally {
       setBackupLoading(false);
+    }
+  };
+
+  // Restore handlers
+  const handleRestoreZip = async () => {
+    if (!restoreZipFile) {
+      toast.error(t("Please select a ZIP file", "Por favor selecciona un archivo ZIP"));
+      return;
+    }
+
+    const confirmed = window.confirm(
+      t("WARNING: This will overwrite ALL data. Are you sure?", 
+        "ADVERTENCIA: Esto sobrescribirá TODOS los datos. ¿Estás seguro?")
+    );
+    if (!confirmed) return;
+
+    setRestoreLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', restoreZipFile);
+      
+      const res = await axios.post(`${API}/admin/restore`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      toast.success(
+        t(`Restored ${res.data.total_restored} documents`, 
+          `Restaurados ${res.data.total_restored} documentos`)
+      );
+      
+      if (res.data.errors.length > 0) {
+        toast.warning(t("Some collections had errors", "Algunas colecciones tuvieron errores"));
+      }
+      
+      setRestoreZipFile(null);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || t("Error restoring backup", "Error al restaurar respaldo"));
+    } finally {
+      setRestoreLoading(false);
+    }
+  };
+
+  const handleRestoreCsv = async () => {
+    if (!restoreCsvFile) {
+      toast.error(t("Please select a CSV file", "Por favor selecciona un archivo CSV"));
+      return;
+    }
+
+    const confirmed = window.confirm(
+      t(`WARNING: This will overwrite ALL data in ${selectedCsvCollection}. Are you sure?`, 
+        `ADVERTENCIA: Esto sobrescribirá TODOS los datos en ${selectedCsvCollection}. ¿Estás seguro?`)
+    );
+    if (!confirmed) return;
+
+    setRestoreLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', restoreCsvFile);
+      
+      const res = await axios.post(`${API}/admin/restore/csv/${selectedCsvCollection}`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      toast.success(
+        t(`Restored ${res.data.inserted_count} records to ${selectedCsvCollection}`, 
+          `Restaurados ${res.data.inserted_count} registros en ${selectedCsvCollection}`)
+      );
+      
+      setRestoreCsvFile(null);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || t("Error restoring CSV", "Error al restaurar CSV"));
+    } finally {
+      setRestoreLoading(false);
     }
   };
 
@@ -466,6 +548,157 @@ export default function Settings() {
               </div>
               <Download className="h-4 w-4 text-slate-400" />
             </Button>
+          </div>
+        </div>
+
+        {/* Restore Section */}
+        <div className="dashboard-card p-6">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="h-10 w-10 rounded-xl bg-amber-100 flex items-center justify-center">
+              <Upload className="h-5 w-5 text-amber-600" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">{t("Restore Data", "Restaurar Datos")}</h2>
+              <p className="text-sm text-slate-500">{t("Restore from backup or CSV files", "Restaurar desde respaldo o archivos CSV")}</p>
+            </div>
+          </div>
+
+          {/* Full DB Restore */}
+          <div className="mb-6 p-4 rounded-xl bg-gradient-to-br from-red-50 to-amber-50 border border-red-200">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="h-9 w-9 rounded-lg bg-red-600 flex items-center justify-center shrink-0">
+                <AlertTriangle className="h-4 w-4 text-white" />
+              </div>
+              <div className="flex-1">
+                <div className="font-semibold text-slate-900 text-sm">
+                  {t("Full Database Restore", "Restaurar base de datos completa")}
+                </div>
+                <div className="text-xs text-slate-600 mt-0.5 leading-snug">
+                  {t(
+                    "Restores all collections from a ZIP backup. WARNING: This will overwrite ALL existing data!",
+                    "Restaura todas las colecciones desde un respaldo ZIP. ADVERTENCIA: Esto sobrescribirá TODOS los datos existentes!"
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label>{t("Select ZIP backup file", "Seleccionar archivo ZIP de respaldo")}</Label>
+                <Input
+                  type="file"
+                  accept=".zip"
+                  onChange={(e) => setRestoreZipFile(e.target.files?.[0] || null)}
+                  disabled={restoreLoading}
+                />
+                {restoreZipFile && (
+                  <p className="text-xs text-slate-500">{restoreZipFile.name}</p>
+                )}
+              </div>
+              
+              <Button
+                onClick={handleRestoreZip}
+                disabled={!restoreZipFile || restoreLoading}
+                className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold"
+              >
+                {restoreLoading ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4 mr-2" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
+                    </svg>
+                    {t("Restoring…", "Restaurando…")}
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4 mr-2" />
+                    {t("Restore Full Database", "Restaurar base de datos completa")}
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+
+          {/* Single Collection CSV Restore */}
+          <div className="p-4 rounded-xl border border-slate-200">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="h-9 w-9 rounded-lg bg-slate-600 flex items-center justify-center shrink-0">
+                <FileText className="h-4 w-4 text-white" />
+              </div>
+              <div className="flex-1">
+                <div className="font-semibold text-slate-900 text-sm">
+                  {t("Restore Single Collection (CSV)", "Restaurar colección individual (CSV)")}
+                </div>
+                <div className="text-xs text-slate-600 mt-0.5 leading-snug">
+                  {t(
+                    "Restores a single collection from a CSV file. WARNING: This will overwrite all data in that collection!",
+                    "Restaura una colección individual desde un archivo CSV. ADVERTENCIA: Esto sobrescribirá todos los datos en esa colección!"
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>{t("Collection", "Colección")}</Label>
+                  <select
+                    className="w-full h-10 rounded-md border border-slate-200 px-2 text-sm"
+                    value={selectedCsvCollection}
+                    onChange={(e) => setSelectedCsvCollection(e.target.value)}
+                    disabled={restoreLoading}
+                  >
+                    <option value="customers">Customers</option>
+                    <option value="orders">Orders</option>
+                    <option value="leads">Leads</option>
+                    <option value="quotes">Quotes</option>
+                    <option value="tickets">Tickets</option>
+                    <option value="products">Products</option>
+                    <option value="memberships">Memberships</option>
+                    <option value="membership_subscriptions">Membership Subscriptions</option>
+                    <option value="addresses">Addresses</option>
+                    <option value="payments">Payments</option>
+                    <option value="invoices">Invoices</option>
+                    <option value="expenses">Expenses</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label>{t("CSV File", "Archivo CSV")}</Label>
+                  <Input
+                    type="file"
+                    accept=".csv"
+                    onChange={(e) => setRestoreCsvFile(e.target.files?.[0] || null)}
+                    disabled={restoreLoading}
+                  />
+                </div>
+              </div>
+              
+              {restoreCsvFile && (
+                <p className="text-xs text-slate-500">{restoreCsvFile.name}</p>
+              )}
+              
+              <Button
+                onClick={handleRestoreCsv}
+                disabled={!restoreCsvFile || restoreLoading}
+                variant="outline"
+                className="w-full"
+              >
+                {restoreLoading ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4 mr-2" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
+                    </svg>
+                    {t("Restoring…", "Restaurando…")}
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4 mr-2" />
+                    {t("Restore Collection", "Restaurar colección")}
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         </div>
       </div>

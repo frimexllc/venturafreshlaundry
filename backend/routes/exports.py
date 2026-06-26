@@ -1,14 +1,15 @@
-"""CSV Export endpoints"""
-from fastapi import APIRouter, Depends
+"""CSV Export endpoints and Restore endpoints"""
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import StreamingResponse
 import csv
 import io
 import json
+import zipfile
 
 from database import db
 from auth import get_current_user
 
-router = APIRouter(prefix="/api", tags=["Export"])
+router = APIRouter(prefix="/api", tags=["Export/Restore"])
 
 
 async def _export_collection(collection, filename):
@@ -79,10 +80,8 @@ async def admin_full_backup(current_user: dict = Depends(get_current_user)):
     # Solo admin/owner pueden descargar respaldos completos
     role = (current_user.get("role") or "").lower()
     if role not in ("admin", "owner", "super_admin"):
-        from fastapi import HTTPException
         raise HTTPException(status_code=403, detail="Solo administradores pueden descargar respaldos")
 
-    import zipfile
     from datetime import datetime, timezone
 
     # Lista de colecciones a incluir (importantes para restaurar el negocio)
@@ -140,3 +139,147 @@ async def admin_full_backup(current_user: dict = Depends(get_current_user)):
             "X-Backup-Documents": str(manifest["total_documents"]),
         },
     )
+
+
+# ==================== FULL DATABASE RESTORE ====================
+@router.post("/admin/restore")
+async def admin_full_restore(file: UploadFile = File(...), current_user: dict = Depends(get_current_user)):
+    """
+    Restaura una base de datos desde un archivo .zip de respaldo.
+    Solo admin/owner. Pregunta confirmación primero? No, solo ejecuta.
+    """
+    from datetime import datetime, timezone
+    from utils import create_audit_log
+
+    role = (current_user.get("role") or "").lower()
+    if role not in ("admin", "owner", "super_admin"):
+        raise HTTPException(status_code=403, detail="Solo administradores pueden restaurar respaldos")
+
+    if not file.filename.lower().endswith(".zip"):
+        raise HTTPException(status_code=400, detail="El archivo debe ser un .zip de respaldo")
+
+    content = await file.read()
+    buf = io.BytesIO(content)
+
+    restored_counts = {}
+    errors = []
+    try:
+        with zipfile.ZipFile(buf, "r") as zf:
+            # Leer manifest primero (si existe)
+            manifest = None
+            if "manifest.json" in zf.namelist():
+                manifest = json.loads(zf.read("manifest.json"))
+            
+            for filename in zf.namelist():
+                if filename == "manifest.json":
+                    continue
+                if not filename.endswith(".json"):
+                    continue
+                
+                col_name = filename.replace(".json", "")
+                try:
+                    collection = getattr(db, col_name, None)
+                    if collection is None:
+                        errors.append(f"Colección {col_name} no encontrada")
+                        continue
+
+                    # Leer contenido JSON
+                    json_content = zf.read(filename)
+                    docs = json.loads(json_content)
+                    
+                    # Borrar la colección existente y volver a insertar
+                    await collection.delete_many({})
+                    if docs:
+                        await collection.insert_many(docs)
+                    
+                    restored_counts[col_name] = len(docs)
+                except Exception as e:
+                    errors.append(f"Error al restaurar {col_name}: {str(e)}")
+
+        await create_audit_log(
+            "DB_RESTORED", "system", "full_db",
+            current_user["id"],
+            {"restored_collections": restored_counts, "errors": errors}
+        )
+        return {
+            "success": True,
+            "restored_collections": restored_counts,
+            "errors": errors,
+            "total_restored": sum(restored_counts.values())
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al leer el zip: {str(e)}")
+
+
+# ==================== CSV RESTORE (single collection) ====================
+@router.post("/admin/restore/csv/{collection}")
+async def admin_restore_csv(
+    collection: str,
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Restaura/importa una colección desde un archivo CSV.
+    Solo admin/owner. Borra la colección existente y vuelve a insertar.
+    """
+    from utils import create_audit_log
+
+    role = (current_user.get("role") or "").lower()
+    if role not in ("admin", "owner", "super_admin"):
+        raise HTTPException(status_code=403, detail="Solo administradores pueden restaurar CSV")
+
+    if not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="El archivo debe ser un .csv")
+
+    # Validar que la colección exista
+    allowed_collections = [
+        "customers", "orders", "leads", "quotes", "tickets",
+        "products", "memberships", "membership_subscriptions",
+        "addresses", "payments", "invoices", "expenses",
+        "fuel_logs", "mileage_logs", "route_trips", "vehicles"
+    ]
+    if collection not in allowed_collections:
+        raise HTTPException(status_code=400, detail=f"Colección no permitida. Colecciones disponibles: {', '.join(allowed_collections)}")
+
+    try:
+        db_collection = getattr(db, collection, None)
+        if db_collection is None:
+            raise HTTPException(status_code=404, detail=f"Colección {collection} no encontrada")
+
+        content = await file.read()
+        text = content.decode("utf-8", errors="ignore")
+        reader = csv.DictReader(io.StringIO(text))
+        rows = []
+        for row in reader:
+            # Convertir campos que son JSON (arrays/dicts) de vuelta a objetos
+            parsed_row = {}
+            for key, value in row.items():
+                if value:
+                    try:
+                        parsed_row[key] = json.loads(value)
+                    except:
+                        parsed_row[key] = value
+                else:
+                    parsed_row[key] = value
+            rows.append(parsed_row)
+
+        # Borrar la colección existente y volver a insertar
+        await db_collection.delete_many({})
+        inserted_count = 0
+        if rows:
+            result = await db_collection.insert_many(rows)
+            inserted_count = len(result.inserted_ids)
+
+        await create_audit_log(
+            "CSV_RESTORED", collection, "csv_import",
+            current_user["id"],
+            {"inserted_count": inserted_count}
+        )
+
+        return {
+            "success": True,
+            "collection": collection,
+            "inserted_count": inserted_count
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al procesar el CSV: {str(e)}")
