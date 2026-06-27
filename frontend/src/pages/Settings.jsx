@@ -261,6 +261,7 @@ export default function Settings() {
   // Restore handlers
   const [restoreErrors, setRestoreErrors] = useState([]);
   const [showRestoreErrors, setShowRestoreErrors] = useState(false);
+  const [invalidLines, setInvalidLines] = useState({});
 
   const handleRestoreZip = async () => {
     if (!restoreZipFile) {
@@ -277,6 +278,7 @@ export default function Settings() {
     setRestoreLoading(true);
     setRestoreErrors([]);
     setShowRestoreErrors(false);
+    setInvalidLines({});
     try {
       const formData = new FormData();
       formData.append('file', restoreZipFile);
@@ -285,11 +287,13 @@ export default function Settings() {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
 
+      const totalInvalid = Object.values(res.data.invalid_lines || {}).reduce((a, b) => a + b, 0);
       toast.success(
-        t(`Restored ${res.data.total_restored} documents across ${Object.keys(res.data.restored_collections).length} collections`, 
-          `Restaurados ${res.data.total_restored} documentos en ${Object.keys(res.data.restored_collections).length} colecciones`)
+        t(`Restored ${res.data.total_restored} docs across ${Object.keys(res.data.restored_collections).length} collections (skipped ${totalInvalid} invalid lines)`, 
+          `Restaurados ${res.data.total_restored} documentos en ${Object.keys(res.data.restored_collections).length} colecciones (se omitieron ${totalInvalid} líneas inválidas)`)
       );
       
+      setInvalidLines(res.data.invalid_lines || {});
       if (res.data.errors.length > 0) {
         setRestoreErrors(res.data.errors);
         setShowRestoreErrors(true);
@@ -318,6 +322,7 @@ export default function Settings() {
     setRestoreLoading(true);
     setRestoreErrors([]);
     setShowRestoreErrors(false);
+    setInvalidLines({});
     try {
       const formData = new FormData();
       formData.append('file', restoreCsvFile);
@@ -342,7 +347,7 @@ export default function Settings() {
   // Restaurar una colección desde un archivo JSONL
   const handleRestoreJsonl = async () => {
     if (!restoreJsonlFile) {
-      toast.error(t("Please select a JSONL file", "Por favor selecciona un archivo JSONL"));
+      toast.error(t("Please select a JSONL/JSON file", "Por favor selecciona un archivo JSONL/JSON"));
       return;
     }
 
@@ -355,6 +360,7 @@ export default function Settings() {
     setRestoreLoading(true);
     setRestoreErrors([]);
     setShowRestoreErrors(false);
+    setInvalidLines({});
     try {
       const formData = new FormData();
       formData.append('file', restoreJsonlFile);
@@ -364,9 +370,14 @@ export default function Settings() {
       });
 
       toast.success(
-        t(`Restored ${res.data.inserted_count} records to ${selectedJsonlCollection}`, 
-          `Restaurados ${res.data.inserted_count} registros en ${selectedJsonlCollection}`)
+        t(`Restored ${res.data.inserted_count} records to ${selectedJsonlCollection} (skipped ${res.data.invalid_lines_count} invalid lines)`, 
+          `Restaurados ${res.data.inserted_count} registros en ${selectedJsonlCollection} (se omitieron ${res.data.invalid_lines_count} líneas inválidas)`)
       );
+
+      if (res.data.errors.length > 0) {
+        setRestoreErrors(res.data.errors);
+        setShowRestoreErrors(true);
+      }
       
       setRestoreJsonlFile(null);
     } catch (error) {
@@ -392,6 +403,7 @@ export default function Settings() {
     setRestoreLoading(true);
     setRestoreErrors([]);
     setShowRestoreErrors(false);
+    setInvalidLines({});
     try {
       const formData = new FormData();
       formData.append('file', restoreJsonlZipFile);
@@ -400,11 +412,13 @@ export default function Settings() {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
 
+      const totalInvalid = Object.values(res.data.invalid_lines || {}).reduce((a, b) => a + b, 0);
       toast.success(
-        t(`Restored ${res.data.total_restored} documents across ${Object.keys(res.data.restored_collections).length} collections`, 
-          `Restaurados ${res.data.total_restored} documentos en ${Object.keys(res.data.restored_collections).length} colecciones`)
+        t(`Restored ${res.data.total_restored} docs across ${Object.keys(res.data.restored_collections).length} collections (skipped ${totalInvalid} invalid lines)`, 
+          `Restaurados ${res.data.total_restored} documentos en ${Object.keys(res.data.restored_collections).length} colecciones (se omitieron ${totalInvalid} líneas inválidas)`)
       );
       
+      setInvalidLines(res.data.invalid_lines || {});
       if (res.data.errors.length > 0) {
         setRestoreErrors(res.data.errors);
         setShowRestoreErrors(true);
@@ -992,17 +1006,31 @@ export default function Settings() {
           </div>
 
           {/* Restore Errors Display */}
-          {showRestoreErrors && restoreErrors.length > 0 && (
-            <div className="p-4 rounded-xl border border-red-200 bg-red-50 mb-4">
+          { (showRestoreErrors || Object.keys(invalidLines).length > 0) && (
+            <div className={`p-4 rounded-xl border mb-4 ${showRestoreErrors ? 'border-red-200 bg-red-50' : 'border-yellow-200 bg-yellow-50'}`}>
               <div className="flex items-start gap-3 mb-3">
-                <AlertTriangle className="h-5 w-5 text-red-600 shrink-0 mt-0.5" />
+                {showRestoreErrors ? (
+                  <AlertTriangle className="h-5 w-5 text-red-600 shrink-0 mt-0.5" />
+                ) : (
+                  <AlertTriangle className="h-5 w-5 text-yellow-600 shrink-0 mt-0.5" />
+                )}
                 <div className="flex-1">
-                  <div className="font-semibold text-red-900 text-sm">
-                    {t("Restore Errors", "Errores de restauración")}
+                  <div className="font-semibold text-sm">
+                    {showRestoreErrors 
+                      ? t("Restore Errors & Warnings", "Errores y advertencias de restauración")
+                      : t("Restore Warnings", "Advertencias de restauración")
+                    }
                   </div>
-                  <div className="text-xs text-red-700 mt-0.5">
-                    {t("The following errors occurred during restore:", "Los siguientes errores ocurrieron durante la restauración:")}
-                  </div>
+                  {Object.keys(invalidLines).length > 0 && (
+                    <div className="text-xs mt-0.5">
+                      {t("Skipped invalid lines per collection:", "Líneas inválidas omitidas por colección:")}
+                      <ul className="mt-1 list-disc list-inside">
+                        {Object.entries(invalidLines).map(([col, count]) => (
+                          <li key={col}>{col}: {count} lines</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </div>
                 <Button
                   variant="outline"
@@ -1010,19 +1038,22 @@ export default function Settings() {
                   onClick={() => {
                     setShowRestoreErrors(false);
                     setRestoreErrors([]);
+                    setInvalidLines({});
                   }}
                   className="shrink-0"
                 >
                   {t("Close", "Cerrar")}
                 </Button>
               </div>
-              <div className="max-h-60 overflow-y-auto bg-white rounded border border-red-200 p-3 space-y-1">
-                {restoreErrors.map((err, idx) => (
-                  <div key={idx} className="text-xs text-red-800 break-all leading-relaxed">
-                    • {err}
-                  </div>
-                ))}
-              </div>
+              {showRestoreErrors && (
+                <div className="max-h-60 overflow-y-auto bg-white rounded border border-red-200 p-3 space-y-1">
+                  {restoreErrors.map((err, idx) => (
+                    <div key={idx} className="text-xs text-red-800 break-all leading-relaxed">
+                      • {err}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
