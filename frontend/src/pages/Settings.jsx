@@ -228,16 +228,20 @@ export default function Settings() {
   };
 
   const [backupLoading, setBackupLoading] = useState(false);
+  const [backupFormat, setBackupFormat] = useState("json");
   const handleFullBackup = async () => {
     setBackupLoading(true);
     try {
-      const res = await axios.get(`${API}/admin/backup`, { responseType: 'blob' });
+      const res = await axios.get(`${API}/admin/backup`, { 
+        params: { format: backupFormat },
+        responseType: 'blob' 
+      });
       const blob = new Blob([res.data], { type: 'application/zip' });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
       const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-      link.setAttribute('download', `vfl_backup_${ts}.zip`);
+      link.setAttribute('download', `vfl_backup_${backupFormat}_${ts}.zip`);
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -245,7 +249,7 @@ export default function Settings() {
       const total = res.headers?.['x-backup-documents'];
       toast.success(
         total
-          ? t(`Backup ready (${total} documents)`, `Respaldo listo (${total} documentos)`)
+          ? t(`Backup ready (${total} docs, ${backupFormat} format)`, `Respaldo listo (${total} docs, formato ${backupFormat})`)
           : t("Backup downloaded", "Respaldo descargado")
       );
     } catch (error) {
@@ -628,33 +632,47 @@ export default function Settings() {
                 </div>
                 <div className="text-xs text-slate-600 mt-0.5 leading-snug">
                   {t(
-                    "Downloads a ZIP with all collections (orders, customers, finances, etc.) as JSON. Restorable via mongorestore.",
-                    "Descarga un ZIP con todas las colecciones (órdenes, clientes, finanzas, etc.) en JSON. Restaurable vía mongorestore."
+                    "Downloads a ZIP with all collections (orders, customers, finances, etc.). Choose format: JSON (array of docs) or JSONL (one doc per line).",
+                    "Descarga un ZIP con todas las colecciones (órdenes, clientes, finanzas, etc.). Escoge el formato: JSON (array de docs) o JSONL (un doc por línea)."
                   )}
                 </div>
               </div>
             </div>
-            <Button
-              onClick={handleFullBackup}
-              disabled={backupLoading}
-              data-testid="admin-backup-btn"
-              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold"
-            >
-              {backupLoading ? (
-                <>
-                  <svg className="animate-spin h-4 w-4 mr-2" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
-                  </svg>
-                  {t("Generating backup…", "Generando respaldo…")}
-                </>
-              ) : (
-                <>
-                  <Download className="h-4 w-4 mr-2" />
-                  {t("Download Full Backup (.zip)", "Descargar respaldo completo (.zip)")}
-                </>
-              )}
-            </Button>
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 gap-2">
+                <Label>{t("Backup Format", "Formato de respaldo")}</Label>
+                <select
+                  className="w-full h-10 rounded-md border border-slate-200 px-2 text-sm"
+                  value={backupFormat}
+                  onChange={(e) => setBackupFormat(e.target.value)}
+                  disabled={backupLoading}
+                >
+                  <option value="json">JSON (array of docs - recommended)</option>
+                  <option value="jsonl">JSONL (one doc per line)</option>
+                </select>
+              </div>
+              <Button
+                onClick={handleFullBackup}
+                disabled={backupLoading}
+                data-testid="admin-backup-btn"
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold"
+              >
+                {backupLoading ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4 mr-2" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
+                    </svg>
+                    {t("Generating backup…", "Generando respaldo…")}
+                  </>
+                ) : (
+                  <>
+                    <Download className="h-4 w-4 mr-2" />
+                    {t("Download Full Backup (.zip)", "Descargar respaldo completo (.zip)")}
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
 
           <div className="space-y-3">

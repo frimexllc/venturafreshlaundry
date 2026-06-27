@@ -74,12 +74,16 @@ async def export_tickets_csv(current_user: dict = Depends(get_current_user)):
 
 # ==================== FULL DATABASE BACKUP ====================
 @router.get("/admin/backup")
-async def admin_full_backup(current_user: dict = Depends(get_current_user)):
+async def admin_full_backup(
+    format: str = "json",
+    current_user: dict = Depends(get_current_user)
+):
     """
-    Genera un respaldo completo de la base de datos como archivo .zip
-    con un JSON por colección. Solo admin/owner.
+    Genera un respaldo completo de la base de datos como archivo .zip.
+    Solo admin/owner.
 
-    Returns: zip stream con manifest.json + {collection}.json para cada colección
+    Args:
+        format: "json" (default, JSON array por colección) o "jsonl" (una línea por documento)
     """
     # Solo admin/owner pueden descargar respaldos completos
     role = (current_user.get("role") or "").lower()
@@ -113,8 +117,15 @@ async def admin_full_backup(current_user: dict = Depends(get_current_user)):
                     continue
                 docs = await collection.find({}, {"_id": 0}).to_list(100000)
                 counts[col_name] = len(docs)
-                payload = json.dumps(docs, default=str, ensure_ascii=False, indent=2)
-                zf.writestr(f"{col_name}.json", payload)
+                
+                if format.lower() == "jsonl":
+                    # JSONL: un documento por línea
+                    payload = "\n".join([json.dumps(doc, default=str, ensure_ascii=False) for doc in docs])
+                    zf.writestr(f"{col_name}.jsonl", payload)
+                else:
+                    # JSON: un array de documentos (formato original)
+                    payload = json.dumps(docs, default=str, ensure_ascii=False, indent=2)
+                    zf.writestr(f"{col_name}.json", payload)
             except Exception as e:
                 # No bloquear el backup si una colección falla
                 counts[col_name] = f"error: {str(e)[:60]}"
@@ -126,10 +137,10 @@ async def admin_full_backup(current_user: dict = Depends(get_current_user)):
             "generated_by": current_user.get("email", "unknown"),
             "collections": counts,
             "total_documents": sum(c for c in counts.values() if isinstance(c, int)),
+            "format": format.lower(),
             "format_version": "1.0",
             "restore_instructions": (
-                "Use `mongorestore --uri=$MONGO_URL --db=$DB_NAME` después de "
-                "convertir cada .json a BSON con `mongoimport --jsonArray`."
+                "Use the restore endpoint in the settings page of the app."
             ),
         }
         zf.writestr("manifest.json", json.dumps(manifest, indent=2, ensure_ascii=False))
