@@ -25,6 +25,74 @@ import { useLocale } from "../context/LocaleContext";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
+// Lista completa de colecciones (la que compartiste)
+const ALL_COLLECTIONS = [
+    "ai_command_logs",
+    "ai_daily_summaries",
+    "ai_operator_sessions",
+    "ai_pending_actions",
+    "audit_log",
+    "audit_logs",
+    "blog_categories",
+    "blog_posts",
+    "carts",
+    "catalog",
+    "customer_preferences",
+    "customer_surveys",
+    "customers",
+    "delivery_images",
+    "delivery_zones",
+    "email_verifications",
+    "eventos_automation",
+    "expenses",
+    "feedback_ia",
+    "files",
+    "finances",
+    "geocode_cache",
+    "importaciones_legacy",
+    "inventory",
+    "leads",
+    "machine_income",
+    "machines",
+    "membership_plans",
+    "membership_section",
+    "membership_signups",
+    "memberships",
+    "notification_dedupe",
+    "notification_logs",
+    "notification_openapi",
+    "notification_queue",
+    "notification_templates",
+    "notifications",
+    "ocr_logs",
+    "orders",
+    "password_resets",
+    "patrones_detectados",
+    "payment_transactions",
+    "payment_validations",
+    "pending_registrations",
+    "pickup_images",
+    "preferences",
+    "products",
+    "propuestas_ia",
+    "purchase_orders",
+    "quotes",
+    "reglas_negocio",
+    "services",
+    "services_page_config",
+    "stock_movements",
+    "store_orders",
+    "stripe_products",
+    "stripe_sync_log",
+    "suppliers",
+    "survey_responses",
+    "tickets",
+    "users",
+    "vehicles",
+    "voice_assistant_sessions",
+    "weight_images"
+];
+
 export default function Settings() {
   const { t } = useLocale();
   const [notificationSettings, setNotificationSettings] = useState(null);
@@ -51,6 +119,11 @@ export default function Settings() {
   const [selectedCsvCollection, setSelectedCsvCollection] = useState("customers");
   const [restoreCsvFile, setRestoreCsvFile] = useState(null);
   const [showRestoreWarning, setShowRestoreWarning] = useState(false);
+  
+  // Estados para JSONL restore (individual y masivo)
+  const [selectedJsonlCollection, setSelectedJsonlCollection] = useState("customers");
+  const [restoreJsonlFile, setRestoreJsonlFile] = useState(null);
+  const [restoreJsonlZipFile, setRestoreJsonlZipFile] = useState(null);
 
   useEffect(() => {
     fetchSettings();
@@ -253,6 +326,80 @@ export default function Settings() {
       setRestoreCsvFile(null);
     } catch (error) {
       toast.error(error.response?.data?.detail || t("Error restoring CSV", "Error al restaurar CSV"));
+    } finally {
+      setRestoreLoading(false);
+    }
+  };
+
+  // Restaurar una colección desde un archivo JSONL
+  const handleRestoreJsonl = async () => {
+    if (!restoreJsonlFile) {
+      toast.error(t("Please select a JSONL file", "Por favor selecciona un archivo JSONL"));
+      return;
+    }
+
+    const confirmed = window.confirm(
+      t(`WARNING: This will overwrite ALL data in ${selectedJsonlCollection}. Are you sure?`, 
+        `ADVERTENCIA: Esto sobrescribirá TODOS los datos en ${selectedJsonlCollection}. ¿Estás seguro?`)
+    );
+    if (!confirmed) return;
+
+    setRestoreLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', restoreJsonlFile);
+      
+      const res = await axios.post(`${API}/admin/restore/jsonl/${selectedJsonlCollection}`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      toast.success(
+        t(`Restored ${res.data.inserted_count} records to ${selectedJsonlCollection}`, 
+          `Restaurados ${res.data.inserted_count} registros en ${selectedJsonlCollection}`)
+      );
+      
+      setRestoreJsonlFile(null);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || t("Error restoring JSONL", "Error al restaurar JSONL"));
+    } finally {
+      setRestoreLoading(false);
+    }
+  };
+
+  // Restaurar masivamente desde un ZIP con archivos JSONL
+  const handleRestoreJsonlZip = async () => {
+    if (!restoreJsonlZipFile) {
+      toast.error(t("Please select a ZIP file", "Por favor selecciona un archivo ZIP"));
+      return;
+    }
+
+    const confirmed = window.confirm(
+      t("WARNING: This will overwrite ALL data in the collections found in the ZIP. Are you sure?", 
+        "ADVERTENCIA: Esto sobrescribirá TODOS los datos en las colecciones que contenga el ZIP. ¿Estás seguro?")
+    );
+    if (!confirmed) return;
+
+    setRestoreLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', restoreJsonlZipFile);
+      
+      const res = await axios.post(`${API}/admin/restore/jsonl-zip`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      toast.success(
+        t(`Restored ${res.data.total_restored} documents across ${Object.keys(res.data.restored_collections).length} collections`, 
+          `Restaurados ${res.data.total_restored} documentos en ${Object.keys(res.data.restored_collections).length} colecciones`)
+      );
+      
+      if (res.data.errors.length > 0) {
+        toast.warning(t("Some collections had errors", "Algunas colecciones tuvieron errores"));
+      }
+      
+      setRestoreJsonlZipFile(null);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || t("Error restoring ZIP", "Error al restaurar el ZIP"));
     } finally {
       setRestoreLoading(false);
     }
@@ -563,7 +710,7 @@ export default function Settings() {
             </div>
           </div>
 
-          {/* Full DB Restore */}
+          {/* Full DB Restore (original ZIP) */}
           <div className="mb-6 p-4 rounded-xl bg-gradient-to-br from-red-50 to-amber-50 border border-red-200">
             <div className="flex items-start gap-3 mb-4">
               <div className="h-9 w-9 rounded-lg bg-red-600 flex items-center justify-center shrink-0">
@@ -620,7 +767,7 @@ export default function Settings() {
           </div>
 
           {/* Single Collection CSV Restore */}
-          <div className="p-4 rounded-xl border border-slate-200">
+          <div className="p-4 rounded-xl border border-slate-200 mb-4">
             <div className="flex items-start gap-3 mb-4">
               <div className="h-9 w-9 rounded-lg bg-slate-600 flex items-center justify-center shrink-0">
                 <FileText className="h-4 w-4 text-white" />
@@ -695,6 +842,136 @@ export default function Settings() {
                   <>
                     <Upload className="h-4 w-4 mr-2" />
                     {t("Restore Collection", "Restaurar colección")}
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+
+          {/* Single Collection JSONL Restore */}
+          <div className="p-4 rounded-xl border border-slate-200 mb-4">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="h-9 w-9 rounded-lg bg-slate-600 flex items-center justify-center shrink-0">
+                <FileText className="h-4 w-4 text-white" />
+              </div>
+              <div className="flex-1">
+                <div className="font-semibold text-slate-900 text-sm">
+                  {t("Restore Single Collection (JSONL)", "Restaurar colección individual (JSONL)")}
+                </div>
+                <div className="text-xs text-slate-600 mt-0.5 leading-snug">
+                  {t(
+                    "Restores a single collection from a JSONL file (one JSON object per line). WARNING: This will overwrite all data in that collection!",
+                    "Restaura una colección individual desde un archivo JSONL (un objeto JSON por línea). ADVERTENCIA: ¡Esto sobrescribirá todos los datos en esa colección!"
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>{t("Collection", "Colección")}</Label>
+                  <select
+                    className="w-full h-10 rounded-md border border-slate-200 px-2 text-sm"
+                    value={selectedJsonlCollection}
+                    onChange={(e) => setSelectedJsonlCollection(e.target.value)}
+                    disabled={restoreLoading}
+                  >
+                    {ALL_COLLECTIONS.map((col) => (
+                      <option key={col} value={col}>{col}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label>{t("JSONL File", "Archivo JSONL")}</Label>
+                  <Input
+                    type="file"
+                    accept=".jsonl"
+                    onChange={(e) => setRestoreJsonlFile(e.target.files?.[0] || null)}
+                    disabled={restoreLoading}
+                  />
+                </div>
+              </div>
+              
+              {restoreJsonlFile && (
+                <p className="text-xs text-slate-500">{restoreJsonlFile.name}</p>
+              )}
+              
+              <Button
+                onClick={handleRestoreJsonl}
+                disabled={!restoreJsonlFile || restoreLoading}
+                variant="outline"
+                className="w-full"
+              >
+                {restoreLoading ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4 mr-2" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
+                    </svg>
+                    {t("Restoring…", "Restaurando…")}
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4 mr-2" />
+                    {t("Restore Collection", "Restaurar colección")}
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+
+          {/* Bulk Restore from JSONL ZIP */}
+          <div className="p-4 rounded-xl border border-slate-200">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="h-9 w-9 rounded-lg bg-slate-600 flex items-center justify-center shrink-0">
+                <FileText className="h-4 w-4 text-white" />
+              </div>
+              <div className="flex-1">
+                <div className="font-semibold text-slate-900 text-sm">
+                  {t("Bulk Restore from JSONL ZIP", "Restauración masiva desde ZIP de JSONL")}
+                </div>
+                <div className="text-xs text-slate-600 mt-0.5 leading-snug">
+                  {t(
+                    "Upload a .zip file containing .jsonl files (one per collection). All found collections will be restored. WARNING: This will overwrite existing data!",
+                    "Sube un archivo .zip que contenga archivos .jsonl (uno por colección). Se restaurarán todas las colecciones encontradas. ADVERTENCIA: ¡Sobrescribirá los datos existentes!"
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label>{t("JSONL ZIP File", "Archivo ZIP con JSONL")}</Label>
+                <Input
+                  type="file"
+                  accept=".zip"
+                  onChange={(e) => setRestoreJsonlZipFile(e.target.files?.[0] || null)}
+                  disabled={restoreLoading}
+                />
+                {restoreJsonlZipFile && (
+                  <p className="text-xs text-slate-500">{restoreJsonlZipFile.name}</p>
+                )}
+              </div>
+              
+              <Button
+                onClick={handleRestoreJsonlZip}
+                disabled={!restoreJsonlZipFile || restoreLoading}
+                variant="outline"
+                className="w-full"
+              >
+                {restoreLoading ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4 mr-2" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
+                    </svg>
+                    {t("Restoring…", "Restaurando…")}
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4 mr-2" />
+                    {t("Restore All Collections", "Restaurar todas las colecciones")}
                   </>
                 )}
               </Button>
