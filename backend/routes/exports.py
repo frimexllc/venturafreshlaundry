@@ -1,5 +1,6 @@
 """CSV Export endpoints and Restore endpoints"""
 import asyncio
+import logging
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import StreamingResponse
 import csv
@@ -9,6 +10,8 @@ import zipfile
 
 from database import db
 from auth import get_current_user
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["Export/Restore"])
 
@@ -160,6 +163,7 @@ async def admin_full_restore(file: UploadFile = File(...), current_user: dict = 
     if not file.filename.lower().endswith(".zip"):
         raise HTTPException(status_code=400, detail="El archivo debe ser un .zip de respaldo")
 
+    logger.info(f"Iniciando restauración de respaldo desde: {file.filename}")
     content = await file.read()
     buf = io.BytesIO(content)
 
@@ -167,22 +171,28 @@ async def admin_full_restore(file: UploadFile = File(...), current_user: dict = 
     errors = []
     try:
         with zipfile.ZipFile(buf, "r") as zf:
+            logger.info(f"Archivos en el zip: {zf.namelist()}")
             # Leer manifest primero (si existe)
             manifest = None
             if "manifest.json" in zf.namelist():
                 manifest = json.loads(zf.read("manifest.json"))
+                logger.info(f"Manifest encontrado: {manifest}")
             
             for filename in zf.namelist():
                 if filename == "manifest.json":
                     continue
                 if not filename.endswith(".json") and not filename.endswith(".jsonl"):
+                    logger.info(f"Omitiendo archivo no compatible: {filename}")
                     continue
                 
                 col_name = filename.replace(".json", "").replace(".jsonl", "")
                 try:
+                    logger.info(f"Restaurando colección: {col_name} desde: {filename}")
                     collection = getattr(db, col_name, None)
                     if collection is None:
-                        errors.append(f"Colección {col_name} no encontrada")
+                        err_msg = f"Colección {col_name} no encontrada en la base de datos"
+                        logger.error(err_msg)
+                        errors.append(err_msg)
                         continue
 
                     # Leer contenido y parsear
@@ -190,29 +200,60 @@ async def admin_full_restore(file: UploadFile = File(...), current_user: dict = 
                     docs = []
                     if filename.endswith(".json"):
                         # Es un JSON array (respaldo antiguo)
-                        docs = json.loads(raw_content)
+                        try:
+                            docs = json.loads(raw_content)
+                            logger.info(f"Parsed {len(docs)} docs from JSON array")
+                        except Exception as e:
+                            err_msg = f"Error al parsear JSON para {col_name}: {str(e)}"
+                            logger.error(err_msg)
+                            errors.append(err_msg)
+                            continue
                     else:
                         # Es JSONL (un doc por línea)
-                        text = raw_content.decode("utf-8")
-                        for line in text.splitlines():
-                            line = line.strip()
-                            if line:
-                                docs.append(json.loads(line))
+                        try:
+                            text = raw_content.decode("utf-8")
+                            for line_idx, line in enumerate(text.splitlines()):
+                                line = line.strip()
+                                if line:
+                                    try:
+                                        docs.append(json.loads(line))
+                                    except Exception as e:
+                                        err_msg = f"Error en línea {line_idx + 1} de {filename}: {str(e)} - Contenido: {line[:100]}"
+                                        logger.error(err_msg)
+                                        errors.append(err_msg)
+                            logger.info(f"Parsed {len(docs)} docs from JSONL")
+                        except Exception as e:
+                            err_msg = f"Error al leer JSONL para {col_name}: {str(e)}"
+                            logger.error(err_msg)
+                            errors.append(err_msg)
+                            continue
                     
                     # Borrar la colección existente y volver a insertar
                     await collection.delete_many({})
+                    inserted_count = 0
                     if docs:
-                        await collection.insert_many(docs)
+                        try:
+                            result = await collection.insert_many(docs)
+                            inserted_count = len(result.inserted_ids)
+                        except Exception as e:
+                            err_msg = f"Error al insertar docs en {col_name}: {str(e)}"
+                            logger.error(err_msg)
+                            errors.append(err_msg)
+                            continue
                     
-                    restored_counts[col_name] = len(docs)
+                    restored_counts[col_name] = inserted_count
+                    logger.info(f"Restaurada colección {col_name} con {inserted_count} documentos")
                 except Exception as e:
-                    errors.append(f"Error al restaurar {col_name}: {str(e)}")
+                    err_msg = f"Error al restaurar {col_name}: {str(e)}"
+                    logger.error(err_msg)
+                    errors.append(err_msg)
 
         await create_audit_log(
             "DB_RESTORED", "system", "full_db",
             current_user["id"],
             {"restored_collections": restored_counts, "errors": errors}
         )
+        logger.info(f"Restauración completada. Colecciones restauradas: {restored_counts}")
         return {
             "success": True,
             "restored_collections": restored_counts,
@@ -220,7 +261,9 @@ async def admin_full_restore(file: UploadFile = File(...), current_user: dict = 
             "total_restored": sum(restored_counts.values())
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al leer el zip: {str(e)}")
+        err_msg = f"Error al leer el zip: {str(e)}"
+        logger.error(err_msg)
+        raise HTTPException(status_code=500, detail=err_msg)
 
 
 # ==================== CSV RESTORE (single collection) ====================
@@ -364,38 +407,54 @@ async def admin_restore_jsonl(
     if role not in ("admin", "owner", "super_admin"):
         raise HTTPException(status_code=403, detail="Solo administradores")
 
-    if not file.filename.lower().endswith(".jsonl"):
-        raise HTTPException(status_code=400, detail="El archivo debe ser .jsonl")
+    if not file.filename.lower().endswith(".jsonl") and not file.filename.lower().endswith(".json"):
+        raise HTTPException(status_code=400, detail="El archivo debe ser .jsonl o .json")
 
+    logger.info(f"Iniciando restauración de colección {collection} desde: {file.filename}")
     collection_obj = getattr(db, collection, None)
     if collection_obj is None:
         raise HTTPException(status_code=404, detail=f"Colección '{collection}' no encontrada")
 
     # Leer el archivo línea por línea sin cargar todo en RAM
     content = await file.read()
-    lines = content.decode("utf-8").splitlines()
     docs = []
-    for line in lines:
-        if line.strip():
-            try:
-                docs.append(json.loads(line))
-            except Exception as e:
-                raise HTTPException(status_code=400, detail=f"Línea inválida: {line[:100]}...")
+    if file.filename.lower().endswith(".json"):
+        logger.info(f"Parseando como JSON array")
+        try:
+            docs = json.loads(content)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Error al parsear JSON: {str(e)}")
+    else:
+        logger.info(f"Parseando como JSONL")
+        lines = content.decode("utf-8").splitlines()
+        for line_idx, line in enumerate(lines):
+            if line.strip():
+                try:
+                    docs.append(json.loads(line))
+                except Exception as e:
+                    raise HTTPException(status_code=400, detail=f"Línea {line_idx + 1} inválida: {str(e)} - Contenido: {line[:100]}...")
 
+    logger.info(f"Parsed {len(docs)} docs para la colección {collection}")
     # Borrar y reinsertar
     await collection_obj.delete_many({})
+    inserted_count = 0
     if docs:
-        await collection_obj.insert_many(docs)
+        try:
+            result = await collection_obj.insert_many(docs)
+            inserted_count = len(result.inserted_ids)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error al insertar documentos: {str(e)}")
 
     await create_audit_log(
         "JSONL_RESTORED", collection, "jsonl_import",
         current_user["id"],
-        {"inserted_count": len(docs)}
+        {"inserted_count": inserted_count}
     )
+    logger.info(f"Restaurada colección {collection} con {inserted_count} documentos")
     return {
         "success": True,
         "collection": collection,
-        "inserted_count": len(docs)
+        "inserted_count": inserted_count
     }
 
 @router.post("/admin/restore/jsonl-zip")
@@ -418,6 +477,7 @@ async def admin_restore_jsonl_zip(
     if not file.filename.lower().endswith(".zip"):
         raise HTTPException(status_code=400, detail="El archivo debe ser .zip")
 
+    logger.info(f"Iniciando restauración ZIP desde: {file.filename}")
     content = await file.read()
     buf = io.BytesIO(content)
 
@@ -426,41 +486,77 @@ async def admin_restore_jsonl_zip(
 
     try:
         with zipfile.ZipFile(buf, "r") as zf:
+            logger.info(f"Archivos en el zip: {zf.namelist()}")
             for zip_filename in zf.namelist():
                 if not zip_filename.endswith(".jsonl") and not zip_filename.endswith(".json"):
+                    logger.info(f"Omitiendo archivo no compatible: {zip_filename}")
                     continue
                 col_name = zip_filename.replace(".jsonl", "").replace(".json", "")
                 try:
+                    logger.info(f"Restaurando colección: {col_name} desde: {zip_filename}")
                     collection = getattr(db, col_name, None)
                     if collection is None:
-                        errors.append(f"Colección '{col_name}' no encontrada")
+                        err_msg = f"Colección '{col_name}' no encontrada"
+                        logger.error(err_msg)
+                        errors.append(err_msg)
                         continue
 
                     # Leer el archivo y parsear
                     raw = zf.read(zip_filename)
                     docs = []
                     if zip_filename.endswith(".json"):
-                        docs = json.loads(raw)
+                        try:
+                            docs = json.loads(raw)
+                            logger.info(f"Parsed {len(docs)} docs from JSON array")
+                        except Exception as e:
+                            err_msg = f"Error al parsear JSON para {col_name}: {str(e)}"
+                            logger.error(err_msg)
+                            errors.append(err_msg)
+                            continue
                     else:
-                        text = raw.decode("utf-8")
-                        for line in text.splitlines():
-                            line = line.strip()
-                            if line:
-                                docs.append(json.loads(line))
+                        try:
+                            text = raw.decode("utf-8")
+                            for line_idx, line in enumerate(text.splitlines()):
+                                line = line.strip()
+                                if line:
+                                    try:
+                                        docs.append(json.loads(line))
+                                    except Exception as e:
+                                        err_msg = f"Error en línea {line_idx + 1} de {zip_filename}: {str(e)} - Contenido: {line[:100]}"
+                                        logger.error(err_msg)
+                                        errors.append(err_msg)
+                            logger.info(f"Parsed {len(docs)} docs from JSONL")
+                        except Exception as e:
+                            err_msg = f"Error al leer JSONL para {col_name}: {str(e)}"
+                            logger.error(err_msg)
+                            errors.append(err_msg)
+                            continue
 
                     # Borrar e insertar
                     await collection.delete_many({})
+                    inserted_count = 0
                     if docs:
-                        await collection.insert_many(docs)
-                    restored_counts[col_name] = len(docs)
+                        try:
+                            result = await collection.insert_many(docs)
+                            inserted_count = len(result.inserted_ids)
+                        except Exception as e:
+                            err_msg = f"Error al insertar docs en {col_name}: {str(e)}"
+                            logger.error(err_msg)
+                            errors.append(err_msg)
+                            continue
+                    restored_counts[col_name] = inserted_count
+                    logger.info(f"Restaurada colección {col_name} con {inserted_count} documentos")
                 except Exception as e:
-                    errors.append(f"Error al restaurar {col_name}: {str(e)}")
+                    err_msg = f"Error al restaurar {col_name}: {str(e)}"
+                    logger.error(err_msg)
+                    errors.append(err_msg)
 
         await create_audit_log(
             "JSONL_ZIP_RESTORED", "system", "bulk_jsonl_zip",
             current_user["id"],
             {"restored_collections": restored_counts, "errors": errors}
         )
+        logger.info(f"Restauración ZIP completada. Colecciones restauradas: {restored_counts}")
         return {
             "success": True,
             "restored_collections": restored_counts,
@@ -468,4 +564,6 @@ async def admin_restore_jsonl_zip(
             "total_restored": sum(restored_counts.values())
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al procesar el ZIP: {str(e)}")
+        err_msg = f"Error al procesar el ZIP: {str(e)}"
+        logger.error(err_msg)
+        raise HTTPException(status_code=500, detail=err_msg)

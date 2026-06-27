@@ -259,6 +259,9 @@ export default function Settings() {
   };
 
   // Restore handlers
+  const [restoreErrors, setRestoreErrors] = useState([]);
+  const [showRestoreErrors, setShowRestoreErrors] = useState(false);
+
   const handleRestoreZip = async () => {
     if (!restoreZipFile) {
       toast.error(t("Please select a ZIP file", "Por favor selecciona un archivo ZIP"));
@@ -272,6 +275,8 @@ export default function Settings() {
     if (!confirmed) return;
 
     setRestoreLoading(true);
+    setRestoreErrors([]);
+    setShowRestoreErrors(false);
     try {
       const formData = new FormData();
       formData.append('file', restoreZipFile);
@@ -281,12 +286,13 @@ export default function Settings() {
       });
 
       toast.success(
-        t(`Restored ${res.data.total_restored} documents`, 
-          `Restaurados ${res.data.total_restored} documentos`)
+        t(`Restored ${res.data.total_restored} documents across ${Object.keys(res.data.restored_collections).length} collections`, 
+          `Restaurados ${res.data.total_restored} documentos en ${Object.keys(res.data.restored_collections).length} colecciones`)
       );
       
       if (res.data.errors.length > 0) {
-        toast.warning(t("Some collections had errors", "Algunas colecciones tuvieron errores"));
+        setRestoreErrors(res.data.errors);
+        setShowRestoreErrors(true);
       }
       
       setRestoreZipFile(null);
@@ -310,6 +316,8 @@ export default function Settings() {
     if (!confirmed) return;
 
     setRestoreLoading(true);
+    setRestoreErrors([]);
+    setShowRestoreErrors(false);
     try {
       const formData = new FormData();
       formData.append('file', restoreCsvFile);
@@ -345,6 +353,8 @@ export default function Settings() {
     if (!confirmed) return;
 
     setRestoreLoading(true);
+    setRestoreErrors([]);
+    setShowRestoreErrors(false);
     try {
       const formData = new FormData();
       formData.append('file', restoreJsonlFile);
@@ -380,6 +390,8 @@ export default function Settings() {
     if (!confirmed) return;
 
     setRestoreLoading(true);
+    setRestoreErrors([]);
+    setShowRestoreErrors(false);
     try {
       const formData = new FormData();
       formData.append('file', restoreJsonlZipFile);
@@ -394,7 +406,8 @@ export default function Settings() {
       );
       
       if (res.data.errors.length > 0) {
-        toast.warning(t("Some collections had errors", "Algunas colecciones tuvieron errores"));
+        setRestoreErrors(res.data.errors);
+        setShowRestoreErrors(true);
       }
       
       setRestoreJsonlZipFile(null);
@@ -848,7 +861,7 @@ export default function Settings() {
             </div>
           </div>
 
-          {/* Single Collection JSONL Restore */}
+          {/* Single Collection JSONL / JSON Restore */}
           <div className="p-4 rounded-xl border border-slate-200 mb-4">
             <div className="flex items-start gap-3 mb-4">
               <div className="h-9 w-9 rounded-lg bg-slate-600 flex items-center justify-center shrink-0">
@@ -856,12 +869,12 @@ export default function Settings() {
               </div>
               <div className="flex-1">
                 <div className="font-semibold text-slate-900 text-sm">
-                  {t("Restore Single Collection (JSONL)", "Restaurar colección individual (JSONL)")}
+                  {t("Restore Single Collection (JSONL / JSON)", "Restaurar colección individual (JSONL / JSON)")}
                 </div>
                 <div className="text-xs text-slate-600 mt-0.5 leading-snug">
                   {t(
-                    "Restores a single collection from a JSONL file (one JSON object per line). WARNING: This will overwrite all data in that collection!",
-                    "Restaura una colección individual desde un archivo JSONL (un objeto JSON por línea). ADVERTENCIA: ¡Esto sobrescribirá todos los datos en esa colección!"
+                    "Restores a single collection from a JSONL file (one JSON object per line) or JSON file (array of JSON objects). WARNING: This will overwrite all data in that collection!",
+                    "Restaura una colección individual desde un archivo JSONL (un objeto JSON por línea) o archivo JSON (array de objetos JSON). ADVERTENCIA: ¡Esto sobrescribirá todos los datos en esa colección!"
                   )}
                 </div>
               </div>
@@ -883,10 +896,10 @@ export default function Settings() {
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <Label>{t("JSONL File", "Archivo JSONL")}</Label>
+                  <Label>{t("JSONL / JSON File", "Archivo JSONL / JSON")}</Label>
                   <Input
                     type="file"
-                    accept=".jsonl"
+                    accept=".jsonl,.json"
                     onChange={(e) => setRestoreJsonlFile(e.target.files?.[0] || null)}
                     disabled={restoreLoading}
                   />
@@ -921,7 +934,7 @@ export default function Settings() {
             </div>
           </div>
 
-          {/* Bulk Restore from JSONL ZIP */}
+          {/* Bulk Restore from JSONL / JSON ZIP */}
           <div className="p-4 rounded-xl border border-slate-200">
             <div className="flex items-start gap-3 mb-4">
               <div className="h-9 w-9 rounded-lg bg-slate-600 flex items-center justify-center shrink-0">
@@ -929,12 +942,12 @@ export default function Settings() {
               </div>
               <div className="flex-1">
                 <div className="font-semibold text-slate-900 text-sm">
-                  {t("Bulk Restore from JSONL ZIP", "Restauración masiva desde ZIP de JSONL")}
+                  {t("Bulk Restore from JSONL / JSON ZIP", "Restauración masiva desde ZIP de JSONL / JSON")}
                 </div>
                 <div className="text-xs text-slate-600 mt-0.5 leading-snug">
                   {t(
-                    "Upload a .zip file containing .jsonl files (one per collection). All found collections will be restored. WARNING: This will overwrite existing data!",
-                    "Sube un archivo .zip que contenga archivos .jsonl (uno por colección). Se restaurarán todas las colecciones encontradas. ADVERTENCIA: ¡Sobrescribirá los datos existentes!"
+                    "Upload a .zip file containing .jsonl or .json files (one per collection). All found collections will be restored. WARNING: This will overwrite existing data!",
+                    "Sube un archivo .zip que contenga archivos .jsonl o .json (uno por colección). Se restaurarán todas las colecciones encontradas. ADVERTENCIA: ¡Sobrescribirá los datos existentes!"
                   )}
                 </div>
               </div>
@@ -942,7 +955,7 @@ export default function Settings() {
 
             <div className="space-y-3">
               <div className="space-y-2">
-                <Label>{t("JSONL ZIP File", "Archivo ZIP con JSONL")}</Label>
+                <Label>{t("ZIP File with JSONL / JSON", "Archivo ZIP con JSONL / JSON")}</Label>
                 <Input
                   type="file"
                   accept=".zip"
@@ -977,6 +990,41 @@ export default function Settings() {
               </Button>
             </div>
           </div>
+
+          {/* Restore Errors Display */}
+          {showRestoreErrors && restoreErrors.length > 0 && (
+            <div className="p-4 rounded-xl border border-red-200 bg-red-50 mb-4">
+              <div className="flex items-start gap-3 mb-3">
+                <AlertTriangle className="h-5 w-5 text-red-600 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <div className="font-semibold text-red-900 text-sm">
+                    {t("Restore Errors", "Errores de restauración")}
+                  </div>
+                  <div className="text-xs text-red-700 mt-0.5">
+                    {t("The following errors occurred during restore:", "Los siguientes errores ocurrieron durante la restauración:")}
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setShowRestoreErrors(false);
+                    setRestoreErrors([]);
+                  }}
+                  className="shrink-0"
+                >
+                  {t("Close", "Cerrar")}
+                </Button>
+              </div>
+              <div className="max-h-60 overflow-y-auto bg-white rounded border border-red-200 p-3 space-y-1">
+                {restoreErrors.map((err, idx) => (
+                  <div key={idx} className="text-xs text-red-800 break-all leading-relaxed">
+                    • {err}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
