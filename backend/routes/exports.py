@@ -295,7 +295,7 @@ async def admin_restore_csv(
     Restaura/importa una colección desde un archivo CSV.
     Solo admin/owner. Borra la colección existente y vuelve a insertar.
     """
-    from utils import create_audit_log
+    from utils import create_audit_log, normalize_phone, normalize_email
 
     role = (current_user.get("role") or "").lower()
     if role not in ("admin", "owner", "super_admin"):
@@ -328,10 +328,19 @@ async def admin_restore_csv(
             parsed_row = {}
             for key, value in row.items():
                 if value:
-                    try:
-                        parsed_row[key] = json.loads(value)
-                    except:
+                    # Para campos específicos, NO intentar parsear a JSON
+                    if key in ['phone', 'email', 'name', 'address', 'notes', 'subject', 'description']:
                         parsed_row[key] = value
+                        # Normalizar campos específicos para customers
+                        if collection == 'customers' and key == 'phone':
+                            parsed_row[key] = normalize_phone(value) or value
+                        if collection == 'customers' and key == 'email':
+                            parsed_row[key] = normalize_email(value) or value
+                    else:
+                        try:
+                            parsed_row[key] = json.loads(value)
+                        except:
+                            parsed_row[key] = value
                 else:
                     parsed_row[key] = value
             rows.append(parsed_row)

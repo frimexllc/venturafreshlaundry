@@ -1,5 +1,5 @@
 """Pydantic models and role constants shared across the backend."""
-from pydantic import BaseModel, Field, EmailStr, ConfigDict
+from pydantic import BaseModel, Field, EmailStr, ConfigDict, field_validator
 from typing import List, Optional, Dict, Any
 
 # Role-based access control constants
@@ -80,6 +80,13 @@ class CustomerResponse(BaseModel):
     created_at: Optional[str] = ""
     updated_at: Optional[str] = ""
     model_config = ConfigDict(extra='ignore')
+
+    @field_validator('phone', mode='before')
+    @classmethod
+    def phone_to_string(cls, v):
+        if v is not None and not isinstance(v, str):
+            return str(v)
+        return v
 
 
 class PreferenceCreate(BaseModel):
@@ -227,6 +234,13 @@ class QuoteResponse(BaseModel):
     created_at: str
     updated_at: str
 
+    @field_validator('phone', mode='before')
+    @classmethod
+    def phone_to_string(cls, v):
+        if v is not None and not isinstance(v, str):
+            return str(v)
+        return v
+
 
 class LeadCreate(BaseModel):
     name: str
@@ -249,6 +263,13 @@ class LeadResponse(BaseModel):
     converted_to_customer_id: Optional[str] = None
     created_at: str
     updated_at: str
+
+    @field_validator('phone', mode='before')
+    @classmethod
+    def phone_to_string(cls, v):
+        if v is not None and not isinstance(v, str):
+            return str(v)
+        return v
 
 
 class TicketCreate(BaseModel):
@@ -384,6 +405,13 @@ class MembershipSignupResponse(BaseModel):
     created_at: Optional[str] = ""
     updated_at: Optional[str] = ""
 
+    @field_validator('phone', 'customer_phone', mode='before')
+    @classmethod
+    def phone_to_string(cls, v):
+        if v is not None and not isinstance(v, str):
+            return str(v)
+        return v
+
 
 class MembershipSignupUpdate(BaseModel):
     status: Optional[str] = None
@@ -494,6 +522,13 @@ class PublicSuggestionCreate(BaseModel):
     phone: Optional[str] = None
     acceptPromotions: bool = False
 
+    @field_validator('phone', mode='before')
+    @classmethod
+    def phone_to_string(cls, v):
+        if v is not None and not isinstance(v, str):
+            return str(v)
+        return v
+
 
 class PublicRefundCreate(BaseModel):
     date: str
@@ -504,6 +539,13 @@ class PublicRefundCreate(BaseModel):
     comment: Optional[str] = None
     name: Optional[str] = None
     phone: Optional[str] = None
+
+    @field_validator('phone', mode='before')
+    @classmethod
+    def phone_to_string(cls, v):
+        if v is not None and not isinstance(v, str):
+            return str(v)
+        return v
 
 
 # ============================================================
