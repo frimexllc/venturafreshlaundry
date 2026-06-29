@@ -19,7 +19,7 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 // Las colecciones de imágenes usan 1 doc/request para no superar
 // el límite de Cloudflare (~10MB por response).
 // El backend devuelve recommended_page_size en /count.
-const DEFAULT_PAGE_SIZE = 1;   // <--- CAMBIO CLAVE: de 50 a 1
+const DEFAULT_PAGE_SIZE = 50;
 const IMAGE_PAGE_SIZE   = 1;
 
 // Pausa entre requests (ms). Para imágenes es mayor porque cada doc es pesado
@@ -573,7 +573,7 @@ export default function Settings() {
                     </div>
                   ) : (
                     <p className="text-xs text-slate-400 mt-1">
-                      {t("Normal collection — starts at 1 doc/request","Colección normal — inicia en 1 doc/request")}
+                      {t("Normal collection — starts at 50 docs/request","Colección normal — inicia en 50 docs/request")}
                     </p>
                   )}
                 </div>

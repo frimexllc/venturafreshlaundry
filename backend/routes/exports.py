@@ -1,9 +1,19 @@
 """
-exports.py — Streaming paginado ultra-liviano.
+exports.py — Backup/Restore paginado adaptativo.
 
-El frontend controla el ritmo: pide 50 docs, los escribe al disco,
-libera memoria, espera, pide los siguientes 50. El servidor nunca
-tiene más de PAGE_SIZE documentos en RAM al mismo tiempo.
+Endpoints de backup:
+  GET  /api/admin/backup/stream/{col}/count  → total de docs + page_size recomendado
+  GET  /api/admin/backup/stream/{col}?page=N&size=50  → página N de docs
+  GET  /api/admin/backup/collections  → lista con conteo estimado
+
+Endpoints de restore:
+  POST /api/admin/restore              → ZIP completo (JSON o JSONL)
+  POST /api/admin/restore/csv/{col}   → CSV individual
+  POST /api/admin/restore/jsonl/{col} → JSONL o JSON individual
+  POST /api/admin/restore/jsonl-zip   → ZIP con varios JSONL/JSON
+
+CSV exports:
+  GET  /api/export/customers|orders|leads|quotes|tickets
 """
 
 import asyncio
@@ -11,21 +21,19 @@ import csv
 import gc
 import io
 import json
-import logging
 import zipfile
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from auth import get_current_user
 from database import db
 
 router = APIRouter(prefix="/api", tags=["Export"])
-logger = logging.getLogger(__name__)
 
-BATCH_SIZE    = 50   # docs por página — bajo para no saturar
-PAGE_SIZE_MAX = 200  # máximo que el cliente puede pedir
+BATCH_SIZE    = 50   # docs por lote en restore e inserts
+PAGE_SIZE_MAX = 50   # máximo por página en backup stream (Cloudflare ~10MB)
 
 IMAGE_COLLECTIONS = {"delivery_images", "pickup_images", "weight_images"}
 
@@ -44,9 +52,12 @@ ALL_COLLECTIONS = [
     "purchase_orders","quotes","reglas_negocio","services","services_page_config",
     "stock_movements","store_orders","stripe_products","stripe_sync_log","suppliers",
     "survey_responses","tickets","users","vehicles","voice_assistant_sessions",
-    "delivery_images","pickup_images","weight_images",
+    # Imágenes disponibles solo vía stream individual (muy pesadas para ZIP)
+    "delivery_images", "pickup_images", "weight_images",
 ]
 
+
+# ── helpers ────────────────────────────────────────────────────────────────
 
 def _require_admin(user: dict):
     role = (user.get("role") or "").lower()
@@ -65,46 +76,49 @@ def _safe_json(obj) -> str:
     return json.dumps(obj, default=str, ensure_ascii=False)
 
 
-# ══════════════════════════════════════════════════════════════════
-#  ENDPOINTS PAGINADOS
-# ══════════════════════════════════════════════════════════════════
+def _parse_json_or_jsonl(text: str):
+    """
+    Detecta automáticamente si el texto es un JSON array o JSONL.
+    Retorna (docs: list, invalid_count: int).
+    """
+    stripped = text.strip()
+    if stripped.startswith("["):
+        try:
+            docs = json.loads(stripped)
+            return (docs if isinstance(docs, list) else [docs]), 0
+        except Exception as e:
+            raise ValueError(f"JSON inválido: {e}")
+    # JSONL: una línea por documento
+    docs, inv = [], 0
+    for line in stripped.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            docs.append(json.loads(line))
+        except Exception:
+            inv += 1
+    return docs, inv
 
-@router.get("/admin/backup/stream/{collection_name}/count")
-async def stream_count(
-    collection_name: str,
-    current_user: dict = Depends(get_current_user),
-):
-    _require_admin(current_user)
-    col   = _get_col(collection_name)
-    total = await col.count_documents({})
-    return {"collection": collection_name, "total": total}
+
+async def _insert_docs(col, docs: list):
+    """Inserta docs en lotes de BATCH_SIZE cediendo el event-loop entre cada lote."""
+    for i in range(0, len(docs), BATCH_SIZE):
+        await col.insert_many(docs[i : i + BATCH_SIZE], ordered=False)
+        gc.collect()
+        await asyncio.sleep(0)
 
 
-@router.get("/admin/backup/stream/{collection_name}")
-async def stream_page(
-    collection_name: str,
-    page: int = Query(0, ge=0),
-    size: int = Query(50, ge=1, le=PAGE_SIZE_MAX),
-    current_user: dict = Depends(get_current_user),
-):
-    _require_admin(current_user)
-    col  = _get_col(collection_name)
-    skip = page * size
-    docs = await col.find({}, {"_id": 0}).skip(skip).limit(size).to_list(size)
-    result = {
-        "collection": collection_name,
-        "page":  page,
-        "size":  size,
-        "count": len(docs),
-        "docs":  json.loads(_safe_json(docs)),
-    }
-    del docs
-    gc.collect()
-    return JSONResponse(content=result)
-
+# ══════════════════════════════════════════════════════════════════════════
+#  BACKUP — endpoints de streaming paginado
+# ══════════════════════════════════════════════════════════════════════════
 
 @router.get("/admin/backup/collections")
 async def list_collections(current_user: dict = Depends(get_current_user)):
+    """
+    Lista todas las colecciones con conteo estimado y page_size recomendado.
+    El frontend usa esto para mostrar el selector y saber cómo paginar.
+    """
     _require_admin(current_user)
     result = []
     for name in ALL_COLLECTIONS:
@@ -117,49 +131,121 @@ async def list_collections(current_user: dict = Depends(get_current_user)):
             "name": name,
             "has_images": name in IMAGE_COLLECTIONS,
             "estimated_docs": count,
+            "recommended_page_size": 1 if name in IMAGE_COLLECTIONS else 50,
         })
     return {"collections": result}
 
 
-# ══════════════════════════════════════════════════════════════════
-#  CSV exports
-# ══════════════════════════════════════════════════════════════════
+@router.get("/admin/backup/stream/{collection_name}/count")
+async def stream_count(
+    collection_name: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Devuelve el total exacto de documentos y el page_size recomendado.
+    El frontend lo llama primero para saber cuántas páginas hay.
+    """
+    _require_admin(current_user)
+    col   = _get_col(collection_name)
+    total = await col.count_documents({})
+    return {
+        "collection": collection_name,
+        "total": total,
+        "has_images": collection_name in IMAGE_COLLECTIONS,
+        # El backend recomienda 1 doc/req para imágenes (evita el límite de Cloudflare)
+        "recommended_page_size": 1 if collection_name in IMAGE_COLLECTIONS else 50,
+    }
+
+
+@router.get("/admin/backup/stream/{collection_name}")
+async def stream_page(
+    collection_name: str,
+    page: int = Query(0, ge=0),
+    size: int = Query(50, ge=1, le=PAGE_SIZE_MAX),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Devuelve UNA página de `size` documentos (sin _id).
+
+    El servidor:
+      - Hace skip(page*size).limit(size) → nunca carga más que `size` docs en RAM.
+      - Serializa a JSON con gc.collect() al final.
+
+    El frontend:
+      - Acumula docs en memoria local.
+      - Mide el tamaño de la respuesta y ajusta `size` dinámicamente.
+      - Espera DELAY_MS antes de la siguiente página.
+    """
+    _require_admin(current_user)
+    col  = _get_col(collection_name)
+    skip = page * size
+
+    docs = await col.find({}, {"_id": 0}).skip(skip).limit(size).to_list(size)
+
+    result = {
+        "collection": collection_name,
+        "page":  page,
+        "size":  size,
+        "count": len(docs),
+        "docs":  json.loads(_safe_json(docs)),
+    }
+    del docs
+    gc.collect()
+
+    return JSONResponse(content=result)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  CSV exports individuales
+# ══════════════════════════════════════════════════════════════════════════
 
 async def _export_csv(collection, filename: str):
+    """Streaming CSV con cursor paginado — nunca carga toda la colección en RAM."""
     async def generate():
         sample = await collection.find({}, {"_id": 0}).limit(500).to_list(500)
         if not sample:
             yield b"no data\n"
             return
+
         keys = sorted({str(k) for doc in sample for k in doc})
         out  = io.StringIO()
         writer = csv.DictWriter(out, fieldnames=keys, extrasaction="ignore")
         writer.writeheader()
         yield out.getvalue().encode(); out.seek(0); out.truncate(0)
+
         def _row(doc):
             row = {}
             for k in keys:
                 v = doc.get(k, "")
-                if isinstance(v, (dict, list)):            v = _safe_json(v)
-                elif v is None:                             v = ""
-                elif not isinstance(v, (str,int,float,bool)): v = str(v)
+                if isinstance(v, (dict, list)):                v = _safe_json(v)
+                elif v is None:                                 v = ""
+                elif not isinstance(v, (str, int, float, bool)): v = str(v)
                 row[k] = v
             return row
+
         for doc in sample:
             writer.writerow(_row(doc))
         yield out.getvalue().encode(); out.seek(0); out.truncate(0)
+
         skip = len(sample)
         while True:
             batch = await collection.find({}, {"_id": 0}).skip(skip).limit(BATCH_SIZE).to_list(BATCH_SIZE)
-            if not batch: break
+            if not batch:
+                break
             for doc in batch:
                 writer.writerow(_row(doc))
             yield out.getvalue().encode(); out.seek(0); out.truncate(0)
             skip += len(batch)
             await asyncio.sleep(0)
-        del sample; gc.collect()
-    return StreamingResponse(generate(), media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+        del sample
+        gc.collect()
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/export/customers")
@@ -183,181 +269,275 @@ async def export_tickets(current_user: dict = Depends(get_current_user)):
     return await _export_csv(db.tickets, "tickets.csv")
 
 
-# ══════════════════════════════════════════════════════════════════
-#  RESTORE
-# ══════════════════════════════════════════════════════════════════
-
-def _parse_json_or_jsonl(text: str):
-    stripped = text.strip()
-    if stripped.startswith("["):
-        try:
-            docs = json.loads(stripped)
-            return (docs if isinstance(docs, list) else [docs]), 0
-        except Exception as e:
-            raise ValueError(f"JSON inválido: {e}")
-    docs, inv = [], 0
-    for line in stripped.splitlines():
-        line = line.strip()
-        if not line: continue
-        try:    docs.append(json.loads(line))
-        except: inv += 1
-    return docs, inv
-
+# ══════════════════════════════════════════════════════════════════════════
+#  RESTORE — todos los endpoints con UploadFile declarado correctamente
+# ══════════════════════════════════════════════════════════════════════════
 
 @router.post("/admin/restore")
-async def restore_zip(file, current_user: dict = Depends(get_current_user)):
+async def restore_full_zip(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Restaura TODAS las colecciones desde un ZIP de respaldo.
+    El ZIP puede contener archivos .json (array) o .jsonl (una línea por doc).
+    
+    Proceso por colección:
+      1. Lee el archivo del ZIP.
+      2. Parsea como JSON array o JSONL.
+      3. Borra la colección existente.
+      4. Inserta en lotes de BATCH_SIZE con gc.collect() entre cada lote.
+
+    ADVERTENCIA: Sobrescribe todos los datos existentes.
+    """
     _require_admin(current_user)
+
     contents = await file.read()
-    restored, errors, invalid_lines, total = {}, [], {}, 0
-    #region debug-point restore-zip-start
-    logger.info(
-        "restore_zip start user_id=%s file_name=%s size_bytes=%s",
-        current_user.get("id"),
-        getattr(file, "filename", None),
-        len(contents),
-    )
-    #endregion
+    restored: dict = {}
+    errors:   list = []
+    invalid_lines: dict = {}
+    total = 0
+
     try:
         with zipfile.ZipFile(io.BytesIO(contents)) as zf:
-            #region debug-point restore-zip-entries
-            logger.info(
-                "restore_zip opened zip entries_count=%s entries=%s",
-                len(zf.namelist()),
-                zf.namelist(),
-            )
-            #endregion
             for entry in zf.namelist():
-                if entry == "manifest.json": continue
-                col_name = entry.replace(".jsonl","").replace(".json","")
+                if entry == "manifest.json":
+                    continue
+
+                col_name = entry.replace(".jsonl", "").replace(".json", "")
                 col = getattr(db, col_name, None)
                 if col is None:
-                    errors.append(f"No encontrada: {col_name}"); continue
+                    errors.append(f"Colección no encontrada: {col_name}")
+                    continue
+
                 try:
-                    #region debug-point restore-zip-entry-start
-                    logger.info("restore_zip entry_start entry=%s collection=%s", entry, col_name)
-                    #endregion
                     raw = zf.read(entry).decode("utf-8")
                     docs, inv = _parse_json_or_jsonl(raw)
-                    if inv: invalid_lines[col_name] = inv
-                    #region debug-point restore-zip-entry-parsed
-                    logger.info(
-                        "restore_zip entry_parsed collection=%s docs=%s invalid_lines=%s raw_chars=%s",
-                        col_name,
-                        len(docs),
-                        inv,
-                        len(raw),
-                    )
-                    #endregion
+
+                    if inv:
+                        invalid_lines[col_name] = inv
+
                     if docs:
                         await col.delete_many({})
-                        for i in range(0, len(docs), BATCH_SIZE):
-                            #region debug-point restore-zip-batch
-                            logger.info(
-                                "restore_zip inserting collection=%s batch_start=%s batch_size=%s",
-                                col_name,
-                                i,
-                                len(docs[i:i+BATCH_SIZE]),
-                            )
-                            #endregion
-                            await col.insert_many(docs[i:i+BATCH_SIZE], ordered=False)
-                            await asyncio.sleep(0)
-                    restored[col_name] = len(docs); total += len(docs)
-                    #region debug-point restore-zip-entry-done
-                    logger.info(
-                        "restore_zip entry_done collection=%s restored=%s running_total=%s",
-                        col_name,
-                        len(docs),
-                        total,
-                    )
-                    #endregion
-                    del docs, raw; gc.collect()
+                        await _insert_docs(col, docs)
+
+                    restored[col_name] = len(docs)
+                    total += len(docs)
+                    del docs, raw
+                    gc.collect()
+
                 except Exception as exc:
-                    #region debug-point restore-zip-entry-error
-                    logger.exception("restore_zip entry_error collection=%s entry=%s", col_name, entry)
-                    #endregion
-                    errors.append(f"{col_name}: {str(exc)[:120]}")
+                    errors.append(f"{col_name}: {str(exc)[:150]}")
+
+    except zipfile.BadZipFile:
+        raise HTTPException(status_code=400, detail="Archivo ZIP inválido o corrupto")
     except Exception as exc:
-        #region debug-point restore-zip-fatal
-        logger.exception("restore_zip fatal_error")
-        #endregion
-        raise HTTPException(status_code=400, detail=f"ZIP inválido: {exc}")
-    #region debug-point restore-zip-finish
-    logger.info(
-        "restore_zip finish total_restored=%s collections=%s errors=%s invalid_lines=%s",
-        total,
-        restored,
-        errors,
-        invalid_lines,
-    )
-    #endregion
-    return {"total_restored": total, "restored_collections": restored,
-            "errors": errors, "invalid_lines": invalid_lines}
+        raise HTTPException(status_code=400, detail=f"Error procesando ZIP: {str(exc)[:200]}")
+
+    return {
+        "total_restored": total,
+        "restored_collections": restored,
+        "errors": errors,
+        "invalid_lines": invalid_lines,
+    }
 
 
 @router.post("/admin/restore/csv/{collection_name}")
-async def restore_csv(collection_name: str, file, current_user: dict = Depends(get_current_user)):
+async def restore_collection_csv(
+    collection_name: str,
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Restaura UNA colección desde un archivo CSV.
+    La primera fila debe ser el encabezado con los nombres de los campos.
+    
+    ADVERTENCIA: Borra todos los documentos existentes en la colección.
+    """
     _require_admin(current_user)
     col = _get_col(collection_name)
-    text = (await file.read()).decode("utf-8")
-    docs = list(csv.DictReader(io.StringIO(text)))
-    if not docs: raise HTTPException(status_code=400, detail="CSV vacío")
+
+    contents = await file.read()
+    try:
+        text = contents.decode("utf-8")
+    except UnicodeDecodeError:
+        text = contents.decode("latin-1")
+
+    reader = csv.DictReader(io.StringIO(text))
+    docs   = list(reader)
+
+    if not docs:
+        raise HTTPException(status_code=400, detail="CSV vacío o sin encabezado")
+
     await col.delete_many({})
-    for i in range(0, len(docs), BATCH_SIZE):
-        await col.insert_many(docs[i:i+BATCH_SIZE], ordered=False)
-        await asyncio.sleep(0)
-    return {"inserted_count": len(docs), "collection": collection_name}
+    await _insert_docs(col, docs)
+
+    return {
+        "collection":    collection_name,
+        "inserted_count": len(docs),
+    }
 
 
 @router.post("/admin/restore/jsonl/{collection_name}")
-async def restore_jsonl(collection_name: str, file, current_user: dict = Depends(get_current_user)):
+async def restore_collection_jsonl(
+    collection_name: str,
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Restaura UNA colección desde un archivo JSONL o JSON.
+
+    Formatos aceptados:
+      - JSONL: un objeto JSON por línea  →  {"_id":...}\\n{"_id":...}
+      - JSON:  array de objetos          →  [{"_id":...}, {"_id":...}]
+
+    ADVERTENCIA: Borra todos los documentos existentes en la colección.
+    """
     _require_admin(current_user)
     col = _get_col(collection_name)
-    text = (await file.read()).decode("utf-8")
-    docs, inv = _parse_json_or_jsonl(text)
+
+    contents = await file.read()
+    try:
+        text = contents.decode("utf-8")
+    except UnicodeDecodeError:
+        text = contents.decode("latin-1")
+
+    try:
+        docs, inv = _parse_json_or_jsonl(text)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
     if not docs and inv > 0:
-        raise HTTPException(status_code=400, detail="Sin documentos válidos")
+        raise HTTPException(
+            status_code=400,
+            detail=f"No se pudo parsear ningún documento válido ({inv} líneas inválidas)"
+        )
+
+    errors = []
+    if inv > 0:
+        errors.append(f"{inv} líneas no pudieron parsearse y fueron omitidas")
+
     await col.delete_many({})
-    for i in range(0, len(docs), BATCH_SIZE):
-        await col.insert_many(docs[i:i+BATCH_SIZE], ordered=False)
-        await asyncio.sleep(0)
-    return {"inserted_count": len(docs), "collection": collection_name,
-            "invalid_lines_count": inv, "errors": []}
+    await _insert_docs(col, docs)
+
+    return {
+        "collection":         collection_name,
+        "inserted_count":     len(docs),
+        "invalid_lines_count": inv,
+        "errors":             errors,
+    }
 
 
 @router.post("/admin/restore/jsonl-zip")
-async def restore_jsonl_zip(file, current_user: dict = Depends(get_current_user)):
+async def restore_jsonl_zip(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Restaura MÚLTIPLES colecciones desde un ZIP que contiene archivos .jsonl o .json.
+    Cada archivo debe llamarse {collection_name}.jsonl o {collection_name}.json.
+
+    Proceso:
+      - Por cada archivo en el ZIP: parsea, borra la colección, inserta en lotes.
+      - Continúa con la siguiente colección aunque una falle.
+      - gc.collect() entre colecciones para liberar RAM.
+
+    ADVERTENCIA: Sobrescribe los datos de las colecciones encontradas en el ZIP.
+    """
     _require_admin(current_user)
+
     contents = await file.read()
-    restored, errors, invalid_lines, total = {}, [], {}, 0
+    restored: dict = {}
+    errors:   list = []
+    invalid_lines: dict = {}
+    total = 0
+
     try:
         with zipfile.ZipFile(io.BytesIO(contents)) as zf:
-            for entry in zf.namelist():
-                if entry == "manifest.json": continue
-                col_name = entry.replace(".jsonl","").replace(".json","")
+            entries = [e for e in zf.namelist() if e != "manifest.json"]
+
+            if not entries:
+                raise HTTPException(
+                    status_code=400,
+                    detail="El ZIP está vacío o solo contiene manifest.json"
+                )
+
+            for entry in entries:
+                col_name = entry.replace(".jsonl", "").replace(".json", "")
                 col = getattr(db, col_name, None)
                 if col is None:
-                    errors.append(f"No encontrada: {col_name}"); continue
+                    errors.append(f"Colección no encontrada en la BD: '{col_name}'")
+                    continue
+
                 try:
                     raw = zf.read(entry).decode("utf-8")
                     docs, inv = _parse_json_or_jsonl(raw)
-                    if inv: invalid_lines[col_name] = inv
+
+                    if inv:
+                        invalid_lines[col_name] = inv
+
                     if docs:
                         await col.delete_many({})
-                        for i in range(0, len(docs), BATCH_SIZE):
-                            await col.insert_many(docs[i:i+BATCH_SIZE], ordered=False)
-                            await asyncio.sleep(0)
-                    restored[col_name] = len(docs); total += len(docs)
-                    del docs, raw; gc.collect()
-                except Exception as exc:
-                    errors.append(f"{col_name}: {str(exc)[:120]}")
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"ZIP inválido: {exc}")
-    return {"total_restored": total, "restored_collections": restored,
-            "errors": errors, "invalid_lines": invalid_lines}
+                        await _insert_docs(col, docs)
 
+                    restored[col_name] = len(docs)
+                    total += len(docs)
+                    del docs, raw
+                    gc.collect()
+
+                except Exception as exc:
+                    errors.append(f"{col_name}: {str(exc)[:150]}")
+
+    except zipfile.BadZipFile:
+        raise HTTPException(status_code=400, detail="Archivo ZIP inválido o corrupto")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Error procesando ZIP: {str(exc)[:200]}")
+
+    return {
+        "total_restored": total,
+        "restored_collections": restored,
+        "collections_count": len(restored),
+        "errors": errors,
+        "invalid_lines": invalid_lines,
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  Utilidades
+# ══════════════════════════════════════════════════════════════════════════
 
 @router.post("/admin/free-memory")
 async def free_memory(current_user: dict = Depends(get_current_user)):
+    """Fuerza garbage collection de Python. Útil después de operaciones pesadas."""
     _require_admin(current_user)
-    gc.collect()
-    return {"status": "ok"}
+    collected = gc.collect()
+    return {"status": "ok", "objects_collected": collected}
+
+
+@router.get("/admin/backup/status")
+async def backup_status(current_user: dict = Depends(get_current_user)):
+    """
+    Devuelve un resumen rápido de todas las colecciones con conteo estimado.
+    Útil para verificar el estado de la BD antes/después de un restore.
+    """
+    _require_admin(current_user)
+    summary = {}
+    for name in ALL_COLLECTIONS:
+        col = getattr(db, name, None)
+        if col is None:
+            summary[name] = {"status": "not_found", "count": 0}
+            continue
+        try:
+            count = await col.estimated_document_count()
+            summary[name] = {
+                "status": "ok",
+                "count": count,
+                "has_images": name in IMAGE_COLLECTIONS,
+            }
+        except Exception as exc:
+            summary[name] = {"status": "error", "error": str(exc)[:80]}
+
+    total = sum(v["count"] for v in summary.values() if isinstance(v.get("count"), int))
+    return {"collections": summary, "total_documents": total}
