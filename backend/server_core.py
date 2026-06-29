@@ -674,6 +674,15 @@ async def serve_react_app(full_path: str = ""):
         raise HTTPException(status_code=404, detail="Frontend build not found")
 
     normalized_path = full_path.strip("/")
+    #region debug-point serve-react-manifest
+    if normalized_path == "manifest.json":
+        logger.info(
+            "serve_react_app manifest_request build_dir_exists=%s manifest_exists=%s index_exists=%s",
+            FRONTEND_BUILD_DIR.exists(),
+            (FRONTEND_BUILD_DIR / "manifest.json").exists(),
+            FRONTEND_INDEX_FILE.exists(),
+        )
+    #endregion
 
     if normalized_path:
         if any(
@@ -684,8 +693,16 @@ async def serve_react_app(full_path: str = ""):
 
         candidate = _frontend_candidate(normalized_path)
         if candidate and candidate.is_file():
+            #region debug-point serve-react-manifest-candidate
+            if normalized_path == "manifest.json":
+                logger.info("serve_react_app manifest_served candidate=%s", candidate)
+            #endregion
             return FileResponse(candidate)
 
+    #region debug-point serve-react-manifest-fallback
+    if normalized_path == "manifest.json":
+        logger.warning("serve_react_app manifest_fallback_to_index")
+    #endregion
     return FileResponse(FRONTEND_INDEX_FILE)
 
 

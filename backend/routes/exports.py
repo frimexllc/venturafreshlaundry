@@ -11,6 +11,7 @@ import csv
 import gc
 import io
 import json
+import logging
 import zipfile
 from datetime import datetime, timezone
 
@@ -21,6 +22,7 @@ from auth import get_current_user
 from database import db
 
 router = APIRouter(prefix="/api", tags=["Export"])
+logger = logging.getLogger(__name__)
 
 BATCH_SIZE    = 50   # docs por página — bajo para no saturar
 PAGE_SIZE_MAX = 200  # máximo que el cliente puede pedir
@@ -207,8 +209,23 @@ async def restore_zip(file, current_user: dict = Depends(get_current_user)):
     _require_admin(current_user)
     contents = await file.read()
     restored, errors, invalid_lines, total = {}, [], {}, 0
+    #region debug-point restore-zip-start
+    logger.info(
+        "restore_zip start user_id=%s file_name=%s size_bytes=%s",
+        current_user.get("id"),
+        getattr(file, "filename", None),
+        len(contents),
+    )
+    #endregion
     try:
         with zipfile.ZipFile(io.BytesIO(contents)) as zf:
+            #region debug-point restore-zip-entries
+            logger.info(
+                "restore_zip opened zip entries_count=%s entries=%s",
+                len(zf.namelist()),
+                zf.namelist(),
+            )
+            #endregion
             for entry in zf.namelist():
                 if entry == "manifest.json": continue
                 col_name = entry.replace(".jsonl","").replace(".json","")
@@ -216,20 +233,63 @@ async def restore_zip(file, current_user: dict = Depends(get_current_user)):
                 if col is None:
                     errors.append(f"No encontrada: {col_name}"); continue
                 try:
+                    #region debug-point restore-zip-entry-start
+                    logger.info("restore_zip entry_start entry=%s collection=%s", entry, col_name)
+                    #endregion
                     raw = zf.read(entry).decode("utf-8")
                     docs, inv = _parse_json_or_jsonl(raw)
                     if inv: invalid_lines[col_name] = inv
+                    #region debug-point restore-zip-entry-parsed
+                    logger.info(
+                        "restore_zip entry_parsed collection=%s docs=%s invalid_lines=%s raw_chars=%s",
+                        col_name,
+                        len(docs),
+                        inv,
+                        len(raw),
+                    )
+                    #endregion
                     if docs:
                         await col.delete_many({})
                         for i in range(0, len(docs), BATCH_SIZE):
+                            #region debug-point restore-zip-batch
+                            logger.info(
+                                "restore_zip inserting collection=%s batch_start=%s batch_size=%s",
+                                col_name,
+                                i,
+                                len(docs[i:i+BATCH_SIZE]),
+                            )
+                            #endregion
                             await col.insert_many(docs[i:i+BATCH_SIZE], ordered=False)
                             await asyncio.sleep(0)
                     restored[col_name] = len(docs); total += len(docs)
+                    #region debug-point restore-zip-entry-done
+                    logger.info(
+                        "restore_zip entry_done collection=%s restored=%s running_total=%s",
+                        col_name,
+                        len(docs),
+                        total,
+                    )
+                    #endregion
                     del docs, raw; gc.collect()
                 except Exception as exc:
+                    #region debug-point restore-zip-entry-error
+                    logger.exception("restore_zip entry_error collection=%s entry=%s", col_name, entry)
+                    #endregion
                     errors.append(f"{col_name}: {str(exc)[:120]}")
     except Exception as exc:
+        #region debug-point restore-zip-fatal
+        logger.exception("restore_zip fatal_error")
+        #endregion
         raise HTTPException(status_code=400, detail=f"ZIP inválido: {exc}")
+    #region debug-point restore-zip-finish
+    logger.info(
+        "restore_zip finish total_restored=%s collections=%s errors=%s invalid_lines=%s",
+        total,
+        restored,
+        errors,
+        invalid_lines,
+    )
+    #endregion
     return {"total_restored": total, "restored_collections": restored,
             "errors": errors, "invalid_lines": invalid_lines}
 
