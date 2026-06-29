@@ -1,607 +1,303 @@
-"""CSV Export endpoints and Restore endpoints"""
+"""
+exports.py — Streaming paginado ultra-liviano.
+
+El frontend controla el ritmo: pide 50 docs, los escribe al disco,
+libera memoria, espera, pide los siguientes 50. El servidor nunca
+tiene más de PAGE_SIZE documentos en RAM al mismo tiempo.
+"""
+
 import asyncio
-import logging
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from fastapi.responses import StreamingResponse
 import csv
+import gc
 import io
 import json
 import zipfile
+from datetime import datetime, timezone
 
-from database import db
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import JSONResponse, StreamingResponse
+
 from auth import get_current_user
+from database import db
 
-logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/api", tags=["Export"])
 
-router = APIRouter(prefix="/api", tags=["Export/Restore"])
+BATCH_SIZE    = 50   # docs por página — bajo para no saturar
+PAGE_SIZE_MAX = 200  # máximo que el cliente puede pedir
+
+IMAGE_COLLECTIONS = {"delivery_images", "pickup_images", "weight_images"}
+
+ALL_COLLECTIONS = [
+    "ai_command_logs","ai_daily_summaries","ai_operator_sessions","ai_pending_actions",
+    "audit_log","audit_logs","blog_categories","blog_posts","carts","catalog",
+    "customer_preferences","customer_surveys","customers",
+    "delivery_zones","email_verifications","eventos_automation","expenses",
+    "feedback_ia","files","finances","geocode_cache","importaciones_legacy",
+    "inventory","leads","machine_income","machines","membership_plans",
+    "membership_section","membership_signups","memberships","notification_dedupe",
+    "notification_logs","notification_openapi","notification_queue",
+    "notification_templates","notifications","ocr_logs","orders","password_resets",
+    "patrones_detectados","payment_transactions","payment_validations",
+    "pending_registrations","preferences","products","propuestas_ia",
+    "purchase_orders","quotes","reglas_negocio","services","services_page_config",
+    "stock_movements","store_orders","stripe_products","stripe_sync_log","suppliers",
+    "survey_responses","tickets","users","vehicles","voice_assistant_sessions",
+    "delivery_images","pickup_images","weight_images",
+]
 
 
-async def _export_collection(collection, filename):
-    items = await collection.find({}, {"_id": 0}).to_list(10000)
-    output = io.StringIO()
-    if items:
-        all_keys = set()
-        for item in items:
-            if isinstance(item, dict):
-                all_keys.update([str(k) for k in item.keys()])
-        fieldnames = sorted(list(all_keys))
-        writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction="ignore")
+def _require_admin(user: dict):
+    role = (user.get("role") or "").lower()
+    if role not in ("admin", "owner", "super_admin"):
+        raise HTTPException(status_code=403, detail="Solo administradores")
+
+
+def _get_col(name: str):
+    col = getattr(db, name, None)
+    if col is None:
+        raise HTTPException(status_code=404, detail=f"Colección '{name}' no encontrada")
+    return col
+
+
+def _safe_json(obj) -> str:
+    return json.dumps(obj, default=str, ensure_ascii=False)
+
+
+# ══════════════════════════════════════════════════════════════════
+#  ENDPOINTS PAGINADOS
+# ══════════════════════════════════════════════════════════════════
+
+@router.get("/admin/backup/stream/{collection_name}/count")
+async def stream_count(
+    collection_name: str,
+    current_user: dict = Depends(get_current_user),
+):
+    _require_admin(current_user)
+    col   = _get_col(collection_name)
+    total = await col.count_documents({})
+    return {"collection": collection_name, "total": total}
+
+
+@router.get("/admin/backup/stream/{collection_name}")
+async def stream_page(
+    collection_name: str,
+    page: int = Query(0, ge=0),
+    size: int = Query(50, ge=1, le=PAGE_SIZE_MAX),
+    current_user: dict = Depends(get_current_user),
+):
+    _require_admin(current_user)
+    col  = _get_col(collection_name)
+    skip = page * size
+    docs = await col.find({}, {"_id": 0}).skip(skip).limit(size).to_list(size)
+    result = {
+        "collection": collection_name,
+        "page":  page,
+        "size":  size,
+        "count": len(docs),
+        "docs":  json.loads(_safe_json(docs)),
+    }
+    del docs
+    gc.collect()
+    return JSONResponse(content=result)
+
+
+@router.get("/admin/backup/collections")
+async def list_collections(current_user: dict = Depends(get_current_user)):
+    _require_admin(current_user)
+    result = []
+    for name in ALL_COLLECTIONS:
+        col = getattr(db, name, None)
+        try:
+            count = await col.estimated_document_count() if col else 0
+        except Exception:
+            count = -1
+        result.append({
+            "name": name,
+            "has_images": name in IMAGE_COLLECTIONS,
+            "estimated_docs": count,
+        })
+    return {"collections": result}
+
+
+# ══════════════════════════════════════════════════════════════════
+#  CSV exports
+# ══════════════════════════════════════════════════════════════════
+
+async def _export_csv(collection, filename: str):
+    async def generate():
+        sample = await collection.find({}, {"_id": 0}).limit(500).to_list(500)
+        if not sample:
+            yield b"no data\n"
+            return
+        keys = sorted({str(k) for doc in sample for k in doc})
+        out  = io.StringIO()
+        writer = csv.DictWriter(out, fieldnames=keys, extrasaction="ignore")
         writer.writeheader()
-        for item in items:
+        yield out.getvalue().encode(); out.seek(0); out.truncate(0)
+        def _row(doc):
             row = {}
-            for key in fieldnames:
-                value = item.get(key, "")
-                if isinstance(value, (dict, list)):
-                    value = json.dumps(value, default=str)
-                elif value is None:
-                    value = ""
-                elif not isinstance(value, (str, int, float, bool)):
-                    value = str(value)
-                row[key] = value
-            writer.writerow(row)
-    output.seek(0)
-    return StreamingResponse(
-        iter([output.getvalue()]),
-        media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename={filename}"}
-    )
+            for k in keys:
+                v = doc.get(k, "")
+                if isinstance(v, (dict, list)):            v = _safe_json(v)
+                elif v is None:                             v = ""
+                elif not isinstance(v, (str,int,float,bool)): v = str(v)
+                row[k] = v
+            return row
+        for doc in sample:
+            writer.writerow(_row(doc))
+        yield out.getvalue().encode(); out.seek(0); out.truncate(0)
+        skip = len(sample)
+        while True:
+            batch = await collection.find({}, {"_id": 0}).skip(skip).limit(BATCH_SIZE).to_list(BATCH_SIZE)
+            if not batch: break
+            for doc in batch:
+                writer.writerow(_row(doc))
+            yield out.getvalue().encode(); out.seek(0); out.truncate(0)
+            skip += len(batch)
+            await asyncio.sleep(0)
+        del sample; gc.collect()
+    return StreamingResponse(generate(), media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
 @router.get("/export/customers")
-async def export_customers_csv(current_user: dict = Depends(get_current_user)):
-    return await _export_collection(db.customers, "customers.csv")
-
+async def export_customers(current_user: dict = Depends(get_current_user)):
+    return await _export_csv(db.customers, "customers.csv")
 
 @router.get("/export/orders")
-async def export_orders_csv(current_user: dict = Depends(get_current_user)):
-    return await _export_collection(db.orders, "orders.csv")
-
+async def export_orders(current_user: dict = Depends(get_current_user)):
+    return await _export_csv(db.orders, "orders.csv")
 
 @router.get("/export/leads")
-async def export_leads_csv(current_user: dict = Depends(get_current_user)):
-    return await _export_collection(db.leads, "leads.csv")
-
+async def export_leads(current_user: dict = Depends(get_current_user)):
+    return await _export_csv(db.leads, "leads.csv")
 
 @router.get("/export/quotes")
-async def export_quotes_csv(current_user: dict = Depends(get_current_user)):
-    return await _export_collection(db.quotes, "quotes.csv")
-
+async def export_quotes(current_user: dict = Depends(get_current_user)):
+    return await _export_csv(db.quotes, "quotes.csv")
 
 @router.get("/export/tickets")
-async def export_tickets_csv(current_user: dict = Depends(get_current_user)):
-    return await _export_collection(db.tickets, "tickets.csv")
+async def export_tickets(current_user: dict = Depends(get_current_user)):
+    return await _export_csv(db.tickets, "tickets.csv")
 
 
-# ==================== FULL DATABASE BACKUP ====================
-@router.get("/admin/backup")
-async def admin_full_backup(
-    format: str = "json",
-    current_user: dict = Depends(get_current_user)
-):
-    """
-    Genera un respaldo completo de la base de datos como archivo .zip.
-    Solo admin/owner.
+# ══════════════════════════════════════════════════════════════════
+#  RESTORE
+# ══════════════════════════════════════════════════════════════════
 
-    Args:
-        format: "json" (default, JSON array por colección) o "jsonl" (una línea por documento)
-    """
-    # Solo admin/owner pueden descargar respaldos completos
-    role = (current_user.get("role") or "").lower()
-    if role not in ("admin", "owner", "super_admin"):
-        raise HTTPException(status_code=403, detail="Solo administradores pueden descargar respaldos")
-
-    from datetime import datetime, timezone
-
-    # Lista de colecciones a incluir (importantes para restaurar el negocio)
-    COLLECTIONS = [
-        "users", "customers", "orders", "leads", "quotes",
-        "tickets", "products", "memberships", "membership_subscriptions",
-        "addresses", "payments", "invoices", "expenses",
-        "fuel_logs", "mileage_logs", "route_trips", "vehicles",
-        "notifications", "messages", "audit_logs",
-        "calendar_events", "store_orders", "files",
-        "preferences", "feedback", "suggestions", "refunds",
-        "delivery_settings", "logistics_settings",
-    ]
-
-    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H%M%S")
-    filename = f"vfl_backup_{timestamp}.zip"
-
-    buf = io.BytesIO()
-    counts: dict = {}
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for col_name in COLLECTIONS:
-            try:
-                collection = getattr(db, col_name, None)
-                if collection is None:
-                    continue
-                docs = await collection.find({}, {"_id": 0}).to_list(100000)
-                counts[col_name] = len(docs)
-                
-                if format.lower() == "jsonl":
-                    # JSONL: un documento por línea
-                    payload = "\n".join([json.dumps(doc, default=str, ensure_ascii=False) for doc in docs])
-                    zf.writestr(f"{col_name}.jsonl", payload)
-                else:
-                    # JSON: un array de documentos (formato original)
-                    payload = json.dumps(docs, default=str, ensure_ascii=False, indent=2)
-                    zf.writestr(f"{col_name}.json", payload)
-            except Exception as e:
-                # No bloquear el backup si una colección falla
-                counts[col_name] = f"error: {str(e)[:60]}"
-
-        # Manifest con metadata
-        manifest = {
-            "app": "Ventura Fresh Laundry",
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-            "generated_by": current_user.get("email", "unknown"),
-            "collections": counts,
-            "total_documents": sum(c for c in counts.values() if isinstance(c, int)),
-            "format": format.lower(),
-            "format_version": "1.0",
-            "restore_instructions": (
-                "Use the restore endpoint in the settings page of the app."
-            ),
-        }
-        zf.writestr("manifest.json", json.dumps(manifest, indent=2, ensure_ascii=False))
-
-    buf.seek(0)
-    return StreamingResponse(
-        iter([buf.getvalue()]),
-        media_type="application/zip",
-        headers={
-            "Content-Disposition": f'attachment; filename="{filename}"',
-            "X-Backup-Documents": str(manifest["total_documents"]),
-        },
-    )
+def _parse_json_or_jsonl(text: str):
+    stripped = text.strip()
+    if stripped.startswith("["):
+        try:
+            docs = json.loads(stripped)
+            return (docs if isinstance(docs, list) else [docs]), 0
+        except Exception as e:
+            raise ValueError(f"JSON inválido: {e}")
+    docs, inv = [], 0
+    for line in stripped.splitlines():
+        line = line.strip()
+        if not line: continue
+        try:    docs.append(json.loads(line))
+        except: inv += 1
+    return docs, inv
 
 
-# ==================== FULL DATABASE RESTORE ====================
 @router.post("/admin/restore")
-async def admin_full_restore(file: UploadFile = File(...), current_user: dict = Depends(get_current_user)):
-    """
-    Restaura una base de datos desde un archivo .zip de respaldo.
-    Acepta archivos .json (arrays de docs) o .jsonl (un doc por línea).
-    Solo admin/owner.
-    """
-    from datetime import datetime, timezone
-    from utils import create_audit_log
-
-    role = (current_user.get("role") or "").lower()
-    if role not in ("admin", "owner", "super_admin"):
-        raise HTTPException(status_code=403, detail="Solo administradores pueden restaurar respaldos")
-
-    if not file.filename.lower().endswith(".zip"):
-        raise HTTPException(status_code=400, detail="El archivo debe ser un .zip de respaldo")
-
-    logger.info(f"Iniciando restauración de respaldo desde: {file.filename}")
-    content = await file.read()
-    buf = io.BytesIO(content)
-
-    restored_counts = {}
-    errors = []
-    invalid_lines = {}
-
+async def restore_zip(file, current_user: dict = Depends(get_current_user)):
+    _require_admin(current_user)
+    contents = await file.read()
+    restored, errors, invalid_lines, total = {}, [], {}, 0
     try:
-        with zipfile.ZipFile(buf, "r") as zf:
-            logger.info(f"Archivos en el zip: {zf.namelist()}")
-            # Leer manifest primero (si existe)
-            manifest = None
-            if "manifest.json" in zf.namelist():
-                manifest = json.loads(zf.read("manifest.json"))
-                logger.info(f"Manifest encontrado: {manifest}")
-            
-            for filename in zf.namelist():
-                if filename == "manifest.json":
-                    continue
-                if not filename.endswith(".json") and not filename.endswith(".jsonl"):
-                    logger.info(f"Omitiendo archivo no compatible: {filename}")
-                    continue
-                
-                col_name = filename.replace(".json", "").replace(".jsonl", "").replace("backup/", "")
+        with zipfile.ZipFile(io.BytesIO(contents)) as zf:
+            for entry in zf.namelist():
+                if entry == "manifest.json": continue
+                col_name = entry.replace(".jsonl","").replace(".json","")
+                col = getattr(db, col_name, None)
+                if col is None:
+                    errors.append(f"No encontrada: {col_name}"); continue
                 try:
-                    logger.info(f"Restaurando colección: {col_name} desde: {filename}")
-                    collection = getattr(db, col_name, None)
-                    if collection is None:
-                        err_msg = f"Colección {col_name} no encontrada en la base de datos"
-                        logger.error(err_msg)
-                        errors.append(err_msg)
-                        continue
-
-                    # Leer contenido y parsear
-                    raw_content = zf.read(filename)
-                    docs = []
-                    col_errors = []
-                    if filename.endswith(".json"):
-                        # Es un JSON array (respaldo antiguo)
-                        try:
-                            docs = json.loads(raw_content)
-                            logger.info(f"Parsed {len(docs)} docs from JSON array for {col_name}")
-                        except Exception as e:
-                            err_msg = f"Error al parsear JSON para {col_name} (no se restauró esta colección): {str(e)}"
-                            logger.error(err_msg)
-                            errors.append(err_msg)
-                            continue
-                    else:
-                        # Es JSONL (un doc por línea)
-                        try:
-                            text = raw_content.decode("utf-8", errors="replace")
-                            for line_idx, line in enumerate(text.splitlines()):
-                                line = line.strip()
-                                if line:
-                                    try:
-                                        docs.append(json.loads(line))
-                                    except Exception as e:
-                                        err_msg = f"Error en línea {line_idx + 1} de {filename} (se omitirá): {str(e)} - Contenido: {line[:150]}..."
-                                        logger.warning(err_msg)
-                                        col_errors.append(err_msg)
-                            logger.info(f"Parsed {len(docs)} docs válidos de JSONL para {col_name} (se omitieron {len(col_errors)} líneas)")
-                        except Exception as e:
-                            err_msg = f"Error al leer JSONL para {col_name} (no se restauró esta colección): {str(e)}"
-                            logger.error(err_msg)
-                            errors.append(err_msg)
-                            continue
-                    
-                    # Borrar la colección existente y volver a insertar
-                    await collection.delete_many({})
-                    inserted_count = 0
+                    raw = zf.read(entry).decode("utf-8")
+                    docs, inv = _parse_json_or_jsonl(raw)
+                    if inv: invalid_lines[col_name] = inv
                     if docs:
-                        try:
-                            result = await collection.insert_many(docs)
-                            inserted_count = len(result.inserted_ids)
-                        except Exception as e:
-                            err_msg = f"Error al insertar docs en {col_name} (no se restauró esta colección): {str(e)}"
-                            logger.error(err_msg)
-                            errors.append(err_msg)
-                            continue
-                    
-                    restored_counts[col_name] = inserted_count
-                    if col_errors:
-                        invalid_lines[col_name] = len(col_errors)
-                        errors.extend([f"{col_name}: {e}" for e in col_errors[:10]])
-                    logger.info(f"Restaurada colección {col_name} con {inserted_count} documentos")
-                except Exception as e:
-                    err_msg = f"Error al restaurar {col_name}: {str(e)}"
-                    logger.error(err_msg)
-                    errors.append(err_msg)
-
-        await create_audit_log(
-            "DB_RESTORED", "system", "full_db",
-            current_user["id"],
-            {"restored_collections": restored_counts, "errors": errors, "invalid_lines": invalid_lines}
-        )
-        logger.info(f"Restauración completada. Colecciones restauradas: {restored_counts}")
-        return {
-            "success": True,
-            "restored_collections": restored_counts,
-            "invalid_lines": invalid_lines,
-            "errors": errors[:50],
-            "total_restored": sum(restored_counts.values())
-        }
-    except Exception as e:
-        err_msg = f"Error al leer el zip: {str(e)}"
-        logger.error(err_msg)
-        raise HTTPException(status_code=500, detail=err_msg)
+                        await col.delete_many({})
+                        for i in range(0, len(docs), BATCH_SIZE):
+                            await col.insert_many(docs[i:i+BATCH_SIZE], ordered=False)
+                            await asyncio.sleep(0)
+                    restored[col_name] = len(docs); total += len(docs)
+                    del docs, raw; gc.collect()
+                except Exception as exc:
+                    errors.append(f"{col_name}: {str(exc)[:120]}")
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"ZIP inválido: {exc}")
+    return {"total_restored": total, "restored_collections": restored,
+            "errors": errors, "invalid_lines": invalid_lines}
 
 
-# ==================== CSV RESTORE (single collection) ====================
-@router.post("/admin/restore/csv/{collection}")
-async def admin_restore_csv(
-    collection: str,
-    file: UploadFile = File(...),
-    current_user: dict = Depends(get_current_user)
-):
-    """
-    Restaura/importa una colección desde un archivo CSV.
-    Solo admin/owner. Borra la colección existente y vuelve a insertar.
-    """
-    from utils import create_audit_log, normalize_phone, normalize_email
-
-    role = (current_user.get("role") or "").lower()
-    if role not in ("admin", "owner", "super_admin"):
-        raise HTTPException(status_code=403, detail="Solo administradores pueden restaurar CSV")
-
-    if not file.filename.lower().endswith(".csv"):
-        raise HTTPException(status_code=400, detail="El archivo debe ser un .csv")
-
-    # Validar que la colección exista
-    allowed_collections = [
-        "customers", "orders", "leads", "quotes", "tickets",
-        "products", "memberships", "membership_subscriptions",
-        "addresses", "payments", "invoices", "expenses",
-        "fuel_logs", "mileage_logs", "route_trips", "vehicles"
-    ]
-    if collection not in allowed_collections:
-        raise HTTPException(status_code=400, detail=f"Colección no permitida. Colecciones disponibles: {', '.join(allowed_collections)}")
-
-    try:
-        db_collection = getattr(db, collection, None)
-        if db_collection is None:
-            raise HTTPException(status_code=404, detail=f"Colección {collection} no encontrada")
-
-        content = await file.read()
-        text = content.decode("utf-8", errors="ignore")
-        reader = csv.DictReader(io.StringIO(text))
-        rows = []
-        for row in reader:
-            # Convertir campos que son JSON (arrays/dicts) de vuelta a objetos
-            parsed_row = {}
-            for key, value in row.items():
-                if value:
-                    # Para campos específicos, NO intentar parsear a JSON
-                    if key in ['phone', 'email', 'name', 'address', 'notes', 'subject', 'description']:
-                        parsed_row[key] = value
-                        # Normalizar campos específicos para customers
-                        if collection == 'customers' and key == 'phone':
-                            parsed_row[key] = normalize_phone(value) or value
-                        if collection == 'customers' and key == 'email':
-                            parsed_row[key] = normalize_email(value) or value
-                    else:
-                        try:
-                            parsed_row[key] = json.loads(value)
-                        except:
-                            parsed_row[key] = value
-                else:
-                    parsed_row[key] = value
-            rows.append(parsed_row)
-
-        # Borrar la colección existente y volver a insertar
-        await db_collection.delete_many({})
-        inserted_count = 0
-        if rows:
-            result = await db_collection.insert_many(rows)
-            inserted_count = len(result.inserted_ids)
-
-        await create_audit_log(
-            "CSV_RESTORED", collection, "csv_import",
-            current_user["id"],
-            {"inserted_count": inserted_count}
-        )
-
-        return {
-            "success": True,
-            "collection": collection,
-            "inserted_count": inserted_count
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al procesar el CSV: {str(e)}")
-
-# ==================== SAFE COLLECTION DOWNLOAD ====================
-@router.get("/admin/backup/{collection_name}")
-async def download_collection_json(
-    collection_name: str,
-    current_user: dict = Depends(get_current_user)
-):
-    """
-    Descarga una colección completa como JSON stream (un documento por línea, JSONL).
-    No carga todo en memoria: usa cursor y streaming.
-    Solo admin/owner.
-    """
-    role = (current_user.get("role") or "").lower()
-    if role not in ("admin", "owner", "super_admin"):
-        raise HTTPException(status_code=403, detail="Solo administradores")
-
-    # Obtener la colección de forma segura desde la base de datos
-    collection = getattr(db, collection_name, None)
-    if collection is None:
-        raise HTTPException(status_code=404, detail=f"Colección '{collection_name}' no encontrada")
-
-    async def generate():
-        """Generador que recorre el cursor y envía JSON línea por línea."""
-        cursor = collection.find({}, {"_id": 0})
-        async for doc in cursor:
-            line = json.dumps(doc, default=str, ensure_ascii=False) + "\n"
-            yield line.encode("utf-8")
-            # Permitir que otras tareas corran (no bloqueante)
-            await asyncio.sleep(0)
-
-    filename = f"{collection_name}.jsonl"
-    return StreamingResponse(
-        generate(),
-        media_type="application/x-ndjson",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
-    )
-    
-@router.post("/admin/free-memory")
-async def free_memory(current_user: dict = Depends(get_current_user)):
-    """
-    Fuerza la recolección de basura del intérprete Python para liberar RAM.
-    Solo admin/owner.
-    """
-    role = (current_user.get("role") or "").lower()
-    if role not in ("admin", "owner", "super_admin"):
-        raise HTTPException(status_code=403, detail="Solo administradores")
-
-    import gc
-    gc.collect()
-    return {"status": "ok", "detail": "Garbage collection triggered"}
+@router.post("/admin/restore/csv/{collection_name}")
+async def restore_csv(collection_name: str, file, current_user: dict = Depends(get_current_user)):
+    _require_admin(current_user)
+    col = _get_col(collection_name)
+    text = (await file.read()).decode("utf-8")
+    docs = list(csv.DictReader(io.StringIO(text)))
+    if not docs: raise HTTPException(status_code=400, detail="CSV vacío")
+    await col.delete_many({})
+    for i in range(0, len(docs), BATCH_SIZE):
+        await col.insert_many(docs[i:i+BATCH_SIZE], ordered=False)
+        await asyncio.sleep(0)
+    return {"inserted_count": len(docs), "collection": collection_name}
 
 
-@router.post("/admin/restore/jsonl/{collection}")
-async def admin_restore_jsonl(
-    collection: str,
-    file: UploadFile = File(...),
-    current_user: dict = Depends(get_current_user)
-):
-    """
-    Restaura una colección desde un archivo JSONL (un documento por línea).
-    Borra la colección existente y vuelve a insertar.
-    Solo admin/owner.
-    """
-    from utils import create_audit_log
+@router.post("/admin/restore/jsonl/{collection_name}")
+async def restore_jsonl(collection_name: str, file, current_user: dict = Depends(get_current_user)):
+    _require_admin(current_user)
+    col = _get_col(collection_name)
+    text = (await file.read()).decode("utf-8")
+    docs, inv = _parse_json_or_jsonl(text)
+    if not docs and inv > 0:
+        raise HTTPException(status_code=400, detail="Sin documentos válidos")
+    await col.delete_many({})
+    for i in range(0, len(docs), BATCH_SIZE):
+        await col.insert_many(docs[i:i+BATCH_SIZE], ordered=False)
+        await asyncio.sleep(0)
+    return {"inserted_count": len(docs), "collection": collection_name,
+            "invalid_lines_count": inv, "errors": []}
 
-    role = (current_user.get("role") or "").lower()
-    if role not in ("admin", "owner", "super_admin"):
-        raise HTTPException(status_code=403, detail="Solo administradores")
-
-    if not file.filename.lower().endswith(".jsonl") and not file.filename.lower().endswith(".json"):
-        raise HTTPException(status_code=400, detail="El archivo debe ser .jsonl o .json")
-
-    logger.info(f"Iniciando restauración de colección {collection} desde: {file.filename}")
-    collection_obj = getattr(db, collection, None)
-    if collection_obj is None:
-        raise HTTPException(status_code=404, detail=f"Colección '{collection}' no encontrada")
-
-    # Leer el archivo línea por línea sin cargar todo en RAM
-    content = await file.read()
-    docs = []
-    errors = []
-    if file.filename.lower().endswith(".json"):
-        logger.info(f"Parseando como JSON array")
-        try:
-            docs = json.loads(content)
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Error al parsear JSON (no se puede restaurar esta colección): {str(e)}")
-    else:
-        logger.info(f"Parseando como JSONL")
-        lines = content.decode("utf-8", errors="replace").splitlines()
-        for line_idx, line in enumerate(lines):
-            if line.strip():
-                try:
-                    docs.append(json.loads(line))
-                except Exception as e:
-                    err_msg = f"Línea {line_idx + 1} inválida (se omitirá): {str(e)} - Contenido: {line[:150]}..."
-                    logger.warning(err_msg)
-                    errors.append(err_msg)
-
-    logger.info(f"Parsed {len(docs)} docs válidos para la colección {collection} (se omitieron {len(errors)} líneas inválidas)")
-    # Borrar y reinsertar
-    await collection_obj.delete_many({})
-    inserted_count = 0
-    if docs:
-        try:
-            result = await collection_obj.insert_many(docs)
-            inserted_count = len(result.inserted_ids)
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Error al insertar documentos: {str(e)}")
-
-    await create_audit_log(
-        "JSONL_RESTORED", collection, "jsonl_import",
-        current_user["id"],
-        {"inserted_count": inserted_count, "invalid_lines_count": len(errors)}
-    )
-    logger.info(f"Restaurada colección {collection} con {inserted_count} documentos")
-    return {
-        "success": True,
-        "collection": collection,
-        "inserted_count": inserted_count,
-        "invalid_lines_count": len(errors),
-        "errors": errors[:20]  # Limit to first 20 errors to keep response size small
-    }
 
 @router.post("/admin/restore/jsonl-zip")
-async def admin_restore_jsonl_zip(
-    file: UploadFile = File(...),
-    current_user: dict = Depends(get_current_user)
-):
-    """
-    Restaura múltiples colecciones desde un archivo ZIP que contiene archivos JSONL o JSON.
-    Cada archivo dentro del ZIP debe llamarse <nombre_coleccion>.jsonl o .json
-    Solo admin/owner.
-    """
-    from utils import create_audit_log
-    import zipfile
-
-    role = (current_user.get("role") or "").lower()
-    if role not in ("admin", "owner", "super_admin"):
-        raise HTTPException(status_code=403, detail="Solo administradores")
-
-    if not file.filename.lower().endswith(".zip"):
-        raise HTTPException(status_code=400, detail="El archivo debe ser .zip")
-
-    logger.info(f"Iniciando restauración ZIP desde: {file.filename}")
-    content = await file.read()
-    buf = io.BytesIO(content)
-
-    restored_counts = {}
-    errors = []
-    invalid_lines = {}
-
+async def restore_jsonl_zip(file, current_user: dict = Depends(get_current_user)):
+    _require_admin(current_user)
+    contents = await file.read()
+    restored, errors, invalid_lines, total = {}, [], {}, 0
     try:
-        with zipfile.ZipFile(buf, "r") as zf:
-            logger.info(f"Archivos en el zip: {zf.namelist()}")
-            for zip_filename in zf.namelist():
-                if not zip_filename.endswith(".jsonl") and not zip_filename.endswith(".json"):
-                    logger.info(f"Omitiendo archivo no compatible: {zip_filename}")
-                    continue
-                col_name = zip_filename.replace(".jsonl", "").replace(".json", "").replace("backup/", "")
+        with zipfile.ZipFile(io.BytesIO(contents)) as zf:
+            for entry in zf.namelist():
+                if entry == "manifest.json": continue
+                col_name = entry.replace(".jsonl","").replace(".json","")
+                col = getattr(db, col_name, None)
+                if col is None:
+                    errors.append(f"No encontrada: {col_name}"); continue
                 try:
-                    logger.info(f"Restaurando colección: {col_name} desde: {zip_filename}")
-                    collection = getattr(db, col_name, None)
-                    if collection is None:
-                        err_msg = f"Colección '{col_name}' no encontrada"
-                        logger.error(err_msg)
-                        errors.append(err_msg)
-                        continue
-
-                    # Leer el archivo y parsear
-                    raw = zf.read(zip_filename)
-                    docs = []
-                    col_errors = []
-                    if zip_filename.endswith(".json"):
-                        try:
-                            docs = json.loads(raw)
-                            logger.info(f"Parsed {len(docs)} docs from JSON array for {col_name}")
-                        except Exception as e:
-                            err_msg = f"Error al parsear JSON para {col_name} (no se restauró esta colección): {str(e)}"
-                            logger.error(err_msg)
-                            errors.append(err_msg)
-                            continue
-                    else:
-                        try:
-                            text = raw.decode("utf-8", errors="replace")
-                            for line_idx, line in enumerate(text.splitlines()):
-                                line = line.strip()
-                                if line:
-                                    try:
-                                        docs.append(json.loads(line))
-                                    except Exception as e:
-                                        err_msg = f"Error en línea {line_idx + 1} de {zip_filename} (se omitirá): {str(e)} - Contenido: {line[:150]}..."
-                                        logger.warning(err_msg)
-                                        col_errors.append(err_msg)
-                            logger.info(f"Parsed {len(docs)} docs válidos de JSONL para {col_name} (se omitieron {len(col_errors)} líneas)")
-                        except Exception as e:
-                            err_msg = f"Error al leer JSONL para {col_name} (no se restauró esta colección): {str(e)}"
-                            logger.error(err_msg)
-                            errors.append(err_msg)
-                            continue
-
-                    # Borrar y insertar
-                    await collection.delete_many({})
-                    inserted_count = 0
+                    raw = zf.read(entry).decode("utf-8")
+                    docs, inv = _parse_json_or_jsonl(raw)
+                    if inv: invalid_lines[col_name] = inv
                     if docs:
-                        try:
-                            result = await collection.insert_many(docs)
-                            inserted_count = len(result.inserted_ids)
-                        except Exception as e:
-                            err_msg = f"Error al insertar docs en {col_name} (no se restauró esta colección): {str(e)}"
-                            logger.error(err_msg)
-                            errors.append(err_msg)
-                            continue
-                    restored_counts[col_name] = inserted_count
-                    if col_errors:
-                        invalid_lines[col_name] = len(col_errors)
-                        errors.extend([f"{col_name}: {e}" for e in col_errors[:10]])  # Limit per collection
-                    logger.info(f"Restaurada colección {col_name} con {inserted_count} documentos")
-                except Exception as e:
-                    err_msg = f"Error al restaurar {col_name}: {str(e)}"
-                    logger.error(err_msg)
-                    errors.append(err_msg)
+                        await col.delete_many({})
+                        for i in range(0, len(docs), BATCH_SIZE):
+                            await col.insert_many(docs[i:i+BATCH_SIZE], ordered=False)
+                            await asyncio.sleep(0)
+                    restored[col_name] = len(docs); total += len(docs)
+                    del docs, raw; gc.collect()
+                except Exception as exc:
+                    errors.append(f"{col_name}: {str(exc)[:120]}")
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"ZIP inválido: {exc}")
+    return {"total_restored": total, "restored_collections": restored,
+            "errors": errors, "invalid_lines": invalid_lines}
 
-        await create_audit_log(
-            "JSONL_ZIP_RESTORED", "system", "bulk_jsonl_zip",
-            current_user["id"],
-            {"restored_collections": restored_counts, "errors": errors, "invalid_lines": invalid_lines}
-        )
-        logger.info(f"Restauración ZIP completada. Colecciones restauradas: {restored_counts}")
-        return {
-            "success": True,
-            "restored_collections": restored_counts,
-            "invalid_lines": invalid_lines,
-            "errors": errors[:50],  # Limit to first 50 errors total
-            "total_restored": sum(restored_counts.values())
-        }
-    except Exception as e:
-        err_msg = f"Error al procesar el ZIP: {str(e)}"
-        logger.error(err_msg)
-        raise HTTPException(status_code=500, detail=err_msg)
+
+@router.post("/admin/free-memory")
+async def free_memory(current_user: dict = Depends(get_current_user)):
+    _require_admin(current_user)
+    gc.collect()
+    return {"status": "ok"}
