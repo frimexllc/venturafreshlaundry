@@ -13,7 +13,19 @@ import {
 } from "lucide-react";
 import { useLocale } from "../context/LocaleContext";
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+const BACKEND_BASE = (() => {
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    const isLocal = host === "localhost" || host === "127.0.0.1";
+    if (!isLocal) {
+      return window.location.origin;
+    }
+    return process.env.REACT_APP_BACKEND_URL || window.location.origin;
+  }
+  return process.env.REACT_APP_BACKEND_URL || "";
+})();
+
+const API = `${BACKEND_BASE}/api`;
 
 // ── Tamaños de página según tipo de colección ──────────────────────────────
 // Las colecciones de imágenes usan 1 doc/request para no superar

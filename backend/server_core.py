@@ -1,5 +1,5 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 import os
@@ -648,6 +648,7 @@ async def serve_account():
 FRONTEND_BUILD_DIR = ROOT_DIR / "static"
 FRONTEND_INDEX_FILE = FRONTEND_BUILD_DIR / "index.html"
 FRONTEND_STATIC_DIR = FRONTEND_BUILD_DIR / "static"
+FRONTEND_MANIFEST_FILE = FRONTEND_BUILD_DIR / "manifest.json"
 FRONTEND_RESERVED_PREFIXES = ("api", "web", "uploads", "docs", "redoc")
 
 if FRONTEND_STATIC_DIR.exists():
@@ -661,6 +662,31 @@ def _frontend_candidate(path_value: str) -> Optional[Path]:
     except ValueError:
         return None
     return candidate
+
+
+@app.get("/manifest.json", include_in_schema=False)
+async def serve_manifest():
+    """
+    Evita que /manifest.json caiga al fallback del SPA.
+    Si el archivo fue borrado en un deploy roto, devuelve un manifest mínimo válido.
+    """
+    if FRONTEND_MANIFEST_FILE.exists():
+        logger.info("serve_manifest file=%s", FRONTEND_MANIFEST_FILE)
+        return FileResponse(FRONTEND_MANIFEST_FILE, media_type="application/manifest+json")
+    logger.warning("serve_manifest fallback_manifest_used")
+    return JSONResponse(
+        content={
+            "name": "Ventura Fresh Laundry",
+            "short_name": "VFL",
+            "theme_color": "#1e40af",
+            "background_color": "#ffffff",
+            "display": "standalone",
+            "scope": "/",
+            "start_url": "/",
+            "icons": [],
+        },
+        media_type="application/manifest+json",
+    )
 
 
 @app.get("/", include_in_schema=False)
