@@ -377,6 +377,153 @@ function useChunkedRestore() {
   return { start, pause, resume, cancel, reset, state };
 }
 
+
+// ══════════════════════════════════════════════════════════════════════════
+//  Hook: restore documento por documento (máxima seguridad)
+//
+//  Flujo:
+//  1. El usuario selecciona un .json o .jsonl local
+//  2. El hook lo lee con FileReader y lo parsea a un array de docs
+//  3. DELETE /clear → vacía la colección UNA sola vez
+//  4. Loop: POST /single con UN documento por request
+//     - Si un doc falla, se cuenta como "failed" y se sigue con el siguiente
+//       (no se aborta todo el restore por un solo doc corrupto)
+//  5. Pausa SINGLE_DOC_DELAY ms entre cada documento
+//
+//  Ventaja: el servidor NUNCA tiene más de 1 documento en RAM durante
+//  el restore. Es la opción más lenta pero la más segura para
+//  colecciones enormes o con documentos muy pesados (imágenes base64).
+// ══════════════════════════════════════════════════════════════════════════
+const SINGLE_DOC_DELAY = 150; // ms entre cada documento
+
+function useSingleDocRestore() {
+  const INIT = {
+    status: "idle", // idle | reading | clearing | uploading | done | error | paused
+    collection: "",
+    index: 0,
+    total: 0,
+    inserted: 0,
+    failed: 0,
+    pct: 0,
+    error: "",
+  };
+  const [state, setState] = useState(INIT);
+  const pauseRef  = useRef(false);
+  const cancelRef = useRef(false);
+  const set = useCallback((p) => setState(prev => ({ ...prev, ...p })), []);
+
+  const reset = useCallback(() => {
+    pauseRef.current  = false;
+    cancelRef.current = false;
+    setState(INIT);
+  }, []);
+
+  const pause  = () => { pauseRef.current = true;  set({ status: "paused" }); };
+  const resume = () => { pauseRef.current = false; set({ status: "uploading" }); };
+  const cancel = () => { cancelRef.current = true; reset(); };
+
+  const start = useCallback(async (colName, file) => {
+    reset();
+    set({ status: "reading", collection: colName });
+
+    // 1. Leer el archivo localmente
+    let allDocs;
+    try {
+      const text = await new Promise((res, rej) => {
+        const reader = new FileReader();
+        reader.onload  = e => res(e.target.result);
+        reader.onerror = () => rej(new Error("Error leyendo el archivo"));
+        reader.readAsText(file, "utf-8");
+      });
+
+      // Detectar JSON array o JSONL
+      const trimmed = text.trim();
+      if (trimmed.startsWith("[")) {
+        allDocs = JSON.parse(trimmed);
+        if (!Array.isArray(allDocs)) allDocs = [allDocs];
+      } else {
+        allDocs = [];
+        for (const line of trimmed.split("\n")) {
+          const l = line.trim();
+          if (!l) continue;
+          try { allDocs.push(JSON.parse(l)); } catch {}
+        }
+      }
+    } catch (err) {
+      set({ status: "error", error: `Error al leer el archivo: ${err.message}` });
+      toast.error(`No se pudo leer el archivo: ${err.message}`);
+      return;
+    }
+
+    if (!allDocs || allDocs.length === 0) {
+      set({ status: "error", error: "El archivo está vacío o no tiene documentos válidos" });
+      toast.error("El archivo no tiene documentos válidos");
+      return;
+    }
+
+    const total = allDocs.length;
+    set({ status: "clearing", total });
+
+    // 2. Vaciar la colección UNA sola vez antes de empezar
+    try {
+      await axios.delete(`${API}/admin/restore/jsonl/${colName}/clear`);
+    } catch (err) {
+      const msg = err?.response?.data?.detail || err.message || "Error desconocido";
+      set({ status: "error", error: `Error al vaciar la colección: ${msg}` });
+      toast.error(`Error al vaciar ${colName}: ${msg}`);
+      return;
+    }
+
+    set({ status: "uploading" });
+
+    let inserted = 0;
+    let failed   = 0;
+
+    // 3. Insertar documento por documento
+    for (let i = 0; i < total; i++) {
+      if (cancelRef.current) return;
+
+      while (pauseRef.current) {
+        await sleep(300);
+        if (cancelRef.current) return;
+      }
+
+      try {
+        await axios.post(
+          `${API}/admin/restore/jsonl/${colName}/single`,
+          allDocs[i],
+          { headers: { "Content-Type": "application/json" } }
+        );
+        inserted++;
+      } catch {
+        // Un doc corrupto/duplicado no debe abortar todo el restore
+        failed++;
+      }
+
+      set({
+        index: i + 1,
+        inserted,
+        failed,
+        pct: ((i + 1) / total) * 100,
+      });
+
+      // Pausa entre documentos — el servidor libera RAM aquí
+      if (i < total - 1) {
+        await sleep(SINGLE_DOC_DELAY);
+      }
+    }
+
+    set({ status: "done", pct: 100, inserted, failed });
+    toast.success(
+      failed > 0
+        ? `⚠️ ${colName}: ${inserted.toLocaleString()} insertados, ${failed} fallidos`
+        : `✅ ${colName}: ${inserted.toLocaleString()} documentos restaurados`
+    );
+  }, [reset, set]);
+
+  return { start, pause, resume, cancel, reset, state };
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 export default function Settings() {
   const { t } = useLocale();
@@ -401,7 +548,8 @@ export default function Settings() {
   const [showPaged, setShowPaged]         = useState(true);
   const [selectedCol, setSelectedCol]     = useState("customers");
   const dl = usePagedDownload();
-  const cr = useChunkedRestore();  // restore en chunks para archivos grandes
+  const cr = useChunkedRestore();     // restore en chunks para archivos grandes
+  const sd = useSingleDocRestore();   // restore doc por doc — máxima seguridad
 
   const [restoreLoading, setRestoreLoading]   = useState(false);
   const [restoreZipFile, setRestoreZipFile]   = useState(null);
@@ -410,6 +558,8 @@ export default function Settings() {
   const [selJsonlCol, setSelJsonlCol]         = useState("customers");
   const [restoreJsonlFile, setRestoreJsonlFile]   = useState(null);
   const [restoreZipJsonl, setRestoreZipJsonl]     = useState(null);
+  const [selSingleCol, setSelSingleCol]           = useState("customers");
+  const [restoreSingleFile, setRestoreSingleFile] = useState(null);
   const [restoreErrors, setRestoreErrors]         = useState([]);
   const [showRestoreErrors, setShowRestoreErrors] = useState(false);
   const [invalidLines, setInvalidLines]           = useState({});
@@ -545,6 +695,14 @@ export default function Settings() {
     if (res.errors?.length) { setRestoreErrors(res.errors); setShowRestoreErrors(true); }
   };
 
+  const handleRestoreSingle = async () => {
+    if (!restoreSingleFile) return toast.error("Selecciona un archivo JSON/JSONL");
+    if (!window.confirm(`Sobrescribirá ${selSingleCol} documento por documento. ¿Continuar?`)) return;
+    sd.reset();
+    await sd.start(selSingleCol, restoreSingleFile);
+    setRestoreSingleFile(null);
+  };
+
   const handleTestEmail = async () => {
     if (!testEmail) return; setSending(true);
     try {
@@ -566,9 +724,14 @@ export default function Settings() {
   const { status, collection, pct, downloaded, total, bytesEst, currentPageSize, error: dlError } = dl.state;
   const { status: crStatus, chunk: crChunk, totalChunks: crTotal, inserted: crInserted,
           totalDocs: crTotalDocs, pct: crPct, error: crError, collection: crCol } = cr.state;
+  const { status: sdStatus, index: sdIndex, total: sdTotal, inserted: sdInserted,
+          failed: sdFailed, pct: sdPct, error: sdError, collection: sdCol } = sd.state;
   const crActive = ["reading","uploading","paused"].includes(crStatus);
   const crDone   = crStatus === "done";
   const crErr    = crStatus === "error";
+  const sdActive = ["reading","clearing","uploading","paused"].includes(sdStatus);
+  const sdDone   = sdStatus === "done";
+  const sdErr    = sdStatus === "error";
   const dlActive = ["counting","downloading","writing","paused"].includes(status);
   const dlDone   = status === "done";
   const dlErr    = status === "error";
@@ -965,6 +1128,103 @@ export default function Settings() {
               <Button onClick={handleRestoreJsonl} disabled={!restoreJsonlFile} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold">
                 <Upload className="h-4 w-4 mr-2"/>
                 {t("Restore in Chunks","Restaurar por chunks")} — {selJsonlCol}
+              </Button>
+            )}
+          </div>
+
+          {/* ✅ Restore documento por documento — máxima seguridad */}
+          <div className="p-4 rounded-xl border-2 border-rose-200 bg-rose-50 mb-4 space-y-3">
+            <div className="flex items-start gap-3">
+              <div className="h-9 w-9 rounded-lg bg-rose-600 flex items-center justify-center shrink-0">
+                <Upload className="h-4 w-4 text-white"/>
+              </div>
+              <div>
+                <div className="font-semibold text-slate-900 text-sm">
+                  🐢 {t("Restore Doc-by-Doc — Maximum Safety","Restaurar doc por doc — Máxima seguridad")}
+                </div>
+                <div className="text-xs text-slate-500">
+                  {t(
+                    "1 document per request. Slowest but never overloads server RAM. Use for huge or very heavy collections.",
+                    "1 documento por request. Lo más lento pero nunca satura la RAM del servidor. Úsalo para colecciones enormes o muy pesadas."
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>{t("Collection","Colección")}</Label>
+                <select className="w-full h-10 rounded-md border border-slate-200 px-2 text-sm mt-1"
+                  value={selSingleCol} onChange={e=>setSelSingleCol(e.target.value)} disabled={sdActive}>
+                  {ALL_COLLECTIONS.map(c=><option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <Label>{t("JSON / JSONL File","Archivo JSON / JSONL")}</Label>
+                <Input type="file" accept=".jsonl,.json" className="mt-1"
+                  onChange={e=>setRestoreSingleFile(e.target.files?.[0]||null)} disabled={sdActive}/>
+              </div>
+            </div>
+            {restoreSingleFile && !sdActive && !sdDone && !sdErr && (
+              <p className="text-xs text-slate-500">{restoreSingleFile.name}</p>
+            )}
+
+            {/* Progreso doc por doc */}
+            {sdActive && (
+              <div className="space-y-2 p-3 bg-white rounded-xl border border-rose-200">
+                <div className="flex justify-between text-xs text-slate-600">
+                  <span>
+                    {sdStatus === "reading"  ? `Leyendo ${sdCol}…` :
+                     sdStatus === "clearing" ? `Vaciando ${sdCol}…` :
+                     sdStatus === "paused"   ? `⏸ Pausado — doc ${sdIndex}/${sdTotal}` :
+                     `Insertando ${sdCol} — doc ${sdIndex}/${sdTotal}`}
+                  </span>
+                  <span>{Math.round(sdPct)}%</span>
+                </div>
+                <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-rose-500 rounded-full transition-all duration-150"
+                    style={{ width: `${Math.min(sdPct, 100)}%` }}/>
+                </div>
+                <div className="text-xs text-slate-400">
+                  {sdInserted.toLocaleString()} insertados
+                  {sdFailed > 0 && ` · ${sdFailed} fallidos`}
+                  {" · "}pausa {SINGLE_DOC_DELAY}ms/doc
+                </div>
+                <div className="flex gap-2">
+                  {sdStatus === "paused"
+                    ? <Button size="sm" variant="outline" onClick={sd.resume}><Play className="h-3 w-3 mr-1"/>Reanudar</Button>
+                    : <Button size="sm" variant="outline" onClick={sd.pause} disabled={sdStatus==="reading"||sdStatus==="clearing"}><Pause className="h-3 w-3 mr-1"/>Pausar</Button>
+                  }
+                  <Button size="sm" variant="outline" className="text-red-600 border-red-200" onClick={sd.cancel}>
+                    <X className="h-3 w-3 mr-1"/>Cancelar
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {sdDone && (
+              <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 flex items-center gap-3 text-emerald-700 text-sm">
+                <CheckCircle2 className="h-5 w-5 shrink-0"/>
+                <div>
+                  <span className="font-semibold">{sdCol}</span> — {sdInserted.toLocaleString()} insertados
+                  {sdFailed > 0 && <span className="text-amber-600"> · {sdFailed} fallidos</span>}
+                </div>
+                <button className="ml-auto text-xs underline text-slate-500" onClick={sd.reset}>Limpiar</button>
+              </div>
+            )}
+
+            {sdErr && (
+              <div className="p-3 bg-red-50 rounded-xl border border-red-200 text-red-700 text-sm flex items-center gap-3">
+                <AlertTriangle className="h-5 w-5 shrink-0"/>
+                <div><span className="font-semibold">Error:</span> {sdError}</div>
+                <button className="ml-auto" onClick={sd.reset}><RotateCcw className="h-4 w-4"/></button>
+              </div>
+            )}
+
+            {!sdActive && !sdDone && !sdErr && (
+              <Button onClick={handleRestoreSingle} disabled={!restoreSingleFile} className="w-full bg-rose-600 hover:bg-rose-700 text-white font-semibold">
+                <Upload className="h-4 w-4 mr-2"/>
+                {t("Restore Doc-by-Doc","Restaurar doc por doc")} — {selSingleCol}
               </Button>
             )}
           </div>

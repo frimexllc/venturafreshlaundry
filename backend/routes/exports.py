@@ -7,10 +7,13 @@ Endpoints de backup:
   GET  /api/admin/backup/collections  → lista con conteo estimado
 
 Endpoints de restore:
-  POST /api/admin/restore              → ZIP completo (JSON o JSONL)
-  POST /api/admin/restore/csv/{col}   → CSV individual
-  POST /api/admin/restore/jsonl/{col} → JSONL o JSON individual
-  POST /api/admin/restore/jsonl-zip   → ZIP con varios JSONL/JSON
+  POST   /api/admin/restore              → ZIP completo (JSON o JSONL)
+  POST   /api/admin/restore/csv/{col}   → CSV individual
+  POST   /api/admin/restore/jsonl/{col} → JSONL o JSON individual
+  POST   /api/admin/restore/jsonl-zip   → ZIP con varios JSONL/JSON
+  POST   /api/admin/restore/jsonl/{col}/chunk   → restore en chunks (N docs/request)
+  POST   /api/admin/restore/jsonl/{col}/single  → restore doc por doc (máxima seguridad)
+  DELETE /api/admin/restore/jsonl/{col}/clear   → vacía una colección
 
 CSV exports:
   GET  /api/export/customers|orders|leads|quotes|tickets
@@ -24,7 +27,7 @@ import json
 import zipfile
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from auth import get_current_user
@@ -281,7 +284,7 @@ async def restore_full_zip(
     """
     Restaura TODAS las colecciones desde un ZIP de respaldo.
     El ZIP puede contener archivos .json (array) o .jsonl (una línea por doc).
-    
+
     Proceso por colección:
       1. Lee el archivo del ZIP.
       2. Parsea como JSON array o JSONL.
@@ -351,7 +354,7 @@ async def restore_collection_csv(
     """
     Restaura UNA colección desde un archivo CSV.
     La primera fila debe ser el encabezado con los nombres de los campos.
-    
+
     ADVERTENCIA: Borra todos los documentos existentes en la colección.
     """
     _require_admin(current_user)
@@ -504,7 +507,6 @@ async def restore_jsonl_zip(
     }
 
 
-
 @router.post("/admin/restore/jsonl/{collection_name}/chunk")
 async def restore_collection_chunk(
     collection_name: str,
@@ -561,6 +563,68 @@ async def restore_collection_chunk(
         "invalid_lines_count": inv,
         "is_last": chunk_index == total_chunks - 1,
     }
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  RESTORE — documento por documento (máxima seguridad para archivos enormes)
+# ══════════════════════════════════════════════════════════════════════════
+
+@router.post("/admin/restore/jsonl/{collection_name}/single")
+async def restore_single_doc(
+    collection_name: str,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Inserta UN solo documento. El frontend llama este endpoint una vez por
+    documento, con una pausa entre cada llamada. El servidor nunca tiene
+    más de un documento en RAM durante todo el restore.
+
+    Body: JSON puro del documento (Content-Type: application/json, NO multipart).
+    Si el documento trae "_id" se descarta para evitar colisiones de clave.
+    """
+    _require_admin(current_user)
+    col = _get_col(collection_name)
+
+    body = await request.body()
+    if not body:
+        raise HTTPException(status_code=400, detail="Body vacío")
+
+    try:
+        doc = json.loads(body)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"JSON inválido: {e}")
+
+    if not isinstance(doc, dict):
+        raise HTTPException(status_code=400, detail="El documento debe ser un objeto JSON")
+
+    doc.pop("_id", None)
+
+    try:
+        result = await col.insert_one(doc)
+        return {"ok": True, "inserted_id": str(result.inserted_id)}
+    except Exception as exc:
+        # p.ej. duplicate key u otro error de validación de mongo
+        raise HTTPException(status_code=409, detail=str(exc)[:200])
+    finally:
+        gc.collect()
+
+
+@router.delete("/admin/restore/jsonl/{collection_name}/clear")
+async def clear_collection(
+    collection_name: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Vacía una colección. Se llama UNA sola vez, antes de empezar el
+    restore documento por documento.
+    """
+    _require_admin(current_user)
+    col = _get_col(collection_name)
+    result = await col.delete_many({})
+    gc.collect()
+    return {"deleted": result.deleted_count}
+
 
 # ══════════════════════════════════════════════════════════════════════════
 #  Utilidades
