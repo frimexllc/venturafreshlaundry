@@ -1,7 +1,19 @@
 import axios from "axios";
 import { getCustomerToken, clearCustomerSession, isTokenError } from "../utils/tokenUtils";
 
-const API = process.env.REACT_APP_BACKEND_URL + "/api";
+const API = (() => {
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    const isLocal = host === "localhost" || host === "127.0.0.1";
+    if (!isLocal) {
+      return `${window.location.origin}/api`;
+    }
+    const base = process.env.REACT_APP_BACKEND_URL || window.location.origin;
+    return `${base}/api`;
+  }
+  const base = process.env.REACT_APP_BACKEND_URL || "";
+  return base ? `${base}/api` : "/api";
+})();
 
 const customerAxios = axios.create({ baseURL: API });
 

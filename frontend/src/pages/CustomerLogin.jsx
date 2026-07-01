@@ -20,8 +20,20 @@ import {
 } from "@stripe/react-stripe-js";
 
 // ─── Axios instance ────────────────────────────────────────────────────────────
+const BACKEND_BASE = (() => {
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    const isLocal = host === "localhost" || host === "127.0.0.1";
+    if (!isLocal) {
+      return window.location.origin;
+    }
+    return process.env.REACT_APP_BACKEND_URL || window.location.origin;
+  }
+  return process.env.REACT_APP_BACKEND_URL || "https://route-optimize-fresh.preview.emergentagent.com";
+})();
+
 const api = axios.create({
-  baseURL: process.env.REACT_APP_BACKEND_URL || "https://route-optimize-fresh.preview.emergentagent.com",
+  baseURL: BACKEND_BASE,
   headers: { "Content-Type": "application/json" },
   timeout: 30000,
 });
