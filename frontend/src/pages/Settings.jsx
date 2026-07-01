@@ -13,19 +13,7 @@ import {
 } from "lucide-react";
 import { useLocale } from "../context/LocaleContext";
 
-const BACKEND_BASE = (() => {
-  if (typeof window !== "undefined") {
-    const host = window.location.hostname;
-    const isLocal = host === "localhost" || host === "127.0.0.1";
-    if (!isLocal) {
-      return window.location.origin;
-    }
-    return process.env.REACT_APP_BACKEND_URL || window.location.origin;
-  }
-  return process.env.REACT_APP_BACKEND_URL || "";
-})();
-
-const API = `${BACKEND_BASE}/api`;
+const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 // ── Tamaños de página según tipo de colección ──────────────────────────────
 // Las colecciones de imágenes usan 1 doc/request para no superar
@@ -239,6 +227,156 @@ function usePagedDownload() {
   return { start, pause, resume, cancel, reset, state };
 }
 
+
+// ══════════════════════════════════════════════════════════════════════════
+//  Hook: restore en chunks para archivos grandes
+//
+//  Flujo:
+//  1. El usuario selecciona un .json o .jsonl local
+//  2. El hook lo lee con FileReader
+//  3. Lo parte en trozos de DOCS_PER_CHUNK documentos
+//  4. Sube cada trozo al backend con /chunk?chunk_index=N&total_chunks=T
+//     - chunk 0: append=false (borra la colección primero)
+//     - chunk 1+: append=true (agrega sin borrar)
+//  5. Pausa CHUNK_DELAY ms entre cada chunk para no saturar
+//
+//  Ventaja: nunca se sube más de ~1-2MB por request → Cloudflare no corta
+// ══════════════════════════════════════════════════════════════════════════
+const DOCS_PER_CHUNK = 25;   // docs por chunk — ajustar si hay imágenes base64
+const CHUNK_DELAY    = 600;  // ms entre chunks — el servidor descansa aquí
+
+function useChunkedRestore() {
+  const INIT = {
+    status: "idle",   // idle | reading | uploading | done | error | paused
+    collection: "",
+    chunk: 0,
+    totalChunks: 0,
+    inserted: 0,
+    totalDocs: 0,
+    pct: 0,
+    error: "",
+  };
+  const [state, setState] = useState(INIT);
+  const pauseRef  = useRef(false);
+  const cancelRef = useRef(false);
+  const set = useCallback((p) => setState(prev => ({ ...prev, ...p })), []);
+
+  const reset = useCallback(() => {
+    pauseRef.current  = false;
+    cancelRef.current = false;
+    setState(INIT);
+  }, []);
+
+  const pause  = () => { pauseRef.current = true;  set({ status: "paused" }); };
+  const resume = () => { pauseRef.current = false; set({ status: "uploading" }); };
+  const cancel = () => { cancelRef.current = true; reset(); };
+
+  const start = useCallback(async (colName, file) => {
+    reset();
+    set({ status: "reading", collection: colName });
+
+    // 1. Leer el archivo localmente
+    let allDocs;
+    try {
+      const text = await new Promise((res, rej) => {
+        const reader = new FileReader();
+        reader.onload  = e => res(e.target.result);
+        reader.onerror = () => rej(new Error("Error leyendo el archivo"));
+        reader.readAsText(file, "utf-8");
+      });
+
+      // Detectar JSON array o JSONL
+      const trimmed = text.trim();
+      if (trimmed.startsWith("[")) {
+        allDocs = JSON.parse(trimmed);
+        if (!Array.isArray(allDocs)) allDocs = [allDocs];
+      } else {
+        allDocs = [];
+        for (const line of trimmed.split("\n")) {
+          const l = line.trim();
+          if (!l) continue;
+          try { allDocs.push(JSON.parse(l)); } catch {}
+        }
+      }
+    } catch (err) {
+      set({ status: "error", error: `Error al leer el archivo: ${err.message}` });
+      toast.error(`No se pudo leer el archivo: ${err.message}`);
+      return;
+    }
+
+    if (allDocs.length === 0) {
+      set({ status: "error", error: "El archivo está vacío o no tiene documentos válidos" });
+      toast.error("El archivo no tiene documentos válidos");
+      return;
+    }
+
+    // 2. Dividir en chunks
+    const chunks = [];
+    for (let i = 0; i < allDocs.length; i += DOCS_PER_CHUNK) {
+      chunks.push(allDocs.slice(i, i + DOCS_PER_CHUNK));
+    }
+    const totalChunks = chunks.length;
+    const totalDocs   = allDocs.length;
+
+    set({ status: "uploading", totalChunks, totalDocs });
+
+    let totalInserted = 0;
+
+    // 3. Subir chunk por chunk
+    for (let ci = 0; ci < totalChunks; ci++) {
+      if (cancelRef.current) return;
+
+      while (pauseRef.current) {
+        await sleep(300);
+        if (cancelRef.current) return;
+      }
+
+      const chunk   = chunks[ci];
+      const isFirst = ci === 0;
+      const blob    = new Blob([JSON.stringify(chunk)], { type: "application/json" });
+      const fd      = new FormData();
+      fd.append("file", blob, `${colName}_chunk_${ci}.json`);
+
+      try {
+        const res = await axios.post(
+          `${API}/admin/restore/jsonl/${colName}/chunk`,
+          fd,
+          {
+            params: {
+              chunk_index:  ci,
+              total_chunks: totalChunks,
+              append:       !isFirst,
+            },
+            headers: { "Content-Type": "multipart/form-data" },
+          }
+        );
+        totalInserted += res.data.inserted_count ?? 0;
+      } catch (err) {
+        const msg = err?.response?.data?.detail || err.message || "Error desconocido";
+        set({ status: "error", error: `Chunk ${ci}/${totalChunks}: ${msg}` });
+        toast.error(`Error en chunk ${ci}: ${msg}`);
+        return;
+      }
+
+      set({
+        chunk: ci + 1,
+        inserted: totalInserted,
+        pct: ((ci + 1) / totalChunks) * 100,
+      });
+
+      // Pausa entre chunks — el servidor libera RAM aquí
+      if (ci < totalChunks - 1) {
+        await sleep(CHUNK_DELAY);
+      }
+    }
+
+    set({ status: "done", pct: 100, inserted: totalInserted });
+    toast.success(`✅ ${colName}: ${totalInserted.toLocaleString()} documentos restaurados`);
+  }, [reset, set]);
+
+  return { start, pause, resume, cancel, reset, state };
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 export default function Settings() {
   const { t } = useLocale();
@@ -263,6 +401,7 @@ export default function Settings() {
   const [showPaged, setShowPaged]         = useState(true);
   const [selectedCol, setSelectedCol]     = useState("customers");
   const dl = usePagedDownload();
+  const cr = useChunkedRestore();  // restore en chunks para archivos grandes
 
   const [restoreLoading, setRestoreLoading]   = useState(false);
   const [restoreZipFile, setRestoreZipFile]   = useState(null);
@@ -388,13 +527,10 @@ export default function Settings() {
   const handleRestoreJsonl = async () => {
     if (!restoreJsonlFile) return toast.error("Selecciona un JSONL/JSON");
     if (!window.confirm(`Sobrescribirá ${selJsonlCol}. ¿Continuar?`)) return;
-    const fd = new FormData(); fd.append("file", restoreJsonlFile);
-    const res = await doRestore(`${API}/admin/restore/jsonl/${selJsonlCol}`, fd);
-    if (res) {
-      toast.success(`${res.inserted_count} registros (${res.invalid_lines_count} omitidos)`);
-      if (res.errors?.length) { setRestoreErrors(res.errors); setShowRestoreErrors(true); }
-      setRestoreJsonlFile(null);
-    }
+    // Usar restore en chunks para no saturar el servidor con archivos grandes
+    cr.reset();
+    await cr.start(selJsonlCol, restoreJsonlFile);
+    setRestoreJsonlFile(null);
   };
 
   const handleRestoreZipJsonl = async () => {
@@ -428,6 +564,11 @@ export default function Settings() {
   };
 
   const { status, collection, pct, downloaded, total, bytesEst, currentPageSize, error: dlError } = dl.state;
+  const { status: crStatus, chunk: crChunk, totalChunks: crTotal, inserted: crInserted,
+          totalDocs: crTotalDocs, pct: crPct, error: crError, collection: crCol } = cr.state;
+  const crActive = ["reading","uploading","paused"].includes(crStatus);
+  const crDone   = crStatus === "done";
+  const crErr    = crStatus === "error";
   const dlActive = ["counting","downloading","writing","paused"].includes(status);
   const dlDone   = status === "done";
   const dlErr    = status === "error";
@@ -743,24 +884,89 @@ export default function Settings() {
             </Button>
           </div>
 
-          <div className="p-4 rounded-xl border border-slate-200 mb-4 space-y-3">
-            <div className="font-semibold text-slate-900 text-sm">{t("Restore Collection (JSONL/JSON)","Restaurar colección (JSONL/JSON)")}</div>
+          <div className="p-4 rounded-xl border-2 border-blue-200 bg-blue-50 mb-4 space-y-3">
+            <div className="flex items-start gap-3">
+              <div className="h-9 w-9 rounded-lg bg-blue-600 flex items-center justify-center shrink-0">
+                <Upload className="h-4 w-4 text-white"/>
+              </div>
+              <div>
+                <div className="font-semibold text-slate-900 text-sm">
+                  ✅ {t("Restore Collection (JSONL/JSON) — Chunked","Restaurar colección (JSONL/JSON) — por chunks")}
+                </div>
+                <div className="text-xs text-slate-500">
+                  {t("Reads file locally, sends 25 docs at a time. Never crashes on large files.",
+                     "Lee el archivo local, sube 25 docs a la vez. No falla con archivos grandes.")}
+                </div>
+              </div>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>{t("Collection","Colección")}</Label>
-                <select className="w-full h-10 rounded-md border border-slate-200 px-2 text-sm mt-1" value={selJsonlCol} onChange={e=>setSelJsonlCol(e.target.value)} disabled={restoreLoading}>
+                <select className="w-full h-10 rounded-md border border-slate-200 px-2 text-sm mt-1"
+                  value={selJsonlCol} onChange={e=>setSelJsonlCol(e.target.value)} disabled={crActive}>
                   {ALL_COLLECTIONS.map(c=><option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
               <div>
-                <Label>{t("File","Archivo")}</Label>
-                <Input type="file" accept=".jsonl,.json" className="mt-1" onChange={e=>setRestoreJsonlFile(e.target.files?.[0]||null)} disabled={restoreLoading}/>
+                <Label>{t("JSON / JSONL File","Archivo JSON / JSONL")}</Label>
+                <Input type="file" accept=".jsonl,.json" className="mt-1"
+                  onChange={e=>setRestoreJsonlFile(e.target.files?.[0]||null)} disabled={crActive}/>
               </div>
             </div>
-            {restoreJsonlFile && <p className="text-xs text-slate-500">{restoreJsonlFile.name}</p>}
-            <Button onClick={handleRestoreJsonl} disabled={!restoreJsonlFile||restoreLoading} variant="outline" className="w-full">
-              {restoreLoading ? <><Spinner/>Restaurando…</> : <><Upload className="h-4 w-4 mr-2"/>Restaurar colección</>}
-            </Button>
+            {restoreJsonlFile && !crActive && !crDone && !crErr && (
+              <p className="text-xs text-slate-500">{restoreJsonlFile.name}</p>
+            )}
+
+            {/* Progreso chunks */}
+            {crActive && (
+              <div className="space-y-2 p-3 bg-white rounded-xl border border-blue-200">
+                <div className="space-y-1">
+                  <div className="flex justify-between text-xs text-slate-600">
+                    <span>{crStatus === "reading" ? `Leyendo ${crCol}…` : `Subiendo ${crCol} — chunk ${crChunk}/${crTotal}`}</span>
+                    <span>{Math.round(crPct)}%</span>
+                  </div>
+                  <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-blue-500 rounded-full transition-all duration-300"
+                      style={{ width: `${Math.min(crPct, 100)}%` }}/>
+                  </div>
+                  <div className="text-xs text-slate-400">
+                    {crInserted.toLocaleString()} / {crTotalDocs.toLocaleString()} docs · {DOCS_PER_CHUNK} docs/chunk · pausa {CHUNK_DELAY}ms
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  {crStatus === "paused"
+                    ? <Button size="sm" variant="outline" onClick={cr.resume}><Play className="h-3 w-3 mr-1"/>Reanudar</Button>
+                    : <Button size="sm" variant="outline" onClick={cr.pause}><Pause className="h-3 w-3 mr-1"/>Pausar</Button>
+                  }
+                  <Button size="sm" variant="outline" className="text-red-600 border-red-200" onClick={cr.cancel}>
+                    <X className="h-3 w-3 mr-1"/>Cancelar
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {crDone && (
+              <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 flex items-center gap-3 text-emerald-700 text-sm">
+                <CheckCircle2 className="h-5 w-5 shrink-0"/>
+                <div><span className="font-semibold">{crCol}</span> — {crInserted.toLocaleString()} docs restaurados</div>
+                <button className="ml-auto text-xs underline text-slate-500" onClick={cr.reset}>Limpiar</button>
+              </div>
+            )}
+
+            {crErr && (
+              <div className="p-3 bg-red-50 rounded-xl border border-red-200 text-red-700 text-sm flex items-center gap-3">
+                <AlertTriangle className="h-5 w-5 shrink-0"/>
+                <div><span className="font-semibold">Error:</span> {crError}</div>
+                <button className="ml-auto" onClick={cr.reset}><RotateCcw className="h-4 w-4"/></button>
+              </div>
+            )}
+
+            {!crActive && !crDone && !crErr && (
+              <Button onClick={handleRestoreJsonl} disabled={!restoreJsonlFile} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold">
+                <Upload className="h-4 w-4 mr-2"/>
+                {t("Restore in Chunks","Restaurar por chunks")} — {selJsonlCol}
+              </Button>
+            )}
           </div>
 
           <div className="p-4 rounded-xl border border-slate-200 space-y-3">

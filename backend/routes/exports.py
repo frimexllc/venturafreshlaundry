@@ -21,7 +21,6 @@ import csv
 import gc
 import io
 import json
-import logging
 import zipfile
 from datetime import datetime, timezone
 
@@ -32,7 +31,6 @@ from auth import get_current_user
 from database import db
 
 router = APIRouter(prefix="/api", tags=["Export"])
-logger = logging.getLogger(__name__)
 
 BATCH_SIZE    = 50   # docs por lote en restore e inserts
 PAGE_SIZE_MAX = 50   # máximo por página en backup stream (Cloudflare ~10MB)
@@ -109,40 +107,6 @@ async def _insert_docs(col, docs: list):
         await col.insert_many(docs[i : i + BATCH_SIZE], ordered=False)
         gc.collect()
         await asyncio.sleep(0)
-
-
-async def _insert_docs_from_jsonl_stream(col, binary_stream):
-    """
-    Procesa JSONL línea por línea desde el ZIP y escribe en lotes.
-    Evita cargar archivos grandes completos a memoria.
-    Retorna (inserted_count, invalid_lines_count).
-    """
-    inserted = 0
-    invalid = 0
-    batch = []
-    text_stream = io.TextIOWrapper(binary_stream, encoding="utf-8", errors="ignore")
-    for raw_line in text_stream:
-        line = raw_line.strip()
-        if not line:
-            continue
-        try:
-            batch.append(json.loads(line))
-        except Exception:
-            invalid += 1
-            continue
-        if len(batch) >= BATCH_SIZE:
-            await col.insert_many(batch, ordered=False)
-            inserted += len(batch)
-            batch.clear()
-            gc.collect()
-            await asyncio.sleep(0)
-    if batch:
-        await col.insert_many(batch, ordered=False)
-        inserted += len(batch)
-        batch.clear()
-        gc.collect()
-        await asyncio.sleep(0)
-    return inserted, invalid
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -327,17 +291,15 @@ async def restore_full_zip(
     ADVERTENCIA: Sobrescribe todos los datos existentes.
     """
     _require_admin(current_user)
+
+    contents = await file.read()
     restored: dict = {}
     errors:   list = []
     invalid_lines: dict = {}
     total = 0
-    #region debug-point restore-zip-start
-    logger.info("restore_full_zip start filename=%s", getattr(file, "filename", None))
-    #endregion
 
     try:
-        file.file.seek(0)
-        with zipfile.ZipFile(file.file) as zf:
+        with zipfile.ZipFile(io.BytesIO(contents)) as zf:
             for entry in zf.namelist():
                 if entry == "manifest.json":
                     continue
@@ -349,48 +311,27 @@ async def restore_full_zip(
                     continue
 
                 try:
-                    info = zf.getinfo(entry)
-                    #region debug-point restore-zip-entry
-                    logger.info(
-                        "restore_full_zip entry=%s collection=%s size_bytes=%s",
-                        entry,
-                        col_name,
-                        info.file_size,
-                    )
-                    #endregion
-                    await col.delete_many({})
-                    if entry.endswith(".jsonl"):
-                        with zf.open(entry, "r") as entry_stream:
-                            inserted, inv = await _insert_docs_from_jsonl_stream(col, entry_stream)
-                    else:
-                        # Los JSON array grandes pueden tumbar el proceso si se cargan completos.
-                        if info.file_size > 25 * 1024 * 1024:
-                            raise ValueError(
-                                "Archivo JSON demasiado grande para restore directo. "
-                                "Convierte esta colección a JSONL o divide el respaldo."
-                            )
-                        raw = zf.read(entry).decode("utf-8")
-                        docs, inv = _parse_json_or_jsonl(raw)
-                        inserted = len(docs)
-                        if docs:
-                            await _insert_docs(col, docs)
-                        del docs, raw
-                        gc.collect()
+                    raw = zf.read(entry).decode("utf-8")
+                    docs, inv = _parse_json_or_jsonl(raw)
 
                     if inv:
                         invalid_lines[col_name] = inv
 
-                    restored[col_name] = inserted
-                    total += inserted
+                    if docs:
+                        await col.delete_many({})
+                        await _insert_docs(col, docs)
+
+                    restored[col_name] = len(docs)
+                    total += len(docs)
+                    del docs, raw
+                    gc.collect()
 
                 except Exception as exc:
-                    logger.exception("restore_full_zip entry_error entry=%s collection=%s", entry, col_name)
                     errors.append(f"{col_name}: {str(exc)[:150]}")
 
     except zipfile.BadZipFile:
         raise HTTPException(status_code=400, detail="Archivo ZIP inválido o corrupto")
     except Exception as exc:
-        logger.exception("restore_full_zip fatal_error")
         raise HTTPException(status_code=400, detail=f"Error procesando ZIP: {str(exc)[:200]}")
 
     return {
@@ -504,14 +445,15 @@ async def restore_jsonl_zip(
     ADVERTENCIA: Sobrescribe los datos de las colecciones encontradas en el ZIP.
     """
     _require_admin(current_user)
+
+    contents = await file.read()
     restored: dict = {}
     errors:   list = []
     invalid_lines: dict = {}
     total = 0
 
     try:
-        file.file.seek(0)
-        with zipfile.ZipFile(file.file) as zf:
+        with zipfile.ZipFile(io.BytesIO(contents)) as zf:
             entries = [e for e in zf.namelist() if e != "manifest.json"]
 
             if not entries:
@@ -528,30 +470,20 @@ async def restore_jsonl_zip(
                     continue
 
                 try:
-                    info = zf.getinfo(entry)
-                    await col.delete_many({})
-                    if entry.endswith(".jsonl"):
-                        with zf.open(entry, "r") as entry_stream:
-                            inserted, inv = await _insert_docs_from_jsonl_stream(col, entry_stream)
-                    else:
-                        if info.file_size > 25 * 1024 * 1024:
-                            raise ValueError(
-                                "Archivo JSON demasiado grande para restore directo. "
-                                "Convierte esta colección a JSONL o divide el respaldo."
-                            )
-                        raw = zf.read(entry).decode("utf-8")
-                        docs, inv = _parse_json_or_jsonl(raw)
-                        inserted = len(docs)
-                        if docs:
-                            await _insert_docs(col, docs)
-                        del docs, raw
-                        gc.collect()
+                    raw = zf.read(entry).decode("utf-8")
+                    docs, inv = _parse_json_or_jsonl(raw)
 
                     if inv:
                         invalid_lines[col_name] = inv
 
-                    restored[col_name] = inserted
-                    total += inserted
+                    if docs:
+                        await col.delete_many({})
+                        await _insert_docs(col, docs)
+
+                    restored[col_name] = len(docs)
+                    total += len(docs)
+                    del docs, raw
+                    gc.collect()
 
                 except Exception as exc:
                     errors.append(f"{col_name}: {str(exc)[:150]}")
@@ -571,6 +503,64 @@ async def restore_jsonl_zip(
         "invalid_lines": invalid_lines,
     }
 
+
+
+@router.post("/admin/restore/jsonl/{collection_name}/chunk")
+async def restore_collection_chunk(
+    collection_name: str,
+    chunk_index: int = Query(..., ge=0),
+    total_chunks: int = Query(..., ge=1),
+    append: bool = Query(False),
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Restaura UNA colección en chunks para archivos grandes.
+
+    El frontend divide el JSON en trozos de DOCS_PER_CHUNK docs y los envía uno a uno:
+      chunk_index=0, append=False  → borra la colección e inserta primer chunk
+      chunk_index=1+, append=True  → agrega sin borrar
+
+    Evita subir archivos grandes de golpe (Cloudflare/nginx cortan >10MB).
+    Cada request transporta solo ~500KB-2MB.
+    """
+    _require_admin(current_user)
+    col = _get_col(collection_name)
+
+    contents = await file.read()
+    try:
+        text = contents.decode("utf-8")
+    except UnicodeDecodeError:
+        text = contents.decode("latin-1")
+
+    try:
+        docs, inv = _parse_json_or_jsonl(text)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if not docs:
+        return {
+            "collection": collection_name,
+            "chunk_index": chunk_index,
+            "inserted_count": 0,
+            "invalid_lines_count": inv,
+            "is_last": chunk_index == total_chunks - 1,
+        }
+
+    # Solo en el primer chunk (append=False) borramos la colección
+    if not append and chunk_index == 0:
+        await col.delete_many({})
+
+    await _insert_docs(col, docs)
+    gc.collect()
+
+    return {
+        "collection": collection_name,
+        "chunk_index": chunk_index,
+        "inserted_count": len(docs),
+        "invalid_lines_count": inv,
+        "is_last": chunk_index == total_chunks - 1,
+    }
 
 # ══════════════════════════════════════════════════════════════════════════
 #  Utilidades
