@@ -10,7 +10,19 @@ import AddressAutocomplete from "../components/AddressAutocomplete";
 import { useLocale } from "../context/LocaleContext";
 import heroBanner from "../assets/WhatsApp Image 2026-03-20 at 2.51.26 PM (1).jpeg";
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+const BACKEND_BASE = (() => {
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    const isLocal = host === "localhost" || host === "127.0.0.1";
+    if (!isLocal) {
+      return window.location.origin;
+    }
+    return process.env.REACT_APP_BACKEND_URL || window.location.origin;
+  }
+  return process.env.REACT_APP_BACKEND_URL || "";
+})();
+
+const API = `${BACKEND_BASE}/api`;
 const getErr = (e) => {
   const d = e.response?.data?.detail;
   if (typeof d === "string") return d;
