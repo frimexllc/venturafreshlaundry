@@ -801,18 +801,15 @@ export default function OperatorDashboard() {
           return;
         }
       }
-      if (statusLower === "confirmed") {
-        setConfirmDialog({
-          orderId,
-          newStatus,
-          title: t("Confirm order", "Confirmar orden"),
-          description: t("Customer and driver will be notified.", "Se notificará al cliente y al driver asignado."),
-        });
-        return;
-      }
-      await executeOrderStatusUpdate(orderId, newStatus);
+      // Show confirmation dialog for ALL status changes!
+      setConfirmDialog({
+        orderId,
+        newStatus,
+        title: t("Confirm status change", "Confirmar cambio de estado"),
+        description: t(`Are you sure you want to change the order status to {{status}}?`, `¿Estás seguro de que quieres cambiar el estado de la orden a {{status}}?`, { status: getStatusLabel(newStatus, order?.service_type) }),
+      });
     },
-    [allServiceOrdersById, dashboard, t]
+    [allServiceOrdersById, dashboard, t, getStatusLabel]
   );
 
   const handlePickupImageConfirm = async (imageResult) => {

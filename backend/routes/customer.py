@@ -24,6 +24,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 
 from database import db
+from object_storage import get_bytes as get_object_storage_bytes
 from auth import get_current_user, get_current_customer
 from realtime import emit_realtime
 from utils import (
@@ -75,6 +76,26 @@ def _get_frontend_url():
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _load_customer_image_bytes(record: dict) -> tuple[bytes, str]:
+    data_b64 = record.get("data_base64")
+    if data_b64:
+        return base64.b64decode(data_b64), record.get("content_type", "image/jpeg")
+
+    storage_key = record.get("storage_key")
+    if storage_key:
+        data, content_type = get_object_storage_bytes(storage_key)
+        return data, content_type or record.get("content_type", "image/jpeg")
+
+    storage_path = record.get("storage_path")
+    if storage_path:
+        from file_uploads import get_object as local_get_object
+
+        data, _ = local_get_object(storage_path)
+        return data, record.get("content_type", "image/jpeg")
+
+    raise FileNotFoundError("Image data not found")
 
 
 async def _get_or_create_stripe_customer(customer_doc: dict) -> str:
@@ -1262,7 +1283,13 @@ async def upload_receipt(
     storage_path = (
         f"ventura-fresh-laundry/customer_receipts/{current_customer['id']}/{uid}.{ext}"
     )
-    data_b64 = base64.b64encode(data).decode("utf-8")
+    try:
+        from file_uploads import put_object as local_put_object
+
+        local_put_object(storage_path, data, ct)
+    except Exception as exc:
+        logger.error("Receipt upload storage failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Could not store receipt image")
 
     file_record = {
         "id": uid,
@@ -1270,7 +1297,7 @@ async def upload_receipt(
         "original_filename": file.filename,
         "content_type": ct,
         "size": len(data),
-        "data_base64": data_b64,
+        "data_base64": None,
         "context": context,
         "uploaded_by": current_customer["id"],
         "uploader_type": "customer",
@@ -1471,15 +1498,14 @@ async def get_customer_pickup_image(
     if not image_record:
         raise HTTPException(status_code=404, detail="No pickup image found for this order")
 
-    data_b64 = image_record.get("data_base64")
-    if not data_b64:
+    try:
+        data, media_type = _load_customer_image_bytes(image_record)
+    except FileNotFoundError:
         raise HTTPException(status_code=404, detail="No image data available")
-
-    data = base64.b64decode(data_b64)
     filename = image_record.get("original_filename") or f"pickup_{real_id}.jpg"
     return Response(
         content=data,
-        media_type=image_record.get("content_type", "image/jpeg"),
+        media_type=media_type,
         headers={
             "Content-Disposition": f'inline; filename="{filename}"',
             "Cache-Control": "private, max-age=86400",
@@ -1523,15 +1549,14 @@ async def get_customer_weight_image(
     if not image_record:
         raise HTTPException(status_code=404, detail="No weight proof image found")
 
-    data_b64 = image_record.get("data_base64")
-    if not data_b64:
+    try:
+        data, media_type = _load_customer_image_bytes(image_record)
+    except FileNotFoundError:
         raise HTTPException(status_code=404, detail="No image data available")
-
-    data = base64.b64decode(data_b64)
     filename = image_record.get("original_filename") or f"weight_{real_id}.jpg"
     return Response(
         content=data,
-        media_type=image_record.get("content_type", "image/jpeg"),
+        media_type=media_type,
         headers={
             "Content-Disposition": f'inline; filename="{filename}"',
             "Cache-Control": "private, max-age=86400",
@@ -1571,15 +1596,14 @@ async def get_customer_delivery_image(
     if not image_record:
         raise HTTPException(status_code=404, detail="No delivery image found for this order")
 
-    data_b64 = image_record.get("data_base64")
-    if not data_b64:
+    try:
+        data, media_type = _load_customer_image_bytes(image_record)
+    except FileNotFoundError:
         raise HTTPException(status_code=404, detail="No image data available")
-
-    data = base64.b64decode(data_b64)
     filename = image_record.get("original_filename") or f"delivery_{real_id}.jpg"
     return Response(
         content=data,
-        media_type=image_record.get("content_type", "image/jpeg"),
+        media_type=media_type,
         headers={
             "Content-Disposition": f'inline; filename="{filename}"',
             "Cache-Control": "private, max-age=86400",

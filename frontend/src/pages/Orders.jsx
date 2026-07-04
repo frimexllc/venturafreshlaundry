@@ -30,6 +30,7 @@ import { Badge } from "../components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Avatar, AvatarFallback } from "../components/ui/avatar";
 import { Progress } from "../components/ui/progress";
+import ConfirmDialog from "../components/ConfirmDialog";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -67,6 +68,18 @@ const PAYMENT_STATUS = {
   pending: { label: "Pending", color: "bg-yellow-100 text-yellow-700", icon: "⏳" },
   refunded: { label: "Refunded", color: "bg-red-100 text-red-700", icon: "↩️" },
   failed: { label: "Failed", color: "bg-red-100 text-red-700", icon: "❌" },
+};
+
+const STATUS_ACTION_META = {
+  confirmed: { en: "confirm", es: "confirmar" },
+  pickup_scheduled: { en: "schedule pickup", es: "programar pickup" },
+  picked_up: { en: "mark as picked up", es: "marcar como recogida" },
+  processing: { en: "start processing", es: "iniciar procesamiento" },
+  ready: { en: "mark as ready", es: "marcar como lista" },
+  out_for_delivery: { en: "mark as out for delivery", es: "marcar en camino" },
+  delivered: { en: "mark as delivered", es: "marcar como entregada" },
+  completed: { en: "complete", es: "completar" },
+  cancelled: { en: "cancel", es: "cancelar" },
 };
 
 const emptyForm = {
@@ -136,6 +149,7 @@ export default function Orders() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [weightForm, setWeightForm] = useState({ estimated_lbs: "", actual_lbs: "" });
   const [savingWeights, setSavingWeights] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState(null);
   
   // Filters
   const [filters, setFilters] = useState({
@@ -274,6 +288,27 @@ export default function Orders() {
     } catch (error) {
       toast.error(error.response?.data?.detail || t("Error updating payment status", "Error actualizando estado de pago"));
     }
+  };
+
+  const requestStatusUpdate = (order, newStatus) => {
+    const action = STATUS_ACTION_META[newStatus];
+    const actionLabel = locale === "es" ? action?.es : action?.en;
+    setConfirmDialog({
+      orderId: order.id,
+      newStatus,
+      title: t("Confirm status change", "Confirmar cambio de estado"),
+      description: t(
+        `Are you sure you want to ${actionLabel || "update"} order ${formatOrderNumber(order)}?`,
+        `¿Seguro que deseas ${actionLabel || "actualizar"} la orden ${formatOrderNumber(order)}?`
+      ),
+    });
+  };
+
+  const handleConfirmDialogAccept = async () => {
+    if (!confirmDialog) return;
+    const { orderId, newStatus } = confirmDialog;
+    setConfirmDialog(null);
+    await updateStatus(orderId, newStatus);
   };
 
   const handleUpdateWeights = async () => {
@@ -553,49 +588,49 @@ export default function Orders() {
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         {status === "new" && (
-                          <DropdownMenuItem onClick={() => updateStatus(order.id, "confirmed")}>
+                          <DropdownMenuItem onClick={() => requestStatusUpdate(order, "confirmed")}>
                             <CheckCircle className="h-4 w-4 mr-2" />
                             {t("Confirm", "Confirmar")}
                           </DropdownMenuItem>
                         )}
                         {status === "confirmed" && (
-                          <DropdownMenuItem onClick={() => updateStatus(order.id, "pickup_scheduled")}>
+                          <DropdownMenuItem onClick={() => requestStatusUpdate(order, "pickup_scheduled")}>
                             <Calendar className="h-4 w-4 mr-2" />
                             {t("Schedule Pickup", "Programar Pickup")}
                           </DropdownMenuItem>
                         )}
                         {status === "pickup_scheduled" && (
-                          <DropdownMenuItem onClick={() => updateStatus(order.id, "picked_up")}>
+                          <DropdownMenuItem onClick={() => requestStatusUpdate(order, "picked_up")}>
                             <Package className="h-4 w-4 mr-2" />
                             {t("Mark Picked Up", "Marcar Recogido")}
                           </DropdownMenuItem>
                         )}
                         {status === "picked_up" && (
-                          <DropdownMenuItem onClick={() => updateStatus(order.id, "processing")}>
+                          <DropdownMenuItem onClick={() => requestStatusUpdate(order, "processing")}>
                             <RefreshCw className="h-4 w-4 mr-2" />
                             {t("Start Processing", "Iniciar Procesamiento")}
                           </DropdownMenuItem>
                         )}
                         {status === "processing" && (
-                          <DropdownMenuItem onClick={() => updateStatus(order.id, "ready")}>
+                          <DropdownMenuItem onClick={() => requestStatusUpdate(order, "ready")}>
                             <Star className="h-4 w-4 mr-2" />
                             {t("Mark Ready", "Marcar Listo")}
                           </DropdownMenuItem>
                         )}
                         {status === "ready" && (
-                          <DropdownMenuItem onClick={() => updateStatus(order.id, "out_for_delivery")}>
+                          <DropdownMenuItem onClick={() => requestStatusUpdate(order, "out_for_delivery")}>
                             <Truck className="h-4 w-4 mr-2" />
                             {t("Out for Delivery", "En camino")}
                           </DropdownMenuItem>
                         )}
                         {status === "out_for_delivery" && (
-                          <DropdownMenuItem onClick={() => updateStatus(order.id, "delivered")}>
+                          <DropdownMenuItem onClick={() => requestStatusUpdate(order, "delivered")}>
                             <CheckCircle className="h-4 w-4 mr-2" />
                             {t("Mark Delivered", "Marcar Entregado")}
                           </DropdownMenuItem>
                         )}
                         {status === "delivered" && (
-                          <DropdownMenuItem onClick={() => updateStatus(order.id, "completed")}>
+                          <DropdownMenuItem onClick={() => requestStatusUpdate(order, "completed")}>
                             <CheckCircle className="h-4 w-4 mr-2" />
                             {t("Complete Order", "Completar Orden")}
                           </DropdownMenuItem>
@@ -616,7 +651,7 @@ export default function Orders() {
                         <DropdownMenuSeparator />
                         {status !== "cancelled" && (
                           <DropdownMenuItem 
-                            onClick={() => updateStatus(order.id, "cancelled")}
+                            onClick={() => requestStatusUpdate(order, "cancelled")}
                             className="text-red-600"
                           >
                             <X className="h-4 w-4 mr-2" />
@@ -1306,6 +1341,13 @@ export default function Orders() {
           </div>
         </DialogContent>
       </Dialog>
+      <ConfirmDialog
+        open={!!confirmDialog}
+        title={confirmDialog?.title}
+        description={confirmDialog?.description}
+        onConfirm={handleConfirmDialogAccept}
+        onCancel={() => setConfirmDialog(null)}
+      />
     </div>
   );
 }

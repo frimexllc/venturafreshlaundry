@@ -184,6 +184,27 @@ export default function MembershipPage() {
     setForm({ ...form, membership_plan: plan?.name || "" });
   };
 
+  const handleContactForMembership = () => {
+    const params = new URLSearchParams();
+    const subject = selectedPlan
+      ? `Membership inquiry - ${selectedPlan.name}`
+      : "Membership inquiry";
+    const message = selectedPlan
+      ? `Hi Ventura Fresh Laundry,\n\nI need help with the ${selectedPlan.name} membership.\n\nPlease contact me with more details.`
+      : "Hi Ventura Fresh Laundry,\n\nI need help choosing the right membership.\n\nPlease contact me with more details.";
+
+    params.set("subject", subject);
+    params.set("message", message);
+    if (form.first_name || form.last_name) {
+      params.set("name", `${form.first_name} ${form.last_name}`.trim());
+    }
+    if (form.email) params.set("email", form.email);
+    if (form.phone) params.set("phone", form.phone);
+    if (form.contact_method) params.set("contact_method", form.contact_method);
+
+    navigate(`/contact?${params.toString()}`);
+  };
+
   const buildPreferencesPayload = () => {
     if (!isElitePlan) return null;
     const payload = {
@@ -455,6 +476,13 @@ export default function MembershipPage() {
                     <strong>{selectedPlan.name}</strong> -{" "}
                     <strong>{selectedPlan.price}</strong>
                   </p>
+                  <button
+                    type="button"
+                    onClick={handleContactForMembership}
+                    className="mt-3 text-sm font-semibold text-sky-700 hover:text-sky-900 underline underline-offset-4"
+                  >
+                    {t("Need help with this membership?", "¿Necesitas ayuda con esta membresía?")}
+                  </button>
                 </div>
               )}
             </div>

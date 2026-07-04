@@ -21,6 +21,12 @@ from pydantic import BaseModel
 from database import db, SKIP_SERVER_NOTIFICATIONS
 from auth import get_current_user, has_permission
 from models import ROLE_OPERATOR, ROLE_DRIVER
+from object_storage import (
+    get_bytes as get_object_storage_bytes,
+    get_public_url,
+    is_object_storage_enabled,
+    upload_bytes as upload_object_storage_bytes,
+)
 from utils import normalize_status, normalize_spaces, create_audit_log
 
 logger = logging.getLogger(__name__)
@@ -282,6 +288,62 @@ async def _save_image_to_disk(data: bytes, filename: str) -> Optional[Path]:
         return None
 
 
+async def _store_image_asset(data: bytes, filename: str, content_type: str) -> dict:
+    """
+    Store image in object storage when configured; otherwise fallback to local disk.
+    New records should avoid base64 payloads in MongoDB.
+    """
+    if is_object_storage_enabled():
+        storage_key = f"order-images/{filename}"
+        stored_key, public_url = upload_object_storage_bytes(data, storage_key, content_type)
+        return {
+            "storage_provider": "r2",
+            "storage_key": stored_key,
+            "storage_url": public_url,
+            "storage_path": None,
+            "data_base64": None,
+        }
+
+    file_path = await _save_image_to_disk(data, filename)
+    return {
+        "storage_provider": "local",
+        "storage_key": None,
+        "storage_url": None,
+        "storage_path": str(file_path) if file_path else None,
+        "data_base64": None,
+    }
+
+
+def _image_record_url(record: Optional[dict], fallback_url: str) -> str:
+    if record and record.get("storage_url"):
+        return record["storage_url"]
+    return fallback_url
+
+
+def _legacy_order_image_url(order: Optional[dict], field_name: str, fallback_url: str) -> str:
+    if order and order.get(field_name):
+        return order[field_name]
+    return fallback_url
+
+
+def _load_record_image_bytes(record: dict) -> tuple[bytes, str]:
+    data_b64 = record.get("data_base64")
+    if data_b64:
+        return base64.b64decode(data_b64), record.get("content_type", "image/jpeg")
+
+    storage_key = record.get("storage_key")
+    if storage_key:
+        data, content_type = get_object_storage_bytes(storage_key)
+        return data, content_type or record.get("content_type", "image/jpeg")
+
+    storage_path = record.get("storage_path")
+    if storage_path:
+        with open(storage_path, "rb") as f:
+            return f.read(), record.get("content_type", "image/jpeg")
+
+    raise FileNotFoundError("Image not available")
+
+
 async def _notify_customer_after_image(order: dict, real_order_id: str, event_label: str):
     """
     FIX A: respects SKIP_SERVER_NOTIFICATIONS and should_notify_customer().
@@ -367,17 +429,15 @@ async def upload_pickup_image(
     ext      = (file.filename or "image.jpg").rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else "jpg"
     uid      = str(uuid.uuid4())
     filename = f"pickup_{real_order_id}_{uid}.{ext}"
-    file_path = await _save_image_to_disk(data, filename)
-
-    data_b64 = base64.b64encode(data).decode("utf-8")
+    storage_meta = await _store_image_asset(data, filename, ct)
     now = datetime.now(timezone.utc).isoformat()
 
     record = {
         "id": uid, "order_id": real_order_id, "type": "pickup_proof",
-        "storage_path": str(file_path) if file_path else None,
         "original_filename": file.filename, "content_type": ct,
-        "size": len(data), "data_base64": data_b64,
+        "size": len(data),
         "uploaded_by": user_id, "uploader_role": role, "created_at": now,
+        **storage_meta,
     }
     try:
         await db.pickup_images.insert_one(record)
@@ -386,11 +446,12 @@ async def upload_pickup_image(
         raise HTTPException(status_code=500, detail="Error al guardar imagen")
 
     update_data = {
-        "pickup_image_id": uid, "pickup_image_data": data_b64,
-        "pickup_image_url": f"/api/driver/orders/{real_order_id}/pickup-image/view",
+        "pickup_image_id": uid,
+        "pickup_image_url": storage_meta.get("storage_url") or f"/api/driver/orders/{real_order_id}/pickup-image/view",
         "pickup_image_uploaded_at": now,
         "pickup_image_filename": file.filename,
         "updated_at": now,
+        "pickup_image_data": None,
     }
     await db.orders.update_one({"id": real_order_id}, {"$set": update_data})
 
@@ -443,28 +504,17 @@ async def get_pickup_image(order_id: str, current_user: dict = Depends(get_curre
     if not record:
         raise HTTPException(status_code=404, detail="No hay imagen de recolección")
 
-    if record.get("data_base64"):
-        data = base64.b64decode(record["data_base64"])
+    try:
+        data, media_type = _load_record_image_bytes(record)
         return Response(
-            content=data, media_type=record.get("content_type", "image/jpeg"),
+            content=data, media_type=media_type,
             headers={
                 "Content-Disposition": f'inline; filename="{record.get("original_filename", "pickup.jpg")}"',
                 "Cache-Control": "private, max-age=86400",
             },
         )
-
-    storage_path = record.get("storage_path")
-    if storage_path:
-        try:
-            with open(storage_path, "rb") as f:
-                data = f.read()
-            return Response(
-                content=data, media_type=record.get("content_type", "image/jpeg"),
-                headers={"Content-Disposition": f'inline; filename="{record.get("original_filename", "pickup.jpg")}"',
-                         "Cache-Control": "private, max-age=86400"},
-            )
-        except FileNotFoundError:
-            raise HTTPException(status_code=404, detail="Archivo no encontrado en disco")
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Archivo no encontrado en storage")
 
     raise HTTPException(status_code=404, detail="Imagen no disponible")
 
@@ -486,7 +536,7 @@ async def get_pickup_image_info(order_id: str, current_user: dict = Depends(get_
         if order and order.get("pickup_image_id"):
             return {
                 "exists": True, "image_id": order["pickup_image_id"],
-                "url": order.get("pickup_image_url", f"/api/driver/orders/{real_order_id}/pickup-image/view"),
+                "url": _legacy_order_image_url(order, "pickup_image_url", f"/api/driver/orders/{real_order_id}/pickup-image/view"),
             }
         return {"exists": False, "order_id": real_order_id}
 
@@ -495,7 +545,7 @@ async def get_pickup_image_info(order_id: str, current_user: dict = Depends(get_
         "filename": record.get("original_filename"),
         "uploaded_at": record.get("created_at"),
         "size": record.get("size"),
-        "url": f"/api/driver/orders/{real_order_id}/pickup-image/view",
+        "url": _image_record_url(record, f"/api/driver/orders/{real_order_id}/pickup-image/view"),
     }
 
 
@@ -536,17 +586,15 @@ async def upload_delivery_image(
     ext      = (file.filename or "image.jpg").rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else "jpg"
     uid      = str(uuid.uuid4())
     filename = f"delivery_{real_order_id}_{uid}.{ext}"
-    file_path = await _save_image_to_disk(data, filename)
-
-    data_b64 = base64.b64encode(data).decode("utf-8")
+    storage_meta = await _store_image_asset(data, filename, ct)
     now = datetime.now(timezone.utc).isoformat()
 
     record = {
         "id": uid, "order_id": real_order_id, "type": "delivery_proof",
-        "storage_path": str(file_path) if file_path else None,
         "original_filename": file.filename, "content_type": ct,
-        "size": len(data), "data_base64": data_b64,
+        "size": len(data),
         "uploaded_by": user_id, "uploader_role": role, "created_at": now,
+        **storage_meta,
     }
     try:
         await db.delivery_images.insert_one(record)
@@ -555,11 +603,12 @@ async def upload_delivery_image(
         raise HTTPException(status_code=500, detail="Error al guardar imagen")
 
     update_data = {
-        "delivery_image_id": uid, "delivery_image_data": data_b64,
-        "delivery_image_url": f"/api/driver/orders/{real_order_id}/delivery-image/view",
+        "delivery_image_id": uid,
+        "delivery_image_url": storage_meta.get("storage_url") or f"/api/driver/orders/{real_order_id}/delivery-image/view",
         "delivery_image_uploaded_at": now,
         "delivery_image_filename": file.filename,
         "updated_at": now,
+        "delivery_image_data": None,
     }
     await db.orders.update_one({"id": real_order_id}, {"$set": update_data})
 
@@ -600,28 +649,17 @@ async def get_delivery_image(order_id: str, current_user: dict = Depends(get_cur
     if not record:
         raise HTTPException(status_code=404, detail="No hay imagen de entrega")
 
-    if record.get("data_base64"):
-        data = base64.b64decode(record["data_base64"])
+    try:
+        data, media_type = _load_record_image_bytes(record)
         return Response(
-            content=data, media_type=record.get("content_type", "image/jpeg"),
+            content=data, media_type=media_type,
             headers={
                 "Content-Disposition": f'inline; filename="{record.get("original_filename", "delivery.jpg")}"',
                 "Cache-Control": "private, max-age=86400",
             },
         )
-
-    storage_path = record.get("storage_path")
-    if storage_path:
-        try:
-            with open(storage_path, "rb") as f:
-                data = f.read()
-            return Response(
-                content=data, media_type=record.get("content_type", "image/jpeg"),
-                headers={"Content-Disposition": f'inline; filename="{record.get("original_filename", "delivery.jpg")}"',
-                         "Cache-Control": "private, max-age=86400"},
-            )
-        except FileNotFoundError:
-            raise HTTPException(status_code=404, detail="Archivo no encontrado en disco")
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Archivo no encontrado en storage")
 
     raise HTTPException(status_code=404, detail="Imagen no disponible")
 
@@ -643,7 +681,7 @@ async def get_delivery_image_info(order_id: str, current_user: dict = Depends(ge
         if order and order.get("delivery_image_id"):
             return {
                 "exists": True, "image_id": order["delivery_image_id"],
-                "url": order.get("delivery_image_url", f"/api/driver/orders/{real_order_id}/delivery-image/view"),
+                "url": _legacy_order_image_url(order, "delivery_image_url", f"/api/driver/orders/{real_order_id}/delivery-image/view"),
             }
         return {"exists": False, "order_id": real_order_id}
 
@@ -652,7 +690,7 @@ async def get_delivery_image_info(order_id: str, current_user: dict = Depends(ge
         "filename": record.get("original_filename"),
         "uploaded_at": record.get("created_at"),
         "size": record.get("size"),
-        "url": f"/api/driver/orders/{real_order_id}/delivery-image/view",
+        "url": _image_record_url(record, f"/api/driver/orders/{real_order_id}/delivery-image/view"),
     }
 
 
@@ -690,8 +728,8 @@ async def link_delivery_image(
             {"id": real_order_id},
             {"$set": {
                 "delivery_image_id": delivery_record["id"],
-                "delivery_image_data": pickup_img.get("data_base64"),
-                "delivery_image_url": f"/api/driver/orders/{real_order_id}/delivery-image/view",
+                "delivery_image_data": None,
+                "delivery_image_url": pickup_img.get("storage_url") or f"/api/driver/orders/{real_order_id}/delivery-image/view",
                 "delivery_image_uploaded_at": now,
                 "updated_at": now,
             }},
@@ -738,17 +776,15 @@ async def upload_weight_image(
     ext      = (file.filename or "image.jpg").rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else "jpg"
     uid      = str(uuid.uuid4())
     filename = f"weight_{real_order_id}_{uid}.{ext}"
-    file_path = await _save_image_to_disk(data, filename)
-
-    data_b64 = base64.b64encode(data).decode("utf-8")
+    storage_meta = await _store_image_asset(data, filename, ct)
     now = datetime.now(timezone.utc).isoformat()
 
     record = {
         "id": uid, "order_id": real_order_id, "type": "weight_proof",
-        "storage_path": str(file_path) if file_path else None,
         "original_filename": file.filename, "content_type": ct,
-        "size": len(data), "data_base64": data_b64,
+        "size": len(data),
         "uploaded_by": user_id, "uploader_role": role, "created_at": now,
+        **storage_meta,
     }
     try:
         # Usamos la colección weight_images (asegúrate de crearla)
@@ -758,11 +794,12 @@ async def upload_weight_image(
         raise HTTPException(status_code=500, detail="Error al guardar imagen")
 
     update_data = {
-        "weight_image_id": uid, "weight_image_data": data_b64,
-        "weight_image_url": f"/api/driver/orders/{real_order_id}/weight-image/view",
+        "weight_image_id": uid,
+        "weight_image_url": storage_meta.get("storage_url") or f"/api/driver/orders/{real_order_id}/weight-image/view",
         "weight_image_uploaded_at": now,
         "weight_image_filename": file.filename,
         "updated_at": now,
+        "weight_image_data": None,
     }
     await db.orders.update_one({"id": real_order_id}, {"$set": update_data})
 
@@ -803,28 +840,17 @@ async def get_weight_image(order_id: str, current_user: dict = Depends(get_curre
     if not record:
         raise HTTPException(status_code=404, detail="No hay imagen de peso")
 
-    if record.get("data_base64"):
-        data = base64.b64decode(record["data_base64"])
+    try:
+        data, media_type = _load_record_image_bytes(record)
         return Response(
-            content=data, media_type=record.get("content_type", "image/jpeg"),
+            content=data, media_type=media_type,
             headers={
                 "Content-Disposition": f'inline; filename="{record.get("original_filename", "weight.jpg")}"',
                 "Cache-Control": "private, max-age=86400",
             },
         )
-
-    storage_path = record.get("storage_path")
-    if storage_path:
-        try:
-            with open(storage_path, "rb") as f:
-                data = f.read()
-            return Response(
-                content=data, media_type=record.get("content_type", "image/jpeg"),
-                headers={"Content-Disposition": f'inline; filename="{record.get("original_filename", "weight.jpg")}"',
-                         "Cache-Control": "private, max-age=86400"},
-            )
-        except FileNotFoundError:
-            raise HTTPException(status_code=404, detail="Archivo no encontrado en disco")
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Archivo no encontrado en storage")
 
     raise HTTPException(status_code=404, detail="Imagen no disponible")
 
@@ -846,7 +872,7 @@ async def get_weight_image_info(order_id: str, current_user: dict = Depends(get_
         if order and order.get("weight_image_id"):
             return {
                 "exists": True, "image_id": order["weight_image_id"],
-                "url": order.get("weight_image_url", f"/api/driver/orders/{real_order_id}/weight-image/view"),
+                "url": _legacy_order_image_url(order, "weight_image_url", f"/api/driver/orders/{real_order_id}/weight-image/view"),
             }
         return {"exists": False, "order_id": real_order_id}
 
@@ -855,7 +881,7 @@ async def get_weight_image_info(order_id: str, current_user: dict = Depends(get_
         "filename": record.get("original_filename"),
         "uploaded_at": record.get("created_at"),
         "size": record.get("size"),
-        "url": f"/api/driver/orders/{real_order_id}/weight-image/view",
+        "url": _image_record_url(record, f"/api/driver/orders/{real_order_id}/weight-image/view"),
     }
 
 @router.get("/operator/orders/{order_id}")
@@ -925,8 +951,8 @@ async def link_weight_image(
             {"id": real_order_id},
             {"$set": {
                 "weight_image_id": weight_record["id"],
-                "weight_image_data": source_img.get("data_base64"),
-                "weight_image_url": f"/api/driver/orders/{real_order_id}/weight-image/view",
+                "weight_image_data": None,
+                "weight_image_url": source_img.get("storage_url") or f"/api/driver/orders/{real_order_id}/weight-image/view",
                 "weight_image_uploaded_at": now,
                 "updated_at": now,
             }},

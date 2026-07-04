@@ -20,6 +20,8 @@ from utils import create_audit_log
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["Customer Auth"])
 
+VERIFICATION_CODE_TTL_MINUTES = int(os.environ.get("CUSTOMER_VERIFICATION_CODE_TTL_MINUTES", "15"))
+
 
 # ==================== Pydantic Models ====================
 
@@ -111,24 +113,52 @@ async def _send_verification_email(email: str, code: str, customer_name: str = "
         from notifications import send_email
         first_name = customer_name.split()[0] if customer_name else "there"
         subject = f"Your Ventura Fresh Laundry verification code: {code}"
-        body = f"""Hi {first_name}!
+        body = f"""Hi {first_name},
 
-Welcome to Ventura Fresh Laundry 🧺
+Welcome to Ventura Fresh Laundry.
 
-Your email verification code is:
+Your verification code is: {code}
 
-    ┌─────────────┐
-    │   {code}   │
-    └─────────────┘
+This code expires in {VERIFICATION_CODE_TTL_MINUTES} minutes.
 
-This code expires in 15 minutes.
+If you did not request this code, you can safely ignore this email.
 
-If you didn't create an account, you can safely ignore this email.
-
-— The Ventura Fresh Laundry team
-  venturafreshlaundry.com · (820) 234-8181
+Ventura Fresh Laundry
+venturafreshlaundry.com
+(820) 234-8181
 """
-        return await send_email(email, subject, body)
+        html_body = f"""
+<div style="background:#f8fafc;padding:32px 16px;font-family:Arial,sans-serif;color:#0f172a;">
+  <div style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:20px;overflow:hidden;">
+    <div style="background:linear-gradient(135deg,#0ea5e9,#0284c7);padding:24px 28px;color:#ffffff;">
+      <div style="font-size:13px;letter-spacing:0.12em;text-transform:uppercase;font-weight:700;opacity:0.9;">Ventura Fresh Laundry</div>
+      <h1 style="margin:10px 0 0;font-size:28px;line-height:1.2;">Verify your email</h1>
+    </div>
+    <div style="padding:28px;">
+      <p style="margin:0 0 12px;font-size:16px;">Hi {first_name},</p>
+      <p style="margin:0 0 20px;font-size:15px;line-height:1.7;color:#334155;">
+        Welcome to Ventura Fresh Laundry. Use the code below to complete your registration.
+      </p>
+      <div style="margin:0 0 20px;padding:18px;border:1px solid #bae6fd;border-radius:16px;background:#f0f9ff;text-align:center;">
+        <div style="font-size:12px;letter-spacing:0.15em;text-transform:uppercase;color:#0369a1;font-weight:700;margin-bottom:8px;">Verification code</div>
+        <div style="font-size:34px;letter-spacing:0.3em;font-weight:800;color:#0f172a;">{code}</div>
+      </div>
+      <p style="margin:0 0 12px;font-size:14px;line-height:1.7;color:#475569;">
+        This code expires in <strong>{VERIFICATION_CODE_TTL_MINUTES} minutes</strong>.
+      </p>
+      <p style="margin:0;font-size:14px;line-height:1.7;color:#64748b;">
+        If you did not request this code, you can safely ignore this email.
+      </p>
+    </div>
+    <div style="padding:20px 28px;border-top:1px solid #e2e8f0;background:#f8fafc;font-size:12px;line-height:1.7;color:#64748b;">
+      Ventura Fresh Laundry<br />
+      <a href="https://venturafreshlaundry.com" style="color:#0284c7;text-decoration:none;">venturafreshlaundry.com</a><br />
+      (820) 234-8181
+    </div>
+  </div>
+</div>
+"""
+        return await send_email(email, subject, body, html_body=html_body)
     except Exception as e:
         logger.error(f"Verification email failed for {email}: {e}")
         return False
@@ -198,7 +228,7 @@ async def _initiate_registration_logic(
     # ── Insert pending registration ───────────────────────────────────────────
     now = datetime.now(timezone.utc).isoformat()
     code = _generate_verification_code()
-    code_expires_at = (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat()
+    code_expires_at = (datetime.now(timezone.utc) + timedelta(minutes=VERIFICATION_CODE_TTL_MINUTES)).isoformat()
 
     pending_registration = {
         "id": str(uuid.uuid4()),
@@ -437,7 +467,7 @@ async def send_verification(data: SendVerificationRequest, background_tasks: Bac
 
     code = _generate_verification_code()
     now = datetime.now(timezone.utc).isoformat()
-    code_expires_at = (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat()
+    code_expires_at = (datetime.now(timezone.utc) + timedelta(minutes=VERIFICATION_CODE_TTL_MINUTES)).isoformat()
 
     await db.email_verifications.insert_one({
         "id": str(uuid.uuid4()),
@@ -457,7 +487,11 @@ async def send_verification(data: SendVerificationRequest, background_tasks: Bac
 
     background_tasks.add_task(_send_verification_email, email, code, pending.get("name", ""))
 
-    return {"ok": True, "message": "Verification code sent", "expires_in_seconds": 900}
+    return {
+        "ok": True,
+        "message": "Verification code sent",
+        "expires_in_seconds": VERIFICATION_CODE_TTL_MINUTES * 60,
+    }
 
 
 @router.post("/customer/auth/resend-verification")

@@ -179,6 +179,28 @@ export default function ContactPage() {
     contact_method: "", sms_consent: false, message: ""
   });
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const subject = params.get("subject") || "";
+    const message = params.get("message") || "";
+    const name = params.get("name") || "";
+    const email = params.get("email") || "";
+    const phone = params.get("phone") || "";
+    const contactMethod = params.get("contact_method") || "";
+
+    if (!subject && !message && !name && !email && !phone && !contactMethod) return;
+
+    setForm((prev) => ({
+      ...prev,
+      subject: subject || prev.subject,
+      message: message || prev.message,
+      name: name || prev.name,
+      email: email || prev.email,
+      phone: phone || prev.phone,
+      contact_method: contactMethod || prev.contact_method,
+    }));
+  }, []);
+
   // Reset sms_consent if the selected contact method does not require it
   useEffect(() => {
     const requiresConsent = ["text", "sms", "whatsapp"].includes(form.contact_method);

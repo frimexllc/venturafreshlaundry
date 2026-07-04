@@ -167,40 +167,13 @@ export default function Login() {
             </Button>
           </form>
 
-          {/* 🔹 BOTÓN DE REGISTRO / LOGIN AGREGADO AQUÍ 🔹 */}
           <div className="mt-6 text-center">
-            <p className="text-sm text-slate-600">
-              {isLogin ? (
-                <>
-                  {t("Don't have an account?", "¿No tienes una cuenta?")}{" "}
-                  <button
-                    type="button"
-                    onClick={() => setIsLogin(false)}
-                    className="text-sky-600 hover:underline font-medium"
-                    data-testid="switch-to-register"
-                  >
-                    {t("Sign up", "Regístrate")}
-                  </button>
-                </>
-              ) : (
-                <>
-                  {t("Already have an account?", "¿Ya tienes una cuenta?")}{" "}
-                  <button
-                    type="button"
-                    onClick={() => setIsLogin(true)}
-                    className="text-sky-600 hover:underline font-medium"
-                    data-testid="switch-to-login"
-                  >
-                    {t("Sign in", "Inicia sesión")}
-                  </button>
-                </>
-              )}
-            </p>
+           
           </div>
         </div>
       </div>
 
-      {/* Right side - Image (sin cambios) */}
+      {/* Right side - Image */}
       <div className="hidden lg:block lg:w-1/2 relative">
         <div
           className="absolute inset-0 bg-cover bg-center"
