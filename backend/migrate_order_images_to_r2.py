@@ -12,8 +12,12 @@ import base64
 import mimetypes
 from pathlib import Path
 
+from dotenv import load_dotenv
 from database import db
 from object_storage import is_object_storage_enabled, upload_bytes
+
+# Load environment variables
+load_dotenv(Path(__file__).parent / ".env")
 
 IMAGE_CONFIGS = [
     {
