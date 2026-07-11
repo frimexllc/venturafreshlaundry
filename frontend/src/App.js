@@ -6,7 +6,7 @@ import { Toaster } from "./components/ui/sonner";
 import ScrollToTop from "./components/ScrollToTop";
 
 // Admin pages
-import Login from "./pages/login";
+import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Customers from "./pages/Customers";
 import Orders from "./pages/Orders";
