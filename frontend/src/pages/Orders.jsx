@@ -1,25 +1,24 @@
 import { useState, useEffect, useMemo } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { 
-  Plus, Calendar, Truck, MoreHorizontal, Eye, CheckCircle, 
-  Download, Loader2, Camera, X, ZoomIn, Filter, Search,
-  LayoutGrid, List, Clock, Star, Zap, Package, RefreshCw,
-  ChevronDown, ChevronUp, Edit, Trash2, User, MapPin,
-  CreditCard, Banknote, Send, FileText
+import {
+  Plus, Calendar, Truck, MoreHorizontal, Eye, CheckCircle,
+  Download, Loader2, ZoomIn, Search,
+  LayoutGrid, List, Clock, Star, Package, RefreshCw,
+  ChevronDown, ChevronUp, ChevronLeft, ChevronRight, X,
+  User, MapPin, CreditCard, Banknote, SlidersHorizontal, Inbox
 } from "lucide-react";
 import { useLocale } from "../context/LocaleContext";
 import { formatShortDatePT } from "../utils/dateUtils";
-import { filterOrdersClientSide } from "../utils/orderFilters";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
-import { 
-  Dialog, DialogContent, DialogHeader, DialogTitle, 
-  DialogTrigger, DialogDescription 
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+  DialogTrigger, DialogDescription
 } from "../components/ui/dialog";
-import { 
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue 
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from "../components/ui/select";
 import { Textarea } from "../components/ui/textarea";
 import {
@@ -28,9 +27,6 @@ import {
 } from "../components/ui/dropdown-menu";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
-import { Avatar, AvatarFallback } from "../components/ui/avatar";
-import { Progress } from "../components/ui/progress";
 import ConfirmDialog from "../components/ConfirmDialog";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -83,6 +79,17 @@ const STATUS_ACTION_META = {
   cancelled: { en: "cancel", es: "cancelar" },
 };
 
+const DEFAULT_FILTERS = {
+  status: "all",
+  service: "all",
+  payment: "all",
+  search: "",
+  dateFrom: "",
+  dateTo: "",
+};
+
+const PAGE_SIZE_OPTIONS = [25, 50, 100];
+
 const emptyForm = {
   customer_id: "",
   service_type: "pickup_delivery",
@@ -99,16 +106,18 @@ const emptyForm = {
 
 // ─── UTILITY FUNCTIONS ──────────────────────────────────────────────────────
 
-const normalizeStatus = (status) => 
+const normalizeStatus = (status) =>
   (status || "").toString().trim().toLowerCase().replace(/\s+/g, "_");
 
-const getInitials = (name) => 
+const normalizeText = (value) => (value || "").toString().toLowerCase();
+
+const getInitials = (name) =>
   name?.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2) || "?";
 
-const formatCurrency = (amount) => 
+const formatCurrency = (amount) =>
   amount != null ? `$${parseFloat(amount).toFixed(2)}` : "-";
 
-const formatDate = (dateStr) => 
+const formatDate = (dateStr) =>
   dateStr ? formatShortDatePT(dateStr) : "-";
 
 const formatOrderNumber = (order) => {
@@ -133,12 +142,86 @@ const getLocalDate = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
+// Pickup/created dates may come back as "2026-07-11" or as full ISO
+// timestamps ("2026-07-11T12:00:00Z"). Normalize to YYYY-MM-DD so
+// string comparisons against <input type="date"> values are reliable.
+const dateOnly = (dateStr) => {
+  if (!dateStr) return "";
+  const str = dateStr.toString();
+  return str.includes("T") ? str.split("T")[0] : str.slice(0, 10);
+};
+
+// Self-contained, dependency-free filtering. Every field is matched
+// defensively (missing/undefined values never crash the comparison).
+const orderMatchesFilters = (order, filters) => {
+  if (!order) return false;
+
+  if (filters.status !== "all" && normalizeStatus(order.status) !== filters.status) {
+    return false;
+  }
+
+  if (filters.service !== "all" && order.service_type !== filters.service) {
+    return false;
+  }
+
+  if (filters.payment !== "all") {
+    const isPaid = normalizeText(order.payment_status) === "paid";
+    if (filters.payment === "paid" && !isPaid) return false;
+    if (filters.payment === "pending" && isPaid) return false;
+  }
+
+  const pickup = dateOnly(order.pickup_date);
+  if (filters.dateFrom && (!pickup || pickup < filters.dateFrom)) return false;
+  if (filters.dateTo && (!pickup || pickup > filters.dateTo)) return false;
+
+  const query = filters.search?.trim().toLowerCase();
+  if (query) {
+    const haystack = [
+      order.customer_name,
+      order.customer_email,
+      order.customer_phone,
+      formatOrderNumber(order),
+      order.order_number,
+      order.pickup_address,
+      order.delivery_address,
+      order.notes,
+    ]
+      .map(normalizeText)
+      .join(" \u2022 ");
+    if (!haystack.includes(query)) return false;
+  }
+
+  return true;
+};
+
+const SORT_ACCESSORS = {
+  order_number: (o) => formatOrderNumber(o),
+  customer_name: (o) => normalizeText(o.customer_name),
+  service_type: (o) => normalizeText(o.service_type),
+  pickup_date: (o) => dateOnly(o.pickup_date) || "0000-00-00",
+  status: (o) => normalizeStatus(o.status),
+  payment_status: (o) => normalizeText(o.payment_status),
+  total_amount: (o) => parseFloat(o.total_amount) || 0,
+};
+
+const sortOrders = (list, sort) => {
+  const accessor = SORT_ACCESSORS[sort.key] || SORT_ACCESSORS.pickup_date;
+  const dir = sort.direction === "asc" ? 1 : -1;
+  return [...list].sort((a, b) => {
+    const av = accessor(a);
+    const bv = accessor(b);
+    if (av < bv) return -1 * dir;
+    if (av > bv) return 1 * dir;
+    return 0;
+  });
+};
+
 // ─── MAIN COMPONENT ─────────────────────────────────────────────────────────
 
 export default function Orders() {
   const { t, locale } = useLocale();
-  
-  // ─── State ──────────────────────────────────────────────────────────────────
+
+  // ─── State ──────────────────────────────────────────────────────────────
   const [orders, setOrders] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -151,17 +234,26 @@ export default function Orders() {
   const [weightForm, setWeightForm] = useState({ estimated_lbs: "", actual_lbs: "" });
   const [savingWeights, setSavingWeights] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState(null);
-  
-  // Filters
-  const [filters, setFilters] = useState({
-    status: "all",
-    service: "all",
-    payment: "all",
-    search: "",
-    dateFrom: "",
-    dateTo: "",
-  });
-  
+
+  // Filters — searchInput is the raw field value; filters.search is the
+  // debounced value actually applied, so typing never feels laggy while
+  // still avoiding a re-filter on every keystroke.
+  const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  const [searchInput, setSearchInput] = useState("");
+  const [filtersExpanded, setFiltersExpanded] = useState(true);
+
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      setFilters((f) => ({ ...f, search: searchInput }));
+    }, 250);
+    return () => clearTimeout(handle);
+  }, [searchInput]);
+
+  // Sorting + pagination
+  const [sort, setSort] = useState({ key: "pickup_date", direction: "desc" });
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+
   // QR Export
   const [qrStartDate, setQrStartDate] = useState("");
   const [qrEndDate, setQrEndDate] = useState("");
@@ -170,47 +262,65 @@ export default function Orders() {
   const [qrServiceFilter, setQrServiceFilter] = useState("");
   const [selectedImage, setSelectedImage] = useState(null);
 
+  // ─── Derived data ───────────────────────────────────────────────────────
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (filters.status !== "all") count += 1;
+    if (filters.service !== "all") count += 1;
+    if (filters.payment !== "all") count += 1;
+    if (filters.search.trim()) count += 1;
+    if (filters.dateFrom) count += 1;
+    if (filters.dateTo) count += 1;
+    return count;
+  }, [filters]);
+
   const visibleOrders = useMemo(
-    () => filterOrdersClientSide(orders, filters),
+    () => orders.filter((o) => orderMatchesFilters(o, filters)),
     [orders, filters]
   );
-  
-  // ─── Stats ──────────────────────────────────────────────────────────────────
+
+  const sortedOrders = useMemo(
+    () => sortOrders(visibleOrders, sort),
+    [visibleOrders, sort]
+  );
+
+  const totalPages = Math.max(1, Math.ceil(sortedOrders.length / pageSize));
+
+  useEffect(() => {
+    if (page > totalPages) setPage(1);
+  }, [totalPages, page]);
+
+  const paginatedOrders = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return sortedOrders.slice(start, start + pageSize);
+  }, [sortedOrders, page, pageSize]);
+
+  // ─── Stats ──────────────────────────────────────────────────────────────
   const stats = useMemo(() => {
     const total = visibleOrders.length;
-    const byStatus = {};
-    const byService = {};
-    const paid = visibleOrders.filter(o => (o.payment_status || "").toLowerCase() === "paid").length;
-    const pending = visibleOrders.filter(o => (o.payment_status || "").toLowerCase() !== "paid").length;
+    const paid = visibleOrders.filter(o => normalizeText(o.payment_status) === "paid").length;
+    const pending = total - paid;
     const totalRevenue = visibleOrders.reduce((sum, o) => sum + (parseFloat(o.total_amount) || 0), 0);
-    
-    visibleOrders.forEach(o => {
-      const status = normalizeStatus(o.status) || "unknown";
-      byStatus[status] = (byStatus[status] || 0) + 1;
-      const service = o.service_type || "unknown";
-      byService[service] = (byService[service] || 0) + 1;
-    });
-    
-    return { total, byStatus, byService, paid, pending, totalRevenue };
+    return { total, paid, pending, totalRevenue };
   }, [visibleOrders]);
-  
-  // ─── Data Fetching ─────────────────────────────────────────────────────────
+
+  // ─── Data Fetching ─────────────────────────────────────────────────────
   const fetchOrders = async () => {
     setLoading(true);
     try {
-      const pageSize = 100;
-      let page = 1;
+      const pageSizeReq = 100;
+      let pageReq = 1;
       let keepLoading = true;
       const collected = [];
 
       while (keepLoading) {
         const res = await axios.get(`${API}/orders`, {
-          params: { page, page_size: pageSize },
+          params: { page: pageReq, page_size: pageSizeReq },
         });
         const batch = Array.isArray(res.data) ? res.data : [];
         collected.push(...batch);
-        keepLoading = batch.length === pageSize;
-        page += 1;
+        keepLoading = batch.length === pageSizeReq;
+        pageReq += 1;
       }
 
       setOrders(collected);
@@ -251,14 +361,14 @@ export default function Orders() {
     fetchCustomers();
   }, []);
 
-  // ─── Order CRUD ─────────────────────────────────────────────────────────────
+  // ─── Order CRUD ──────────────────────────────────────────────────────────
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     let correctedTimeWindow = form.pickup_time_window;
     if (correctedTimeWindow === "8am-12am") correctedTimeWindow = "8-12";
     if (correctedTimeWindow === "2pm-6pm") correctedTimeWindow = "14-18";
-    
+
     const today = getLocalDate();
     if (form.pickup_date && form.pickup_date < today) {
       toast.error(t("Pickup date cannot be in the past", "La fecha de recogida no puede ser anterior a hoy"));
@@ -344,7 +454,7 @@ export default function Orders() {
     }
   };
 
-  // ─── QR Export ──────────────────────────────────────────────────────────────
+  // ─── QR Export ───────────────────────────────────────────────────────────
   const handleDownloadQr = async (order) => {
     try {
       const res = await axios.get(`${API}/orders/${order.id}/qr.svg`, { responseType: "blob" });
@@ -390,37 +500,62 @@ export default function Orders() {
     }
   };
 
-  // ─── Render Helpers ─────────────────────────────────────────────────────────
+  // ─── Render Helpers ──────────────────────────────────────────────────────
   const getServiceLabel = (key) => SERVICE_TYPES[key]?.label || key || "-";
   const getServiceIcon = (key) => SERVICE_TYPES[key]?.icon || "📋";
   const getServiceColor = (key) => SERVICE_TYPES[key]?.color || "#64748b";
   const getPlanLabel = (key) => PLAN_LABELS[key]?.label || key || "-";
-  const getPlanTime = (key) => PLAN_LABELS[key]?.time || "";
   const getPlanBadge = (key) => PLAN_LABELS[key]?.badge || "bg-slate-100 text-slate-700";
   const getStatusLabel = (key) => STATUS_LABELS[normalizeStatus(key)]?.label || key || "-";
   const getStatusColor = (key) => STATUS_LABELS[normalizeStatus(key)]?.color || "bg-slate-100 text-slate-700";
   const getStatusIcon = (key) => STATUS_LABELS[normalizeStatus(key)]?.icon || "📋";
   const getPaymentLabel = (key) => PAYMENT_STATUS[key?.toLowerCase()]?.label || key || "-";
   const getPaymentColor = (key) => PAYMENT_STATUS[key?.toLowerCase()]?.color || "bg-slate-100 text-slate-700";
-  
+
   const clearFilters = () => {
-    setFilters({
-      status: "all",
-      service: "all",
-      payment: "all",
-      search: "",
-      dateFrom: "",
-      dateTo: "",
-    });
+    setFilters(DEFAULT_FILTERS);
+    setSearchInput("");
+    setPage(1);
   };
 
-  // ─── CARD VIEW ──────────────────────────────────────────────────────────────
+  const toggleSort = (key) => {
+    setSort((prev) => {
+      if (prev.key === key) {
+        return { key, direction: prev.direction === "asc" ? "desc" : "asc" };
+      }
+      return { key, direction: "asc" };
+    });
+    setPage(1);
+  };
+
+  const SortHeader = ({ sortKey, children, align = "left" }) => {
+    const active = sort.key === sortKey;
+    return (
+      <th
+        className={`px-4 py-3 text-${align} text-xs font-semibold text-slate-600 uppercase tracking-wider select-none cursor-pointer hover:text-slate-900 transition-colors`}
+        onClick={() => toggleSort(sortKey)}
+      >
+        <span className={`inline-flex items-center gap-1 ${align === "right" ? "flex-row-reverse" : ""}`}>
+          {children}
+          {active ? (
+            sort.direction === "asc"
+              ? <ChevronUp className="w-3.5 h-3.5 text-sky-600" />
+              : <ChevronDown className="w-3.5 h-3.5 text-sky-600" />
+          ) : (
+            <ChevronDown className="w-3.5 h-3.5 text-slate-300" />
+          )}
+        </span>
+      </th>
+    );
+  };
+
+  // ─── CARD VIEW ───────────────────────────────────────────────────────────
   const OrderCard = ({ order }) => {
     const status = normalizeStatus(order.status);
-    const isPaid = (order.payment_status || "").toLowerCase() === "paid";
-    
+    const isPaid = normalizeText(order.payment_status) === "paid";
+
     return (
-      <Card className="hover:shadow-lg transition-all duration-300 cursor-pointer border-l-4" 
+      <Card className="hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 cursor-pointer border-l-4"
         style={{ borderLeftColor: getServiceColor(order.service_type) }}
         onClick={() => fetchOrderDetails(order.id)}
       >
@@ -474,33 +609,21 @@ export default function Orders() {
     );
   };
 
-  // ─── TABLE VIEW ─────────────────────────────────────────────────────────────
+  // ─── TABLE VIEW ──────────────────────────────────────────────────────────
   const OrderTable = () => (
     <div className="overflow-x-auto">
       <table className="w-full">
-        <thead className="bg-slate-50 border-b border-slate-200">
+        <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-[1]">
           <tr>
-            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
-              {t("Order", "Orden")}
-            </th>
-            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
-              {t("Customer", "Cliente")}
-            </th>
-            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
-              {t("Service", "Servicio")}
-            </th>
+            <SortHeader sortKey="order_number">{t("Order", "Orden")}</SortHeader>
+            <SortHeader sortKey="customer_name">{t("Customer", "Cliente")}</SortHeader>
+            <SortHeader sortKey="service_type">{t("Service", "Servicio")}</SortHeader>
             <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
               {t("Plan", "Plan")}
             </th>
-            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
-              {t("Pickup", "Pickup")}
-            </th>
-            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
-              {t("Status", "Estado")}
-            </th>
-            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
-              {t("Payment", "Pago")}
-            </th>
+            <SortHeader sortKey="pickup_date">{t("Pickup", "Pickup")}</SortHeader>
+            <SortHeader sortKey="status">{t("Status", "Estado")}</SortHeader>
+            <SortHeader sortKey="total_amount" align="right">{t("Payment", "Pago")}</SortHeader>
             <th className="px-4 py-3 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">
               {t("Actions", "Acciones")}
             </th>
@@ -508,24 +631,19 @@ export default function Orders() {
         </thead>
         <tbody className="divide-y divide-slate-100">
           {loading ? (
+            <TableSkeletonRows />
+          ) : paginatedOrders.length === 0 ? (
             <tr>
-              <td colSpan={8} className="text-center py-8 text-slate-500">
-                <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
-                {t("Loading...", "Cargando...")}
-              </td>
-            </tr>
-          ) : visibleOrders.length === 0 ? (
-            <tr>
-              <td colSpan={8} className="text-center py-8 text-slate-500">
-                {t("No orders found", "No se encontraron órdenes")}
+              <td colSpan={8}>
+                <EmptyState onClear={activeFilterCount > 0 ? clearFilters : undefined} />
               </td>
             </tr>
           ) : (
-            visibleOrders.map((order) => {
+            paginatedOrders.map((order) => {
               const status = normalizeStatus(order.status);
-              const isPaid = (order.payment_status || "").toLowerCase() === "paid";
+              const isPaid = normalizeText(order.payment_status) === "paid";
               return (
-                <tr key={order.id} className="hover:bg-slate-50/50 transition-colors">
+                <tr key={order.id} className="hover:bg-slate-50/70 transition-colors">
                   <td className="px-4 py-3">
                     <p className="font-mono font-medium text-slate-900 text-sm">
                       {formatOrderNumber(order)}
@@ -538,7 +656,7 @@ export default function Orders() {
                     <p className="font-medium text-slate-900 text-sm">
                       {order.customer_name}
                     </p>
-                    <p className="text-xs text-slate-400 truncate max-w-[120px]">
+                    <p className="text-xs text-slate-400 truncate max-w-[140px]">
                       {order.customer_email}
                     </p>
                   </td>
@@ -573,8 +691,8 @@ export default function Orders() {
                       {getStatusIcon(status)} {getStatusLabel(status)}
                     </Badge>
                   </td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-col gap-0.5">
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex flex-col gap-0.5 items-end">
                       <Badge className={`text-xs ${getPaymentColor(order.payment_status)}`}>
                         {getPaymentLabel(order.payment_status)}
                       </Badge>
@@ -663,7 +781,7 @@ export default function Orders() {
                         )}
                         <DropdownMenuSeparator />
                         {status !== "cancelled" && (
-                          <DropdownMenuItem 
+                          <DropdownMenuItem
                             onClick={() => requestStatusUpdate(order, "cancelled")}
                             className="text-red-600"
                           >
@@ -683,7 +801,45 @@ export default function Orders() {
     </div>
   );
 
-  // ─── DASHBOARD STATS ──────────────────────────────────────────────────────
+  // ─── SKELETON / EMPTY STATES ────────────────────────────────────────────
+  const TableSkeletonRows = () => (
+    <>
+      {Array.from({ length: 6 }).map((_, i) => (
+        <tr key={i}>
+          {Array.from({ length: 8 }).map((__, j) => (
+            <td key={j} className="px-4 py-4">
+              <div className="h-3.5 rounded bg-slate-100 animate-pulse" style={{ width: `${50 + ((i + j) % 4) * 10}%` }} />
+            </td>
+          ))}
+        </tr>
+      ))}
+    </>
+  );
+
+  const EmptyState = ({ onClear }) => (
+    <div className="flex flex-col items-center justify-center py-14 text-center">
+      <div className="bg-slate-100 rounded-full p-3 mb-3">
+        <Inbox className="w-6 h-6 text-slate-400" />
+      </div>
+      <p className="font-medium text-slate-700">
+        {t("No orders match your filters", "Ninguna orden coincide con tus filtros")}
+      </p>
+      <p className="text-sm text-slate-400 mt-1 max-w-sm">
+        {t(
+          "Try adjusting the search, status, or date range.",
+          "Intenta ajustar la búsqueda, el estado o el rango de fechas."
+        )}
+      </p>
+      {onClear && (
+        <Button variant="outline" size="sm" className="mt-4" onClick={onClear}>
+          <X className="h-4 w-4 mr-1" />
+          {t("Clear filters", "Limpiar filtros")}
+        </Button>
+      )}
+    </div>
+  );
+
+  // ─── DASHBOARD STATS ─────────────────────────────────────────────────────
   const DashboardStats = () => (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
       <Card className="bg-gradient-to-br from-blue-50 to-cyan-50 border-blue-100">
@@ -691,9 +847,14 @@ export default function Orders() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-semibold text-blue-600 uppercase tracking-wider">
-                {t("Total Orders", "Órdenes Totales")}
+                {t("Orders", "Órdenes")}
               </p>
               <p className="text-2xl font-bold text-slate-800 mt-1">{stats.total}</p>
+              {activeFilterCount > 0 && (
+                <p className="text-[11px] text-blue-500 mt-0.5">
+                  {t("of", "de")} {orders.length} {t("total", "total")}
+                </p>
+              )}
             </div>
             <div className="bg-blue-100 p-2 rounded-lg">
               <Package className="w-5 h-5 text-blue-600" />
@@ -754,134 +915,164 @@ export default function Orders() {
     </div>
   );
 
-  // ─── FILTER BAR ────────────────────────────────────────────────────────────
+  // ─── FILTER BAR ──────────────────────────────────────────────────────────
   const FilterBar = () => (
-    <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6 shadow-sm">
-      <div className="flex flex-col lg:flex-row gap-3 items-start lg:items-end">
-        <div className="flex-1 w-full">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-            <Input
-              placeholder={t("Search orders...", "Buscar órdenes...")}
-              value={filters.search}
-              onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-              className="pl-9"
-            />
+    <div className="bg-white rounded-xl border border-slate-200 mb-6 shadow-sm overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setFiltersExpanded((v) => !v)}
+        className="w-full flex items-center justify-between px-4 py-3 lg:hidden"
+      >
+        <span className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+          <SlidersHorizontal className="w-4 h-4" />
+          {t("Filters", "Filtros")}
+          {activeFilterCount > 0 && (
+            <Badge className="bg-sky-100 text-sky-700">{activeFilterCount}</Badge>
+          )}
+        </span>
+        {filtersExpanded ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+      </button>
+
+      <div className={`p-4 ${filtersExpanded ? "block" : "hidden"} lg:block`}>
+        <div className="flex flex-col lg:flex-row gap-3 items-start lg:items-end">
+          <div className="flex-1 w-full">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <Input
+                placeholder={t("Search by customer, order #, address...", "Buscar por cliente, # de orden, dirección...")}
+                value={searchInput}
+                onChange={(e) => { setSearchInput(e.target.value); setPage(1); }}
+                className="pl-9"
+              />
+              {searchInput && (
+                <button
+                  type="button"
+                  onClick={() => setSearchInput("")}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
           </div>
-        </div>
 
-        <div className="flex flex-wrap gap-2">
-          <Select
-            value={filters.status}
-            onValueChange={(v) => setFilters({ ...filters, status: v })}
-          >
-            <SelectTrigger className="w-[130px]">
-              <SelectValue placeholder={t("Status", "Estado")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("All", "Todos")}</SelectItem>
-              {Object.entries(STATUS_LABELS).map(([key, val]) => (
-                <SelectItem key={key} value={key}>
-                  {val.icon} {val.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex flex-wrap gap-2">
+            <Select
+              value={filters.status}
+              onValueChange={(v) => { setFilters({ ...filters, status: v }); setPage(1); }}
+            >
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder={t("Status", "Estado")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("All statuses", "Todos los estados")}</SelectItem>
+                {Object.entries(STATUS_LABELS).map(([key, val]) => (
+                  <SelectItem key={key} value={key}>
+                    {val.icon} {val.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-          <Select
-            value={filters.service}
-            onValueChange={(v) => setFilters({ ...filters, service: v })}
-          >
-            <SelectTrigger className="w-[150px]">
-              <SelectValue placeholder={t("Service", "Servicio")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("All", "Todos")}</SelectItem>
-              {Object.entries(SERVICE_TYPES).map(([key, val]) => (
-                <SelectItem key={key} value={key}>
-                  {val.icon} {val.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            <Select
+              value={filters.service}
+              onValueChange={(v) => { setFilters({ ...filters, service: v }); setPage(1); }}
+            >
+              <SelectTrigger className="w-[170px]">
+                <SelectValue placeholder={t("Service", "Servicio")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("All services", "Todos los servicios")}</SelectItem>
+                {Object.entries(SERVICE_TYPES).map(([key, val]) => (
+                  <SelectItem key={key} value={key}>
+                    {val.icon} {val.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-          <Select
-            value={filters.payment}
-            onValueChange={(v) => setFilters({ ...filters, payment: v })}
-          >
-            <SelectTrigger className="w-[130px]">
-              <SelectValue placeholder={t("Payment", "Pago")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("All", "Todos")}</SelectItem>
-              <SelectItem value="paid">💳 {t("Paid", "Pagado")}</SelectItem>
-              <SelectItem value="pending">⏳ {t("Pending", "Pendiente")}</SelectItem>
-            </SelectContent>
-          </Select>
+            <Select
+              value={filters.payment}
+              onValueChange={(v) => { setFilters({ ...filters, payment: v }); setPage(1); }}
+            >
+              <SelectTrigger className="w-[140px]">
+                <SelectValue placeholder={t("Payment", "Pago")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("All payments", "Todos los pagos")}</SelectItem>
+                <SelectItem value="paid">💳 {t("Paid", "Pagado")}</SelectItem>
+                <SelectItem value="pending">⏳ {t("Pending", "Pendiente")}</SelectItem>
+              </SelectContent>
+            </Select>
 
-          <Input
-            type="date"
-            value={filters.dateFrom}
-            onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value })}
-            className="w-[150px]"
-            aria-label={t("From date", "Fecha inicial")}
-          />
+            <Input
+              type="date"
+              value={filters.dateFrom}
+              onChange={(e) => { setFilters({ ...filters, dateFrom: e.target.value }); setPage(1); }}
+              className="w-[150px]"
+              aria-label={t("From date", "Fecha inicial")}
+            />
 
-          <Input
-            type="date"
-            value={filters.dateTo}
-            onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })}
-            className="w-[150px]"
-            aria-label={t("To date", "Fecha final")}
-          />
+            <Input
+              type="date"
+              value={filters.dateTo}
+              onChange={(e) => { setFilters({ ...filters, dateTo: e.target.value }); setPage(1); }}
+              className="w-[150px]"
+              aria-label={t("To date", "Fecha final")}
+            />
 
-          <Button variant="outline" size="sm" onClick={clearFilters}>
-            <X className="h-4 w-4 mr-1" />
-            {t("Clear", "Limpiar")}
-          </Button>
-        </div>
+            {activeFilterCount > 0 && (
+              <Button variant="outline" size="sm" onClick={clearFilters}>
+                <X className="h-4 w-4 mr-1" />
+                {t("Clear", "Limpiar")} ({activeFilterCount})
+              </Button>
+            )}
+          </div>
 
-        <div className="flex items-center gap-2">
-          <Button
-            variant={viewMode === "cards" ? "default" : "outline"}
-            size="sm"
-            onClick={() => setViewMode("cards")}
-            className={viewMode === "cards" ? "bg-sky-600" : ""}
-          >
-            <LayoutGrid className="h-4 w-4" />
-          </Button>
-          <Button
-            variant={viewMode === "table" ? "default" : "outline"}
-            size="sm"
-            onClick={() => setViewMode("table")}
-            className={viewMode === "table" ? "bg-sky-600" : ""}
-          >
-            <List className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant={viewMode === "cards" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setViewMode("cards")}
+              className={viewMode === "cards" ? "bg-sky-600" : ""}
+              aria-label={t("Card view", "Vista de tarjetas")}
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </Button>
+            <Button
+              variant={viewMode === "table" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setViewMode("table")}
+              className={viewMode === "table" ? "bg-sky-600" : ""}
+              aria-label={t("Table view", "Vista de tabla")}
+            >
+              <List className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       </div>
     </div>
   );
 
-  // ─── QR EXPORT SECTION ────────────────────────────────────────────────────
+  // ─── QR EXPORT SECTION ───────────────────────────────────────────────────
   const QrExportSection = () => (
     <div className="bg-slate-50 rounded-xl border border-slate-200 p-4 mb-6">
       <div className="flex flex-col lg:flex-row gap-3 items-start lg:items-end">
         <div>
           <Label className="text-xs">{t("Start", "Inicio")}</Label>
-          <Input 
-            type="date" 
-            value={qrStartDate} 
-            onChange={(e) => setQrStartDate(e.target.value)} 
+          <Input
+            type="date"
+            value={qrStartDate}
+            onChange={(e) => setQrStartDate(e.target.value)}
             className="h-8 text-sm"
           />
         </div>
         <div>
           <Label className="text-xs">{t("End", "Fin")}</Label>
-          <Input 
-            type="date" 
-            value={qrEndDate} 
-            onChange={(e) => setQrEndDate(e.target.value)} 
+          <Input
+            type="date"
+            value={qrEndDate}
+            onChange={(e) => setQrEndDate(e.target.value)}
             className="h-8 text-sm"
           />
         </div>
@@ -911,9 +1102,9 @@ export default function Orders() {
             ))}
           </select>
         </div>
-        <Button 
-          variant="outline" 
-          onClick={handleExportQrBatch} 
+        <Button
+          variant="outline"
+          onClick={handleExportQrBatch}
           disabled={exportingQr}
           className="h-8"
         >
@@ -924,7 +1115,58 @@ export default function Orders() {
     </div>
   );
 
-  // ─── MAIN RENDER ───────────────────────────────────────────────────────────
+  // ─── PAGINATION BAR ──────────────────────────────────────────────────────
+  const PaginationBar = () => {
+    if (loading || sortedOrders.length === 0) return null;
+    const start = (page - 1) * pageSize + 1;
+    const end = Math.min(page * pageSize, sortedOrders.length);
+    return (
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t border-slate-100 bg-slate-50/50">
+        <p className="text-xs text-slate-500">
+          {t(
+            `Showing ${start}-${end} of ${sortedOrders.length}`,
+            `Mostrando ${start}-${end} de ${sortedOrders.length}`
+          )}
+        </p>
+        <div className="flex items-center gap-3">
+          <select
+            className="h-8 rounded-md border border-slate-200 px-2 text-xs bg-white"
+            value={pageSize}
+            onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
+          >
+            {PAGE_SIZE_OPTIONS.map((size) => (
+              <option key={size} value={size}>{size} / {t("page", "página")}</option>
+            ))}
+          </select>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span className="text-xs text-slate-500 px-2 min-w-[70px] text-center">
+              {t("Page", "Página")} {page} / {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8"
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ─── MAIN RENDER ─────────────────────────────────────────────────────────
   return (
     <div className="p-4 lg:p-6 max-w-7xl mx-auto bg-slate-50 min-h-screen">
       {/* ── Header ── */}
@@ -955,8 +1197,8 @@ export default function Orders() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>{t("Customer *", "Cliente *")}</Label>
-                  <Select 
-                    value={form.customer_id} 
+                  <Select
+                    value={form.customer_id}
                     onValueChange={(v) => setForm({ ...form, customer_id: v })}
                   >
                     <SelectTrigger className="mt-1.5">
@@ -971,8 +1213,8 @@ export default function Orders() {
                 </div>
                 <div>
                   <Label>{t("Service Type *", "Tipo de Servicio *")}</Label>
-                  <Select 
-                    value={form.service_type} 
+                  <Select
+                    value={form.service_type}
                     onValueChange={(v) => setForm({ ...form, service_type: v })}
                   >
                     <SelectTrigger className="mt-1.5">
@@ -991,8 +1233,8 @@ export default function Orders() {
 
               <div>
                 <Label>{t("Service Plan *", "Plan de Servicio *")}</Label>
-                <Select 
-                  value={form.service_plan} 
+                <Select
+                  value={form.service_plan}
                   onValueChange={(v) => setForm({ ...form, service_plan: v })}
                 >
                   <SelectTrigger className="mt-1.5">
@@ -1021,8 +1263,8 @@ export default function Orders() {
                 </div>
                 <div>
                   <Label>{t("Time Window", "Ventana de Tiempo")}</Label>
-                  <Select 
-                    value={form.pickup_time_window} 
+                  <Select
+                    value={form.pickup_time_window}
                     onValueChange={(v) => setForm({ ...form, pickup_time_window: v })}
                   >
                     <SelectTrigger className="mt-1.5">
@@ -1090,8 +1332,8 @@ export default function Orders() {
                 <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
                   {t("Cancel", "Cancelar")}
                 </Button>
-                <Button 
-                  type="submit" 
+                <Button
+                  type="submit"
                   className="bg-sky-600 hover:bg-sky-700"
                   disabled={submitting || !form.customer_id}
                 >
@@ -1117,16 +1359,15 @@ export default function Orders() {
         {viewMode === "cards" ? (
           <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {loading ? (
-              <div className="col-span-full text-center py-8 text-slate-500">
-                <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2" />
-                {t("Loading...", "Cargando...")}
-              </div>
-            ) : visibleOrders.length === 0 ? (
-              <div className="col-span-full text-center py-8 text-slate-500">
-                {t("No orders found", "No se encontraron órdenes")}
+              Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="h-32 rounded-xl bg-slate-100 animate-pulse" />
+              ))
+            ) : paginatedOrders.length === 0 ? (
+              <div className="col-span-full">
+                <EmptyState onClear={activeFilterCount > 0 ? clearFilters : undefined} />
               </div>
             ) : (
-              visibleOrders.map(order => (
+              paginatedOrders.map(order => (
                 <OrderCard key={order.id} order={order} />
               ))
             )}
@@ -1134,6 +1375,7 @@ export default function Orders() {
         ) : (
           <OrderTable />
         )}
+        <PaginationBar />
       </div>
 
       {/* ── Order Detail Modal ── */}
@@ -1282,11 +1524,11 @@ export default function Orders() {
                     </h3>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                       {viewOrder.pickup_image_data && (
-                        <div 
+                        <div
                           className="cursor-pointer group relative"
-                          onClick={() => setSelectedImage({ 
-                            url: `data:image/jpeg;base64,${viewOrder.pickup_image_data}`, 
-                            label: t("Pickup", "Recogida") 
+                          onClick={() => setSelectedImage({
+                            url: `data:image/jpeg;base64,${viewOrder.pickup_image_data}`,
+                            label: t("Pickup", "Recogida")
                           })}
                         >
                           <img
@@ -1301,11 +1543,11 @@ export default function Orders() {
                         </div>
                       )}
                       {viewOrder.delivery_image_data && (
-                        <div 
+                        <div
                           className="cursor-pointer group relative"
-                          onClick={() => setSelectedImage({ 
-                            url: `data:image/jpeg;base64,${viewOrder.delivery_image_data}`, 
-                            label: t("Delivery", "Entrega") 
+                          onClick={() => setSelectedImage({
+                            url: `data:image/jpeg;base64,${viewOrder.delivery_image_data}`,
+                            label: t("Delivery", "Entrega")
                           })}
                         >
                           <img
@@ -1320,11 +1562,11 @@ export default function Orders() {
                         </div>
                       )}
                       {viewOrder.weight_image_data && (
-                        <div 
+                        <div
                           className="cursor-pointer group relative"
-                          onClick={() => setSelectedImage({ 
-                            url: `data:image/jpeg;base64,${viewOrder.weight_image_data}`, 
-                            label: t("Weight", "Peso") 
+                          onClick={() => setSelectedImage({
+                            url: `data:image/jpeg;base64,${viewOrder.weight_image_data}`,
+                            label: t("Weight", "Peso")
                           })}
                         >
                           <img

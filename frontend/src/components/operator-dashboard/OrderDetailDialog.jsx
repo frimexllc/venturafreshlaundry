@@ -68,6 +68,103 @@ const normalizePayMethod = (method) => {
   return "other";
 };
 
+const slugifyAddonKey = (value) =>
+  String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+
+const parseAddonPrice = (value, fallback = 0) => {
+  const parsed = parseFloat(String(value ?? "").replace(/[^0-9.-]/g, ""));
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const getAddonDisplayName = (addon, locale) =>
+  locale === "es" && addon?.name_es ? addon.name_es : addon?.name;
+
+const buildAddonCategoryLabel = (categoryKey, labels, items, locale) => {
+  const fromState = labels?.[categoryKey];
+  if (fromState) {
+    return locale === "es" ? (fromState.es || fromState.en || categoryKey) : (fromState.en || fromState.es || categoryKey);
+  }
+  const first = Array.isArray(items) ? items[0] : null;
+  if (first?.category_label || first?.category_label_es) {
+    return locale === "es"
+      ? (first.category_label_es || first.category_label || categoryKey)
+      : (first.category_label || first.category_label_es || categoryKey);
+  }
+  return categoryKey;
+};
+
+const transformServicesConfigToAddonCatalog = (config) => {
+  const categories = Array.isArray(config?.per_piece_categories) ? config.per_piece_categories : [];
+  const categoryLabels = { ...CAT_LABELS };
+  const catalog = categories.flatMap((cat, categoryIndex) => {
+    const categoryName = cat?.category || cat?.category_es || `category_${categoryIndex + 1}`;
+    const categoryKey = slugifyAddonKey(categoryName);
+    categoryLabels[categoryKey] = {
+      en: cat?.category || cat?.category_es || categoryName,
+      es: cat?.category_es || cat?.category || categoryName,
+    };
+
+    return (Array.isArray(cat?.items) ? cat.items : []).map((item, itemIndex) => {
+      const name = item?.name || item?.name_es || `item_${itemIndex + 1}`;
+      return {
+        id: item?.id || slugifyAddonKey(`${categoryName}_${name}`),
+        name,
+        name_es: item?.name_es || item?.name || name,
+        price: parseAddonPrice(item?.price, 0),
+        category: categoryKey,
+        category_label: cat?.category || categoryName,
+        category_label_es: cat?.category_es || cat?.category || categoryName,
+      };
+    });
+  });
+
+  return { catalog, categoryLabels };
+};
+
+const findCatalogAddonMatch = (catalog, addon) => {
+  const addonId = slugifyAddonKey(addon?.id);
+  const addonName = slugifyAddonKey(addon?.name);
+  const addonNameEs = slugifyAddonKey(addon?.name_es);
+
+  return catalog.find((item) => {
+    const itemId = slugifyAddonKey(item?.id);
+    const itemName = slugifyAddonKey(item?.name);
+    const itemNameEs = slugifyAddonKey(item?.name_es);
+
+    return (
+      (addonId && itemId === addonId) ||
+      (addonName && (itemName === addonName || itemNameEs === addonName)) ||
+      (addonNameEs && (itemName === addonNameEs || itemNameEs === addonNameEs))
+    );
+  });
+};
+
+const hydrateAddonFromCatalog = (addon, catalog) => {
+  const matched = findCatalogAddonMatch(catalog, addon) || {};
+  const fallbackPrice = parseAddonPrice(addon?.price, parseAddonPrice(matched?.price, 0));
+  const customPrice = addon?.custom_price;
+
+  return {
+    ...matched,
+    ...addon,
+    id: addon?.id || matched?.id || slugifyAddonKey(`${matched?.category || addon?.category || "addon"}_${addon?.name || matched?.name || "item"}`),
+    name: addon?.name || matched?.name || "",
+    name_es: addon?.name_es || matched?.name_es || addon?.name || matched?.name || "",
+    category: addon?.category || matched?.category || "other",
+    category_label: addon?.category_label || matched?.category_label,
+    category_label_es: addon?.category_label_es || matched?.category_label_es,
+    qty: addon?.qty || addon?.quantity || 1,
+    price: fallbackPrice,
+    custom_price: customPrice ?? fallbackPrice,
+    original_price: parseAddonPrice(addon?.original_price, fallbackPrice),
+  };
+};
+
 function calculateOrderTotal(order, payMethod) {
   const extraCharge = Number(order.extra_charge || 0);
   const deliveryFee = Number(order.delivery_fee || calcDeliveryFee(order.distance_miles));
@@ -114,9 +211,6 @@ const DEFAULT_ADDON_CATALOG = [
   { id: "mattress_cover", name: "Mattress Cover",   price: 25.00,  category: "comforters" },
   { id: "down_comforter", name: "Down Comforter",   price: 45.00, category: "comforters" },
 ];
-
-// We'll load dynamic prices from the config later
-let ADDON_CATALOG = [...DEFAULT_ADDON_CATALOG];
 
 const CAT_LABELS = {
   home_essentials: { en: "Home Essentials", es: "Artículos del hogar" },
@@ -506,6 +600,8 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
   const [customerCycleUsage, setCustomerCycleUsage] = useState(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [editingAddonPrice, setEditingAddonPrice] = useState(null); // { id, currentPrice }
+  const [addonCatalog, setAddonCatalog] = useState(DEFAULT_ADDON_CATALOG);
+  const [addonCategoryLabels, setAddonCategoryLabels] = useState(CAT_LABELS);
 
   const currentOrderIdRef = useRef(null);
 
@@ -516,23 +612,10 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
         const res = await fetch(`${API_URL}/api/public/services-page-config`);
         if (res.ok) {
           const config = await res.json();
-          if (config.per_piece_categories && Array.isArray(config.per_piece_categories)) {
-            const priceMap = {};
-            for (const cat of config.per_piece_categories) {
-              if (cat.items && Array.isArray(cat.items)) {
-                for (const item of cat.items) {
-                  const price = parseFloat(String(item.price).replace(/[^0-9.-]/g, ''));
-                  if (!isNaN(price)) {
-                    priceMap[item.name.toLowerCase()] = price;
-                  }
-                }
-              }
-            }
-            // Update catalog with dynamic prices
-            ADDON_CATALOG = DEFAULT_ADDON_CATALOG.map(item => ({
-              ...item,
-              price: priceMap[item.name.toLowerCase()] || item.price,
-            }));
+          const { catalog, categoryLabels } = transformServicesConfigToAddonCatalog(config);
+          if (catalog.length > 0) {
+            setAddonCatalog(catalog);
+            setAddonCategoryLabels(categoryLabels);
           }
         }
       } catch (err) {
@@ -554,18 +637,12 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
       setLocalOrder(order);
       setLbs(String(order.actual_lbs ?? order.estimated_lbs ?? ""));
       setAmtReceived("");
-      // Load addons with custom price support
-      const loadedAddons = (order.addon_services || []).map(a => ({ 
-        ...a, 
-        qty: a.qty || a.quantity || 1,
-        custom_price: a.custom_price || a.price,
-        original_price: a.price,
-      }));
+      const loadedAddons = (order.addon_services || []).map((a) => hydrateAddonFromCatalog(a, addonCatalog));
       setAddons(loadedAddons);
       setCustomerCycleUsage(null);
       setIsOpen(true);
     }
-  }, [order?.id]);
+  }, [order, addonCatalog]);
 
   const fetchOrderDetails = useCallback(async (oid) => {
     if (!oid) return;
@@ -578,12 +655,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
         if (currentOrderIdRef.current === oid) {
           setLocalOrder(data);
           setLbs(String(data.actual_lbs ?? data.estimated_lbs ?? ""));
-          setAddons((data.addon_services || []).map(a => ({ 
-            ...a, 
-            qty: a.qty || a.quantity || 1,
-            custom_price: a.custom_price || a.price,
-            original_price: a.price,
-          })));
+          setAddons((data.addon_services || []).map((a) => hydrateAddonFromCatalog(a, addonCatalog)));
         }
       }
     } catch (err) {
@@ -591,7 +663,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
     } finally {
       setLoadingDetails(false);
     }
-  }, []);
+  }, [addonCatalog]);
 
   const fetchCustomerCycleUsage = useCallback(async (customerId) => {
     if (!customerId) return;
@@ -700,10 +772,10 @@ const handleAddAddon = (item) => {
       : (addon.price || 0);
   };
   const isPerPieceItem = (item) => {
-  // Los artículos de las categorías "comforters", "bedding" son per-piece
-  // y NO deben cobrarse por separado en Wash & Fold porque ya están incluidos en el peso
-  const perPieceCategories = ["comforters", "bedding"];
-  return perPieceCategories.includes(item.category);
+  const categoryKey = slugifyAddonKey(
+    item?.category || item?.category_label || item?.category_es || item?.category_label_es
+  );
+  return !["add_on_services", "addon_services"].includes(categoryKey);
 };
 
   const saveAddonsList = useCallback(async (list) => {
@@ -1207,11 +1279,11 @@ const handleAddAddon = (item) => {
   const deliveryFee      = calcDeliveryFee(o.distance_miles);
   const verifiedReceipts = receipts.filter(r => r.ai_validation_status === "verified_paid");
   const addonTotal       = addons.reduce((s, a) => s + getEffectivePrice(a) * Number(a.qty || 1), 0);
-  const catLabel         = (cat) => locale === "es" ? CAT_LABELS[cat]?.es : CAT_LABELS[cat]?.en;
+  const catLabel         = (cat, items = []) => buildAddonCategoryLabel(cat, addonCategoryLabels, items, locale);
   const statusKey        = (o.status || "new").toLowerCase().replace(/ /g, "_");
   const statusCls        = STATUS_CONFIG[statusKey]?.color || "bg-slate-100 text-slate-700 border-slate-200";
   const groupedAddons    = groupBy(addons, "category");
-  const groupedCatalog   = groupBy(ADDON_CATALOG, "category");
+  const groupedCatalog   = groupBy(addonCatalog, "category");
   const dynamicTotal     = calculateOrderTotal(o, payMethod).baseTotal;
 
   return (
@@ -1455,7 +1527,7 @@ const handleAddAddon = (item) => {
                     <div className="space-y-1.5">
                       {Object.entries(groupedAddons).map(([cat, items]) => (
                         <div key={cat} className="mb-3 last:mb-0">
-                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 ml-1">{catLabel(cat)}</p>
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 ml-1">{catLabel(cat, items)}</p>
                           {items.map(a => {
                             const effectivePrice = getEffectivePrice(a);
                             const hasCustomPrice = a.custom_price !== undefined && a.custom_price !== null && a.custom_price !== a.original_price;
@@ -1463,7 +1535,7 @@ const handleAddAddon = (item) => {
                               <div key={a.id} className="flex items-center justify-between bg-sky-50 border border-sky-100 rounded-xl px-3 py-2.5 mb-1.5 last:mb-0 relative">
                                 <div className="flex-1">
                                   <span className="text-sm text-slate-700 font-medium">
-                                    {a.name}{a.qty > 1 && <span className="ml-1 text-sky-500 font-bold">×{a.qty}</span>}
+                                    {getAddonDisplayName(a, locale) || a.name}{a.qty > 1 && <span className="ml-1 text-sky-500 font-bold">×{a.qty}</span>}
                                   </span>
                                   {hasCustomPrice && (
                                     <span className="ml-2 text-[10px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full">
@@ -1518,16 +1590,16 @@ const handleAddAddon = (item) => {
                   <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
                     {Object.entries(groupedCatalog).map(([cat, items]) => (
                       <div key={cat}>
-                        <p className="text-[10px] font-semibold text-slate-500 mb-1.5">{catLabel(cat)}</p>
+                        <p className="text-[10px] font-semibold text-slate-500 mb-1.5">{catLabel(cat, items)}</p>
                         <div className="grid grid-cols-2 gap-1.5">
                           {items.map(item => {
                             const ex = addons.find(a => a.id === item.id);
                             const qty = ex?.qty || 0;
-                            const currentPrice = ex?.custom_price || item.price;
+                            const currentPrice = ex?.custom_price ?? item.price;
                             return (
                               <div key={item.id} className="flex items-center justify-between border border-slate-100 rounded-xl px-2 py-1.5 bg-white hover:border-sky-200 transition-colors">
                                 <div className="min-w-0 flex-1 mr-1">
-                                  <p className="text-[11px] text-slate-700 truncate">{item.name}</p>
+                                  <p className="text-[11px] text-slate-700 truncate">{getAddonDisplayName(item, locale) || item.name}</p>
                                   <p className="text-[10px] text-slate-400">{formatCurrency(currentPrice)}</p>
                                 </div>
                                 <div className="flex items-center gap-0.5 shrink-0">
