@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useLocale } from "../context/LocaleContext";
 import { formatShortDatePT } from "../utils/dateUtils";
+import { filterOrdersClientSide } from "../utils/orderFilters";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -168,17 +169,22 @@ export default function Orders() {
   const [qrStatusFilter, setQrStatusFilter] = useState("");
   const [qrServiceFilter, setQrServiceFilter] = useState("");
   const [selectedImage, setSelectedImage] = useState(null);
+
+  const visibleOrders = useMemo(
+    () => filterOrdersClientSide(orders, filters),
+    [orders, filters]
+  );
   
   // ─── Stats ──────────────────────────────────────────────────────────────────
   const stats = useMemo(() => {
-    const total = orders.length;
+    const total = visibleOrders.length;
     const byStatus = {};
     const byService = {};
-    const paid = orders.filter(o => (o.payment_status || "").toLowerCase() === "paid").length;
-    const pending = orders.filter(o => (o.payment_status || "").toLowerCase() !== "paid").length;
-    const totalRevenue = orders.reduce((sum, o) => sum + (parseFloat(o.total_amount) || 0), 0);
+    const paid = visibleOrders.filter(o => (o.payment_status || "").toLowerCase() === "paid").length;
+    const pending = visibleOrders.filter(o => (o.payment_status || "").toLowerCase() !== "paid").length;
+    const totalRevenue = visibleOrders.reduce((sum, o) => sum + (parseFloat(o.total_amount) || 0), 0);
     
-    orders.forEach(o => {
+    visibleOrders.forEach(o => {
       const status = normalizeStatus(o.status) || "unknown";
       byStatus[status] = (byStatus[status] || 0) + 1;
       const service = o.service_type || "unknown";
@@ -186,21 +192,28 @@ export default function Orders() {
     });
     
     return { total, byStatus, byService, paid, pending, totalRevenue };
-  }, [orders]);
+  }, [visibleOrders]);
   
   // ─── Data Fetching ─────────────────────────────────────────────────────────
   const fetchOrders = async () => {
     setLoading(true);
     try {
-      const params = {};
-      if (filters.status !== "all") params.status = filters.status;
-      if (filters.service !== "all") params.service_type = filters.service;
-      if (filters.dateFrom) params.date_from = filters.dateFrom;
-      if (filters.dateTo) params.date_to = filters.dateTo;
-      if (filters.search) params.search = filters.search;
-      
-      const res = await axios.get(`${API}/orders`, { params });
-      setOrders(res.data);
+      const pageSize = 100;
+      let page = 1;
+      let keepLoading = true;
+      const collected = [];
+
+      while (keepLoading) {
+        const res = await axios.get(`${API}/orders`, {
+          params: { page, page_size: pageSize },
+        });
+        const batch = Array.isArray(res.data) ? res.data : [];
+        collected.push(...batch);
+        keepLoading = batch.length === pageSize;
+        page += 1;
+      }
+
+      setOrders(collected);
     } catch (error) {
       toast.error(t("Error loading orders", "Error cargando órdenes"));
     } finally {
@@ -236,7 +249,7 @@ export default function Orders() {
   useEffect(() => {
     fetchOrders();
     fetchCustomers();
-  }, [filters]);
+  }, []);
 
   // ─── Order CRUD ─────────────────────────────────────────────────────────────
   const handleSubmit = async (e) => {
@@ -501,14 +514,14 @@ export default function Orders() {
                 {t("Loading...", "Cargando...")}
               </td>
             </tr>
-          ) : orders.length === 0 ? (
+          ) : visibleOrders.length === 0 ? (
             <tr>
               <td colSpan={8} className="text-center py-8 text-slate-500">
                 {t("No orders found", "No se encontraron órdenes")}
               </td>
             </tr>
           ) : (
-            orders.map((order) => {
+            visibleOrders.map((order) => {
               const status = normalizeStatus(order.status);
               const isPaid = (order.payment_status || "").toLowerCase() === "paid";
               return (
@@ -806,6 +819,22 @@ export default function Orders() {
             </SelectContent>
           </Select>
 
+          <Input
+            type="date"
+            value={filters.dateFrom}
+            onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value })}
+            className="w-[150px]"
+            aria-label={t("From date", "Fecha inicial")}
+          />
+
+          <Input
+            type="date"
+            value={filters.dateTo}
+            onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })}
+            className="w-[150px]"
+            aria-label={t("To date", "Fecha final")}
+          />
+
           <Button variant="outline" size="sm" onClick={clearFilters}>
             <X className="h-4 w-4 mr-1" />
             {t("Clear", "Limpiar")}
@@ -1092,12 +1121,12 @@ export default function Orders() {
                 <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2" />
                 {t("Loading...", "Cargando...")}
               </div>
-            ) : orders.length === 0 ? (
+            ) : visibleOrders.length === 0 ? (
               <div className="col-span-full text-center py-8 text-slate-500">
                 {t("No orders found", "No se encontraron órdenes")}
               </div>
             ) : (
-              orders.map(order => (
+              visibleOrders.map(order => (
                 <OrderCard key={order.id} order={order} />
               ))
             )}
