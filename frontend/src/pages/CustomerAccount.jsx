@@ -62,6 +62,31 @@ const SERVICE_ICONS = {
   wash_fold:       "🧺",
 };
 
+const normalizeServiceType = (value) => safeString(value).trim().toLowerCase().replace(/[\s-]+/g, "_");
+
+const getOrderImageTypes = (order) => {
+  const normalizedType = normalizeServiceType(order?.service_type);
+  const hasPickupPhoto = Boolean(order?.pickup_image_id || order?.pickup_image_url || order?.pickup_image_uploaded_at);
+  const hasDeliveryPhoto = Boolean(order?.delivery_image_id || order?.delivery_image_url || order?.delivery_image_uploaded_at);
+  const hasWeightPhoto = Boolean(
+    order?.weight_image_id ||
+    order?.weight_image_url ||
+    order?.weight_image_uploaded_at ||
+    order?.weight_lbs ||
+    order?.actual_lbs
+  );
+
+  if (normalizedType === "pickup_delivery" || normalizedType === "wash_fold") {
+    return ["pickup", "weight", "delivery"];
+  }
+
+  const types = [];
+  if (hasPickupPhoto) types.push("pickup");
+  if (hasWeightPhoto) types.push("weight");
+  if (hasDeliveryPhoto) types.push("delivery");
+  return types;
+};
+
 // ─── Hooks ─────────────────────────────────────────────────────────────────────
 function useInView(threshold = 0.1) {
   const ref = useRef(null);
@@ -216,19 +241,21 @@ function OrderImageBlock({ orderId, type, token, t }) {
 
   useEffect(() => {
     let revoked = false;
+    let objectUrl = null;
     setLoading(true); setNoImage(false); setBlobUrl(null);
     customerAxios.get(endpoint, { responseType: 'blob' })
       .then(response => {
         if (!revoked) {
           const blob = new Blob([response.data], { type: response.headers['content-type'] || 'image/jpeg' });
-          setBlobUrl(URL.createObjectURL(blob));
+          objectUrl = URL.createObjectURL(blob);
+          setBlobUrl(objectUrl);
         }
       })
       .catch(() => { setNoImage(true); })
       .finally(() => { if (!revoked) setLoading(false); });
     return () => {
       revoked = true;
-      if (blobUrl) URL.revokeObjectURL(blobUrl);
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [orderId, type, endpoint]);
 
@@ -250,21 +277,21 @@ function OrderImageBlock({ orderId, type, token, t }) {
   const cfg = config[type] || config.pickup;
 
   return (
-    <div className={`rounded-xl p-4 border ${cfg.bg}`}>
+    <div className={`rounded-xl p-4 border h-full flex flex-col ${cfg.bg}`}>
       <h4 className={`text-xs font-bold uppercase tracking-wider mb-3 flex items-center gap-2 ${cfg.header}`}>
         <cfg.Icon className="w-3.5 h-3.5" />{cfg.title}
       </h4>
-      {loading && <div className="flex items-center justify-center py-8"><div className="w-6 h-6 rounded-full border-2 border-slate-200 border-t-sky-500 animate-spin" /></div>}
+      {loading && <div className="flex items-center justify-center py-8 flex-1"><div className="w-6 h-6 rounded-full border-2 border-slate-200 border-t-sky-500 animate-spin" /></div>}
       {!loading && noImage && (
-        <div className="text-center py-6 text-slate-400">
+        <div className="text-center py-6 text-slate-400 flex-1 flex flex-col items-center justify-center">
           <cfg.Icon className="w-8 h-8 mx-auto mb-2 opacity-30" />
           <p className="text-sm">{t("No photo yet", "Foto aún no disponible")}</p>
         </div>
       )}
       {!loading && blobUrl && (
-        <div className="space-y-2">
-          <div className="relative rounded-lg overflow-hidden bg-white border border-slate-200">
-            <img src={blobUrl} alt={cfg.title} className="w-full h-auto max-h-72 object-contain cursor-pointer hover:opacity-90 transition-opacity" onClick={openFull} />
+        <div className="space-y-2 flex-1 flex flex-col">
+          <div className="relative rounded-lg overflow-hidden bg-white border border-slate-200 flex-1 min-h-[220px]">
+            <img src={blobUrl} alt={cfg.title} className="w-full h-full object-contain cursor-pointer hover:opacity-90 transition-opacity" onClick={openFull} />
           </div>
           <div className="flex items-center justify-between text-xs text-slate-500">
             <span className="flex items-center gap-1"><CheckCircle className="w-3.5 h-3.5 text-emerald-500" />{cfg.msg}</span>
@@ -623,9 +650,7 @@ const RecurrenceManager = ({ order, t, locale, onUpdate }) => {
 // ORDER DETAIL COMPONENT - USA VALORES DEL BACKEND Y MUESTRA ADDONS
 // ═════════════════════════════════════════════════════════════════════════════
 function OrderDetail({ order, hasMembership, customerToken, t, isOrderCoveredByMembership, canShowPaymentButtons, isPendingVerification, handlePayStripe, payingOrderId, setPaymentModal, handleUploadReceipt, uploadingReceipt }) {
-  const PICKUP_STATUSES   = ["picked_up","processing","ready","out_for_delivery","delivered","completed"];
-  const DELIVERY_STATUSES = ["delivered","completed"];
-  const hasWeightPhoto    = (o) => Boolean(o.weight_lbs || o.actual_lbs || o.weight_image_id);
+  const imageTypes = getOrderImageTypes(order);
   
   const lbs         = Number(order.actual_lbs || 0);
   
@@ -727,15 +752,24 @@ function OrderDetail({ order, hasMembership, customerToken, t, isOrderCoveredByM
         </div>
       )}
 
-      {/* Fotos */}
-      {PICKUP_STATUSES.includes(order.status) && customerToken && (
-        <OrderImageBlock key={`pickup-${order.id}`} orderId={order.id} type="pickup" token={customerToken} t={t} />
-      )}
-      {hasWeightPhoto(order) && customerToken && (
-        <OrderImageBlock key={`weight-${order.id}`} orderId={order.id} type="weight" token={customerToken} t={t} />
-      )}
-      {DELIVERY_STATUSES.includes(order.status) && customerToken && (
-        <OrderImageBlock key={`delivery-${order.id}`} orderId={order.id} type="delivery" token={customerToken} t={t} />
+      {/* Fotos del servicio */}
+      {customerToken && imageTypes.length > 0 && (
+        <div className="rounded-xl border border-slate-100 bg-white p-4">
+          <h4 className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-1.5">
+            <Camera className="w-3 h-3" />{t("Service Photos", "Fotos del servicio")}
+          </h4>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+            {imageTypes.map((type) => (
+              <OrderImageBlock
+                key={`${type}-${order.id}`}
+                orderId={order.id}
+                type={type}
+                token={customerToken}
+                t={t}
+              />
+            ))}
+          </div>
+        </div>
       )}
 
       {/* Delivery info */}
