@@ -161,6 +161,49 @@ function getMarkerColor(status) {
   }
 }
 
+// ─── Utilidades de estado "completada" / "urgente" ────────────────────────────
+// Regla de negocio: por defecto NUNCA mostramos órdenes completadas en los
+// listados operativos (para no saturar al operador con trabajo ya cerrado).
+// Solo aparecen si el usuario busca un término (que puede matchear una
+// completada) o si explícitamente selecciona el filtro "Completadas" / "Todas".
+
+const COMPLETED_STATUS = "completed";
+
+function isOrderCompleted(order) {
+  return (order?.status || "").toString().toLowerCase() === COMPLETED_STATUS;
+}
+
+// Una orden se considera "vencida" si su fecha de pickup ya pasó y todavía
+// no llega a un estado terminal (completada, cancelada o entregada).
+function isOrderOverdue(order) {
+  const s = (order?.status || "").toString().toUpperCase();
+  if (["COMPLETED", "CANCELLED", "DELIVERED"].includes(s)) return false;
+  if (!order?.pickup_date) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const pickupDate = new Date(`${order.pickup_date}T00:00:00`);
+  if (Number.isNaN(pickupDate.getTime())) return false;
+  return pickupDate < today;
+}
+
+// Punto único de verdad para decidir si una orden merece énfasis visual de
+// urgencia: bandera explícita del backend, prioridad alta/urgente, o vencida.
+function isOrderUrgent(order) {
+  if (!order) return false;
+  if (order.is_urgent || order.urgent) return true;
+  if (order.priority && ["urgent", "high"].includes(String(order.priority).toLowerCase())) return true;
+  return isOrderOverdue(order);
+}
+
+// Ordena dejando primero las urgentes, sin alterar el orden relativo del resto.
+function sortByUrgency(orders) {
+  return [...orders].sort((a, b) => {
+    const au = isOrderUrgent(a) ? 1 : 0;
+    const bu = isOrderUrgent(b) ? 1 : 0;
+    return bu - au;
+  });
+}
+
 const isValidEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
 const getToken = () => localStorage.getItem("token") || sessionStorage.getItem("token");
 const isValidPhone = (v) => /^\+?[\d\s\-().]{7,}$/.test(v.trim());
@@ -266,10 +309,15 @@ const OrderRow = ({
   onPDF,
   advanceBtnClass = "bg-slate-900 hover:bg-slate-800",
   showPrint = false,
+  urgent = false,
   t,
 }) => (
   <div
-    className="px-4 py-3.5 bg-white hover:bg-slate-50/50 transition-colors cursor-pointer border-b border-slate-100 last:border-b-0 group"
+    className={`px-4 py-3.5 transition-colors cursor-pointer border-b last:border-b-0 group ${
+      urgent
+        ? "bg-red-50/60 hover:bg-red-50 border-red-100 border-l-4 border-l-red-500"
+        : "bg-white hover:bg-slate-50/50 border-slate-100"
+    }`}
     role="button"
     onClick={() => onRowClick(order)}
     data-testid={`order-row-${order.order_id || "unknown"}`}
@@ -281,6 +329,14 @@ const OrderRow = ({
           <span className="font-mono font-semibold text-slate-800 text-sm">
             {formatOrderNumber(order)}
           </span>
+          {urgent && (
+            <span
+              className="inline-flex items-center gap-1 text-[10px] font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded-full border border-red-300"
+              data-testid={`urgent-badge-${order.order_id}`}
+            >
+              ⚠️ {t("Urgent", "Urgente")}
+            </span>
+          )}
           <span
             className={`px-2 py-0.5 text-[11px] font-semibold rounded-full border ${statusInfo.color}`}
           >
@@ -425,6 +481,41 @@ const ServiceSubTabs = ({ value, onChange, t }) => {
   );
 };
 
+// Chips de filtro Activas / Completadas / Todas + indicador de urgentes
+const OrderViewFilterBar = ({ value, onChange, completedCount, urgentCount, t }) => (
+  <div className="flex flex-wrap items-center gap-2 mb-4">
+    {[
+      { key: "active", label: t("Active", "Activas") },
+      { key: "completed", label: t("Completed", "Completadas") },
+      { key: "all", label: t("All", "Todas") },
+    ].map(({ key, label }) => (
+      <button
+        key={key}
+        onClick={() => onChange(key)}
+        className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+          value === key
+            ? "bg-slate-900 text-white border-slate-900"
+            : "text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50 bg-white"
+        }`}
+        data-testid={`order-view-filter-${key}`}
+      >
+        {label}
+        {key === "completed" && completedCount > 0 && (
+          <span className="ml-1.5 text-[10px] font-bold opacity-80">({completedCount})</span>
+        )}
+      </button>
+    ))}
+    {urgentCount > 0 && (
+      <span
+        className="inline-flex items-center gap-1 text-xs font-bold text-red-700 bg-red-50 border border-red-200 px-3 py-1.5 rounded-full sm:ml-auto"
+        data-testid="urgent-orders-indicator"
+      >
+        ⚠️ {urgentCount} {t("urgent", "urgentes")}
+      </span>
+    )}
+  </div>
+);
+
 export default function OperatorDashboard() {
   const { t } = useLocale();
   const isMobile = useMobile();
@@ -447,6 +538,8 @@ export default function OperatorDashboard() {
   const [pickupImageModal, setPickupImageModal] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [orderFilters, setOrderFilters] = useState({});
+  // 'active' (oculta completadas) | 'completed' (solo completadas) | 'all'
+  const [orderViewFilter, setOrderViewFilter] = useState("active");
 
   const [mapFilters, setMapFilters] = useState({});
   const [filteredMapOrders, setFilteredMapOrders] = useState(null);
@@ -1145,29 +1238,58 @@ export default function OperatorDashboard() {
   const filterOrders = useCallback(
     (orders) => {
       let result = orders;
+      const searchActive = searchTerm.trim().length > 0;
+
+      // Regla: ocultar completadas salvo que el usuario busque algo o filtre
+      // explícitamente por "Completadas" / "Todas".
+      if (orderViewFilter === "completed") {
+        result = result.filter((o) => isOrderCompleted(o));
+      } else if (orderViewFilter === "active" && !searchActive) {
+        result = result.filter((o) => !isOrderCompleted(o));
+      }
+      // orderViewFilter === "all" -> sin filtro adicional por estado
+
       if (orderFilters.date) result = result.filter((o) => o.pickup_date === orderFilters.date);
       if (orderFilters.time_window) result = result.filter((o) => isWithinTimeWindow(o.pickup_time_window, orderFilters.time_window));
-      if (searchTerm.trim()) {
+
+      if (searchActive) {
         const term = searchTerm.toLowerCase();
         result = result.filter((order) => {
           const orderNumber = (order.order_number || "").toLowerCase();
           const customerName = (order.customer_name || "").toLowerCase();
           const address = (order.pickup_address || order.delivery_address || "").toLowerCase();
           const cp = extractCP(address) || "";
-          return orderNumber.includes(term) || customerName.includes(term) || address.includes(term) || cp.includes(term);
+          const statusText = (order.status || "").toLowerCase();
+          return orderNumber.includes(term) || customerName.includes(term) || address.includes(term) || cp.includes(term) || statusText.includes(term);
         });
       }
       return result;
     },
-    [orderFilters, searchTerm, isWithinTimeWindow]
+    [orderFilters, searchTerm, isWithinTimeWindow, orderViewFilter]
   );
 
-  const filteredPickupOrders = useMemo(() => filterOrders(allPickupOrders), [filterOrders, allPickupOrders]);
-  const filteredPickupDeliveries = useMemo(() => filterOrders(allPickupDeliveries), [filterOrders, allPickupDeliveries]);
-  const filteredWashFoldDropoffs = useMemo(() => filterOrders(allWashFoldDropoffs), [filterOrders, allWashFoldDropoffs]);
-  const filteredWashFoldReady = useMemo(() => filterOrders(allWashFoldReady), [filterOrders, allWashFoldReady]);
-  const filteredPickupPaymentQueue = useMemo(() => filterOrders(allPickupPaymentQueue), [filterOrders, allPickupPaymentQueue]);
-  const filteredWashFoldPaymentQueue = useMemo(() => filterOrders(allWashFoldPaymentQueue), [filterOrders, allWashFoldPaymentQueue]);
+  const filteredPickupOrders = useMemo(() => sortByUrgency(filterOrders(allPickupOrders)), [filterOrders, allPickupOrders]);
+  const filteredPickupDeliveries = useMemo(() => sortByUrgency(filterOrders(allPickupDeliveries)), [filterOrders, allPickupDeliveries]);
+  const filteredWashFoldDropoffs = useMemo(() => sortByUrgency(filterOrders(allWashFoldDropoffs)), [filterOrders, allWashFoldDropoffs]);
+  const filteredWashFoldReady = useMemo(() => sortByUrgency(filterOrders(allWashFoldReady)), [filterOrders, allWashFoldReady]);
+  const filteredPickupPaymentQueue = useMemo(() => sortByUrgency(filterOrders(allPickupPaymentQueue)), [filterOrders, allPickupPaymentQueue]);
+  const filteredWashFoldPaymentQueue = useMemo(() => sortByUrgency(filterOrders(allWashFoldPaymentQueue)), [filterOrders, allWashFoldPaymentQueue]);
+
+  // Conteos para los chips de filtro, calculados sobre el sub-tab de servicio activo
+  const currentServiceAllOrders = useMemo(() => {
+    return serviceSubTab === "pickup"
+      ? dedupeOrders([...allPickupOrders, ...allPickupDeliveries])
+      : dedupeOrders([...allWashFoldDropoffs, ...allWashFoldReady]);
+  }, [serviceSubTab, allPickupOrders, allPickupDeliveries, allWashFoldDropoffs, allWashFoldReady]);
+
+  const completedOrdersCount = useMemo(
+    () => currentServiceAllOrders.filter(isOrderCompleted).length,
+    [currentServiceAllOrders]
+  );
+  const urgentOrdersCount = useMemo(
+    () => currentServiceAllOrders.filter((o) => isOrderUrgent(o) && !isOrderCompleted(o)).length,
+    [currentServiceAllOrders]
+  );
 
   const filteredStoreOrders = useMemo(() => storeOrders.filter((order) => {
     if (storePaymentFilter === "unpaid" && order.payment_status === "paid") return false;
@@ -1330,6 +1452,15 @@ export default function OperatorDashboard() {
           {/* FAB móvil reposicionado a la izquierda */}
           <MobileServiceSwitch onSwitch={handleSwitchService} currentService={serviceSubTab} t={t} />
 
+          {/* Chips Activas / Completadas / Todas + indicador de urgentes */}
+          <OrderViewFilterBar
+            value={orderViewFilter}
+            onChange={setOrderViewFilter}
+            completedCount={completedOrdersCount}
+            urgentCount={urgentOrdersCount}
+            t={t}
+          />
+
           {serviceSubTab === "pickup" ? (
             <div className="space-y-4">
 
@@ -1359,6 +1490,7 @@ export default function OperatorDashboard() {
                         onPrint={handlePrintTicket}
                         onPDF={handleDownloadPDF}
                         showPrint
+                        urgent={isOrderUrgent(order)}
                         advanceBtnClass="bg-sky-600 hover:bg-sky-700"
                         t={t}
                       />
@@ -1380,10 +1512,15 @@ export default function OperatorDashboard() {
                 ) : (
                   filteredPickupPaymentQueue.map((order) => {
                     const amount = Number(order.extra_charge ?? order.total_amount ?? 0);
+                    const urgent = isOrderUrgent(order);
                     return (
                       <div
                         key={order.order_id ?? order.order_number}
-                        className="px-4 py-3.5 bg-white hover:bg-slate-50/50 transition-colors cursor-pointer border-b border-slate-100 last:border-b-0"
+                        className={`px-4 py-3.5 transition-colors cursor-pointer border-b last:border-b-0 ${
+                          urgent
+                            ? "bg-red-50/60 hover:bg-red-50 border-red-100 border-l-4 border-l-red-500"
+                            : "bg-white hover:bg-slate-50/50 border-slate-100"
+                        }`}
                         role="button"
                         onClick={() => setSelectedOrder(order)}
                         data-testid={`pos-pickup-payment-${order.order_id || "unknown"}`}
@@ -1392,6 +1529,11 @@ export default function OperatorDashboard() {
                           <div className="flex-1 min-w-0 space-y-1">
                             <div className="flex items-center gap-1.5">
                               <span className="font-mono font-semibold text-slate-800 text-sm">{formatOrderNumber(order)}</span>
+                              {urgent && (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded-full border border-red-300">
+                                  ⚠️ {t("Urgent", "Urgente")}
+                                </span>
+                              )}
                               <span className={`px-2 py-0.5 text-[11px] font-semibold rounded-full border ${getStatusInfo(order.status, order.service_type).color}`}>{getStatusInfo(order.status, order.service_type).label}</span>
                             </div>
                             <p className="text-sm font-semibold text-slate-700 truncate">{safeString(order.customer_name, t("Customer", "Cliente"))}</p>
@@ -1437,6 +1579,7 @@ export default function OperatorDashboard() {
                         onPrint={handlePrintTicket}
                         onPDF={handleDownloadPDF}
                         showPrint
+                        urgent={isOrderUrgent(order)}
                         advanceBtnClass="bg-emerald-600 hover:bg-emerald-700"
                         t={t}
                       />
@@ -1457,7 +1600,7 @@ export default function OperatorDashboard() {
                 ) : (
                   filteredWashFoldDropoffs.map((order) => {
                     const ns = getNextStatus(order.status, order.service_type);
-                    return <OrderRow key={order.order_id ?? order.order_number} order={order} statusInfo={getStatusInfo(order.status, order.service_type)} nextStatus={ns} nextStatusInfo={ns ? getStatusInfo(ns, order.service_type) : null} updating={updating} onRowClick={setSelectedOrder} onAdvance={updateOrderStatus} onPrint={handlePrintTicket} onPDF={handleDownloadPDF} showPrint advanceBtnClass="bg-purple-600 hover:bg-purple-700" t={t} />;
+                    return <OrderRow key={order.order_id ?? order.order_number} order={order} statusInfo={getStatusInfo(order.status, order.service_type)} nextStatus={ns} nextStatusInfo={ns ? getStatusInfo(ns, order.service_type) : null} updating={updating} onRowClick={setSelectedOrder} onAdvance={updateOrderStatus} onPrint={handlePrintTicket} onPDF={handleDownloadPDF} showPrint urgent={isOrderUrgent(order)} advanceBtnClass="bg-purple-600 hover:bg-purple-700" t={t} />;
                   })
                 )}
               </div>
@@ -1470,12 +1613,28 @@ export default function OperatorDashboard() {
                 ) : (
                   filteredWashFoldPaymentQueue.map((order) => {
                     const amount = Number(order.extra_charge ?? order.total_amount ?? 0);
+                    const urgent = isOrderUrgent(order);
                     return (
-                      <div key={order.order_id ?? order.order_number} className="px-4 py-3.5 bg-white hover:bg-slate-50/50 transition-colors cursor-pointer border-b border-slate-100 last:border-b-0" role="button" onClick={() => setSelectedOrder(order)} data-testid={`pos-washfold-payment-${order.order_id || "unknown"}`}>
+                      <div
+                        key={order.order_id ?? order.order_number}
+                        className={`px-4 py-3.5 transition-colors cursor-pointer border-b last:border-b-0 ${
+                          urgent
+                            ? "bg-red-50/60 hover:bg-red-50 border-red-100 border-l-4 border-l-red-500"
+                            : "bg-white hover:bg-slate-50/50 border-slate-100"
+                        }`}
+                        role="button"
+                        onClick={() => setSelectedOrder(order)}
+                        data-testid={`pos-washfold-payment-${order.order_id || "unknown"}`}
+                      >
                         <div className="flex items-center gap-3">
                           <div className="flex-1 min-w-0 space-y-1">
                             <div className="flex items-center gap-1.5">
                               <span className="font-mono font-semibold text-slate-800 text-sm">{formatOrderNumber(order)}</span>
+                              {urgent && (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded-full border border-red-300">
+                                  ⚠️ {t("Urgent", "Urgente")}
+                                </span>
+                              )}
                               <span className={`px-2 py-0.5 text-[11px] font-semibold rounded-full border ${getStatusInfo(order.status, order.service_type).color}`}>{getStatusInfo(order.status, order.service_type).label}</span>
                             </div>
                             <p className="text-sm font-semibold text-slate-700 truncate">{safeString(order.customer_name, t("Customer", "Cliente"))}</p>
@@ -1501,7 +1660,7 @@ export default function OperatorDashboard() {
                 ) : (
                   filteredWashFoldReady.map((order) => {
                     const ns = getNextStatus(order.status, order.service_type);
-                    return <OrderRow key={order.order_id ?? order.order_number} order={order} statusInfo={getStatusInfo(order.status, order.service_type)} nextStatus={ns} nextStatusInfo={ns ? getStatusInfo(ns, order.service_type) : null} updating={updating} onRowClick={setSelectedOrder} onAdvance={updateOrderStatus} onPrint={handlePrintTicket} onPDF={handleDownloadPDF} showPrint advanceBtnClass="bg-emerald-600 hover:bg-emerald-700" t={t} />;
+                    return <OrderRow key={order.order_id ?? order.order_number} order={order} statusInfo={getStatusInfo(order.status, order.service_type)} nextStatus={ns} nextStatusInfo={ns ? getStatusInfo(ns, order.service_type) : null} updating={updating} onRowClick={setSelectedOrder} onAdvance={updateOrderStatus} onPrint={handlePrintTicket} onPDF={handleDownloadPDF} showPrint urgent={isOrderUrgent(order)} advanceBtnClass="bg-emerald-600 hover:bg-emerald-700" t={t} />;
                   })
                 )}
               </div>
