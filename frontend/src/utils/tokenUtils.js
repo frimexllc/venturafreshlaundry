@@ -1,6 +1,7 @@
 const ADMIN_TOKEN_KEY = "token";
 const ADMIN_USER_KEY = "user";
 const CUSTOMER_TOKEN_KEY = "customer_token";
+const CUSTOMER_DATA_KEY = "customer_data";
 
 // ── Admin token ───────────────────────────────────────────────────────
 export const getAdminToken = () =>
@@ -41,9 +42,32 @@ export const setCustomerToken = (token, remember = true) => {
   storage.setItem(CUSTOMER_TOKEN_KEY, token);
 };
 
+export const setCustomerData = (customer, remember = true) => {
+  const storage = remember ? localStorage : sessionStorage;
+  if (customer) storage.setItem(CUSTOMER_DATA_KEY, JSON.stringify(customer));
+};
+
+export const getCustomerData = () => {
+  const raw =
+    localStorage.getItem(CUSTOMER_DATA_KEY) ||
+    sessionStorage.getItem(CUSTOMER_DATA_KEY);
+
+  if (!raw) return null;
+
+  try {
+    return JSON.parse(raw);
+  } catch {
+    localStorage.removeItem(CUSTOMER_DATA_KEY);
+    sessionStorage.removeItem(CUSTOMER_DATA_KEY);
+    return null;
+  }
+};
+
 export const clearCustomerSession = () => {
   localStorage.removeItem(CUSTOMER_TOKEN_KEY);
   sessionStorage.removeItem(CUSTOMER_TOKEN_KEY);
+  localStorage.removeItem(CUSTOMER_DATA_KEY);
+  sessionStorage.removeItem(CUSTOMER_DATA_KEY);
 };
 
 // ── Helper: token realmente expirado o inválido (no solo ausente) ──────

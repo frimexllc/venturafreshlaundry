@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import ReactDOM from "react-dom";
 import { useNavigate, Link } from "react-router-dom";
 import customerAxios from "../api/customerAxios";
+import { clearCustomerSession, getCustomerData, getCustomerToken } from "../utils/tokenUtils";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import {
@@ -68,6 +69,10 @@ function useInView(threshold = 0.1) {
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
+    if (typeof window === "undefined" || typeof window.IntersectionObserver === "undefined") {
+      setV(true);
+      return;
+    }
     const obs = new IntersectionObserver(([e]) => { if (e.isIntersecting) { setV(true); obs.disconnect(); } }, { threshold });
     obs.observe(el);
     return () => obs.disconnect();
@@ -994,8 +999,7 @@ export default function CustomerAccount() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem("customer_token");
-    localStorage.removeItem("customer_data");
+    clearCustomerSession();
     toast.success(t("Signed out successfully", "Sesión cerrada correctamente"));
     navigate("/account/login");
   };
@@ -1172,11 +1176,11 @@ export default function CustomerAccount() {
   }, []);
 
   useEffect(() => {
-    const token = localStorage.getItem("customer_token");
-    const cd    = localStorage.getItem("customer_data");
+    const token = getCustomerToken();
+    const cd = getCustomerData();
     if (!token) { navigate("/account/login"); return; }
     setCustomerToken(token);
-    if (cd) setCustomer(JSON.parse(cd));
+    if (cd) setCustomer(cd);
 
     const params = new URLSearchParams(window.location.search);
 
@@ -1208,7 +1212,12 @@ export default function CustomerAccount() {
     fetchMembershipStatus().then(hasMem => { if (hasMem) { fetchPreferences(); fetchMembershipUsage(); } });
     customerAxios.get("/customer/me")
       .then(res => { if (res.data) { setCustomer(res.data); localStorage.setItem("customer_data", JSON.stringify(res.data)); } })
-      .catch(() => {});
+      .catch((err) => {
+        if (err?.response?.status === 401) {
+          clearCustomerSession();
+          navigate("/account/login", { replace: true });
+        }
+      });
   }, [navigate]);
 
   useEffect(() => { setOrdersPage(1); }, [orderFilter, ordersSearch]);

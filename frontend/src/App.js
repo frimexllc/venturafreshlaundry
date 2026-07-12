@@ -62,6 +62,7 @@ import PaymentSuccessPage from "./pages/PaymentSuccessPage";
 import CustomerPaymentPage from "./pages/CustomerPaymentPage";
 import RefundForm from "./pages/RefundForm";
 import SuggestionForm from "./pages/SuggestionForm";
+import { getCustomerToken } from "./utils/tokenUtils";
 // 🔥 NUEVA IMPORTACIÓN
 import Survey from "./pages/Survey";
 
@@ -125,7 +126,7 @@ const AdminRoute = ({ children }) => {
 };
 
 const CustomerProtectedRoute = ({ children }) => {
-  const token = localStorage.getItem("customer_token");
+  const token = getCustomerToken();
   if (!token) {
     const currentPath = window.location.pathname;
     return <Navigate to={`/account/login?redirect=${encodeURIComponent(currentPath)}`} replace />;
