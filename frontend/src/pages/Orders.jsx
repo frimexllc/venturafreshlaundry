@@ -96,6 +96,8 @@ const EVIDENCE_IMAGE_LABELS = {
   delivery: { en: "Delivery", es: "Entrega" },
 };
 
+const getAdminToken = () => localStorage.getItem("token") || sessionStorage.getItem("token");
+
 const emptyForm = {
   customer_id: "",
   service_type: "pickup_delivery",
@@ -1610,7 +1612,7 @@ export default function Orders() {
                 {/* ── Evidence Images ── */}
                 {(() => {
                   const evidenceTypes = getOrderEvidenceTypes(viewOrder);
-                  const token = localStorage.getItem("token");
+                  const token = getAdminToken();
                   if (!evidenceTypes.length || !token) return null;
                   return (
                     <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">

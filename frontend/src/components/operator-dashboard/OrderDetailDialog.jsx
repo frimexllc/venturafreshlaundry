@@ -35,7 +35,7 @@ const parseLocalDate = (ds) => {
 };
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || "";
-const getToken = () => localStorage.getItem("token");
+const getToken = () => localStorage.getItem("token") || sessionStorage.getItem("token");
 const authHdrs = () => ({
   "Content-Type": "application/json",
   Authorization: `Bearer ${getToken()}`,
