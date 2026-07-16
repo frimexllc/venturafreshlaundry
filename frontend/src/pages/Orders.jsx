@@ -6,7 +6,7 @@ import {
   Download, Loader2, ZoomIn, Search,
   LayoutGrid, List, Clock, Star, Package, RefreshCw,
   ChevronDown, ChevronUp, ChevronLeft, ChevronRight, X,
-  User, MapPin, CreditCard, Banknote, SlidersHorizontal, Inbox
+  User, MapPin, CreditCard, Banknote, SlidersHorizontal, Inbox, Camera
 } from "lucide-react";
 import { useLocale } from "../context/LocaleContext";
 import { formatShortDatePT } from "../utils/dateUtils";
@@ -90,6 +90,12 @@ const DEFAULT_FILTERS = {
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100];
 
+const EVIDENCE_IMAGE_LABELS = {
+  pickup: { en: "Pickup", es: "Recogida" },
+  weight: { en: "Weight", es: "Peso" },
+  delivery: { en: "Delivery", es: "Entrega" },
+};
+
 const emptyForm = {
   customer_id: "",
   service_type: "pickup_delivery",
@@ -136,6 +142,91 @@ const buildDateSlug = (dateStr) => {
   if (isNaN(d.getTime())) return new Date().toISOString().slice(0, 10).replace(/-/g, "");
   return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
 };
+
+const normalizeServiceTypeKey = (value) =>
+  (value || "").toString().trim().toLowerCase().replace(/[\s-]+/g, "_");
+
+const getOrderEvidenceTypes = (order) => {
+  const serviceType = normalizeServiceTypeKey(order?.service_type);
+  if (serviceType === "pickup_delivery" || serviceType === "wash_fold") {
+    return ["pickup", "weight", "delivery"];
+  }
+  return ["pickup", "weight", "delivery"].filter((type) => {
+    if (type === "pickup") return Boolean(order?.pickup_image_id || order?.pickup_image_url || order?.pickup_image_data);
+    if (type === "weight") return Boolean(order?.weight_image_id || order?.weight_image_url || order?.weight_image_data);
+    return Boolean(order?.delivery_image_id || order?.delivery_image_url || order?.delivery_image_data);
+  });
+};
+
+function EvidenceImageThumb({ orderId, type, label, onOpen, token }) {
+  const [blobUrl, setBlobUrl] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [missing, setMissing] = useState(false);
+
+  useEffect(() => {
+    if (!orderId || !token) return undefined;
+    let objectUrl = null;
+    let cancelled = false;
+
+    setLoading(true);
+    setMissing(false);
+    setBlobUrl(null);
+
+    const load = async () => {
+      try {
+        const response = await axios.get(`${API}/driver/orders/${orderId}/${type}-image/view`, {
+          responseType: "blob",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        objectUrl = URL.createObjectURL(response.data);
+        if (!cancelled) setBlobUrl(objectUrl);
+      } catch {
+        if (!cancelled) setMissing(true);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    load();
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [orderId, type, token]);
+
+  return (
+    <div
+      className={`relative rounded-xl overflow-hidden border transition-all ${
+        blobUrl ? "cursor-pointer border-slate-200 bg-white hover:shadow-md" : "border-slate-100 bg-slate-50"
+      }`}
+      onClick={() => blobUrl && onOpen?.({ url: blobUrl, label })}
+    >
+      <div className="h-32">
+        {loading ? (
+          <div className="w-full h-full flex items-center justify-center text-slate-400">
+            <Loader2 className="w-5 h-5 animate-spin" />
+          </div>
+        ) : blobUrl ? (
+          <>
+            <img src={blobUrl} alt={label} className="w-full h-full object-cover" />
+            <div className="absolute inset-0 bg-black/40 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center">
+              <ZoomIn className="w-8 h-8 text-white" />
+            </div>
+          </>
+        ) : (
+          <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-slate-400">
+            <Camera className="w-6 h-6 opacity-40" />
+            <span className="text-[11px]">{missing ? "No image yet" : "Unavailable"}</span>
+          </div>
+        )}
+      </div>
+      <div className="px-2.5 py-2 border-t border-slate-100 bg-white/90">
+        <p className="text-xs text-slate-500">{label}</p>
+      </div>
+    </div>
+  );
+}
 
 const getLocalDate = () => {
   const d = new Date();
@@ -1517,72 +1608,30 @@ export default function Orders() {
                 </div>
 
                 {/* ── Evidence Images ── */}
-                {(viewOrder.pickup_image_data || viewOrder.delivery_image_data || viewOrder.weight_image_data) && (
-                  <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-                    <h3 className="font-semibold text-slate-700 mb-3">
-                      {t("Evidence Images", "Imágenes de evidencia")}
-                    </h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                      {viewOrder.pickup_image_data && (
-                        <div
-                          className="cursor-pointer group relative"
-                          onClick={() => setSelectedImage({
-                            url: `data:image/jpeg;base64,${viewOrder.pickup_image_data}`,
-                            label: t("Pickup", "Recogida")
-                          })}
-                        >
-                          <img
-                            src={`data:image/jpeg;base64,${viewOrder.pickup_image_data}`}
-                            alt="Pickup"
-                            className="w-full h-32 object-cover rounded-lg"
+                {(() => {
+                  const evidenceTypes = getOrderEvidenceTypes(viewOrder);
+                  const token = localStorage.getItem("token");
+                  if (!evidenceTypes.length || !token) return null;
+                  return (
+                    <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                      <h3 className="font-semibold text-slate-700 mb-3">
+                        {t("Evidence Images", "Imágenes de evidencia")}
+                      </h3>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        {evidenceTypes.map((type) => (
+                          <EvidenceImageThumb
+                            key={`${viewOrder.id}-${type}`}
+                            orderId={viewOrder.id}
+                            type={type}
+                            token={token}
+                            label={locale === "es" ? EVIDENCE_IMAGE_LABELS[type].es : EVIDENCE_IMAGE_LABELS[type].en}
+                            onOpen={setSelectedImage}
                           />
-                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-lg">
-                            <ZoomIn className="w-8 h-8 text-white" />
-                          </div>
-                          <p className="text-xs text-slate-500 mt-1">{t("Pickup", "Recogida")}</p>
-                        </div>
-                      )}
-                      {viewOrder.delivery_image_data && (
-                        <div
-                          className="cursor-pointer group relative"
-                          onClick={() => setSelectedImage({
-                            url: `data:image/jpeg;base64,${viewOrder.delivery_image_data}`,
-                            label: t("Delivery", "Entrega")
-                          })}
-                        >
-                          <img
-                            src={`data:image/jpeg;base64,${viewOrder.delivery_image_data}`}
-                            alt="Delivery"
-                            className="w-full h-32 object-cover rounded-lg"
-                          />
-                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-lg">
-                            <ZoomIn className="w-8 h-8 text-white" />
-                          </div>
-                          <p className="text-xs text-slate-500 mt-1">{t("Delivery", "Entrega")}</p>
-                        </div>
-                      )}
-                      {viewOrder.weight_image_data && (
-                        <div
-                          className="cursor-pointer group relative"
-                          onClick={() => setSelectedImage({
-                            url: `data:image/jpeg;base64,${viewOrder.weight_image_data}`,
-                            label: t("Weight", "Peso")
-                          })}
-                        >
-                          <img
-                            src={`data:image/jpeg;base64,${viewOrder.weight_image_data}`}
-                            alt="Weight"
-                            className="w-full h-32 object-cover rounded-lg"
-                          />
-                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-lg">
-                            <ZoomIn className="w-8 h-8 text-white" />
-                          </div>
-                          <p className="text-xs text-slate-500 mt-1">{t("Weight", "Peso")}</p>
-                        </div>
-                      )}
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
               </>
             ) : null}
           </div>

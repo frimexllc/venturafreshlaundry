@@ -20,7 +20,7 @@ import {
 import { toast } from "sonner";
 import {
   safeString, formatCurrency, formatOrderNumber,
-  isWashFoldService, calcDeliveryFee,
+  isWashFoldService, calcDeliveryFee, normalizeServiceType,
   buildDisplayBreakdown,
 } from "./utils";
 import { useLocale } from "../../context/LocaleContext";
@@ -57,6 +57,28 @@ const handle403 = (res) => {
     return true;
   }
   return false;
+};
+
+const EVIDENCE_IMAGE_CONFIG = {
+  pickup: { label: { en: "Pickup", es: "Recogida" } },
+  weight: { label: { en: "Weight", es: "Peso" } },
+  delivery: { label: { en: "Delivery", es: "Entrega" } },
+};
+
+const buildEvidenceImageUrl = (orderId, type) =>
+  `${API_URL}/api/driver/orders/${orderId}/${type}-image/view`;
+
+const getEvidenceImageTypes = (order) => {
+  const serviceType = normalizeServiceType(order?.service_type);
+  if (serviceType === "pickup_delivery" || serviceType === "wash_fold") {
+    return ["pickup", "weight", "delivery"];
+  }
+
+  return ["pickup", "weight", "delivery"].filter((type) => {
+    if (type === "pickup") return Boolean(order?.pickup_image_id || order?.pickup_image_url || order?.pickup_image_data);
+    if (type === "weight") return Boolean(order?.weight_image_id || order?.weight_image_url || order?.weight_image_data);
+    return Boolean(order?.delivery_image_id || order?.delivery_image_url || order?.delivery_image_data);
+  });
 };
 
 const normalizePayMethod = (method) => {
@@ -416,6 +438,78 @@ function ReceiptCard({ receipt, onValidate, validating }) {
             {validating === receipt.id ? <RefreshCw className="w-3 h-3 animate-spin" /> : t("Validate", "Validar")}
           </Button>
         )}
+      </div>
+    </div>
+  );
+}
+
+function EvidenceImageThumb({ orderId, type, label, onOpen }) {
+  const [blobUrl, setBlobUrl] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
+
+  useEffect(() => {
+    if (!orderId) return undefined;
+    let objectUrl = null;
+    let cancelled = false;
+
+    setLoading(true);
+    setHasError(false);
+    setBlobUrl(null);
+
+    const load = async () => {
+      try {
+        const res = await fetch(buildEvidenceImageUrl(orderId, type), {
+          headers: { Authorization: `Bearer ${getToken()}` },
+        });
+        if (handle401(res) || handle403(res)) return;
+        if (!res.ok) throw new Error(`image ${type} not available`);
+        const blob = await res.blob();
+        objectUrl = URL.createObjectURL(blob);
+        if (!cancelled) setBlobUrl(objectUrl);
+      } catch {
+        if (!cancelled) setHasError(true);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    load();
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [orderId, type]);
+
+  return (
+    <div
+      className={`relative rounded-xl overflow-hidden border shadow-sm transition-all ${
+        blobUrl ? "cursor-pointer border-slate-200 bg-white hover:shadow-md" : "border-slate-100 bg-slate-50"
+      }`}
+      onClick={() => blobUrl && onOpen?.(blobUrl)}
+    >
+      <div className="h-28">
+        {loading ? (
+          <div className="w-full h-full flex items-center justify-center text-slate-400">
+            <RefreshCw className="w-5 h-5 animate-spin" />
+          </div>
+        ) : blobUrl ? (
+          <>
+            <img src={blobUrl} alt={label} className="w-full h-full object-cover" />
+            <div className="absolute inset-0 bg-black/35 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center">
+              <ZoomIn className="w-5 h-5 text-white" />
+            </div>
+          </>
+        ) : (
+          <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-slate-400">
+            <Camera className="w-6 h-6 opacity-40" />
+            <span className="text-[11px]">{hasError ? "No image yet" : "Unavailable"}</span>
+          </div>
+        )}
+      </div>
+      <div className="px-2.5 py-2 border-t border-slate-100 bg-white/90">
+        <p className="text-[11px] font-semibold text-slate-700 truncate">{label}</p>
       </div>
     </div>
   );
@@ -1227,10 +1321,12 @@ const handleAddAddon = (item) => {
 
   const renderEvidenceSection = () => {
     if (!localOrder) return null;
-    const images = [];
-    if (localOrder.pickup_image_data)   images.push({ key: "pickup",   label: t("Pickup",   "Recogida"), url: `data:image/jpeg;base64,${localOrder.pickup_image_data}` });
-    if (localOrder.delivery_image_data) images.push({ key: "delivery", label: t("Delivery", "Entrega"),  url: `data:image/jpeg;base64,${localOrder.delivery_image_data}` });
-    if (localOrder.weight_image_data)   images.push({ key: "weight",   label: t("Weight",   "Peso"),     url: `data:image/jpeg;base64,${localOrder.weight_image_data}` });
+    const imageTypes = getEvidenceImageTypes(localOrder);
+    const images = imageTypes.map((key) => ({
+      key,
+      label: locale === "es" ? EVIDENCE_IMAGE_CONFIG[key].label.es : EVIDENCE_IMAGE_CONFIG[key].label.en,
+      url: buildEvidenceImageUrl(localOrder.id, key),
+    }));
     return (
       <Section
         icon={<Camera className="w-4 h-4" />}
@@ -1248,20 +1344,14 @@ const handleAddAddon = (item) => {
           </div>
         ) : (
           <div className="grid grid-cols-3 gap-2">
-            {images.map((img, idx) => (
-              <div
+            {images.map((img) => (
+              <EvidenceImageThumb
                 key={img.key}
-                className="relative group cursor-pointer rounded-xl overflow-hidden border border-slate-200 bg-white shadow-sm hover:shadow-md transition-all"
-                onClick={() => openImageCarousel(images, idx)}
-              >
-                <img src={img.url} alt={img.label} className="w-full h-24 object-cover" />
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                  <ZoomIn className="w-5 h-5 text-white" />
-                </div>
-                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-1.5">
-                  <p className="text-[9px] font-semibold text-white truncate">{img.label}</p>
-                </div>
-              </div>
+                orderId={localOrder.id}
+                type={img.key}
+                label={img.label}
+                onOpen={(blobUrl) => openImageCarousel([{ ...img, url: blobUrl }], 0)}
+              />
             ))}
           </div>
         )}
