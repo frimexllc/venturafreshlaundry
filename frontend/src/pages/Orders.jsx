@@ -160,6 +160,14 @@ const getOrderEvidenceTypes = (order) => {
   });
 };
 
+const shouldShowEvidenceSection = (order) => {
+  const serviceType = normalizeServiceTypeKey(order?.service_type);
+  if (serviceType === "pickup_delivery" || serviceType === "wash_fold") {
+    return true;
+  }
+  return getOrderEvidenceTypes(order).length > 0;
+};
+
 function EvidenceImageThumb({ orderId, type, label, onOpen, token }) {
   const [blobUrl, setBlobUrl] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -1613,7 +1621,7 @@ export default function Orders() {
                 {(() => {
                   const evidenceTypes = getOrderEvidenceTypes(viewOrder);
                   const token = getAdminToken();
-                  if (!evidenceTypes.length || !token) return null;
+                  if (!shouldShowEvidenceSection(viewOrder) || !token) return null;
                   return (
                     <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
                       <h3 className="font-semibold text-slate-700 mb-3">
