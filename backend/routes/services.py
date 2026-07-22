@@ -464,6 +464,519 @@ def _get_next_renewal_date(start_date: datetime) -> datetime:
     return start_date + timedelta(days=30)
 
 
+def _parse_membership_datetime(value) -> Optional[datetime]:
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        try:
+            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except Exception:
+            return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _get_customer_membership_due_date(customer: dict) -> Optional[datetime]:
+    start_date = _parse_membership_datetime(customer.get("membership_start_date"))
+    if not start_date:
+        return None
+    return _get_next_renewal_date(start_date)
+
+
+async def _resolve_membership_payment_method(customer: dict) -> tuple[Optional[str], Optional[str]]:
+    stripe_customer_id = customer.get("stripe_customer_id")
+    payment_method_id = customer.get("stripe_payment_method_id")
+
+    if not stripe_customer_id or not STRIPE_AVAILABLE or not STRIPE_API_KEY:
+        return stripe_customer_id, payment_method_id
+
+    if payment_method_id:
+        return stripe_customer_id, payment_method_id
+
+    try:
+        stripe_customer = stripe.Customer.retrieve(stripe_customer_id)
+        payment_method_id = stripe_customer.get("invoice_settings", {}).get("default_payment_method")
+
+        if not payment_method_id:
+            payment_methods = stripe.PaymentMethod.list(
+                customer=stripe_customer_id,
+                type="card",
+                limit=1,
+            )
+            if payment_methods.data:
+                payment_method_id = payment_methods.data[0].id
+
+        if payment_method_id:
+            now_iso = datetime.now(timezone.utc).isoformat()
+            await db.customers.update_one(
+                {"id": customer["id"]},
+                {
+                    "$set": {
+                        "stripe_payment_method_id": payment_method_id,
+                        "updated_at": now_iso,
+                    }
+                },
+            )
+            customer["stripe_payment_method_id"] = payment_method_id
+        return stripe_customer_id, payment_method_id
+    except stripe.error.StripeError as exc:
+        logger.error(f"Could not resolve saved payment method for {customer.get('id')}: {exc}")
+        return stripe_customer_id, None
+
+
+async def _record_membership_transaction(
+    *,
+    customer_id: str,
+    subtotal: float,
+    stripe_fee: float,
+    amount: float,
+    plan_name: str,
+    payment_status: str,
+    payment_type: str,
+    initiated_by: str,
+    created_at: str,
+    stripe_payment_intent_id: Optional[str] = None,
+    metadata: Optional[dict] = None,
+    error_message: Optional[str] = None,
+) -> None:
+    await db.payment_transactions.insert_one({
+        "id": str(uuid.uuid4()),
+        "customer_id": customer_id,
+        "subtotal": subtotal,
+        "stripe_fee": stripe_fee,
+        "amount": amount,
+        "currency": "usd",
+        "payment_type": payment_type,
+        "plan_name": plan_name,
+        "stripe_payment_intent_id": stripe_payment_intent_id,
+        "payment_status": payment_status,
+        "initiated_by": initiated_by,
+        "metadata": metadata or {},
+        "error_message": error_message,
+        "created_at": created_at,
+    })
+
+
+async def _process_membership_renewal(
+    *,
+    customer: dict,
+    plan_id: Optional[str] = None,
+    initiated_by: str = "manual",
+    require_due: bool = False,
+) -> dict:
+    if not STRIPE_AVAILABLE or not STRIPE_API_KEY:
+        return {
+            "success": False,
+            "code": "stripe_not_configured",
+            "error": "Stripe payment not configured",
+        }
+
+    customer_id = customer["id"]
+    current_plan = customer.get("membership_plan")
+    current_status = (customer.get("membership_status") or "").lower()
+
+    if current_status != "active":
+        return {
+            "success": False,
+            "code": "membership_not_active",
+            "error": "No active membership to renew",
+        }
+
+    due_date = _get_customer_membership_due_date(customer)
+    if require_due and due_date and due_date > datetime.now(timezone.utc):
+        return {
+            "success": False,
+            "skipped": True,
+            "code": "not_due_yet",
+            "message": "Membership is not due for renewal yet",
+            "due_date": due_date.isoformat(),
+        }
+
+    usage = None
+    if plan_id:
+        new_plan_doc = await db.membership_plans.find_one({"id": plan_id}, {"_id": 0})
+        if not new_plan_doc:
+            return {
+                "success": False,
+                "code": "plan_not_found",
+                "error": "Plan not found",
+            }
+        new_plan_name = new_plan_doc["name"]
+        is_plan_change = True
+        usage = await get_customer_cycle_usage(customer_id)
+        days_remaining = usage.get("days_remaining", 0) if usage else 0
+        subtotal = _calculate_prorated_amount(current_plan, new_plan_name, days_remaining)
+        if subtotal <= 0:
+            subtotal = _get_plan_price(new_plan_name)
+    else:
+        new_plan_name = current_plan
+        is_plan_change = False
+        subtotal = _get_plan_price(new_plan_name)
+
+    amount_to_charge = _calculate_total_with_stripe_fee(subtotal)
+    stripe_fee = round(amount_to_charge - subtotal, 2)
+
+    stripe_customer_id, payment_method_id = await _resolve_membership_payment_method(customer)
+    if not payment_method_id or not stripe_customer_id:
+        now_iso = datetime.now(timezone.utc).isoformat()
+        await db.customers.update_one(
+            {"id": customer_id},
+            {
+                "$set": {
+                    "membership_last_renewal_attempt_at": now_iso,
+                    "membership_last_renewal_status": "failed",
+                    "membership_last_renewal_error": "No saved payment method",
+                    "membership_payment_method_required": True,
+                    "updated_at": now_iso,
+                }
+            },
+        )
+        if require_due:
+            await _record_membership_transaction(
+                customer_id=customer_id,
+                subtotal=subtotal,
+                stripe_fee=stripe_fee,
+                amount=amount_to_charge,
+                plan_name=new_plan_name,
+                payment_status="failed",
+                payment_type="membership_renewal" if not is_plan_change else "plan_change",
+                initiated_by=initiated_by,
+                created_at=now_iso,
+                metadata={
+                    "automatic": require_due,
+                    "previous_plan": current_plan if is_plan_change else None,
+                },
+                error_message="No saved payment method",
+            )
+        return {
+            "success": False,
+            "requires_payment_method": True,
+            "message": "Please add a payment method first",
+            "plan_name": new_plan_name,
+            "subtotal": subtotal,
+            "total_with_fee": amount_to_charge,
+        }
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    if subtotal <= 0:
+        await db.customers.update_one(
+            {"id": customer_id},
+            {
+                "$set": {
+                    "membership_plan": new_plan_name,
+                    "membership_start_date": now_iso,
+                    "membership_status": "active",
+                    "auto_renew": True,
+                    "cycle_lbs_used": 0,
+                    "membership_last_renewed_at": now_iso,
+                    "membership_last_renewal_attempt_at": now_iso,
+                    "membership_last_renewal_status": "succeeded",
+                    "membership_last_renewal_error": None,
+                    "membership_payment_method_required": False,
+                    "updated_at": now_iso,
+                }
+            },
+        )
+
+        await _send_membership_renewal_email(customer, new_plan_name, 0, is_plan_change)
+
+        return {
+            "success": True,
+            "message": f"Plan changed to {new_plan_name} (no additional charge)",
+            "amount_charged": 0,
+            "plan_name": new_plan_name,
+            "is_plan_change": True,
+            "new_start_date": now_iso,
+        }
+
+    try:
+        payment_intent = stripe.PaymentIntent.create(
+            amount=int(amount_to_charge * 100),
+            currency="usd",
+            customer=stripe_customer_id,
+            payment_method=payment_method_id,
+            off_session=True,
+            confirm=True,
+            description=f"Membership {'renewal' if not is_plan_change else f'change to {new_plan_name}'}",
+            metadata={
+                "customer_id": customer_id,
+                "plan_name": new_plan_name,
+                "type": "membership_renewal" if not is_plan_change else "plan_change",
+                "previous_plan": current_plan if is_plan_change else "",
+                "subtotal": str(subtotal),
+                "stripe_fee": str(stripe_fee),
+                "total": str(amount_to_charge),
+                "initiated_by": initiated_by,
+            },
+            receipt_email=customer.get("email"),
+        )
+
+        if payment_intent.status != "succeeded":
+            await db.customers.update_one(
+                {"id": customer_id},
+                {
+                    "$set": {
+                        "membership_last_renewal_attempt_at": now_iso,
+                        "membership_last_renewal_status": "failed",
+                        "membership_last_renewal_error": f"Payment failed: {payment_intent.status}",
+                        "membership_payment_method_required": True,
+                        "updated_at": now_iso,
+                    }
+                },
+            )
+            await _record_membership_transaction(
+                customer_id=customer_id,
+                subtotal=subtotal,
+                stripe_fee=stripe_fee,
+                amount=amount_to_charge,
+                plan_name=new_plan_name,
+                payment_status=payment_intent.status,
+                payment_type="membership_renewal" if not is_plan_change else "plan_change",
+                initiated_by=initiated_by,
+                created_at=now_iso,
+                stripe_payment_intent_id=payment_intent.id,
+                metadata={
+                    "automatic": require_due,
+                    "previous_plan": current_plan if is_plan_change else None,
+                    "days_remaining": usage.get("days_remaining") if usage else None,
+                },
+                error_message=f"Payment failed: {payment_intent.status}",
+            )
+            return {
+                "success": False,
+                "error": f"Payment failed: {payment_intent.status}",
+                "requires_payment_method": True,
+                "payment_intent_id": payment_intent.id,
+            }
+
+        await db.customers.update_one(
+            {"id": customer_id},
+            {
+                "$set": {
+                    "membership_plan": new_plan_name,
+                    "membership_start_date": now_iso,
+                    "membership_status": "active",
+                    "auto_renew": True,
+                    "cycle_lbs_used": 0,
+                    "membership_last_renewed_at": now_iso,
+                    "membership_last_renewal_attempt_at": now_iso,
+                    "membership_last_renewal_status": "succeeded",
+                    "membership_last_renewal_error": None,
+                    "membership_payment_method_required": False,
+                    "updated_at": now_iso,
+                }
+            },
+        )
+
+        await _record_membership_transaction(
+            customer_id=customer_id,
+            subtotal=subtotal,
+            stripe_fee=stripe_fee,
+            amount=amount_to_charge,
+            plan_name=new_plan_name,
+            payment_status="succeeded",
+            payment_type="membership_renewal" if not is_plan_change else "plan_change",
+            initiated_by=initiated_by,
+            created_at=now_iso,
+            stripe_payment_intent_id=payment_intent.id,
+            metadata={
+                "automatic": require_due,
+                "previous_plan": current_plan if is_plan_change else None,
+                "days_remaining": usage.get("days_remaining") if usage else None,
+            },
+        )
+
+        await _send_membership_renewal_email(
+            customer,
+            new_plan_name,
+            amount_to_charge,
+            is_plan_change,
+            subtotal,
+            stripe_fee,
+        )
+
+        return {
+            "success": True,
+            "message": f"{'Plan changed to' if is_plan_change else 'Membership renewed'} {new_plan_name}",
+            "subtotal": subtotal,
+            "stripe_fee": stripe_fee,
+            "amount_charged": amount_to_charge,
+            "plan_name": new_plan_name,
+            "is_plan_change": is_plan_change,
+            "new_start_date": now_iso,
+            "payment_intent_id": payment_intent.id,
+        }
+    except stripe.error.CardError as e:
+        error_message = e.error.message
+        logger.error(f"Stripe card error for renewal: {error_message}")
+        await db.customers.update_one(
+            {"id": customer_id},
+            {
+                "$set": {
+                    "membership_last_renewal_attempt_at": now_iso,
+                    "membership_last_renewal_status": "failed",
+                    "membership_last_renewal_error": error_message,
+                    "membership_payment_method_required": True,
+                    "updated_at": now_iso,
+                }
+            },
+        )
+        await _record_membership_transaction(
+            customer_id=customer_id,
+            subtotal=subtotal,
+            stripe_fee=stripe_fee,
+            amount=amount_to_charge,
+            plan_name=new_plan_name,
+            payment_status="failed",
+            payment_type="membership_renewal" if not is_plan_change else "plan_change",
+            initiated_by=initiated_by,
+            created_at=now_iso,
+            metadata={
+                "automatic": require_due,
+                "previous_plan": current_plan if is_plan_change else None,
+                "days_remaining": usage.get("days_remaining") if usage else None,
+                "decline_code": e.error.code,
+            },
+            error_message=error_message,
+        )
+        return {
+            "success": False,
+            "error": error_message,
+            "decline_code": e.error.code,
+            "requires_payment_method": True,
+        }
+    except stripe.error.StripeError as e:
+        error_message = str(e.user_message or e)
+        logger.error(f"Stripe error for renewal: {e}")
+        await db.customers.update_one(
+            {"id": customer_id},
+            {
+                "$set": {
+                    "membership_last_renewal_attempt_at": now_iso,
+                    "membership_last_renewal_status": "failed",
+                    "membership_last_renewal_error": error_message,
+                    "membership_payment_method_required": True,
+                    "updated_at": now_iso,
+                }
+            },
+        )
+        await _record_membership_transaction(
+            customer_id=customer_id,
+            subtotal=subtotal,
+            stripe_fee=stripe_fee,
+            amount=amount_to_charge,
+            plan_name=new_plan_name,
+            payment_status="failed",
+            payment_type="membership_renewal" if not is_plan_change else "plan_change",
+            initiated_by=initiated_by,
+            created_at=now_iso,
+            metadata={
+                "automatic": require_due,
+                "previous_plan": current_plan if is_plan_change else None,
+                "days_remaining": usage.get("days_remaining") if usage else None,
+            },
+            error_message=error_message,
+        )
+        return {
+            "success": False,
+            "error": error_message,
+            "requires_payment_method": True,
+        }
+    except Exception as e:
+        error_message = str(e)
+        logger.error(f"Membership renewal error: {e}")
+        await db.customers.update_one(
+            {"id": customer_id},
+            {
+                "$set": {
+                    "membership_last_renewal_attempt_at": now_iso,
+                    "membership_last_renewal_status": "failed",
+                    "membership_last_renewal_error": error_message,
+                    "updated_at": now_iso,
+                }
+            },
+        )
+        await _record_membership_transaction(
+            customer_id=customer_id,
+            subtotal=subtotal,
+            stripe_fee=stripe_fee,
+            amount=amount_to_charge,
+            plan_name=new_plan_name,
+            payment_status="failed",
+            payment_type="membership_renewal" if not is_plan_change else "plan_change",
+            initiated_by=initiated_by,
+            created_at=now_iso,
+            metadata={
+                "automatic": require_due,
+                "previous_plan": current_plan if is_plan_change else None,
+                "days_remaining": usage.get("days_remaining") if usage else None,
+            },
+            error_message=error_message,
+        )
+        return {
+            "success": False,
+            "error": error_message,
+        }
+
+
+async def process_due_membership_renewals(limit: int = 250) -> dict:
+    now = datetime.now(timezone.utc)
+    candidates = await db.customers.find(
+        {
+            "membership_plan": {"$exists": True, "$ne": None},
+            "membership_status": {"$in": ["active", "current", "paid"]},
+            "auto_renew": True,
+            "membership_start_date": {"$exists": True, "$ne": None},
+        },
+        {"_id": 0},
+    ).to_list(limit)
+
+    summary = {
+        "checked": len(candidates),
+        "due": 0,
+        "renewed": 0,
+        "failed": 0,
+        "skipped": 0,
+        "details": [],
+    }
+
+    for customer in candidates:
+        due_date = _get_customer_membership_due_date(customer)
+        if not due_date or due_date > now:
+            summary["skipped"] += 1
+            continue
+
+        last_attempt = _parse_membership_datetime(customer.get("membership_last_renewal_attempt_at"))
+        if last_attempt and (now - last_attempt) < timedelta(hours=20):
+            summary["skipped"] += 1
+            continue
+
+        summary["due"] += 1
+        result = await _process_membership_renewal(
+            customer=customer,
+            initiated_by="auto_scheduler",
+            require_due=True,
+        )
+        summary["details"].append({
+            "customer_id": customer.get("id"),
+            "plan": customer.get("membership_plan"),
+            "result": result.get("message") or result.get("error") or result.get("code"),
+            "success": result.get("success", False),
+        })
+        if result.get("success"):
+            summary["renewed"] += 1
+        elif result.get("skipped"):
+            summary["skipped"] += 1
+        else:
+            summary["failed"] += 1
+
+    return summary
+
+
 def _default_membership_section() -> dict:
     now = datetime.now(timezone.utc).isoformat()
     return {
@@ -1454,176 +1967,15 @@ async def renew_membership(
     data: MembershipRenewalRequest,
     current_customer: dict = Depends(get_current_customer),
 ):
-    if not STRIPE_AVAILABLE or not STRIPE_API_KEY:
-        raise HTTPException(status_code=503, detail="Stripe payment not configured")
-
-    customer_id = current_customer["id"]
-    
-    customer = await db.customers.find_one({"id": customer_id}, {"_id": 0})
+    customer = await db.customers.find_one({"id": current_customer["id"]}, {"_id": 0})
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
-    
-    current_plan = customer.get("membership_plan")
-    current_status = customer.get("membership_status", "")
-    
-    if current_status != "active":
-        raise HTTPException(status_code=400, detail="No active membership to renew")
-    
-    if data.plan_id:
-        new_plan_doc = await db.membership_plans.find_one({"id": data.plan_id}, {"_id": 0})
-        if not new_plan_doc:
-            raise HTTPException(status_code=404, detail="Plan not found")
-        new_plan_name = new_plan_doc["name"]
-        is_plan_change = True
-    else:
-        new_plan_name = current_plan
-        is_plan_change = False
-    
-    base_price = _get_plan_price(new_plan_name)
-    
-    subtotal = base_price
-    if is_plan_change:
-        usage = await get_customer_cycle_usage(customer_id)
-        days_remaining = usage.get("days_remaining", 0) if usage else 0
-        prorated = _calculate_prorated_amount(current_plan, new_plan_name, days_remaining)
-        subtotal = prorated if prorated > 0 else base_price
-    
-    amount_to_charge = _calculate_total_with_stripe_fee(subtotal)
-    stripe_fee = round(amount_to_charge - subtotal, 2)
-    
-    payment_method_id = customer.get("stripe_payment_method_id")
-    stripe_customer_id = customer.get("stripe_customer_id")
-    
-    if not payment_method_id or not stripe_customer_id:
-        return {
-            "success": False,
-            "requires_payment_method": True,
-            "message": "Please add a payment method first",
-            "plan_name": new_plan_name,
-            "subtotal": subtotal,
-            "total_with_fee": amount_to_charge,
-        }
-    
-    if subtotal <= 0:
-        now_iso = datetime.now(timezone.utc).isoformat()
-        await db.customers.update_one(
-            {"id": customer_id},
-            {
-                "$set": {
-                    "membership_plan": new_plan_name,
-                    "membership_start_date": now_iso,
-                    "membership_status": "active",
-                    "auto_renew": True,
-                    "updated_at": now_iso,
-                }
-            }
-        )
-        
-        await _send_membership_renewal_email(customer, new_plan_name, 0, is_plan_change)
-        
-        return {
-            "success": True,
-            "message": f"Plan changed to {new_plan_name} (no additional charge)",
-            "amount_charged": 0,
-            "plan_name": new_plan_name,
-            "is_plan_change": True,
-        }
-    
-    try:
-        payment_intent = stripe.PaymentIntent.create(
-            amount=int(amount_to_charge * 100),
-            currency="usd",
-            customer=stripe_customer_id,
-            payment_method=payment_method_id,
-            off_session=True,
-            confirm=True,
-            description=f"Membership {'renewal' if not is_plan_change else f'change to {new_plan_name}'}",
-            metadata={
-                "customer_id": customer_id,
-                "plan_name": new_plan_name,
-                "type": "membership_renewal" if not is_plan_change else "plan_change",
-                "previous_plan": current_plan if is_plan_change else "",
-                "subtotal": str(subtotal),
-                "stripe_fee": str(stripe_fee),
-                "total": str(amount_to_charge),
-            },
-            receipt_email=customer.get("email"),
-        )
-        
-        if payment_intent.status != "succeeded":
-            return {
-                "success": False,
-                "error": f"Payment failed: {payment_intent.status}",
-                "requires_payment_method": True,
-                "payment_intent_id": payment_intent.id,
-            }
-        
-        now_iso = datetime.now(timezone.utc).isoformat()
-        await db.customers.update_one(
-            {"id": customer_id},
-            {
-                "$set": {
-                    "membership_plan": new_plan_name,
-                    "membership_start_date": now_iso,
-                    "membership_status": "active",
-                    "auto_renew": True,
-                    "updated_at": now_iso,
-                }
-            }
-        )
-        
-        await db.payment_transactions.insert_one({
-            "id": str(uuid.uuid4()),
-            "customer_id": customer_id,
-            "subtotal": subtotal,
-            "stripe_fee": stripe_fee,
-            "amount": amount_to_charge,
-            "currency": "usd",
-            "payment_type": "membership_renewal" if not is_plan_change else "plan_change",
-            "plan_name": new_plan_name,
-            "stripe_payment_intent_id": payment_intent.id,
-            "payment_status": "succeeded",
-            "metadata": {
-                "previous_plan": current_plan if is_plan_change else None,
-                "days_remaining": usage.get("days_remaining") if is_plan_change else None,
-            },
-            "created_at": now_iso,
-        })
-        
-        await _send_membership_renewal_email(customer, new_plan_name, amount_to_charge, is_plan_change, subtotal, stripe_fee)
-        
-        return {
-            "success": True,
-            "message": f"{'Plan changed to' if is_plan_change else 'Membership renewed'} {new_plan_name}",
-            "subtotal": subtotal,
-            "stripe_fee": stripe_fee,
-            "amount_charged": amount_to_charge,
-            "plan_name": new_plan_name,
-            "is_plan_change": is_plan_change,
-            "new_start_date": now_iso,
-        }
-        
-    except stripe.error.CardError as e:
-        logger.error(f"Stripe card error for renewal: {e.error.message}")
-        return {
-            "success": False,
-            "error": e.error.message,
-            "decline_code": e.error.code,
-            "requires_payment_method": True,
-        }
-    except stripe.error.StripeError as e:
-        logger.error(f"Stripe error for renewal: {e}")
-        return {
-            "success": False,
-            "error": str(e.user_message or e),
-            "requires_payment_method": True,
-        }
-    except Exception as e:
-        logger.error(f"Membership renewal error: {e}")
-        return {
-            "success": False,
-            "error": str(e),
-        }
+    return await _process_membership_renewal(
+        customer=customer,
+        plan_id=data.plan_id,
+        initiated_by="customer_manual",
+        require_due=False,
+    )
 
 
 @router.post("/api/membership/cancel")
@@ -1747,6 +2099,11 @@ async def get_membership_status(
         "renewal_total_with_fee": total_with_fee,
         "stripe_fee": round(total_with_fee - base_price, 2),
         "cancelled_at": customer.get("membership_cancelled_at"),
+        "last_renewed_at": customer.get("membership_last_renewed_at"),
+        "last_renewal_attempt_at": customer.get("membership_last_renewal_attempt_at"),
+        "last_renewal_status": customer.get("membership_last_renewal_status"),
+        "last_renewal_error": customer.get("membership_last_renewal_error"),
+        "payment_method_required": customer.get("membership_payment_method_required", False),
     }
 
 
@@ -1778,6 +2135,9 @@ async def get_membership_renewal_info(
         "lbs_used": usage.get("lbs_used", 0),
         "lbs_allowance": usage.get("lbs_allowance", 0),
         "auto_renew": customer.get("auto_renew", True) if customer else True,
+        "last_renewal_status": customer.get("membership_last_renewal_status") if customer else None,
+        "last_renewal_error": customer.get("membership_last_renewal_error") if customer else None,
+        "payment_method_required": customer.get("membership_payment_method_required", False) if customer else False,
     }
 
 

@@ -97,6 +97,15 @@ def _load_heavy():
 async def _deferred_init():
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, _load_heavy)
+    try:
+        from automation_engine import daily_scheduler_loop
+
+        if not getattr(fastapi_app.state, "daily_scheduler_started", False):
+            fastapi_app.state.daily_scheduler_task = asyncio.create_task(daily_scheduler_loop())
+            fastapi_app.state.daily_scheduler_started = True
+            logger.info("✓ Daily scheduler loop started")
+    except Exception as exc:
+        logger.warning(f"✗ Daily scheduler loop not started: {exc}")
 
 
 @fastapi_app.on_event("startup")

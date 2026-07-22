@@ -1574,6 +1574,13 @@ async def run_daily_scheduler():
         await send_upcoming_pickup_reminders()
     except Exception as e:
         logger.error(f"send_upcoming_pickup_reminders failed: {e}")
+    try:
+        from routes.services import process_due_membership_renewals
+
+        renewal_summary = await process_due_membership_renewals()
+        logger.info(f"✅ Membership auto-renew summary: {renewal_summary}")
+    except Exception as e:
+        logger.error(f"process_due_membership_renewals failed: {e}")
     logger.info("✅ Daily scheduler completed")
 
 
