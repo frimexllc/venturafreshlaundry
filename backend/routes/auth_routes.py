@@ -12,12 +12,35 @@ router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
 @router.post("/register", response_model=TokenResponse)
 async def register(user_data: UserCreate):
+    """Create the very first (admin) account on a brand-new deployment.
+
+    SECURITY: this endpoint used to be open to anyone, with no auth
+    required, and silently granted the "operator" role to every
+    registrant after the first. On a system that already has users
+    (i.e. this one, in production) that meant *anyone* who found the
+    login page could create themselves a working operator account with
+    real access to orders, customers, and payment data — no invitation,
+    no approval. There is no legitimate reason for that on a running
+    system: admins already have a proper, authenticated way to create
+    accounts at POST /api/admin/users (see routes/users.py).
+
+    This endpoint is now only usable for the one-time bootstrap of a
+    fresh deployment with zero users. Once any user exists, it refuses
+    and points to the admin-only flow instead.
+    """
+    user_count = await db.users.count_documents({})
+    if user_count > 0:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Self-registration is disabled. Ask an administrator to "
+                "create your account from User Management."
+            ),
+        )
+
     existing = await db.users.find_one({"email": user_data.email.lower()})
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
-
-    user_count = await db.users.count_documents({})
-    role = "admin" if user_count == 0 else "operator"
 
     user_id = str(uuid.uuid4())
     user = {
@@ -25,7 +48,7 @@ async def register(user_data: UserCreate):
         "email": user_data.email.lower(),
         "password_hash": hash_password(user_data.password),
         "name": user_data.name,
-        "role": role,
+        "role": "admin",  # first user on a fresh deployment only
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.users.insert_one(user)

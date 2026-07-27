@@ -22,9 +22,18 @@ import { toast } from 'sonner';
 import { useGasStations } from './GasStations';
 import MapFilters from '../MapFilters';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
+const API_URL = process.env.REACT_APP_BACKEND_URL || '';
 const HQ = { lat: 34.264309036184606, lng: -119.21374270055239 };
 const TRAFFIC_REFRESH_MS = 5 * 60 * 1000;
+
+// Matches adminAxios.js: an operator who logs in without "recordarme"
+// checked is stored in sessionStorage, not localStorage. This file used
+// to read `localStorage.getItem('token')` directly in four separate
+// places — for that operator, every one of those reads silently came
+// back empty, with no error and no visual indicator.
+function getStoredToken() {
+  return localStorage.getItem('token') || sessionStorage.getItem('token');
+}
 
 const SEVERITY_BG = {
   light: 'bg-yellow-50 border-yellow-200',
@@ -33,7 +42,17 @@ const SEVERITY_BG = {
 };
 
 export function LogisticsMap() {
-  const [orders, setOrders] = useState(MOCK_ORDERS);
+  // NOTE (bug fix): `orders` used to default to MOCK_ORDERS and
+  // loadOrders() below used to just leave that mock data in place
+  // whenever there was no token or no API_URL — including the "no
+  // token" case, which in production means an expired/missing session,
+  // not a demo. A driver whose session expired mid-shift would keep
+  // seeing a full sidebar of fake stops with no indication they weren't
+  // real deliveries. Mock data is now only used explicitly, when the
+  // backend URL truly isn't configured at all (local dev without a
+  // backend) — never silently substituted for a failed/expired auth
+  // check.
+  const [orders, setOrders] = useState(API_URL ? [] : MOCK_ORDERS);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [routeResult, setRouteResult] = useState(null);
@@ -66,7 +85,7 @@ export function LogisticsMap() {
   }, [routeResult]);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
+    const token = getStoredToken();
     if (!token) { setLoadingSettings(false); return; }
     fetch(`${API_URL}/api/logistics/settings`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -98,7 +117,7 @@ export function LogisticsMap() {
   // Traffic refresh
   useEffect(() => {
     const refresh = async () => {
-      const token = localStorage.getItem('token');
+      const token = getStoredToken();
       if (!token || !API_URL) { setTrafficEvents(getCurrentTrafficEvents()); return; }
       try {
         const res = await fetch(`${API_URL}/api/traffic/incidents`, {
@@ -118,18 +137,33 @@ export function LogisticsMap() {
   }, []);
 
   const loadOrders = useCallback(() => {
-    const token = localStorage.getItem('token');
-    if (!token || !API_URL) { setLoadingBackend(false); return; }
+    const token = getStoredToken();
+    if (!API_URL) { setLoadingBackend(false); return; }
+    if (!token) {
+      // Previously this returned here and left `orders` whatever it
+      // already was — which on first mount was MOCK_ORDERS, so a driver
+      // with an expired/missing session saw a full sidebar of fake
+      // stops with nothing telling them it wasn't real. Now it clears
+      // the list and says so explicitly.
+      setOrders([]);
+      setLoadingBackend(false);
+      toast.error('Sesión expirada — vuelve a iniciar sesión para ver las órdenes reales');
+      return;
+    }
     setLoadingBackend(true);
     fetch(`${API_URL}/api/logistics/orders`, {
       headers: { Authorization: `Bearer ${token}` },
     })
-      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(`status ${r.status}`)))
       .then(data => {
         const arr = Array.isArray(data) ? data : [];
         setOrders(arr);
       })
-      .catch(() => { setOrders([]); })
+      .catch((err) => {
+        setOrders([]);
+        toast.error('No se pudieron cargar las órdenes del mapa');
+        console.error(err);
+      })
       .finally(() => setLoadingBackend(false));
   }, []);
 
@@ -141,8 +175,11 @@ export function LogisticsMap() {
   }, []);
 
   const handleStatusChange = useCallback(async (order, newStatus) => {
-    const token = localStorage.getItem('token');
-    if (!token) return;
+    const token = getStoredToken();
+    if (!token) {
+      toast.error('Sesión expirada — vuelve a iniciar sesión');
+      return;
+    }
     try {
       const response = await fetch(`${API_URL}/api/orders/${order.id}`, {
         method: 'PATCH',
@@ -155,8 +192,15 @@ export function LogisticsMap() {
       if (response.ok) {
         toast.success('Estado actualizado');
         loadOrders();
+      } else {
+        // NOTE (bug fix): a non-ok response used to do nothing at all —
+        // no toast, no log — so a driver tapping "mark delivered" on a
+        // denied or failed request saw no feedback and had no way to
+        // know the status change didn't actually save.
+        toast.error('No se pudo actualizar el estado de la orden');
       }
     } catch (err) {
+      toast.error('Error de conexión al actualizar el estado');
       console.error(err);
     }
   }, [loadOrders]);
@@ -181,21 +225,29 @@ export function LogisticsMap() {
 
   const handleMarkComplete = useCallback((index) => {
     setCompletedStops(prev => {
+      if (prev.has(index)) {
+        // NOTE (bug fix): completing the same stop twice (double-tap on
+        // a slow connection) used to still run the "all stops done"
+        // check below using the old completedStops.size + 1, which
+        // could fire end-of-day / save a duplicate route record even
+        // though nothing actually changed. Bail out here instead.
+        return prev;
+      }
       const newSet = new Set(prev);
       newSet.add(index);
+      if (newSet.size === (routeResult?.stops?.length || 0)) {
+        setShowEndOfDay(true);
+        if (routeResult) {
+          saveRouteRecord({
+            route: routeResult,
+            completed: newSet.size,
+            timestamp: Date.now(),
+          });
+        }
+      }
       return newSet;
     });
-    if (completedStops.size + 1 === (routeResult?.stops?.length || 0)) {
-      setShowEndOfDay(true);
-      if (routeResult) {
-        saveRouteRecord({
-          route: routeResult,
-          completed: completedStops.size + 1,
-          timestamp: Date.now(),
-        });
-      }
-    }
-  }, [completedStops, routeResult]);
+  }, [routeResult]);
 
   const filteredOrders = useMemo(() => {
     let result = orders;

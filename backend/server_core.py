@@ -334,10 +334,13 @@ async def get_me(current_user: dict = Depends(get_current_user)):
         "role": current_user.get("role")
     }
 
-@api_router.post("/auth/register")
-async def register():
-    """Register endpoint - implementado en routes.auth_routes"""
-    raise HTTPException(status_code=501, detail="Use /api/auth/register from auth routes")
+# NOTE: a duplicate `@api_router.post("/auth/register")` stub used to live
+# here, returning 501. It was dead code — `routes/auth_routes.py`'s real
+# `/api/auth/register` is registered earlier (server.py includes
+# `auth_router` synchronously before this module's `api_router` loads), so
+# FastAPI always matched that one first and this stub never ran. Removed
+# to avoid the confusion of two definitions for the same route, one of
+# which silently never executes.
 
 
 # ==================== EXTERNAL ROUTERS (refactored) ====================

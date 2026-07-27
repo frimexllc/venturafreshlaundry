@@ -10,17 +10,24 @@ import { useLocale } from "../context/LocaleContext";
 import LanguageToggle from "../components/LanguageToggle";
 
 export default function Login() {
-  const [isLogin, setIsLogin] = useState(true);
   const { t } = useLocale();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [name, setName] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [acceptedPolicies, setAcceptedPolicies] = useState(false);
   const [loading, setLoading] = useState(false);
-  const { login, register } = useAuth();
+  const { login } = useAuth();
   const navigate = useNavigate();
 
+  // NOTE (security fix): this page used to have a "Crear cuenta" toggle
+  // that called POST /api/auth/register directly, with no auth required.
+  // That endpoint granted a working "operator" account (full access to
+  // orders, customers, and payment data) to anyone who filled the form —
+  // no invitation, no admin approval. It's now locked down on the
+  // backend to first-run bootstrap only (see routes/auth_routes.py), and
+  // the UI for it is removed here. Admins create staff accounts from
+  // User Management (POST /api/admin/users, already used by
+  // pages/UserManagement.jsx) instead.
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!acceptedPolicies) {
@@ -30,13 +37,8 @@ export default function Login() {
     setLoading(true);
 
     try {
-      if (isLogin) {
-        await login(email, password);
-        toast.success(t("Welcome back!", "¡Bienvenido de vuelta!"));
-      } else {
-        await register(name, email, password);
-        toast.success(t("Account created successfully!", "¡Cuenta creada exitosamente!"));
-      }
+      await login(email, password);
+      toast.success(t("Welcome back!", "¡Bienvenido de vuelta!"));
       navigate("/admin");
     } catch (error) {
       const message = error.response?.data?.detail || t("An error occurred", "Ocurrió un error");
@@ -66,32 +68,14 @@ export default function Login() {
 
           <div className="mb-8">
             <h2 className="text-xl font-semibold text-slate-900 mb-2">
-              {isLogin ? t("Sign in", "Iniciar sesión") : t("Create account", "Crear cuenta")}
+              {t("Sign in", "Iniciar sesión")}
             </h2>
             <p className="text-slate-500">
-              {isLogin
-                ? t("Enter your credentials to access the panel", "Ingresa tus credenciales para acceder al panel")
-                : t("Complete the form to register", "Completa el formulario para registrarte")}
+              {t("Enter your credentials to access the panel", "Ingresa tus credenciales para acceder al panel")}
             </p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
-            {!isLogin && (
-              <div>
-                <Label htmlFor="name" className="text-slate-700">{t("Full name", "Nombre completo")}</Label>
-                <Input
-                  id="name"
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder={t("Your name", "Tu nombre")}
-                  className="mt-1.5 input-default"
-                  required={!isLogin}
-                  data-testid="register-name-input"
-                />
-              </div>
-            )}
-
             <div>
               <Label htmlFor="email" className="text-slate-700">{t("Email", "Correo electrónico")}</Label>
               <Input
@@ -159,10 +143,10 @@ export default function Login() {
               {loading ? (
                 <span className="flex items-center gap-2">
                   <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>
-                  {isLogin ? t("Signing in...", "Iniciando...") : t("Creating...", "Creando...")}
+                  {t("Signing in...", "Iniciando...")}
                 </span>
               ) : (
-                isLogin ? t("Sign in", "Iniciar sesión") : t("Create account", "Crear cuenta")
+                t("Sign in", "Iniciar sesión")
               )}
             </Button>
           </form>

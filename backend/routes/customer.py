@@ -42,6 +42,12 @@ from utils import (
     _get_plan_allowance,
     _normalize_service_type,
 )
+from services.payments import (
+    CustomerNotChargeable,
+    OrderAlreadyProcessing,
+    charge_order_saved_card,
+    mark_order_covered_by_membership,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/customer", tags=["Customer"])
@@ -589,113 +595,83 @@ async def charge_by_weight(
     total_amount = breakdown["total"]
 
     if total_amount <= 0:
-        now = _now()
+        await mark_order_covered_by_membership(order_id=order["id"])
         await db.orders.update_one(
             {"id": order["id"]},
-            {"$set": {
-                "actual_weight_lbs": body.actual_weight_lbs,
-                "total_amount": 0.0,
-                "payment_status": "paid",
-                "payment_method": "membership_covered",
-                "paid_at": now,
-                "updated_at": now,
-            }}
+            {"$set": {"actual_weight_lbs": body.actual_weight_lbs, "total_amount": 0.0}},
         )
         return {"ok": True, "charged": False, "covered_by_membership": True}
 
-    amount_cents = int(total_amount * 100)
-    if amount_cents < 50:
-        return {
-            "ok": False,
-            "charged": False,
-            "reason": f"Amount too small (${total_amount:.2f}) — Stripe minimum is $0.50",
-        }
-
     order_number = order.get("order_number", body.order_id[:8].upper())
 
+    # Delegates to the consolidated payment service (services/payments.py)
+    # instead of calling stripe.PaymentIntent.create directly here. The
+    # old inline version here and the near-identical one in
+    # routes/orders.py::operator_auto_charge_order had drifted apart and
+    # neither used a Stripe idempotency key or locked the order first,
+    # so a retried request could double-charge a customer.
     try:
-        intent = stripe.PaymentIntent.create(
-            amount=amount_cents,
-            currency="usd",
-            customer=stripe_customer_id,
-            payment_method=pm_id,
-            confirm=True,
-            off_session=True,
+        charge = await charge_order_saved_card(
+            order={**order, "id": order["id"], "order_number": order_number},
+            customer=customer,
+            amount=total_amount,
             description=(
                 f"Ventura Fresh Laundry — Orden {order_number} — "
                 f"{body.actual_weight_lbs} lbs"
             ),
             metadata={
-                "order_id": order["id"],
-                "order_number": order_number,
-                "customer_id": customer["id"],
                 "weight_lbs": str(body.actual_weight_lbs),
                 "service_type": service_type,
                 "service_plan": service_plan,
             },
-            receipt_email=customer.get("email"),
         )
-    except stripe.error.CardError as e:
-        err = e.error
-        logger.error(f"Card declined for order {body.order_id}: {err.code} — {err.message}")
-        await db.orders.update_one(
-            {"id": order["id"]},
-            {"$set": {
-                "auto_charge_failed": True,
-                "auto_charge_error": err.message,
-                "auto_charge_attempted_at": _now(),
-                "updated_at": _now(),
-            }},
-        )
-        raise HTTPException(
-            status_code=402,
-            detail={
-                "message": "Card declined — charge manually",
-                "decline_code": err.code,
-                "stripe_message": err.message,
-            },
-        )
-    except stripe.error.StripeError as e:
-        logger.error(f"Stripe error for order {body.order_id}: {e}")
-        raise HTTPException(status_code=400, detail=str(e.user_message or e))
+    except CustomerNotChargeable:
+        return {
+            "ok": False,
+            "charged": False,
+            "reason": "Customer has no saved card — charge manually",
+            "customer_name": customer.get("name"),
+        }
+    except OrderAlreadyProcessing as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+    if not charge.success:
+        if charge.decline_code:
+            await db.orders.update_one(
+                {"id": order["id"]},
+                {"$set": {
+                    "auto_charge_failed": True,
+                    "auto_charge_error": charge.error,
+                    "auto_charge_attempted_at": _now(),
+                    "updated_at": _now(),
+                }},
+            )
+            raise HTTPException(
+                status_code=402,
+                detail={
+                    "message": "Card declined — charge manually",
+                    "decline_code": charge.decline_code,
+                    "stripe_message": charge.error,
+                },
+            )
+        if "too small" in (charge.error or ""):
+            return {"ok": False, "charged": False, "reason": charge.error}
+        raise HTTPException(status_code=400, detail=charge.error)
 
     now = _now()
     await db.orders.update_one(
         {"id": order["id"]},
-        {
-            "$set": {
-                "actual_weight_lbs": body.actual_weight_lbs,
-                "total_amount": total_amount,
-                "extra_charge": total_amount,
-                "payment_status": "paid",
-                "payment_method": "card_auto",
-                "stripe_payment_intent_id": intent.id,
-                "auto_charged": True,
-                "auto_charged_at": now,
-                "auto_charge_amount": total_amount,
-                "updated_at": now,
-            }
-        },
+        {"$set": {
+            "actual_weight_lbs": body.actual_weight_lbs,
+            "total_amount": total_amount,
+            "extra_charge": total_amount,
+            "auto_charged": True,
+            "auto_charged_at": now,
+            "auto_charge_amount": total_amount,
+        }},
     )
 
-    await db.finances.insert_one({
-        "id": str(uuid.uuid4()),
-        "type": "income",
-        "category": "service_payment_auto",
-        "description": f"Cobro automatico orden {order_number} — {body.actual_weight_lbs} lbs",
-        "amount": total_amount,
-        "payment_method": "card_auto",
-        "order_id": order["id"],
-        "order_number": order_number,
-        "customer_name": customer.get("name"),
-        "customer_id": customer["id"],
-        "stripe_payment_intent_id": intent.id,
-        "date": now[:10],
-        "created_at": now,
-        "updated_at": now,
-    })
-
-    logger.info(f"Auto-charged ${total_amount} for order {order_number}")
+    logger.info("Auto-charged $%s for order %s", total_amount, order_number)
 
     return {
         "ok": True,
@@ -704,7 +680,7 @@ async def charge_by_weight(
         "weight_lbs": body.actual_weight_lbs,
         "rate_per_lb": breakdown["rate_used"],
         "order_number": order_number,
-        "stripe_payment_intent_id": intent.id,
+        "stripe_payment_intent_id": charge.payment_intent_id,
         "card_last4": customer.get("card_last4"),
         "card_brand": customer.get("card_brand"),
     }
@@ -1724,56 +1700,31 @@ async def auto_charge_order(
     amount_due = float(order.get("extra_charge") or order.get("total_amount") or 0)
 
     if amount_due <= 0.50:
-        await db.orders.update_one(
-            {"id": order_id},
-            {"$set": {"payment_status": "paid", "payment_method": "membership_covered"}}
-        )
+        await mark_order_covered_by_membership(order_id=order_id)
         return {"success": True, "message": "Covered by membership", "amount": 0}
 
-    stripe_customer_id = current_user.get("stripe_customer_id")
-    if not stripe_customer_id:
-        return {"success": False, "error": "No saved payment method"}
-
+    # NOTE: this is a customer-facing, self-service endpoint. The original
+    # implementation checked `payment_status == "paid"` above but then did
+    # its own separate, un-guarded `stripe.PaymentIntent.create` call with
+    # no idempotency key and no atomic lock on the order — two concurrent
+    # requests (e.g. a double-tap, or a retried request after a slow
+    # response) could both pass the check and both charge the customer's
+    # card. It also never wrote a `finances` record, so a successful
+    # charge through this endpoint wouldn't show up in financial reports.
+    # Delegating to the shared payment service fixes both issues.
     try:
-        stripe_customer = stripe.Customer.retrieve(stripe_customer_id)
-        payment_method_id = stripe_customer.get("invoice_settings", {}).get("default_payment_method")
-
-        if not payment_method_id:
-            payment_methods = stripe.PaymentMethod.list(
-                customer=stripe_customer_id,
-                type="card",
-                limit=1
-            )
-            if not payment_methods.data:
-                return {"success": False, "error": "No payment method found"}
-            payment_method_id = payment_methods.data[0].id
-
-        payment_intent = stripe.PaymentIntent.create(
-            amount=int(amount_due * 100),
-            currency="usd",
-            customer=stripe_customer_id,
-            payment_method=payment_method_id,
-            off_session=True,
-            confirm=True,
-            metadata={"order_id": order_id, "type": "auto_charge"}
+        charge = await charge_order_saved_card(
+            order=order,
+            customer=current_user,
+            amount=amount_due,
+            description=f"Ventura Fresh Laundry — Order {order.get('order_number', order_id[:8].upper())}",
+            metadata={"type": "customer_self_service_auto_charge"},
         )
+    except CustomerNotChargeable:
+        return {"success": False, "error": "No saved payment method"}
+    except OrderAlreadyProcessing as e:
+        raise HTTPException(status_code=409, detail=str(e))
 
-        if payment_intent.status == "succeeded":
-            await db.orders.update_one(
-                {"id": order_id},
-                {"$set": {
-                    "payment_status": "paid",
-                    "payment_method": "card",
-                    "amount_paid": amount_due,
-                    "paid_at": datetime.now(timezone.utc).isoformat()
-                }}
-            )
-            return {"success": True, "amount": amount_due, "payment_intent_id": payment_intent.id}
-        else:
-            return {"success": False, "error": f"Payment {payment_intent.status}"}
-
-    except stripe.error.CardError as e:
-        return {"success": False, "error": e.error.message}
-    except Exception as e:
-        logger.error(f"Auto-charge error: {e}")
-        return {"success": False, "error": str(e)}
+    if not charge.success:
+        return {"success": False, "error": charge.error}
+    return {"success": True, "amount": amount_due, "payment_intent_id": charge.payment_intent_id}

@@ -1,7 +1,7 @@
 """
 Shared utility functions: QR generation, ticket formatting, order helpers, membership, etc.
 
-UNIFIED PRICING v15 — Single Source of Truth
+UNIFIED PRICING v16 — Single Source of Truth
 ═══════════════════════════════════════════════════════════════════════════════
 
 MEMBERSHIP PRICING RULES:
@@ -27,6 +27,30 @@ DELIVERY FEE TIERS (unified):
   5–8 mi → $2.99
   8–12 mi → $4.99
   12–15 mi → $8.99
+
+FIX v16 (2026-07-22):
+  1) BUG DE TARIFA: calculate_final_amount_with_membership() estaba cobrando
+     `regular_rate` en TODAS las libras extra de un miembro (tanto las que
+     exceden el allowance como las de un miembro sin allowance restante),
+     contradiciendo la regla de negocio documentada arriba mismo en este
+     docstring ("member rates apply to all extra lbs"). Ahora usa
+     `member_rate` en esas dos ramas. Esto corrige un sobre-cobro sistemático
+     a miembros con ordenes que exceden su allowance mensual.
+  2) BUG DE ADDONS/ENVIO: el campo "extra_charge" que regresa esta funcion
+     representaba SOLO el cargo por libras (amount_to_charge), mientras que
+     "total" incluia libras + envio + addons. Como varios endpoints del
+     backend (ej. apply-membership en customer.py, y probablemente el PUT
+     /orders/{order_id} en orders.py) leen o escriben "extra_charge" asumiendo
+     que YA es el monto final completo, cualquier flujo que confiara
+     directamente en breakdown["extra_charge"] perdia silenciosamente el
+     envio y los addons del cobro. Ahora "extra_charge" == "total" siempre
+     (el monto real a cobrar). "amount_to_charge" se mantiene como el campo
+     interno de solo-libras para quien necesite el desglose granular.
+  3) BUG DE CASING: el plan "SIGNATURE ELITE" en PLAN_ALLOWANCES estaba en
+     mayusculas, pero _get_plan_allowance() siempre compara en minusculas,
+     asi que ese plan NUNCA hacia match y devolvia 0 lbs de allowance
+     (el cliente se cobraba como si no tuviera membresia). Corregido a
+     minusculas.
 """
 import io
 import json
@@ -281,9 +305,16 @@ PLAN_ALLOWANCES: Dict[str, int] = {
     "concierge":         120,
     "executive premium": 200,
     "executive":         200,
-    "SIGNATURE ELITE":   200,
-    "mamamia":         500,
-
+    # FIX: estaba "SIGNATURE ELITE" en mayúsculas — _get_plan_allowance()
+    # siempre compara en minúsculas, así que este plan NUNCA hacía match y
+    # el cliente se quedaba con 0 lbs de allowance (se le cobraba como si no
+    # tuviera membresía). Corregido a minúsculas para que el lookup funcione.
+    "signature elite":   200,
+    # NOTA: "mamamia" con 500 lbs se ve como un plan de prueba/placeholder.
+    # Lo dejo tal cual porque no sé si está en uso real, pero confírmame si
+    # hay que quitarlo — un nombre así en producción es fácil de confundir
+    # con un typo o dato de test filtrado.
+    "mamamia":           500,
 }
 
 PD_MINIMUM_CHARGE: float = 40.0
@@ -579,6 +610,23 @@ async def get_remaining_membership_allowance(customer_id: str, plan_name: str) -
 # ════════════════════════════════════════════════════════════════════════════
 # CORE BILLING FUNCTION — calculate_final_amount_with_membership
 # ════════════════════════════════════════════════════════════════════════════
+#
+# GLOSARIO DE CAMPOS (para evitar futuras confusiones entre módulos):
+#   amount_to_charge   → SOLO el cargo por libras (con o sin descuento de
+#                        membresía), SIN envío ni addons. Uso interno /
+#                        depuración.
+#   extra_charge       → el MONTO TOTAL REAL a cobrar (libras + envío +
+#                        addons + processing_fee si aplica). Es el mismo
+#                        valor que "total". Este es el campo que cualquier
+#                        endpoint debe usar si necesita "cuánto se le cobra
+#                        al cliente" en una sola cifra.
+#   total              → idéntico a extra_charge (se mantiene por
+#                        compatibilidad con código existente que ya lo lee).
+#   membership_discount→ cuánto se ahorró el cliente vs. tarifa regular
+#                        completa, solo por el efecto de la membresía en las
+#                        libras (no incluye envío/addons, esos nunca tienen
+#                        descuento de membresía).
+# ════════════════════════════════════════════════════════════════════════════
 
 async def calculate_final_amount_with_membership(
     order: dict,
@@ -602,6 +650,7 @@ async def calculate_final_amount_with_membership(
             payment_method = (order.get("payment_method") or "").strip().lower()
             total_before   = round(addons_total + delivery_fee, 2)
             processing_fee = round(total_before * 0.03, 2) if payment_method in ("card", "stripe") else 0.0
+            final_total    = round(total_before + processing_fee, 2)
             return {
                 "lbs": 0, "billable_lbs": 0,
                 "plan": (order.get("service_plan") or "standard").strip().lower(),
@@ -611,11 +660,15 @@ async def calculate_final_amount_with_membership(
                 "lbs_covered": 0.0, "lbs_extra": 0.0,
                 "lbs_from_allowance": 0.0, "extra_lbs_billed": 0.0,
                 "membership_discount": 0.0,
-                "subtotal": 0.0, "amount_to_charge": 0.0, "extra_charge": 0.0,
+                "subtotal": 0.0, "amount_to_charge": 0.0,
+                # FIX: antes era 0.0 fijo, aunque hubiera addons/envío por
+                # cobrar — se veía como "cubierto por membresía" sin estarlo.
+                # Ahora refleja el monto real a cobrar (igual que "total").
+                "extra_charge": final_total,
                 "delivery_fee": delivery_fee, "addons_total": addons_total,
                 "processing_fee": processing_fee,
                 "subtotal_after_discount": total_before,
-                "total": round(total_before + processing_fee, 2),
+                "total": final_total,
                 "currency": "USD",
                 "fully_covered_by_membership": False,
                 "is_addon_only": True, "membership_applied": False,
@@ -662,9 +715,18 @@ async def calculate_final_amount_with_membership(
                 allowance_surch_charge = round(lbs_covered * allowance_surch, 2)
 
     if lbs_covered > 0:
-        amount_to_charge = round(allowance_surch_charge + lbs_extra * regular_rate, 2)
+        # FIX: las libras que exceden el allowance se cobran a la tarifa DE
+        # MIEMBRO (member_rate), no a la regular. Antes decía regular_rate
+        # aquí, contradiciendo la regla documentada arriba en este archivo
+        # ("After allowance is exhausted... member rates apply to all extra
+        # lbs") y sobre-cobrando a todos los miembros con órdenes que exceden
+        # su allowance mensual.
+        amount_to_charge = round(allowance_surch_charge + lbs_extra * member_rate, 2)
     elif is_member:
-        amount_to_charge = round(billable_lbs * regular_rate, 2)
+        # FIX: mismo caso — miembro sin cobertura de allowance restante
+        # (agotado, o remaining_allowance == 0) debe pagar tarifa de miembro,
+        # no la regular.
+        amount_to_charge = round(billable_lbs * member_rate, 2)
     else:
         amount_to_charge = round(billable_lbs * regular_rate, 2)
 
@@ -675,6 +737,13 @@ async def calculate_final_amount_with_membership(
             amount_to_charge = max(amount_to_charge, PD_MINIMUM_CHARGE)
 
     if is_member and lbs_covered > 0:
+        full_regular        = round(billable_lbs * regular_rate, 2)
+        membership_discount = max(0.0, round(full_regular - amount_to_charge, 2))
+    elif is_member and lbs_covered == 0:
+        # FIX complementario: ahora que las libras extra de un miembro se
+        # cobran a member_rate, también hay que reportar ese ahorro (antes
+        # era 0.0 porque amount_to_charge ya usaba regular_rate y no había
+        # diferencia que mostrar).
         full_regular        = round(billable_lbs * regular_rate, 2)
         membership_discount = max(0.0, round(full_regular - amount_to_charge, 2))
 
@@ -703,8 +772,8 @@ async def calculate_final_amount_with_membership(
         "is_express":      is_express,
         "regular_rate":    regular_rate,
         "member_rate":     member_rate,
-        "rate_used":       regular_rate,
-        "price_per_lb":    regular_rate,
+        "rate_used":       member_rate if (is_member and lbs_covered != billable_lbs) else regular_rate,
+        "price_per_lb":    member_rate if is_member else regular_rate,
         "allowance_surcharge":        allowance_surch,
         "allowance_surcharge_charge": allowance_surch_charge,
         "lbs_covered":        round(lbs_covered, 1),
@@ -714,7 +783,15 @@ async def calculate_final_amount_with_membership(
         "subtotal":           round(billable_lbs * regular_rate, 2),
         "membership_discount": round(membership_discount, 2),
         "amount_to_charge":    round(amount_to_charge, 2),
-        "extra_charge":        round(amount_to_charge, 2),
+        # FIX: extra_charge ahora es el MONTO TOTAL a cobrar (libras + envío +
+        # addons), igual que "total". Antes solo reflejaba amount_to_charge
+        # (nada más las libras), y como varios endpoints (apply-membership en
+        # customer.py, y el PUT /orders/{order_id} en orders.py) leen o
+        # escriben "extra_charge" asumiendo que YA es el total completo, el
+        # envío y los addons se perdían silenciosamente en cualquier flujo
+        # que confiara directamente en breakdown["extra_charge"] en lugar de
+        # breakdown["total"].
+        "extra_charge":        final_total,
         "delivery_fee":        round(delivery_fee, 2),
         "addons_total":        addons_total,
         "processing_fee":      0.0,

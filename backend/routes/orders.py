@@ -53,6 +53,12 @@ from automation_engine import (
     maybe_send_survey_after_delivery,
     maybe_create_next_recurring_order,
 )
+from services.payments import (
+    CustomerNotChargeable,
+    OrderAlreadyProcessing,
+    charge_order_saved_card,
+    mark_order_covered_by_membership,
+)
 
 PT_TZ = ZoneInfo("America/Los_Angeles")
 logger = logging.getLogger(__name__)
@@ -65,8 +71,9 @@ except ImportError:
     NOTIFICATIONS_ENABLED = False
 
 # ── Stripe Checkout (native) ─────────────────────────────────────────────────
-import stripe
-
+# NOTE: `stripe` used to be imported a second time right here, duplicating
+# the top-of-file import. Harmless at runtime but a copy-paste smell —
+# removed; `stripe` is already available from the import block above.
 class CheckoutSessionRequest(BaseModel):
     amount: float
     currency: str
@@ -762,6 +769,18 @@ async def capture_order_payment(
     total_amount    = order.get("total_amount")
     amount_received = data.amount_received
 
+    # FIX: antes solo se validaba amount_received para "cash". Si el metodo
+    # era card/transfer/zelle/other y la orden aun no tenia total_amount
+    # calculado (peso nunca registrado), amount_received quedaba en None y la
+    # orden se marcaba como "paid" con amount_paid: None — un cobro fantasma
+    # sin monto real guardado en finances. Ahora se exige que total_amount
+    # exista (no sea None) para CUALQUIER metodo de pago antes de continuar.
+    if total_amount is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Order has no total amount yet — register the actual weight first",
+        )
+
     if method == "cash" and amount_received is None:
         raise HTTPException(status_code=400, detail="Amount received is required for cash payments")
 
@@ -1323,6 +1342,12 @@ async def get_order_ticket(
         addr_html += f'<tr><td>Entrega</td><td class="r addr">{delivery_addr}</td></tr>'
     phone_html = f'<tr><td>Tel</td><td class="r">{phone}</td></tr>' if phone else ""
 
+    # FIX: el bloque de "Pago"/"Metodo" tenia un caracter corrupto ("能",
+    # aparentemente filtrado por un autocompletado/paste) suelto FUERA de
+    # cualquier tabla, y a los <tr> les faltaba el <table> que los envolviera.
+    # Eso rompia el HTML del ticket impreso (texto chino visible + markup
+    # invalido). Ahora esta envuelto correctamente en su propio <table> y sin
+    # caracteres extraños.
     html_content = f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Ticket {order_num}</title>
@@ -1367,7 +1392,7 @@ td:first-child{{white-space:normal;width:28mm;padding-right:4px;word-break:break
   <tr class="total-row"><td>TOTAL</td><td class="r">${total:.2f}</td></tr>
 </table>
 <hr>
-能
+<table>
   <tr>
     <td>Pago</td>
     <td class="r">
@@ -1375,7 +1400,7 @@ td:first-child{{white-space:normal;width:28mm;padding-right:4px;word-break:break
     </td>
   </tr>
   <tr><td>Metodo</td><td class="r">{method_label}</td></tr>
-能
+</table>
 <hr>
 <div class="footer">
   <p>Gracias por su preferencia!</p>
@@ -1629,17 +1654,10 @@ async def operator_auto_charge_order(
     }
 
     if amount_due <= 0.50:
-        now_iso = datetime.now(timezone.utc).isoformat()
-        await db.orders.update_one(
-            {"id": order_id},
-            {"$set": {
-                "payment_status":      "paid",
-                "payment_method":      "membership_covered",
-                "paid_at":             now_iso,
-                "updated_at":          now_iso,
-                "lbs_from_allowance":  result["lbs_covered"],
-                "membership_discount": result["membership_discount"],
-            }}
+        await mark_order_covered_by_membership(
+            order_id=order_id,
+            lbs_covered=result["lbs_covered"],
+            membership_discount=result["membership_discount"],
         )
         result.update({
             "success":               True,
@@ -1649,117 +1667,43 @@ async def operator_auto_charge_order(
         })
         return result
 
-    stripe_customer_id = customer.get("stripe_customer_id")
-    payment_method_id  = customer.get("stripe_payment_method_id")
-
-    if not payment_method_id:
+    if not customer.get("stripe_payment_method_id"):
         result.update({
             "error":          "No saved payment method — charge manually",
             "suggest_action": "Customer needs to add a card in their portal",
         })
         return result
 
-    if not stripe_customer_id:
-        try:
-            stripe_customer    = stripe.Customer.create(
-                name=customer.get("name", ""),
-                email=customer.get("email", ""),
-                phone=customer.get("phone", ""),
-                metadata={"internal_id": customer.get("id", "")},
-            )
-            stripe_customer_id = stripe_customer.id
-            await db.customers.update_one(
-                {"id": customer["id"]},
-                {"$set": {"stripe_customer_id": stripe_customer_id, "updated_at": datetime.now(timezone.utc).isoformat()}},
-            )
-        except Exception as e:
-            result.update({"error": f"Could not create Stripe customer: {e}"})
-            return result
+    order_number = order.get("order_number", order_id[:8].upper())
 
+    # Delegates to the consolidated payment service (services/payments.py),
+    # which handles idempotency and locking the order against double
+    # charges — see that module's docstring for why this used to be
+    # unsafe when implemented inline here.
     try:
-        order_number    = order.get("order_number", order_id[:8].upper())
-        payment_intent  = stripe.PaymentIntent.create(
-            amount=int(amount_due * 100),
-            currency="usd",
-            customer=stripe_customer_id,
-            payment_method=payment_method_id,
-            off_session=True,
-            confirm=True,
+        charge = await charge_order_saved_card(
+            order=order,
+            customer=customer,
+            amount=amount_due,
             description=f"Ventura Fresh Laundry — Order {order_number}",
             metadata={
-                "order_id":     order_id,
                 "order_number": order_number,
                 "operator_id":  current_user.get("id", ""),
                 "type":         "operator_auto_charge",
             },
-            receipt_email=customer.get("email") or None,
         )
-
-        if payment_intent.status == "succeeded":
-            now_iso = datetime.now(timezone.utc).isoformat()
-            await db.orders.update_one(
-                {"id": order_id},
-                {"$set": {
-                    "payment_status":           "paid",
-                    "payment_method":           "card_auto",
-                    "amount_paid":              amount_due,
-                    "paid_at":                  now_iso,
-                    "updated_at":               now_iso,
-                    "stripe_payment_intent_id": payment_intent.id,
-                }}
-            )
-            await db.finances.insert_one({
-                "id":                       str(uuid.uuid4()),
-                "type":                     "income",
-                "category":                 "service_payment_auto",
-                "description":              f"Auto-charge order {order_number}",
-                "amount":                   amount_due,
-                "payment_method":           "card_auto",
-                "order_id":                 order_id,
-                "order_number":             order_number,
-                "customer_name":            customer.get("name"),
-                "customer_id":              customer.get("id"),
-                "stripe_payment_intent_id": payment_intent.id,
-                "date":                     now_iso[:10],
-                "created_at":               now_iso,
-                "updated_at":               now_iso,
-            })
-            result.update({
-                "success":          True,
-                "charged":          True,
-                "amount_charged":   amount_due,
-                "card_last4":       customer.get("card_last4"),
-                "card_brand":       customer.get("card_brand"),
-                "payment_intent_id": payment_intent.id,
-            })
-            return result
-        else:
-            result.update({
-                "error":            f"Payment {payment_intent.status}",
-                "payment_intent_id": payment_intent.id,
-            })
-            return result
-
-    except stripe.error.CardError as e:
-        err = e.error
-        logger.error(f"Card declined for order {order_id}: {err.code} — {err.message}")
+    except CustomerNotChargeable:
         result.update({
-            "error":          err.message,
-            "decline_code":   err.code,
-            "suggest_action": "Charge manually or ask customer to update card",
+            "error":          "No saved payment method — charge manually",
+            "suggest_action": "Customer needs to add a card in their portal",
         })
         return result
-    except stripe.error.InvalidRequestError as e:
-        logger.error(f"Stripe InvalidRequest for order {order_id}: {e}")
-        result.update({
-            "error":          f"Invalid payment method: {str(e.user_message or e)}",
-            "suggest_action": "Customer needs to update their card in the portal",
-        })
-        return result
-    except Exception as e:
-        logger.error(f"Auto-charge error for order {order_id}: {e}")
+    except OrderAlreadyProcessing as e:
         result.update({
             "error":          str(e),
-            "suggest_action": "Charge manually",
+            "suggest_action": "Another charge attempt is already in progress for this order",
         })
         return result
+
+    result.update(charge.to_dict())
+    return result

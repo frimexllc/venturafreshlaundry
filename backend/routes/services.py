@@ -27,6 +27,7 @@ from pydantic import BaseModel, Field
 import uuid
 import logging
 import os
+import asyncio
 
 from database import db
 from models import (
@@ -694,7 +695,20 @@ async def _process_membership_renewal(
         }
 
     try:
-        payment_intent = stripe.PaymentIntent.create(
+        # Idempotency key scoped to customer + plan + day: a retried
+        # renewal attempt within the same day (network retry, duplicate
+        # cron trigger) reuses the same Stripe charge instead of billing
+        # the membership twice. A genuinely new renewal the next day gets
+        # a fresh key.
+        membership_idempotency_key = (
+            f"membership-charge:{customer_id}:{new_plan_name}:{now_iso[:10]}"
+        )
+        # stripe-python is a synchronous SDK; running it directly here
+        # would block the FastAPI event loop for the duration of the
+        # network round-trip to Stripe, stalling every other concurrent
+        # request. Offload it to a worker thread.
+        payment_intent = await asyncio.to_thread(
+            stripe.PaymentIntent.create,
             amount=int(amount_to_charge * 100),
             currency="usd",
             customer=stripe_customer_id,
@@ -713,6 +727,7 @@ async def _process_membership_renewal(
                 "initiated_by": initiated_by,
             },
             receipt_email=customer.get("email"),
+            idempotency_key=membership_idempotency_key,
         )
 
         if payment_intent.status != "succeeded":
