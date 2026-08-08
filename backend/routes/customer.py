@@ -256,6 +256,10 @@ class ChargeByWeightRequest(BaseModel):
     service_plan: Optional[str] = None
 
 
+class SetDefaultPaymentMethodRequest(BaseModel):
+    payment_method_id: str
+
+
 # =============================================================================
 # SECTION 1: PUBLIC ENDPOINTS (no authentication required)
 # =============================================================================
@@ -528,6 +532,154 @@ async def delete_payment_method(current_customer: dict = Depends(get_current_cus
         },
     )
     return {"ok": True, "message": "Card removed"}
+
+
+@router.get("/payments/methods")
+async def list_all_payment_methods(current_customer: dict = Depends(get_current_customer)):
+    """List ALL payment methods attached to the Stripe customer."""
+    if not STRIPE_API_KEY:
+        raise HTTPException(status_code=503, detail="Stripe not configured")
+
+    customer_doc = await _find_customer_by_user(current_customer)
+    if not customer_doc:
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    stripe_customer_id = customer_doc.get("stripe_customer_id")
+    if not stripe_customer_id:
+        return {"has_card": False, "methods": [], "default_payment_method_id": None}
+
+    try:
+        methods = stripe.PaymentMethod.list(
+            customer=stripe_customer_id,
+            type="card",
+        )
+        customer_info = stripe.Customer.retrieve(stripe_customer_id)
+        default_pm_id = (
+            customer_info.get("invoice_settings", {}).get("default_payment_method")
+            or customer_doc.get("stripe_payment_method_id")
+        )
+    except stripe.error.StripeError as e:
+        logger.error(f"Error listing payment methods: {e}")
+        raise HTTPException(status_code=400, detail=str(e.user_message or e))
+
+    result = []
+    for pm in methods.data:
+        card = pm.get("card", {})
+        result.append({
+            "id": pm.id,
+            "brand": card.get("brand"),
+            "last4": card.get("last4"),
+            "exp_month": card.get("exp_month"),
+            "exp_year": card.get("exp_year"),
+            "country": card.get("country"),
+            "funding": card.get("funding"),
+            "is_default": (pm.id == default_pm_id),
+            "created": pm.created,
+        })
+
+    return {
+        "has_card": len(result) > 0,
+        "methods": result,
+        "default_payment_method_id": default_pm_id,
+        "stripe_customer_id": stripe_customer_id,
+    }
+
+
+@router.post("/payments/set-default")
+async def set_default_payment_method(
+    body: SetDefaultPaymentMethodRequest,
+    current_customer: dict = Depends(get_current_customer),
+):
+    """Set a specific payment method as the default for auto-charges."""
+    if not STRIPE_API_KEY:
+        raise HTTPException(status_code=503, detail="Stripe not configured")
+
+    customer_doc = await _find_customer_by_user(current_customer)
+    if not customer_doc:
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    stripe_customer_id = customer_doc.get("stripe_customer_id")
+    if not stripe_customer_id:
+        raise HTTPException(status_code=400, detail="Customer has no Stripe record")
+
+    try:
+        stripe.Customer.modify(
+            stripe_customer_id,
+            invoice_settings={"default_payment_method": body.payment_method_id},
+        )
+        pm = stripe.PaymentMethod.retrieve(body.payment_method_id)
+        card = pm.get("card", {})
+    except stripe.error.StripeError as e:
+        logger.error(f"Error setting default payment method: {e}")
+        raise HTTPException(status_code=400, detail=str(e.user_message or e))
+
+    now = _now()
+    await db.customers.update_one(
+        {"id": customer_doc["id"]},
+        {
+            "$set": {
+                "stripe_payment_method_id": body.payment_method_id,
+                "card_last4": card.get("last4"),
+                "card_brand": card.get("brand"),
+                "card_exp_month": card.get("exp_month"),
+                "card_exp_year": card.get("exp_year"),
+                "updated_at": now,
+            }
+        },
+    )
+
+    return {
+        "ok": True,
+        "message": "Default payment method updated",
+        "last4": card.get("last4"),
+        "brand": card.get("brand"),
+    }
+
+
+@router.delete("/payments/method/{payment_method_id}")
+async def delete_specific_payment_method(
+    payment_method_id: str,
+    current_customer: dict = Depends(get_current_customer),
+):
+    """Detach a specific payment method by ID. If it was the default, clear fields."""
+    if not STRIPE_API_KEY:
+        raise HTTPException(status_code=503, detail="Stripe not configured")
+
+    customer_doc = await _find_customer_by_user(current_customer)
+    if not customer_doc:
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    stripe_customer_id = customer_doc.get("stripe_customer_id")
+    current_default_id = customer_doc.get("stripe_payment_method_id")
+
+    try:
+        stripe.PaymentMethod.detach(payment_method_id)
+    except stripe.error.StripeError as e:
+        logger.warning(f"Could not detach payment method {payment_method_id}: {e}")
+
+    now = _now()
+    if payment_method_id == current_default_id:
+        await db.customers.update_one(
+            {"id": customer_doc["id"]},
+            {
+                "$unset": {
+                    "stripe_payment_method_id": "",
+                    "card_last4": "",
+                    "card_brand": "",
+                    "card_exp_month": "",
+                    "card_exp_year": "",
+                    "card_saved_at": "",
+                },
+                "$set": {"updated_at": now},
+            },
+        )
+    else:
+        await db.customers.update_one(
+            {"id": customer_doc["id"]},
+            {"$set": {"updated_at": now}},
+        )
+
+    return {"ok": True, "message": "Payment method removed", "was_default": payment_method_id == current_default_id}
 
 
 @router.post("/payments/charge-by-weight")

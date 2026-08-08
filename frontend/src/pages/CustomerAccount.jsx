@@ -10,7 +10,7 @@ import {
   ArrowRight, Sparkles, ChevronDown, Settings, Heart, Award,
   CreditCard, Building2, DollarSign, ScanLine, X, Copy, CheckCircle,
   Phone, Edit3, Save, Camera, ExternalLink, Truck, RefreshCw,
-  RotateCcw, Repeat, AlertCircle, Trash2, Key, ChevronUp,
+  RotateCcw, Repeat, AlertCircle, Trash2, Key, ChevronUp, Plus,
   User, Shield, Star, Zap, ChevronRight, Info, Scale,
 } from "lucide-react";
 import PublicNav from "../components/PublicNav";
@@ -883,6 +883,12 @@ export default function CustomerAccount() {
   const [showCardSetup, setShowCardSetup]   = useState(false);
   const [stripePromise, setStripePromise]   = useState(null);
 
+  const [paymentMethods, setPaymentMethods]     = useState([]);
+  const [paymentMethodsLoading, setPaymentMethodsLoading] = useState(false);
+  const [defaultPaymentMethodId, setDefaultPaymentMethodId] = useState(null);
+  const [deletingMethodId, setDeletingMethodId] = useState(null);
+  const [settingDefaultId, setSettingDefaultId] = useState(null);
+
   const [orders, setOrders]                   = useState([]);
   const [pendingPayments, setPendingPayments] = useState([]);
   const [viewingOrderDetails, setViewingOrderDetails] = useState(null);
@@ -1030,6 +1036,55 @@ export default function CustomerAccount() {
       if (err.response?.status !== 404 && err.response?.status !== 403)
         toast.error(t("Could not load preferences", "No se pudieron cargar las preferencias"));
     } finally { setPreferencesLoading(false); }
+  };
+
+  const fetchPaymentMethods = async () => {
+    setPaymentMethodsLoading(true);
+    try {
+      const r = await customerAxios.get("/customer/payments/methods");
+      const d = r.data || {};
+      setPaymentMethods(d.methods || []);
+      setDefaultPaymentMethodId(d.default_payment_method_id || null);
+      if (!stripePromise && d.stripe_customer_id) {
+        const keyRes = await customerAxios.get("/customer/payments/setup-intent-key").catch(() => null);
+        const key = keyRes?.data?.publishable_key;
+        if (key) setStripePromise(loadStripe(key));
+      }
+    } catch (err) {
+      if (err.response?.status === 503 || !err.response?.status) {
+        // Stripe not configured, fail silently
+      } else if (err.response?.status !== 401) {
+        // toast.warning(t("Could not load payment methods", "No se pudieron cargar los métodos de pago"));
+      }
+    } finally { setPaymentMethodsLoading(false); }
+  };
+
+  const handleSetDefaultPaymentMethod = async (pmId) => {
+    setSettingDefaultId(pmId);
+    try {
+      await customerAxios.post("/customer/payments/set-default", { payment_method_id: pmId });
+      setDefaultPaymentMethodId(pmId);
+      setPaymentMethods(prev => prev.map(pm => ({ ...pm, is_default: pm.id === pmId })));
+      toast.success(t("Default card updated", "Tarjeta predeterminada actualizada"));
+    } catch (err) {
+      toast.error(err.response?.data?.detail || t("Could not update default card", "No se pudo actualizar"));
+    } finally { setSettingDefaultId(null); }
+  };
+
+  const handleDeletePaymentMethod = async (pmId, wasDefault) => {
+    const ok = window.confirm(wasDefault
+      ? t("Remove this saved card?", "¿Eliminar esta tarjeta guardada?")
+      : t("Remove this payment method?", "¿Eliminar este método de pago?"));
+    if (!ok) return;
+    setDeletingMethodId(pmId);
+    try {
+      await customerAxios.delete(`/customer/payments/method/${pmId}`);
+      setPaymentMethods(prev => prev.filter(pm => pm.id !== pmId));
+      if (wasDefault) setDefaultPaymentMethodId(null);
+      toast.success(t("Payment method removed", "Método de pago eliminado"));
+    } catch (err) {
+      toast.error(err.response?.data?.detail || t("Could not remove payment method", "No se pudo eliminar"));
+    } finally { setDeletingMethodId(null); }
   };
 
   const handleLogout = () => {
@@ -1241,17 +1296,24 @@ export default function CustomerAccount() {
       setTimeout(() => { document.getElementById(`order-${orderIdParam}`)?.scrollIntoView({ behavior: "smooth" }); }, 800);
     }
 
-    fetchOrders();
-    fetchPendingPayments();
-    fetchMembershipStatus().then(hasMem => { if (hasMem) { fetchPreferences(); fetchMembershipUsage(); } });
-    customerAxios.get("/customer/me")
-      .then(res => { if (res.data) { setCustomer(res.data); localStorage.setItem("customer_data", JSON.stringify(res.data)); } })
-      .catch((err) => {
-        if (err?.response?.status === 401) {
-          clearCustomerSession();
-          navigate("/account/login", { replace: true });
-        }
-      });
+    Promise.all([
+      customerAxios.get("/customer/payments/setup-intent-key").then(res => {
+        const key = res.data?.publishable_key;
+        if (key && !stripePromise) setStripePromise(loadStripe(key));
+      }).catch(() => {}),
+      fetchOrders(),
+      fetchPendingPayments(),
+      fetchPaymentMethods(),
+      fetchMembershipStatus().then(hasMem => { if (hasMem) { fetchPreferences(); fetchMembershipUsage(); } }),
+      customerAxios.get("/customer/me")
+        .then(res => { if (res.data) { setCustomer(res.data); localStorage.setItem("customer_data", JSON.stringify(res.data)); } })
+        .catch((err) => {
+          if (err?.response?.status === 401) {
+            clearCustomerSession();
+            navigate("/account/login", { replace: true });
+          }
+        }),
+    ]);
   }, [navigate]);
 
   useEffect(() => { setOrdersPage(1); }, [orderFilter, ordersSearch]);
@@ -1280,7 +1342,7 @@ export default function CustomerAccount() {
   return (<>
     {showCardSetup && stripePromise && (
       <CardSetupModal stripePromise={stripePromise} onClose={() => setShowCardSetup(false)}
-        onSuccess={() => { setShowCardSetup(false); toast.success(t("You're all set!", "¡Todo listo!")); }} t={t} />
+        onSuccess={() => { setShowCardSetup(false); fetchPaymentMethods(); toast.success(t("You're all set!", "¡Todo listo!")); }} t={t} />
     )}
 
     {paymentModal && (
@@ -1399,8 +1461,23 @@ export default function CustomerAccount() {
                 </div>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
-                {stripePromise && !showCardSetup && (
+                {stripePromise && (
                   <button onClick={() => setShowCardSetup(true)} className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-sky-200 text-sky-600 text-xs font-semibold hover:bg-sky-50 transition-all">
+                    <CreditCard className="w-3.5 h-3.5" />{t("Add card", "Agregar tarjeta")}
+                  </button>
+                )}
+                {!stripePromise && (
+                  <button onClick={async () => {
+                    try {
+                      const res = await customerAxios.get("/customer/payments/setup-intent-key");
+                      const key = res.data?.publishable_key;
+                      if (key) {
+                        const sp = await loadStripe(key);
+                        setStripePromise(sp);
+                        setShowCardSetup(true);
+                      }
+                    } catch {}
+                  }} className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-sky-200 text-sky-600 text-xs font-semibold hover:bg-sky-50 transition-all">
                     <CreditCard className="w-3.5 h-3.5" />{t("Add card", "Agregar tarjeta")}
                   </button>
                 )}
@@ -1464,6 +1541,179 @@ export default function CustomerAccount() {
             </Reveal>
           ))}
         </div>
+
+        {/* Payment Methods Section */}
+        <Reveal delay={60} dir="up">
+          <GlassCard data-testid="customer-payment-methods-card">
+            <div className="p-5 border-b border-slate-100 flex items-start justify-between flex-wrap gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-gradient-to-br from-sky-400 to-blue-600 rounded-xl flex items-center justify-center shadow-sm">
+                  <CreditCard className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-slate-800 text-base">{t("Payment Methods", "Métodos de Pago")}</h2>
+                  <p className="text-[11px] text-slate-400 mt-0.5">{t("Cards saved for automatic charges", "Tarjetas guardadas para cobros automáticos")}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={fetchPaymentMethods}
+                  disabled={paymentMethodsLoading}
+                  className="w-9 h-9 rounded-xl border border-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition-all"
+                  title={t("Refresh", "Actualizar")}
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${paymentMethodsLoading ? "animate-spin" : ""}`} />
+                </button>
+                {stripePromise && (
+                  <button
+                    onClick={() => setShowCardSetup(true)}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 text-white text-xs font-black shadow-sm hover:shadow-md transition-all active:scale-95"
+                  >
+                    <Plus className="w-3.5 h-3.5" />{t("Add card", "Agregar tarjeta")}
+                  </button>
+                )}
+                {!stripePromise && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        const res = await customerAxios.get("/customer/payments/setup-intent-key");
+                        const key = res.data?.publishable_key;
+                        if (key) {
+                          const sp = await loadStripe(key);
+                          setStripePromise(sp);
+                          setShowCardSetup(true);
+                        }
+                      } catch {}
+                    }}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 text-white text-xs font-black shadow-sm hover:shadow-md transition-all active:scale-95"
+                  >
+                    <Plus className="w-3.5 h-3.5" />{t("Add card", "Agregar tarjeta")}
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="p-5 space-y-3">
+              {paymentMethodsLoading ? (
+                <div className="space-y-3">
+                  {[1,2].map(i => (
+                    <div key={i} className="h-20 rounded-xl bg-slate-100 animate-pulse" />
+                  ))}
+                </div>
+              ) : paymentMethods.length === 0 ? (
+                <div className="py-10 text-center">
+                  <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-4">
+                    <CreditCard className="w-7 h-7 text-slate-300" />
+                  </div>
+                  <p className="text-sm font-semibold text-slate-600 mb-1">{t("No payment methods yet", "Aún no hay métodos de pago")}</p>
+                  <p className="text-[11px] text-slate-400 mb-5 max-w-sm mx-auto">{t("Add a card to enable automatic charges when your order weight is confirmed", "Agrega una tarjeta para habilitar cobros automáticos al confirmar el peso de tu orden")}</p>
+                  {stripePromise && (
+                    <button
+                      onClick={() => setShowCardSetup(true)}
+                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 text-white text-sm font-black shadow-sm hover:shadow-md transition-all active:scale-95"
+                    >
+                      <Plus className="w-4 h-4" />{t("Add your first card", "Agregar tu primera tarjeta")}
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {paymentMethods.map(pm => {
+                    const brandLabel = (pm.brand || "card").toString().toLowerCase();
+                    const brandEmoji =
+                      brandLabel.includes("visa") ? "VISA" :
+                      brandLabel.includes("mastercard") ? "MC" :
+                      brandLabel.includes("amex") ? "AMEX" :
+                      brandLabel.includes("discover") ? "DISC" :
+                      brandLabel.includes("union") ? "UPI" :
+                      brandLabel.includes("jcb") ? "JCB" :
+                      brandLabel.includes("diners") ? "DC" :
+                      "💳";
+                    return (
+                      <div
+                        key={pm.id}
+                        className={`rounded-xl border p-4 transition-all ${pm.is_default ? "border-sky-200 bg-sky-50/40" : "border-slate-200 bg-white hover:border-slate-300"}`}
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className={`w-14 h-10 rounded-lg flex items-center justify-center font-black text-[13px] shrink-0 ${
+                            brandLabel.includes("visa") ? "bg-[#1A1F71] text-white" :
+                            brandLabel.includes("mastercard") ? "bg-gradient-to-r from-[#EB001B] via-[#EB001B] to-[#F79E1B] text-white" :
+                            brandLabel.includes("amex") ? "bg-[#006FCF] text-white" :
+                            brandLabel.includes("discover") ? "bg-[#FF6000] text-white" :
+                            "bg-slate-800 text-white"
+                          }`}>
+                            {brandEmoji}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-bold text-slate-800 tabular-nums tracking-wider">
+                                •••• {pm.last4 || "••••"}
+                              </span>
+                              {pm.is_default && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-sky-100 border border-sky-200 text-sky-700 text-[9px] font-black uppercase tracking-wider shrink-0">
+                                  <CheckCircle className="w-2.5 h-2.5" />
+                                  {t("Default", "Predeterminada")}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-slate-400 mt-0.5">
+                              {t("Expires", "Vence")}: <span className="font-mono text-slate-600 font-semibold">{String(pm.exp_month||"??").padStart(2,"0")}/{String(pm.exp_year||"????").slice(-2)}</span>
+                              {pm.country && (
+                                <span className="ml-2">• {pm.country.toUpperCase()}</span>
+                              )}
+                              {pm.funding && (
+                                <span className="ml-2 capitalize text-slate-500">• {pm.funding}</span>
+                              )}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {!pm.is_default && (
+                              <button
+                                onClick={() => handleSetDefaultPaymentMethod(pm.id)}
+                                disabled={settingDefaultId === pm.id}
+                                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 text-[10px] font-bold hover:border-sky-200 hover:bg-sky-50 hover:text-sky-600 disabled:opacity-50 transition-all"
+                                title={t("Set as default", "Establecer como predeterminada")}
+                              >
+                                {settingDefaultId === pm.id ? (
+                                  <div className="w-3 h-3 border-2 border-sky-500 border-t-transparent rounded-full animate-spin" />
+                                ) : (
+                                  <Star className="w-3 h-3" />
+                                )}
+                                {t("Default", "Predet.")}
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleDeletePaymentMethod(pm.id, pm.is_default)}
+                              disabled={deletingMethodId === pm.id}
+                              className="flex items-center justify-center w-8 h-8 rounded-lg border border-slate-200 text-slate-400 hover:border-red-200 hover:bg-red-50 hover:text-red-500 disabled:opacity-50 transition-all"
+                              title={t("Remove", "Eliminar")}
+                            >
+                              {deletingMethodId === pm.id ? (
+                                <div className="w-3.5 h-3.5 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                <Trash2 className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {paymentMethods.length > 0 && (
+                <div className="bg-amber-50 border border-amber-100 rounded-xl p-3.5 mt-1">
+                  <p className="text-[11px] text-amber-700 leading-relaxed flex items-start gap-2">
+                    <Shield className="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-500" />
+                    <span>
+                      💡 <strong>{t("Auto-charge enabled", "Cobro automático habilitado")}:</strong>{' '}
+                      {t("Your default card will be charged automatically when the operator confirms the actual weight of your laundry order. No surprises!", "Tu tarjeta predeterminada se cobrará automáticamente cuando el operador confirme el peso real de tu orden de lavandería. ¡Sin sorpresas!")}
+                    </span>
+                  </p>
+                </div>
+              )}
+            </div>
+          </GlassCard>
+        </Reveal>
 
         {/* Membership upsell */}
         {!hasMembership && (

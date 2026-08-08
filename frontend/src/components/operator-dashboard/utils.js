@@ -217,7 +217,7 @@ export function calculateOrderTotal(order, isMember = false, lbsCoveredOverride 
   const lbsRaw       = Number(order.actual_lbs || 0);
 
   const addonsTotal = (order.addon_services || []).reduce(
-    (sum, a) => sum + Number(a.price || 0) * Number(a.qty || a.quantity || 1), 0
+    (sum, a) => sum + Number(a.custom_price || a.price || 0) * Number(a.qty || a.quantity || 1), 0
   );
 
   if (lbsRaw <= 0 && addonsTotal === 0) return _emptyBreakdown();

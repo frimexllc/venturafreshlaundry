@@ -70,21 +70,33 @@ export default function BillingBreakdown({ order, t, hasMembership, customerCycl
   const allowanceSurcharge = MEMBERSHIP_ALLOWANCE_SURCHARGE[plan] || 0;
 
   // ─── FUENTE DE VERDAD: campos del backend ────────────────────────────────
+  // CORREGIDO: Ya no requiere lbs > 0, porque una orden puede tener addons
+  // sin libras y debemos respetar extra_charge / total_amount del backend.
   const backendLbsCovered  = order.lbs_from_allowance != null ? Number(order.lbs_from_allowance) : null;
   const backendLbsExtra    = order.extra_lbs_billed    != null ? Number(order.extra_lbs_billed)   : null;
   const backendExtraCharge = order.extra_charge        != null ? Number(order.extra_charge)       : null;
+  const backendTotalAmount = order.total_amount        != null ? Number(order.total_amount)       : null;
 
-  const hasBackendData = (backendLbsCovered !== null || backendExtraCharge !== null) && lbs > 0;
+  const hasBackendData =
+    backendLbsCovered !== null ||
+    backendLbsExtra    !== null ||
+    backendExtraCharge !== null ||
+    backendTotalAmount !== null;
 
   let lbsCovered, lbsExtra, extraCharge, allowanceExhausted;
-
   if (hasBackendData) {
     lbsCovered = backendLbsCovered ?? 0;
     lbsExtra = backendLbsExtra ?? Math.max(0, lbs - lbsCovered);
     allowanceExhausted = isMember && lbsCovered === 0 && lbs > 0;
-    extraCharge = backendExtraCharge !== null 
-      ? backendExtraCharge 
-      : (allowanceExhausted ? lbs * regularRate : (lbsCovered * allowanceSurcharge) + (lbsExtra * regularRate));
+    if (backendExtraCharge !== null) {
+      extraCharge = backendExtraCharge;
+    } else if (lbs > 0) {
+      extraCharge = allowanceExhausted
+        ? lbs * regularRate
+        : (lbsCovered * allowanceSurcharge) + (lbsExtra * regularRate);
+    } else {
+      extraCharge = 0;
+    }
   } else {
     lbsCovered = 0;
     lbsExtra = lbs;
@@ -99,7 +111,7 @@ export default function BillingBreakdown({ order, t, hasMembership, customerCycl
 
   const fullRegularPrice = lbs * regularRate;
   const addonServices    = order.addon_services || [];
-  
+
   // 🔥 CORRECCIÓN CRÍTICA: Para wash & fold, los add-ons de tipo "per piece" YA ESTÁN incluidos en el peso
   // No debemos cobrarlos por separado
   const addonsTotal = isWF
@@ -109,7 +121,7 @@ export default function BillingBreakdown({ order, t, hasMembership, customerCycl
     : addonServices.reduce(
         (s, a) => s + Number(a.custom_price || a.price || 0) * Number(a.qty || a.quantity || 1), 0
       );
-  
+
   const deliveryFee = Number(order.delivery_fee ?? calcDeliveryFee(order.distance_miles) ?? 0);
 
   const hasAllowance = isMember && lbsCovered > 0;
@@ -121,9 +133,14 @@ export default function BillingBreakdown({ order, t, hasMembership, customerCycl
     : extraCharge;
   const totalSavings = fullRegularPrice - totalWeightCharge;
 
-  const total = fullyCovered
+  // CORREGIDO: Si el backend ya nos dio un total_amount calculado (y es >= suma), usarlo
+  let rawTotal = fullyCovered
     ? 0
     : Math.round((extraCharge + deliveryFee + addonsTotal) * 100) / 100;
+  if (backendTotalAmount != null && backendTotalAmount > rawTotal) {
+    rawTotal = backendTotalAmount;
+  }
+  const total = Math.max(0, rawTotal);
 
   // Progreso del ciclo (solo visual)
   const allowanceProgress = customerCycleUsage && customerCycleUsage.lbs_allowance > 0
@@ -397,9 +414,12 @@ export default function BillingBreakdown({ order, t, hasMembership, customerCycl
           )}
 
           {/* ── Total ────────────────────────────────────────── */}
-          <div className="flex items-center justify-between mt-4 pt-3 border-t-2 border-slate-200 bg-white rounded-b-lg">
-            <span className="font-bold text-slate-800 text-sm">{t("Total", "Total")}</span>
-            <span className="text-2xl font-extrabold text-slate-900 tracking-tight">
+          {/* MEJORADO: Total en NEGRITAS MÁXIMAS y letra MUY GRANDE */}
+          <div className="flex items-center justify-between mt-4 pt-4 pb-3 px-0.5 border-t-[3px] border-double border-slate-800 bg-white rounded-b-lg">
+            <span className="font-black text-slate-900 text-base uppercase tracking-[0.08em]">
+              {t("Total", "Total")}
+            </span>
+            <span className="text-4xl font-black text-slate-900 tracking-tight tabular-nums drop-shadow-sm">
               {formatCurrency(fullyCovered ? 0 : total)}
             </span>
           </div>

@@ -133,6 +133,16 @@ STRIPE_CHECKOUT_AVAILABLE = True
 
 router = APIRouter(prefix="/api", tags=["Orders"])
 
+# FIX 1 (v17): campos que, al cambiar via PUT /orders/{id}, obligan a
+# recalcular total_amount/extra_charge/membership_discount/etc. Antes solo
+# se recalculaba si "actual_lbs" venia en el payload; OrderDetailDialog.jsx
+# guarda add-ons con un PUT que SOLO manda {addon_services: [...]}, asi que
+# el total se quedaba desactualizado hasta el siguiente cambio de peso.
+PRICING_RELEVANT_FIELDS = {
+    "actual_lbs", "addon_services", "distance_miles",
+    "service_plan", "service_type",
+}
+
 
 # ==================== Helper: recalculate total with membership ====================
 
@@ -537,7 +547,12 @@ async def update_order(
     update_data = data.copy()
     update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
 
-    if "actual_lbs" in update_data:
+    # FIX 1 (v17): antes esto solo se ejecutaba si "actual_lbs" venia en el
+    # payload. saveAddonsList() en OrderDetailDialog.jsx hace PUT solo con
+    # {addon_services: [...]} -> total_amount/extra_charge/membership_discount
+    # se quedaban con el valor viejo hasta el siguiente cambio de peso.
+    # Ahora se recalcula si cambia cualquier campo relevante para el precio.
+    if PRICING_RELEVANT_FIELDS & update_data.keys():
         current_order = await db.orders.find_one({"id": order_id}, {"_id": 0})
         if current_order:
             customer = None
@@ -1299,8 +1314,27 @@ async def get_order_ticket(
     distance_miles      = order.get("distance_miles")
     delivery_fee        = calculate_delivery_fee(distance_miles)
     addon_services      = order.get("addon_services", [])
+
+    # ========== CORREGIDO: addons_total SIEMPRE se calcula y se incluye ==========
+    addons_total = 0.0
+    for addon in addon_services:
+        addon_price = float(addon.get("custom_price") or addon.get("price") or 0)
+        addon_qty   = int(addon.get("qty") or addon.get("quantity") or 1)
+        addons_total += round(addon_price * addon_qty, 2)
+
     membership_discount = float(order.get("membership_discount") or 0)
-    total               = float(order.get("total_amount") or 0)
+
+    # ========== CORREGIDO: total = subtotal_lbs + delivery + addons - discount ==========
+    # Ya NO se usa ciegamente order.get("total_amount"), porque pudiera ser 0
+    # cuando no hay libras pero sí addons.
+    raw_total = subtotal_lbs + delivery_fee + addons_total - membership_discount
+    total = round(max(0.0, raw_total), 2)
+
+    # Sólo usamos el total_amount del backend si es MAYOR (por si había cálculos extras).
+    stored_total = float(order.get("total_amount") or order.get("extra_charge") or 0)
+    if stored_total > total:
+        total = stored_total
+
     pay_status          = (order.get("payment_status") or "pending").lower()
     pay_label           = "PAGADO" if pay_status == "paid" else "PENDIENTE"
     payment_method      = (order.get("payment_method") or "").lower()
@@ -1325,7 +1359,7 @@ async def get_order_ticket(
         items_html += f'<tr><td>Delivery Fee</td><td class="r">${delivery_fee:.2f}</td></tr>'
     for addon in addon_services:
         addon_name  = addon.get("name", "Add-on")
-        addon_price = float(addon.get("price") or 0)
+        addon_price = float(addon.get("custom_price") or addon.get("price") or 0)
         addon_qty   = int(addon.get("qty") or addon.get("quantity") or 1)
         if addon_price > 0:
             items_html += (
@@ -1334,6 +1368,9 @@ async def get_order_ticket(
             )
     if membership_discount > 0:
         items_html += f'<tr><td>Membership discount</td><td class="r">-${membership_discount:.2f}</td></tr>'
+    if addons_total > 0 and lbs == 0:
+        # Muestra subtotal de addons claramente si no hay peso
+        items_html += f'<tr><td style="padding-top:4px">Subtotal Add-ons</td><td class="r" style="padding-top:4px">${addons_total:.2f}</td></tr>'
 
     addr_html  = ""
     if pickup_addr:
@@ -1364,7 +1401,25 @@ td{{padding:3px 0;font-size:11px;vertical-align:top}}
 td:first-child{{white-space:normal;width:28mm;padding-right:4px;word-break:break-word}}
 .r{{text-align:right;font-weight:600;word-break:break-word;overflow-wrap:anywhere}}
 .addr{{font-size:10px;font-weight:500}}
-.total-row td{{font-size:14px;font-weight:900;padding:6px 0;border-top:2px solid #111}}
+
+/* ========== TOTAL - MEJORADO: LETRA GRANDE Y NEGRAS FUERTES ========== */
+.total-row td{{
+  font-size:24px !important;       /* MUY grande para destacarse */
+  font-weight:900 !important;      /* Negritas MÁXIMAS */
+  padding:10px 0 !important;       /* Espacio arriba y abajo */
+  border-top:3px double #000 !important; /* Doble línea negra encima */
+  letter-spacing:0.5px;
+  text-transform:uppercase;
+}}
+.total-row td:first-child{{
+  font-size:20px !important;        /* Etiqueta TOTAL también resaltada */
+  letter-spacing:2px;
+}}
+.total-row td.r{{
+  font-size:28px !important;        /* Monto MÁS GRANDE que el texto */
+  color:#000 !important;            /* Negro puro */
+}}
+
 .badge{{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700}}
 .badge-paid{{background:#dcfce7;color:#166534}}
 .badge-pending{{background:#fef3c7;color:#92400e}}
@@ -1389,6 +1444,7 @@ td:first-child{{white-space:normal;width:28mm;padding-right:4px;word-break:break
 <hr>
 <table>
   {items_html}
+  <!-- TOTAL en NEGRITAS GIGANTES -->
   <tr class="total-row"><td>TOTAL</td><td class="r">${total:.2f}</td></tr>
 </table>
 <hr>

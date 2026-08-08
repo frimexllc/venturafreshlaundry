@@ -6,7 +6,9 @@ import {
   Download, Loader2, ZoomIn, Search,
   LayoutGrid, List, Clock, Star, Package, RefreshCw,
   ChevronDown, ChevronUp, ChevronLeft, ChevronRight, X,
-  User, MapPin, CreditCard, Banknote, SlidersHorizontal, Inbox, Camera
+  User, MapPin, CreditCard, Banknote, SlidersHorizontal, Inbox, Camera,
+  Shirt, Store, Building2, Home, Sparkles, CheckCircle2, CalendarClock,
+  PackageCheck, BadgeCheck, PartyPopper, XCircle, Undo2, AlertTriangle,
 } from "lucide-react";
 import { useLocale } from "../context/LocaleContext";
 import { formatShortDatePT } from "../utils/dateUtils";
@@ -34,11 +36,11 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 // ─── CONSTANTS ──────────────────────────────────────────────────────────────
 
 const SERVICE_TYPES = {
-  pickup_delivery: { label: "Pickup & Delivery", icon: "🚚", color: "#0ea5e9" },
-  wash_fold: { label: "Wash & Fold", icon: "🧺", color: "#8b5cf6" },
-  self_service: { label: "Self Service", icon: "🏪", color: "#f59e0b" },
-  commercial: { label: "Commercial / B2B", icon: "🏢", color: "#6366f1" },
-  airbnb_host: { label: "Airbnb Host", icon: "🏠", color: "#f97316" },
+  pickup_delivery: { label: "Pickup & Delivery", Icon: Truck, color: "#0ea5e9" },
+  wash_fold: { label: "Wash & Fold", Icon: Shirt, color: "#8b5cf6" },
+  self_service: { label: "Self Service", Icon: Store, color: "#f59e0b" },
+  commercial: { label: "Commercial / B2B", Icon: Building2, color: "#6366f1" },
+  airbnb_host: { label: "Airbnb Host", Icon: Home, color: "#f97316" },
 };
 
 const PLAN_LABELS = {
@@ -48,23 +50,23 @@ const PLAN_LABELS = {
 };
 
 const STATUS_LABELS = {
-  new: { label: "New", color: "bg-blue-100 text-blue-700", icon: "🆕" },
-  confirmed: { label: "Confirmed", color: "bg-cyan-100 text-cyan-700", icon: "✅" },
-  pickup_scheduled: { label: "Pickup Scheduled", color: "bg-purple-100 text-purple-700", icon: "📅" },
-  picked_up: { label: "Picked Up", color: "bg-indigo-100 text-indigo-700", icon: "📦" },
-  processing: { label: "Processing", color: "bg-amber-100 text-amber-700", icon: "🔄" },
-  ready: { label: "Ready", color: "bg-emerald-100 text-emerald-700", icon: "✨" },
-  out_for_delivery: { label: "Out for Delivery", color: "bg-orange-100 text-orange-700", icon: "🚚" },
-  delivered: { label: "Delivered", color: "bg-green-100 text-green-700", icon: "📦" },
-  completed: { label: "Completed", color: "bg-emerald-100 text-emerald-700", icon: "🎉" },
-  cancelled: { label: "Cancelled", color: "bg-red-100 text-red-700", icon: "❌" },
+  new: { label: "New", color: "bg-blue-100 text-blue-700", Icon: Sparkles },
+  confirmed: { label: "Confirmed", color: "bg-cyan-100 text-cyan-700", Icon: CheckCircle2 },
+  pickup_scheduled: { label: "Pickup Scheduled", color: "bg-purple-100 text-purple-700", Icon: CalendarClock },
+  picked_up: { label: "Picked Up", color: "bg-indigo-100 text-indigo-700", Icon: PackageCheck },
+  processing: { label: "Processing", color: "bg-amber-100 text-amber-700", Icon: RefreshCw },
+  ready: { label: "Ready", color: "bg-emerald-100 text-emerald-700", Icon: BadgeCheck },
+  out_for_delivery: { label: "Out for Delivery", color: "bg-orange-100 text-orange-700", Icon: Truck },
+  delivered: { label: "Delivered", color: "bg-green-100 text-green-700", Icon: PackageCheck },
+  completed: { label: "Completed", color: "bg-emerald-100 text-emerald-700", Icon: PartyPopper },
+  cancelled: { label: "Cancelled", color: "bg-red-100 text-red-700", Icon: XCircle },
 };
 
 const PAYMENT_STATUS = {
-  paid: { label: "Paid", color: "bg-green-100 text-green-700", icon: "💳" },
-  pending: { label: "Pending", color: "bg-yellow-100 text-yellow-700", icon: "⏳" },
-  refunded: { label: "Refunded", color: "bg-red-100 text-red-700", icon: "↩️" },
-  failed: { label: "Failed", color: "bg-red-100 text-red-700", icon: "❌" },
+  paid: { label: "Paid", color: "bg-green-100 text-green-700", Icon: CreditCard },
+  pending: { label: "Pending", color: "bg-yellow-100 text-yellow-700", Icon: Clock },
+  refunded: { label: "Refunded", color: "bg-red-100 text-red-700", Icon: Undo2 },
+  failed: { label: "Failed", color: "bg-red-100 text-red-700", Icon: XCircle },
 };
 
 const STATUS_ACTION_META = {
@@ -94,6 +96,30 @@ const EVIDENCE_IMAGE_LABELS = {
   pickup: { en: "Pickup", es: "Recogida" },
   weight: { en: "Weight", es: "Peso" },
   delivery: { en: "Delivery", es: "Entrega" },
+};
+
+// Urgency is derived, not stored — it only applies to orders still in play
+// (not completed/cancelled/delivered), and is the single loudest signal in
+// the whole UI on purpose: it tells an operator what needs attention *now*.
+const URGENCY_META = {
+  overdue: {
+    label: { en: "Overdue", es: "Atrasada" },
+    pill: "bg-red-100 text-red-700 border border-red-200",
+    rowBg: "bg-red-50/60",
+    borderColor: "#ef4444",
+  },
+  today: {
+    label: { en: "Today", es: "Hoy" },
+    pill: "bg-amber-100 text-amber-700 border border-amber-200",
+    rowBg: "bg-amber-50/50",
+    borderColor: "#f59e0b",
+  },
+  express: {
+    label: { en: "Express", es: "Express" },
+    pill: "bg-violet-100 text-violet-700 border border-violet-200",
+    rowBg: "",
+    borderColor: "#8b5cf6",
+  },
 };
 
 const getAdminToken = () => localStorage.getItem("token") || sessionStorage.getItem("token");
@@ -168,6 +194,163 @@ const shouldShowEvidenceSection = (order) => {
   return getOrderEvidenceTypes(order).length > 0;
 };
 
+// Lookup helpers — pure functions over the constants above, no component
+// state involved, so they live at module scope and can be shared safely by
+// every subcomponent below without being re-created on each render.
+const getServiceLabel = (key) => SERVICE_TYPES[key]?.label || key || "-";
+const getServiceIcon = (key) => SERVICE_TYPES[key]?.Icon || Package;
+const getServiceColor = (key) => SERVICE_TYPES[key]?.color || "#64748b";
+const getPlanLabel = (key) => PLAN_LABELS[key]?.label || key || "-";
+const getPlanBadge = (key) => PLAN_LABELS[key]?.badge || "bg-slate-100 text-slate-700";
+const getStatusLabel = (key) => STATUS_LABELS[normalizeStatus(key)]?.label || key || "-";
+const getStatusColor = (key) => STATUS_LABELS[normalizeStatus(key)]?.color || "bg-slate-100 text-slate-700";
+const getStatusIcon = (key) => STATUS_LABELS[normalizeStatus(key)]?.Icon || Package;
+const getPaymentLabel = (key) => PAYMENT_STATUS[key?.toLowerCase()]?.label || key || "-";
+const getPaymentColor = (key) => PAYMENT_STATUS[key?.toLowerCase()]?.color || "bg-slate-100 text-slate-700";
+const getPaymentIcon = (key) => PAYMENT_STATUS[key?.toLowerCase()]?.Icon || CreditCard;
+
+const getLocalDate = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
+// Pickup/created dates may come back as "2026-07-11" or as full ISO
+// timestamps ("2026-07-11T12:00:00Z"). Normalize to YYYY-MM-DD so
+// string comparisons against <input type="date"> values are reliable.
+const dateOnly = (dateStr) => {
+  if (!dateStr) return "";
+  const str = dateStr.toString();
+  return str.includes("T") ? str.split("T")[0] : str.slice(0, 10);
+};
+
+const isActiveStatus = (status) =>
+  !["completed", "cancelled", "delivered"].includes(normalizeStatus(status));
+
+// Derives the single most relevant urgency signal for an order, in priority
+// order: overdue beats today beats express. Returns null for orders that
+// don't need attention (or are already done/cancelled).
+const getUrgency = (order) => {
+  if (!isActiveStatus(order.status)) return null;
+  const pickup = dateOnly(order.pickup_date);
+  const today = getLocalDate();
+  if (pickup && pickup < today) return { level: "overdue" };
+  if (pickup && pickup === today) return { level: "today" };
+  if (order.service_plan === "express") return { level: "express" };
+  return null;
+};
+
+// Self-contained, dependency-free filtering. Every field is matched
+// defensively (missing/undefined values never crash the comparison).
+const orderMatchesFilters = (order, filters) => {
+  if (!order) return false;
+
+  if (filters.status !== "all" && normalizeStatus(order.status) !== filters.status) {
+    return false;
+  }
+
+  if (filters.service !== "all" && order.service_type !== filters.service) {
+    return false;
+  }
+
+  if (filters.payment !== "all") {
+    const isPaid = normalizeText(order.payment_status) === "paid";
+    if (filters.payment === "paid" && !isPaid) return false;
+    if (filters.payment === "pending" && isPaid) return false;
+  }
+
+  const pickup = dateOnly(order.pickup_date);
+  if (filters.dateFrom && (!pickup || pickup < filters.dateFrom)) return false;
+  if (filters.dateTo && (!pickup || pickup > filters.dateTo)) return false;
+
+  const query = filters.search?.trim().toLowerCase();
+  if (query) {
+    const haystack = [
+      order.customer_name,
+      order.customer_email,
+      order.customer_phone,
+      formatOrderNumber(order),
+      order.order_number,
+      order.pickup_address,
+      order.delivery_address,
+      order.notes,
+    ]
+      .map(normalizeText)
+      .join(" \u2022 ");
+    if (!haystack.includes(query)) return false;
+  }
+
+  return true;
+};
+
+const SORT_ACCESSORS = {
+  order_number: (o) => formatOrderNumber(o),
+  customer_name: (o) => normalizeText(o.customer_name),
+  service_type: (o) => normalizeText(o.service_type),
+  pickup_date: (o) => dateOnly(o.pickup_date) || "0000-00-00",
+  status: (o) => normalizeStatus(o.status),
+  payment_status: (o) => normalizeText(o.payment_status),
+  total_amount: (o) => parseFloat(o.total_amount) || 0,
+};
+
+const sortOrders = (list, sort) => {
+  const accessor = SORT_ACCESSORS[sort.key] || SORT_ACCESSORS.pickup_date;
+  const dir = sort.direction === "asc" ? 1 : -1;
+  return [...list].sort((a, b) => {
+    const av = accessor(a);
+    const bv = accessor(b);
+    if (av < bv) return -1 * dir;
+    if (av > bv) return 1 * dir;
+    return 0;
+  });
+};
+
+// ─── SHARED VISUAL PIECES (module scope) ────────────────────────────────────
+// Real icons instead of emoji: consistent rendering across every OS/browser,
+// and reused everywhere a service/status/payment needs to be shown so the
+// whole app stays visually consistent instead of re-implementing the same
+// icon+label pairing in five different places.
+
+function ServiceTag({ serviceType, className = "text-sm", iconClassName = "w-4 h-4 text-slate-400" }) {
+  const Icon = getServiceIcon(serviceType);
+  return (
+    <span className={`inline-flex items-center gap-2 ${className}`}>
+      <Icon className={iconClassName} />
+      {getServiceLabel(serviceType)}
+    </span>
+  );
+}
+
+function StatusPill({ status, className = "" }) {
+  const Icon = getStatusIcon(status);
+  return (
+    <Badge className={`inline-flex items-center gap-1 ${getStatusColor(status)} ${className}`}>
+      <Icon className="w-3 h-3" />
+      {getStatusLabel(status)}
+    </Badge>
+  );
+}
+
+function PaymentPill({ paymentStatus, className = "" }) {
+  const Icon = getPaymentIcon(paymentStatus);
+  return (
+    <Badge className={`inline-flex items-center gap-1 ${getPaymentColor(paymentStatus)} ${className}`}>
+      <Icon className="w-3 h-3" />
+      {getPaymentLabel(paymentStatus)}
+    </Badge>
+  );
+}
+
+function UrgencyPill({ urgency, locale }) {
+  if (!urgency) return null;
+  const meta = URGENCY_META[urgency.level];
+  return (
+    <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded ${meta.pill}`}>
+      {urgency.level === "overdue" && <AlertTriangle className="w-3 h-3" />}
+      {meta.label[locale === "es" ? "es" : "en"]}
+    </span>
+  );
+}
+
 function EvidenceImageThumb({ orderId, type, label, onOpen, token }) {
   const [blobUrl, setBlobUrl] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -238,84 +421,749 @@ function EvidenceImageThumb({ orderId, type, label, onOpen, token }) {
   );
 }
 
-const getLocalDate = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-};
+// ─── SUBCOMPONENTS (module scope) ───────────────────────────────────────────
+// IMPORTANT: these live OUTSIDE the Orders component on purpose. A component
+// declared *inside* another component's function body gets a brand-new
+// function identity on every render of the parent, so React treats it as a
+// completely different component type: it unmounts the old instance and
+// mounts a new one — including the DOM nodes inside it. For an <input>, that
+// means it loses focus after every keystroke. Keeping them here means React
+// can keep reusing the same DOM node across renders.
 
-// Pickup/created dates may come back as "2026-07-11" or as full ISO
-// timestamps ("2026-07-11T12:00:00Z"). Normalize to YYYY-MM-DD so
-// string comparisons against <input type="date"> values are reliable.
-const dateOnly = (dateStr) => {
-  if (!dateStr) return "";
-  const str = dateStr.toString();
-  return str.includes("T") ? str.split("T")[0] : str.slice(0, 10);
-};
+function SortHeader({ sortKey, children, align = "left", sort, toggleSort }) {
+  const active = sort.key === sortKey;
+  return (
+    <th
+      className={`px-4 py-3 text-${align} text-xs font-semibold text-slate-600 uppercase tracking-wider select-none cursor-pointer hover:text-slate-900 transition-colors`}
+      onClick={() => toggleSort(sortKey)}
+    >
+      <span className={`inline-flex items-center gap-1 ${align === "right" ? "flex-row-reverse" : ""}`}>
+        {children}
+        {active ? (
+          sort.direction === "asc"
+            ? <ChevronUp className="w-3.5 h-3.5 text-sky-600" />
+            : <ChevronDown className="w-3.5 h-3.5 text-sky-600" />
+        ) : (
+          <ChevronDown className="w-3.5 h-3.5 text-slate-300" />
+        )}
+      </span>
+    </th>
+  );
+}
 
-// Self-contained, dependency-free filtering. Every field is matched
-// defensively (missing/undefined values never crash the comparison).
-const orderMatchesFilters = (order, filters) => {
-  if (!order) return false;
+function TableSkeletonRows() {
+  return (
+    <>
+      {Array.from({ length: 6 }).map((_, i) => (
+        <tr key={i}>
+          {Array.from({ length: 9 }).map((__, j) => (
+            <td key={j} className="px-4 py-4">
+              <div className="h-3.5 rounded bg-slate-100 animate-pulse" style={{ width: `${50 + ((i + j) % 4) * 10}%` }} />
+            </td>
+          ))}
+        </tr>
+      ))}
+    </>
+  );
+}
 
-  if (filters.status !== "all" && normalizeStatus(order.status) !== filters.status) {
-    return false;
-  }
+function EmptyState({ onClear, t }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-14 text-center">
+      <div className="bg-slate-100 rounded-full p-3 mb-3">
+        <Inbox className="w-6 h-6 text-slate-400" />
+      </div>
+      <p className="font-medium text-slate-700">
+        {t("No orders match your filters", "Ninguna orden coincide con tus filtros")}
+      </p>
+      <p className="text-sm text-slate-400 mt-1 max-w-sm">
+        {t(
+          "Try adjusting the search, status, or date range.",
+          "Intenta ajustar la búsqueda, el estado o el rango de fechas."
+        )}
+      </p>
+      {onClear && (
+        <Button variant="outline" size="sm" className="mt-4" onClick={onClear}>
+          <X className="h-4 w-4 mr-1" />
+          {t("Clear filters", "Limpiar filtros")}
+        </Button>
+      )}
+    </div>
+  );
+}
 
-  if (filters.service !== "all" && order.service_type !== filters.service) {
-    return false;
-  }
+function OrderCard({ order, onSelect, locale }) {
+  const status = normalizeStatus(order.status);
+  const isPaid = normalizeText(order.payment_status) === "paid";
+  const urgency = getUrgency(order);
+  const borderColor = urgency ? URGENCY_META[urgency.level].borderColor : getServiceColor(order.service_type);
 
-  if (filters.payment !== "all") {
-    const isPaid = normalizeText(order.payment_status) === "paid";
-    if (filters.payment === "paid" && !isPaid) return false;
-    if (filters.payment === "pending" && isPaid) return false;
-  }
+  return (
+    <Card className="hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 cursor-pointer border-l-4"
+      style={{ borderLeftColor: borderColor }}
+      onClick={() => onSelect(order.id)}
+    >
+      <CardHeader className="pb-2">
+        <div className="flex justify-between items-start gap-2">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <CardTitle className="text-sm font-bold">
+                {formatOrderNumber(order)}
+              </CardTitle>
+              <UrgencyPill urgency={urgency} locale={locale} />
+            </div>
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
+              <Badge variant="outline" className="text-xs">
+                <ServiceTag serviceType={order.service_type} className="text-xs" iconClassName="w-3.5 h-3.5 text-slate-500" />
+              </Badge>
+              {order.service_plan && (
+                <Badge className={`text-xs ${getPlanBadge(order.service_plan)}`}>
+                  {getPlanLabel(order.service_plan)}
+                </Badge>
+              )}
+            </div>
+          </div>
+          <StatusPill status={status} />
+        </div>
+      </CardHeader>
+      <CardContent className="pt-0">
+        <div className="grid grid-cols-2 gap-2 text-xs text-slate-500 mt-2">
+          <div className="flex items-center gap-1">
+            <User className="w-3 h-3" />
+            <span className="truncate">{order.customer_name}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <Calendar className="w-3 h-3" />
+            <span>{formatDate(order.pickup_date)}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <MapPin className="w-3 h-3" />
+            <span className="truncate">{order.pickup_address || "-"}</span>
+          </div>
+          <div className="flex items-center gap-1 justify-end">
+            <span className={isPaid ? "text-green-600 font-bold" : "text-yellow-600 font-bold"}>
+              {formatCurrency(order.total_amount)}
+            </span>
+            <PaymentPill paymentStatus={order.payment_status} className="text-[10px]" />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
-  const pickup = dateOnly(order.pickup_date);
-  if (filters.dateFrom && (!pickup || pickup < filters.dateFrom)) return false;
-  if (filters.dateTo && (!pickup || pickup > filters.dateTo)) return false;
+function BulkActionsBar({ count, onMarkPaid, onMarkPending, onDownloadTickets, onCancel, onClear, t }) {
+  if (count === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-sky-50 border-b border-sky-100">
+      <span className="text-sm font-medium text-sky-900">
+        {count} {t("selected", "seleccionadas")}
+      </span>
+      <div className="flex flex-wrap items-center gap-2 lg:ml-auto">
+        <Button size="sm" variant="outline" className="h-7 text-xs bg-white" onClick={onMarkPaid}>
+          <CreditCard className="w-3.5 h-3.5 mr-1" /> {t("Mark Paid", "Marcar Pagado")}
+        </Button>
+        <Button size="sm" variant="outline" className="h-7 text-xs bg-white" onClick={onMarkPending}>
+          <Clock className="w-3.5 h-3.5 mr-1" /> {t("Mark Pending", "Marcar Pendiente")}
+        </Button>
+        <Button size="sm" variant="outline" className="h-7 text-xs bg-white" onClick={onDownloadTickets}>
+          <Download className="w-3.5 h-3.5 mr-1" /> {t("Tickets", "Tickets")}
+        </Button>
+        <Button size="sm" variant="outline" className="h-7 text-xs bg-white text-red-600 hover:text-red-700" onClick={onCancel}>
+          <XCircle className="w-3.5 h-3.5 mr-1" /> {t("Cancel", "Cancelar")}
+        </Button>
+        <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={onClear}>
+          <X className="w-3.5 h-3.5 mr-1" /> {t("Clear", "Limpiar")}
+        </Button>
+      </div>
+    </div>
+  );
+}
 
-  const query = filters.search?.trim().toLowerCase();
-  if (query) {
-    const haystack = [
-      order.customer_name,
-      order.customer_email,
-      order.customer_phone,
-      formatOrderNumber(order),
-      order.order_number,
-      order.pickup_address,
-      order.delivery_address,
-      order.notes,
-    ]
-      .map(normalizeText)
-      .join(" \u2022 ");
-    if (!haystack.includes(query)) return false;
-  }
+function OrderTable({
+  loading,
+  paginatedOrders,
+  activeFilterCount,
+  clearFilters,
+  onView,
+  onDownloadQr,
+  onRequestStatusUpdate,
+  onUpdatePaymentStatus,
+  sort,
+  toggleSort,
+  selectedIds,
+  onToggleSelect,
+  onTogglePage,
+  t,
+  locale,
+}) {
+  const allPageSelected = paginatedOrders.length > 0 && paginatedOrders.every((o) => selectedIds.has(o.id));
 
-  return true;
-};
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full">
+        <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-[1]">
+          <tr>
+            <th className="pl-4 pr-2 py-3 w-10">
+              <input
+                type="checkbox"
+                className="accent-sky-600 w-4 h-4 rounded cursor-pointer"
+                checked={allPageSelected}
+                onChange={onTogglePage}
+                aria-label={t("Select all on page", "Seleccionar todos en la página")}
+              />
+            </th>
+            <SortHeader sortKey="order_number" sort={sort} toggleSort={toggleSort}>{t("Order", "Orden")}</SortHeader>
+            <SortHeader sortKey="customer_name" sort={sort} toggleSort={toggleSort}>{t("Customer", "Cliente")}</SortHeader>
+            <SortHeader sortKey="service_type" sort={sort} toggleSort={toggleSort}>{t("Service", "Servicio")}</SortHeader>
+            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
+              {t("Plan", "Plan")}
+            </th>
+            <SortHeader sortKey="pickup_date" sort={sort} toggleSort={toggleSort}>{t("Pickup", "Pickup")}</SortHeader>
+            <SortHeader sortKey="status" sort={sort} toggleSort={toggleSort}>{t("Status", "Estado")}</SortHeader>
+            <SortHeader sortKey="total_amount" align="right" sort={sort} toggleSort={toggleSort}>{t("Payment", "Pago")}</SortHeader>
+            <th className="px-4 py-3 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">
+              {t("Actions", "Acciones")}
+            </th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {loading ? (
+            <TableSkeletonRows />
+          ) : paginatedOrders.length === 0 ? (
+            <tr>
+              <td colSpan={9}>
+                <EmptyState onClear={activeFilterCount > 0 ? clearFilters : undefined} t={t} />
+              </td>
+            </tr>
+          ) : (
+            paginatedOrders.map((order) => {
+              const status = normalizeStatus(order.status);
+              const isPaid = normalizeText(order.payment_status) === "paid";
+              const urgency = getUrgency(order);
+              const urgencyMeta = urgency ? URGENCY_META[urgency.level] : null;
+              return (
+                <tr
+                  key={order.id}
+                  onClick={() => onView(order.id)}
+                  className={`cursor-pointer hover:bg-slate-50/70 transition-colors ${urgencyMeta?.rowBg || ""}`}
+                  style={{ borderLeft: `3px solid ${urgencyMeta?.borderColor || "transparent"}` }}
+                >
+                  <td className="pl-4 pr-2 py-3" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      className="accent-sky-600 w-4 h-4 rounded cursor-pointer"
+                      checked={selectedIds.has(order.id)}
+                      onChange={() => onToggleSelect(order.id)}
+                      aria-label={t("Select order", "Seleccionar orden")}
+                    />
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-mono font-medium text-slate-900 text-sm">
+                        {formatOrderNumber(order)}
+                      </p>
+                      <UrgencyPill urgency={urgency} locale={locale} />
+                    </div>
+                    <p className="text-xs text-slate-400">
+                      {formatDate(order.created_at)}
+                    </p>
+                  </td>
+                  <td className="px-4 py-3">
+                    <p className="font-medium text-slate-900 text-sm">
+                      {order.customer_name}
+                    </p>
+                    <p className="text-xs text-slate-400 truncate max-w-[140px]">
+                      {order.customer_email}
+                    </p>
+                  </td>
+                  <td className="px-4 py-3">
+                    <ServiceTag serviceType={order.service_type} />
+                  </td>
+                  <td className="px-4 py-3">
+                    {order.service_plan ? (
+                      <Badge className={`text-xs ${getPlanBadge(order.service_plan)}`}>
+                        {getPlanLabel(order.service_plan)}
+                      </Badge>
+                    ) : (
+                      <span className="text-slate-400 text-xs">-</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                      <span className="text-sm">{formatDate(order.pickup_date)}</span>
+                    </div>
+                    {order.pickup_time_window && (
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        {order.pickup_time_window}
+                      </p>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <StatusPill status={status} />
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex flex-col gap-0.5 items-end">
+                      <PaymentPill paymentStatus={order.payment_status} className="text-xs" />
+                      <span className="text-xs font-bold text-slate-700">
+                        {formatCurrency(order.total_amount)}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-48">
+                        <DropdownMenuItem onClick={() => onView(order.id)}>
+                          <Eye className="h-4 w-4 mr-2" />
+                          {t("View details", "Ver detalles")}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => onDownloadQr(order)}>
+                          <Download className="h-4 w-4 mr-2" />
+                          {t("Download Ticket", "Descargar Ticket")}
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        {status === "new" && (
+                          <DropdownMenuItem onClick={() => onRequestStatusUpdate(order, "confirmed")}>
+                            <CheckCircle className="h-4 w-4 mr-2" />
+                            {t("Confirm", "Confirmar")}
+                          </DropdownMenuItem>
+                        )}
+                        {status === "confirmed" && (
+                          <DropdownMenuItem onClick={() => onRequestStatusUpdate(order, "pickup_scheduled")}>
+                            <Calendar className="h-4 w-4 mr-2" />
+                            {t("Schedule Pickup", "Programar Pickup")}
+                          </DropdownMenuItem>
+                        )}
+                        {status === "pickup_scheduled" && (
+                          <DropdownMenuItem onClick={() => onRequestStatusUpdate(order, "picked_up")}>
+                            <Package className="h-4 w-4 mr-2" />
+                            {t("Mark Picked Up", "Marcar Recogido")}
+                          </DropdownMenuItem>
+                        )}
+                        {status === "picked_up" && (
+                          <DropdownMenuItem onClick={() => onRequestStatusUpdate(order, "processing")}>
+                            <RefreshCw className="h-4 w-4 mr-2" />
+                            {t("Start Processing", "Iniciar Procesamiento")}
+                          </DropdownMenuItem>
+                        )}
+                        {status === "processing" && (
+                          <DropdownMenuItem onClick={() => onRequestStatusUpdate(order, "ready")}>
+                            <Star className="h-4 w-4 mr-2" />
+                            {t("Mark Ready", "Marcar Listo")}
+                          </DropdownMenuItem>
+                        )}
+                        {status === "ready" && (
+                          <DropdownMenuItem onClick={() => onRequestStatusUpdate(order, "out_for_delivery")}>
+                            <Truck className="h-4 w-4 mr-2" />
+                            {t("Out for Delivery", "En camino")}
+                          </DropdownMenuItem>
+                        )}
+                        {status === "out_for_delivery" && (
+                          <DropdownMenuItem onClick={() => onRequestStatusUpdate(order, "delivered")}>
+                            <CheckCircle className="h-4 w-4 mr-2" />
+                            {t("Mark Delivered", "Marcar Entregado")}
+                          </DropdownMenuItem>
+                        )}
+                        {status === "delivered" && (
+                          <DropdownMenuItem onClick={() => onRequestStatusUpdate(order, "completed")}>
+                            <CheckCircle className="h-4 w-4 mr-2" />
+                            {t("Complete Order", "Completar Orden")}
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuSeparator />
+                        {!isPaid && (
+                          <DropdownMenuItem onClick={() => onUpdatePaymentStatus(order.id, "paid")}>
+                            <CreditCard className="h-4 w-4 mr-2" />
+                            {t("Mark Paid", "Marcar Pagado")}
+                          </DropdownMenuItem>
+                        )}
+                        {isPaid && (
+                          <DropdownMenuItem onClick={() => onUpdatePaymentStatus(order.id, "pending")}>
+                            <Clock className="h-4 w-4 mr-2" />
+                            {t("Mark Pending", "Marcar Pendiente")}
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuSeparator />
+                        {status !== "cancelled" && (
+                          <DropdownMenuItem
+                            onClick={() => onRequestStatusUpdate(order, "cancelled")}
+                            className="text-red-600"
+                          >
+                            <X className="h-4 w-4 mr-2" />
+                            {t("Cancel Order", "Cancelar Orden")}
+                          </DropdownMenuItem>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </td>
+                </tr>
+              );
+            })
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
-const SORT_ACCESSORS = {
-  order_number: (o) => formatOrderNumber(o),
-  customer_name: (o) => normalizeText(o.customer_name),
-  service_type: (o) => normalizeText(o.service_type),
-  pickup_date: (o) => dateOnly(o.pickup_date) || "0000-00-00",
-  status: (o) => normalizeStatus(o.status),
-  payment_status: (o) => normalizeText(o.payment_status),
-  total_amount: (o) => parseFloat(o.total_amount) || 0,
-};
+// Stats: flat, solid-color icon chips instead of pastel gradient cards —
+// more legible at a glance and doesn't read as the generic default.
+function DashboardStats({ stats, activeFilterCount, totalOrders, t }) {
+  const items = [
+    {
+      key: "orders",
+      label: t("Orders", "Órdenes"),
+      value: stats.total,
+      icon: Package,
+      accent: "bg-sky-600",
+      sub: activeFilterCount > 0 ? `${t("of", "de")} ${totalOrders} ${t("total", "total")}` : null,
+    },
+    { key: "paid", label: t("Paid", "Pagados"), value: stats.paid, icon: CreditCard, accent: "bg-emerald-600" },
+    { key: "pending", label: t("Pending", "Pendientes"), value: stats.pending, icon: Clock, accent: "bg-amber-600" },
+    { key: "revenue", label: t("Revenue", "Ingresos"), value: formatCurrency(stats.totalRevenue), icon: Banknote, accent: "bg-violet-600" },
+  ];
 
-const sortOrders = (list, sort) => {
-  const accessor = SORT_ACCESSORS[sort.key] || SORT_ACCESSORS.pickup_date;
-  const dir = sort.direction === "asc" ? 1 : -1;
-  return [...list].sort((a, b) => {
-    const av = accessor(a);
-    const bv = accessor(b);
-    if (av < bv) return -1 * dir;
-    if (av > bv) return 1 * dir;
-    return 0;
-  });
-};
+  return (
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+      {items.map((item) => (
+        <div key={item.key} className="bg-white rounded-xl border border-slate-200 p-4 flex items-center gap-3">
+          <div className={`${item.accent} rounded-lg p-2.5 text-white shrink-0`}>
+            <item.icon className="w-5 h-5" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">{item.label}</p>
+            <p className="text-xl font-bold text-slate-900 truncate">{item.value}</p>
+            {item.sub && <p className="text-[11px] text-slate-400">{item.sub}</p>}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Filtro con búsqueda manual (botón "Buscar" / Enter). El input vive en un
+// componente estable a nivel de módulo, así que ya no se desmonta en cada
+// tecla: puedes escribir normalmente sin perder el foco.
+function FilterBar({
+  filters,
+  setFilters,
+  searchInput,
+  setSearchInput,
+  setPage,
+  activeFilterCount,
+  clearFilters,
+  filtersExpanded,
+  setFiltersExpanded,
+  viewMode,
+  setViewMode,
+  t,
+}) {
+  const handleSearch = () => {
+    setFilters((f) => ({ ...f, search: searchInput }));
+    setPage(1);
+  };
+
+  const clearSearch = () => {
+    setSearchInput("");
+    setFilters((f) => ({ ...f, search: "" }));
+    setPage(1);
+  };
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 mb-6 shadow-sm overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setFiltersExpanded((v) => !v)}
+        className="w-full flex items-center justify-between px-4 py-3 lg:hidden"
+      >
+        <span className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+          <SlidersHorizontal className="w-4 h-4" />
+          {t("Filters", "Filtros")}
+          {activeFilterCount > 0 && (
+            <Badge className="bg-sky-100 text-sky-700">{activeFilterCount}</Badge>
+          )}
+        </span>
+        {filtersExpanded ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+      </button>
+
+      <div className={`p-4 ${filtersExpanded ? "block" : "hidden"} lg:block`}>
+        <div className="flex flex-col lg:flex-row gap-3 items-start lg:items-end">
+          {/* Campo de búsqueda con botón de acción */}
+          <div className="flex-1 w-full">
+            <div className="relative flex items-center">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+              <Input
+                placeholder=""
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleSearch();
+                  }
+                }}
+                className="pl-9 pr-20"
+              />
+              <div className="absolute right-1 flex items-center gap-1">
+                {searchInput && (
+                  <button
+                    type="button"
+                    onClick={clearSearch}
+                    className="text-slate-300 hover:text-slate-500 p-1"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-8 px-2 text-sky-600 hover:text-sky-800 hover:bg-sky-50"
+                  onClick={handleSearch}
+                >
+                  {t("Search", "Buscar")}
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Select
+              value={filters.status}
+              onValueChange={(v) => { setFilters({ ...filters, status: v }); setPage(1); }}
+            >
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder={t("Status", "Estado")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("All statuses", "Todos los estados")}</SelectItem>
+                {Object.entries(STATUS_LABELS).map(([key, val]) => (
+                  <SelectItem key={key} value={key}>
+                    <span className="inline-flex items-center gap-1.5">
+                      <val.Icon className="w-3.5 h-3.5" />
+                      {val.label}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={filters.service}
+              onValueChange={(v) => { setFilters({ ...filters, service: v }); setPage(1); }}
+            >
+              <SelectTrigger className="w-[170px]">
+                <SelectValue placeholder={t("Service", "Servicio")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("All services", "Todos los servicios")}</SelectItem>
+                {Object.entries(SERVICE_TYPES).map(([key, val]) => (
+                  <SelectItem key={key} value={key}>
+                    <span className="inline-flex items-center gap-1.5">
+                      <val.Icon className="w-3.5 h-3.5" />
+                      {val.label}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={filters.payment}
+              onValueChange={(v) => { setFilters({ ...filters, payment: v }); setPage(1); }}
+            >
+              <SelectTrigger className="w-[140px]">
+                <SelectValue placeholder={t("Payment", "Pago")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("All payments", "Todos los pagos")}</SelectItem>
+                <SelectItem value="paid">
+                  <span className="inline-flex items-center gap-1.5"><CreditCard className="w-3.5 h-3.5" /> {t("Paid", "Pagado")}</span>
+                </SelectItem>
+                <SelectItem value="pending">
+                  <span className="inline-flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> {t("Pending", "Pendiente")}</span>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Input
+              type="date"
+              value={filters.dateFrom}
+              onChange={(e) => { setFilters({ ...filters, dateFrom: e.target.value }); setPage(1); }}
+              className="w-[150px]"
+              aria-label={t("From date", "Fecha inicial")}
+            />
+
+            <Input
+              type="date"
+              value={filters.dateTo}
+              onChange={(e) => { setFilters({ ...filters, dateTo: e.target.value }); setPage(1); }}
+              className="w-[150px]"
+              aria-label={t("To date", "Fecha final")}
+            />
+
+            {activeFilterCount > 0 && (
+              <Button variant="outline" size="sm" onClick={clearFilters}>
+                <X className="h-4 w-4 mr-1" />
+                {t("Clear", "Limpiar")} ({activeFilterCount})
+              </Button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button
+              variant={viewMode === "cards" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setViewMode("cards")}
+              className={viewMode === "cards" ? "bg-sky-600" : ""}
+              aria-label={t("Card view", "Vista de tarjetas")}
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </Button>
+            <Button
+              variant={viewMode === "table" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setViewMode("table")}
+              className={viewMode === "table" ? "bg-sky-600" : ""}
+              aria-label={t("Table view", "Vista de tabla")}
+            >
+              <List className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function QrExportSection({
+  qrStartDate,
+  setQrStartDate,
+  qrEndDate,
+  setQrEndDate,
+  qrStatusFilter,
+  setQrStatusFilter,
+  qrServiceFilter,
+  setQrServiceFilter,
+  exportingQr,
+  handleExportQrBatch,
+  t,
+}) {
+  return (
+    <div className="bg-slate-50 rounded-xl border border-slate-200 p-4 mb-6">
+      <div className="flex flex-col lg:flex-row gap-3 items-start lg:items-end">
+        <div>
+          <Label className="text-xs">{t("Start", "Inicio")}</Label>
+          <Input
+            type="date"
+            value={qrStartDate}
+            onChange={(e) => setQrStartDate(e.target.value)}
+            className="h-8 text-sm"
+          />
+        </div>
+        <div>
+          <Label className="text-xs">{t("End", "Fin")}</Label>
+          <Input
+            type="date"
+            value={qrEndDate}
+            onChange={(e) => setQrEndDate(e.target.value)}
+            className="h-8 text-sm"
+          />
+        </div>
+        <div>
+          <Label className="text-xs">{t("Status", "Estado")}</Label>
+          <select
+            className="h-8 rounded-md border border-slate-200 px-2 text-sm bg-white"
+            value={qrStatusFilter}
+            onChange={(e) => setQrStatusFilter(e.target.value)}
+          >
+            <option value="">{t("All", "Todos")}</option>
+            {Object.keys(STATUS_LABELS).map(key => (
+              <option key={key} value={key}>{STATUS_LABELS[key].label}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <Label className="text-xs">{t("Service", "Servicio")}</Label>
+          <select
+            className="h-8 rounded-md border border-slate-200 px-2 text-sm bg-white"
+            value={qrServiceFilter}
+            onChange={(e) => setQrServiceFilter(e.target.value)}
+          >
+            <option value="">{t("All", "Todos")}</option>
+            {Object.keys(SERVICE_TYPES).map(key => (
+              <option key={key} value={key}>{SERVICE_TYPES[key].label}</option>
+            ))}
+          </select>
+        </div>
+        <Button
+          variant="outline"
+          onClick={handleExportQrBatch}
+          disabled={exportingQr}
+          className="h-8"
+        >
+          <Download className="h-4 w-4 mr-2" />
+          {exportingQr ? t("Exporting...", "Exportando...") : t("Export Tickets", "Exportar Tickets")}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function PaginationBar({ loading, totalItems, page, setPage, pageSize, setPageSize, totalPages, t }) {
+  if (loading || totalItems === 0) return null;
+  const start = (page - 1) * pageSize + 1;
+  const end = Math.min(page * pageSize, totalItems);
+  return (
+    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t border-slate-100 bg-slate-50/50">
+      <p className="text-xs text-slate-500">
+        {t(
+          `Showing ${start}-${end} of ${totalItems}`,
+          `Mostrando ${start}-${end} de ${totalItems}`
+        )}
+      </p>
+      <div className="flex items-center gap-3">
+        <select
+          className="h-8 rounded-md border border-slate-200 px-2 text-xs bg-white"
+          value={pageSize}
+          onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
+        >
+          {PAGE_SIZE_OPTIONS.map((size) => (
+            <option key={size} value={size}>{size} / {t("page", "página")}</option>
+          ))}
+        </select>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-8 w-8"
+            disabled={page <= 1}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <span className="text-xs text-slate-500 px-2 min-w-[70px] text-center">
+            {t("Page", "Página")} {page} / {totalPages}
+          </span>
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-8 w-8"
+            disabled={page >= totalPages}
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ─── MAIN COMPONENT ─────────────────────────────────────────────────────────
 
@@ -335,20 +1183,13 @@ export default function Orders() {
   const [weightForm, setWeightForm] = useState({ estimated_lbs: "", actual_lbs: "" });
   const [savingWeights, setSavingWeights] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState(null);
+  const [bulkConfirm, setBulkConfirm] = useState(null);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
 
-  // Filters — searchInput is the raw field value; filters.search is the
-  // debounced value actually applied, so typing never feels laggy while
-  // still avoiding a re-filter on every keystroke.
+  // Filters – la búsqueda se aplica manualmente (botón / Enter)
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [searchInput, setSearchInput] = useState("");
   const [filtersExpanded, setFiltersExpanded] = useState(true);
-
-  useEffect(() => {
-    const handle = setTimeout(() => {
-      setFilters((f) => ({ ...f, search: searchInput }));
-    }, 250);
-    return () => clearTimeout(handle);
-  }, [searchInput]);
 
   // Sorting + pagination
   const [sort, setSort] = useState({ key: "pickup_date", direction: "desc" });
@@ -601,18 +1442,74 @@ export default function Orders() {
     }
   };
 
-  // ─── Render Helpers ──────────────────────────────────────────────────────
-  const getServiceLabel = (key) => SERVICE_TYPES[key]?.label || key || "-";
-  const getServiceIcon = (key) => SERVICE_TYPES[key]?.icon || "📋";
-  const getServiceColor = (key) => SERVICE_TYPES[key]?.color || "#64748b";
-  const getPlanLabel = (key) => PLAN_LABELS[key]?.label || key || "-";
-  const getPlanBadge = (key) => PLAN_LABELS[key]?.badge || "bg-slate-100 text-slate-700";
-  const getStatusLabel = (key) => STATUS_LABELS[normalizeStatus(key)]?.label || key || "-";
-  const getStatusColor = (key) => STATUS_LABELS[normalizeStatus(key)]?.color || "bg-slate-100 text-slate-700";
-  const getStatusIcon = (key) => STATUS_LABELS[normalizeStatus(key)]?.icon || "📋";
-  const getPaymentLabel = (key) => PAYMENT_STATUS[key?.toLowerCase()]?.label || key || "-";
-  const getPaymentColor = (key) => PAYMENT_STATUS[key?.toLowerCase()]?.color || "bg-slate-100 text-slate-700";
+  // ─── Bulk actions ────────────────────────────────────────────────────────
+  const toggleSelect = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
+  const togglePageSelection = () => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      const pageIds = paginatedOrders.map((o) => o.id);
+      const allSelected = pageIds.every((id) => next.has(id));
+      pageIds.forEach((id) => (allSelected ? next.delete(id) : next.add(id)));
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
+
+  const bulkUpdatePayment = async (status) => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    try {
+      await Promise.all(ids.map((id) => axios.patch(`${API}/orders/${id}/payment-status?status=${status}`)));
+      toast.success(t("Payment status updated", "Estado de pago actualizado"));
+      clearSelection();
+      fetchOrders();
+    } catch (error) {
+      toast.error(t("Error updating payment status", "Error actualizando estado de pago"));
+    }
+  };
+
+  const bulkDownloadTickets = async () => {
+    const ids = Array.from(selectedIds);
+    const targets = orders.filter((o) => ids.includes(o.id));
+    for (const order of targets) {
+      // eslint-disable-next-line no-await-in-loop
+      await handleDownloadQr(order);
+    }
+  };
+
+  const requestBulkCancel = () => {
+    if (selectedIds.size === 0) return;
+    setBulkConfirm({
+      title: t("Cancel orders", "Cancelar órdenes"),
+      description: t(
+        `Are you sure you want to cancel ${selectedIds.size} order(s)?`,
+        `¿Seguro que deseas cancelar ${selectedIds.size} orden(es)?`
+      ),
+    });
+  };
+
+  const handleBulkCancelAccept = async () => {
+    const ids = Array.from(selectedIds);
+    setBulkConfirm(null);
+    try {
+      await Promise.all(ids.map((id) => axios.patch(`${API}/orders/${id}/status?status=cancelled`)));
+      toast.success(t("Status updated", "Estado actualizado"));
+      clearSelection();
+      fetchOrders();
+    } catch (error) {
+      toast.error(t("Error updating status", "Error actualizando estado"));
+    }
+  };
+
+  // ─── Render Helpers ──────────────────────────────────────────────────────
   const clearFilters = () => {
     setFilters(DEFAULT_FILTERS);
     setSearchInput("");
@@ -627,644 +1524,6 @@ export default function Orders() {
       return { key, direction: "asc" };
     });
     setPage(1);
-  };
-
-  const SortHeader = ({ sortKey, children, align = "left" }) => {
-    const active = sort.key === sortKey;
-    return (
-      <th
-        className={`px-4 py-3 text-${align} text-xs font-semibold text-slate-600 uppercase tracking-wider select-none cursor-pointer hover:text-slate-900 transition-colors`}
-        onClick={() => toggleSort(sortKey)}
-      >
-        <span className={`inline-flex items-center gap-1 ${align === "right" ? "flex-row-reverse" : ""}`}>
-          {children}
-          {active ? (
-            sort.direction === "asc"
-              ? <ChevronUp className="w-3.5 h-3.5 text-sky-600" />
-              : <ChevronDown className="w-3.5 h-3.5 text-sky-600" />
-          ) : (
-            <ChevronDown className="w-3.5 h-3.5 text-slate-300" />
-          )}
-        </span>
-      </th>
-    );
-  };
-
-  // ─── CARD VIEW ───────────────────────────────────────────────────────────
-  const OrderCard = ({ order }) => {
-    const status = normalizeStatus(order.status);
-    const isPaid = normalizeText(order.payment_status) === "paid";
-
-    return (
-      <Card className="hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 cursor-pointer border-l-4"
-        style={{ borderLeftColor: getServiceColor(order.service_type) }}
-        onClick={() => fetchOrderDetails(order.id)}
-      >
-        <CardHeader className="pb-2">
-          <div className="flex justify-between items-start">
-            <div>
-              <CardTitle className="text-sm font-bold">
-                {formatOrderNumber(order)}
-              </CardTitle>
-              <div className="flex items-center gap-2 mt-1">
-                <Badge variant="outline" className="text-xs">
-                  {getServiceIcon(order.service_type)} {getServiceLabel(order.service_type)}
-                </Badge>
-                {order.service_plan && (
-                  <Badge className={`text-xs ${getPlanBadge(order.service_plan)}`}>
-                    {getPlanLabel(order.service_plan)}
-                  </Badge>
-                )}
-              </div>
-            </div>
-            <Badge className={getStatusColor(status)}>
-              {getStatusIcon(status)} {getStatusLabel(status)}
-            </Badge>
-          </div>
-        </CardHeader>
-        <CardContent className="pt-0">
-          <div className="grid grid-cols-2 gap-2 text-xs text-slate-500 mt-2">
-            <div className="flex items-center gap-1">
-              <User className="w-3 h-3" />
-              <span className="truncate">{order.customer_name}</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <Calendar className="w-3 h-3" />
-              <span>{formatDate(order.pickup_date)}</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <MapPin className="w-3 h-3" />
-              <span className="truncate">{order.pickup_address || "-"}</span>
-            </div>
-            <div className="flex items-center gap-1 justify-end">
-              <span className={isPaid ? "text-green-600 font-bold" : "text-yellow-600 font-bold"}>
-                {formatCurrency(order.total_amount)}
-              </span>
-              <Badge className={`text-[10px] ${getPaymentColor(order.payment_status)}`}>
-                {getPaymentLabel(order.payment_status)}
-              </Badge>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  };
-
-  // ─── TABLE VIEW ──────────────────────────────────────────────────────────
-  const OrderTable = () => (
-    <div className="overflow-x-auto">
-      <table className="w-full">
-        <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-[1]">
-          <tr>
-            <SortHeader sortKey="order_number">{t("Order", "Orden")}</SortHeader>
-            <SortHeader sortKey="customer_name">{t("Customer", "Cliente")}</SortHeader>
-            <SortHeader sortKey="service_type">{t("Service", "Servicio")}</SortHeader>
-            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
-              {t("Plan", "Plan")}
-            </th>
-            <SortHeader sortKey="pickup_date">{t("Pickup", "Pickup")}</SortHeader>
-            <SortHeader sortKey="status">{t("Status", "Estado")}</SortHeader>
-            <SortHeader sortKey="total_amount" align="right">{t("Payment", "Pago")}</SortHeader>
-            <th className="px-4 py-3 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">
-              {t("Actions", "Acciones")}
-            </th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-100">
-          {loading ? (
-            <TableSkeletonRows />
-          ) : paginatedOrders.length === 0 ? (
-            <tr>
-              <td colSpan={8}>
-                <EmptyState onClear={activeFilterCount > 0 ? clearFilters : undefined} />
-              </td>
-            </tr>
-          ) : (
-            paginatedOrders.map((order) => {
-              const status = normalizeStatus(order.status);
-              const isPaid = normalizeText(order.payment_status) === "paid";
-              return (
-                <tr key={order.id} className="hover:bg-slate-50/70 transition-colors">
-                  <td className="px-4 py-3">
-                    <p className="font-mono font-medium text-slate-900 text-sm">
-                      {formatOrderNumber(order)}
-                    </p>
-                    <p className="text-xs text-slate-400">
-                      {formatDate(order.created_at)}
-                    </p>
-                  </td>
-                  <td className="px-4 py-3">
-                    <p className="font-medium text-slate-900 text-sm">
-                      {order.customer_name}
-                    </p>
-                    <p className="text-xs text-slate-400 truncate max-w-[140px]">
-                      {order.customer_email}
-                    </p>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg">{getServiceIcon(order.service_type)}</span>
-                      <span className="text-sm">{getServiceLabel(order.service_type)}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    {order.service_plan ? (
-                      <Badge className={`text-xs ${getPlanBadge(order.service_plan)}`}>
-                        {getPlanLabel(order.service_plan)}
-                      </Badge>
-                    ) : (
-                      <span className="text-slate-400 text-xs">-</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                      <span className="text-sm">{formatDate(order.pickup_date)}</span>
-                    </div>
-                    {order.pickup_time_window && (
-                      <p className="text-xs text-slate-400 mt-0.5">
-                        {order.pickup_time_window}
-                      </p>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge className={getStatusColor(status)}>
-                      {getStatusIcon(status)} {getStatusLabel(status)}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex flex-col gap-0.5 items-end">
-                      <Badge className={`text-xs ${getPaymentColor(order.payment_status)}`}>
-                        {getPaymentLabel(order.payment_status)}
-                      </Badge>
-                      <span className="text-xs font-bold text-slate-700">
-                        {formatCurrency(order.total_amount)}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-48">
-                        <DropdownMenuItem onClick={() => fetchOrderDetails(order.id)}>
-                          <Eye className="h-4 w-4 mr-2" />
-                          {t("View details", "Ver detalles")}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleDownloadQr(order)}>
-                          <Download className="h-4 w-4 mr-2" />
-                          {t("Download Ticket", "Descargar Ticket")}
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        {status === "new" && (
-                          <DropdownMenuItem onClick={() => requestStatusUpdate(order, "confirmed")}>
-                            <CheckCircle className="h-4 w-4 mr-2" />
-                            {t("Confirm", "Confirmar")}
-                          </DropdownMenuItem>
-                        )}
-                        {status === "confirmed" && (
-                          <DropdownMenuItem onClick={() => requestStatusUpdate(order, "pickup_scheduled")}>
-                            <Calendar className="h-4 w-4 mr-2" />
-                            {t("Schedule Pickup", "Programar Pickup")}
-                          </DropdownMenuItem>
-                        )}
-                        {status === "pickup_scheduled" && (
-                          <DropdownMenuItem onClick={() => requestStatusUpdate(order, "picked_up")}>
-                            <Package className="h-4 w-4 mr-2" />
-                            {t("Mark Picked Up", "Marcar Recogido")}
-                          </DropdownMenuItem>
-                        )}
-                        {status === "picked_up" && (
-                          <DropdownMenuItem onClick={() => requestStatusUpdate(order, "processing")}>
-                            <RefreshCw className="h-4 w-4 mr-2" />
-                            {t("Start Processing", "Iniciar Procesamiento")}
-                          </DropdownMenuItem>
-                        )}
-                        {status === "processing" && (
-                          <DropdownMenuItem onClick={() => requestStatusUpdate(order, "ready")}>
-                            <Star className="h-4 w-4 mr-2" />
-                            {t("Mark Ready", "Marcar Listo")}
-                          </DropdownMenuItem>
-                        )}
-                        {status === "ready" && (
-                          <DropdownMenuItem onClick={() => requestStatusUpdate(order, "out_for_delivery")}>
-                            <Truck className="h-4 w-4 mr-2" />
-                            {t("Out for Delivery", "En camino")}
-                          </DropdownMenuItem>
-                        )}
-                        {status === "out_for_delivery" && (
-                          <DropdownMenuItem onClick={() => requestStatusUpdate(order, "delivered")}>
-                            <CheckCircle className="h-4 w-4 mr-2" />
-                            {t("Mark Delivered", "Marcar Entregado")}
-                          </DropdownMenuItem>
-                        )}
-                        {status === "delivered" && (
-                          <DropdownMenuItem onClick={() => requestStatusUpdate(order, "completed")}>
-                            <CheckCircle className="h-4 w-4 mr-2" />
-                            {t("Complete Order", "Completar Orden")}
-                          </DropdownMenuItem>
-                        )}
-                        <DropdownMenuSeparator />
-                        {!isPaid && (
-                          <DropdownMenuItem onClick={() => updatePaymentStatus(order.id, "paid")}>
-                            <CreditCard className="h-4 w-4 mr-2" />
-                            {t("Mark Paid", "Marcar Pagado")}
-                          </DropdownMenuItem>
-                        )}
-                        {isPaid && (
-                          <DropdownMenuItem onClick={() => updatePaymentStatus(order.id, "pending")}>
-                            <Clock className="h-4 w-4 mr-2" />
-                            {t("Mark Pending", "Marcar Pendiente")}
-                          </DropdownMenuItem>
-                        )}
-                        <DropdownMenuSeparator />
-                        {status !== "cancelled" && (
-                          <DropdownMenuItem
-                            onClick={() => requestStatusUpdate(order, "cancelled")}
-                            className="text-red-600"
-                          >
-                            <X className="h-4 w-4 mr-2" />
-                            {t("Cancel Order", "Cancelar Orden")}
-                          </DropdownMenuItem>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </td>
-                </tr>
-              );
-            })
-          )}
-        </tbody>
-      </table>
-    </div>
-  );
-
-  // ─── SKELETON / EMPTY STATES ────────────────────────────────────────────
-  const TableSkeletonRows = () => (
-    <>
-      {Array.from({ length: 6 }).map((_, i) => (
-        <tr key={i}>
-          {Array.from({ length: 8 }).map((__, j) => (
-            <td key={j} className="px-4 py-4">
-              <div className="h-3.5 rounded bg-slate-100 animate-pulse" style={{ width: `${50 + ((i + j) % 4) * 10}%` }} />
-            </td>
-          ))}
-        </tr>
-      ))}
-    </>
-  );
-
-  const EmptyState = ({ onClear }) => (
-    <div className="flex flex-col items-center justify-center py-14 text-center">
-      <div className="bg-slate-100 rounded-full p-3 mb-3">
-        <Inbox className="w-6 h-6 text-slate-400" />
-      </div>
-      <p className="font-medium text-slate-700">
-        {t("No orders match your filters", "Ninguna orden coincide con tus filtros")}
-      </p>
-      <p className="text-sm text-slate-400 mt-1 max-w-sm">
-        {t(
-          "Try adjusting the search, status, or date range.",
-          "Intenta ajustar la búsqueda, el estado o el rango de fechas."
-        )}
-      </p>
-      {onClear && (
-        <Button variant="outline" size="sm" className="mt-4" onClick={onClear}>
-          <X className="h-4 w-4 mr-1" />
-          {t("Clear filters", "Limpiar filtros")}
-        </Button>
-      )}
-    </div>
-  );
-
-  // ─── DASHBOARD STATS ─────────────────────────────────────────────────────
-  const DashboardStats = () => (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-      <Card className="bg-gradient-to-br from-blue-50 to-cyan-50 border-blue-100">
-        <CardContent className="p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-semibold text-blue-600 uppercase tracking-wider">
-                {t("Orders", "Órdenes")}
-              </p>
-              <p className="text-2xl font-bold text-slate-800 mt-1">{stats.total}</p>
-              {activeFilterCount > 0 && (
-                <p className="text-[11px] text-blue-500 mt-0.5">
-                  {t("of", "de")} {orders.length} {t("total", "total")}
-                </p>
-              )}
-            </div>
-            <div className="bg-blue-100 p-2 rounded-lg">
-              <Package className="w-5 h-5 text-blue-600" />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="bg-gradient-to-br from-green-50 to-emerald-50 border-green-100">
-        <CardContent className="p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-semibold text-green-600 uppercase tracking-wider">
-                {t("Paid", "Pagados")}
-              </p>
-              <p className="text-2xl font-bold text-slate-800 mt-1">{stats.paid}</p>
-            </div>
-            <div className="bg-green-100 p-2 rounded-lg">
-              <CreditCard className="w-5 h-5 text-green-600" />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="bg-gradient-to-br from-yellow-50 to-amber-50 border-yellow-100">
-        <CardContent className="p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-semibold text-yellow-600 uppercase tracking-wider">
-                {t("Pending", "Pendientes")}
-              </p>
-              <p className="text-2xl font-bold text-slate-800 mt-1">{stats.pending}</p>
-            </div>
-            <div className="bg-yellow-100 p-2 rounded-lg">
-              <Clock className="w-5 h-5 text-yellow-600" />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="bg-gradient-to-br from-purple-50 to-pink-50 border-purple-100">
-        <CardContent className="p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-semibold text-purple-600 uppercase tracking-wider">
-                {t("Revenue", "Ingresos")}
-              </p>
-              <p className="text-2xl font-bold text-slate-800 mt-1">
-                {formatCurrency(stats.totalRevenue)}
-              </p>
-            </div>
-            <div className="bg-purple-100 p-2 rounded-lg">
-              <Banknote className="w-5 h-5 text-purple-600" />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
-
-  // ─── FILTER BAR ──────────────────────────────────────────────────────────
-  const FilterBar = () => (
-    <div className="bg-white rounded-xl border border-slate-200 mb-6 shadow-sm overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setFiltersExpanded((v) => !v)}
-        className="w-full flex items-center justify-between px-4 py-3 lg:hidden"
-      >
-        <span className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-          <SlidersHorizontal className="w-4 h-4" />
-          {t("Filters", "Filtros")}
-          {activeFilterCount > 0 && (
-            <Badge className="bg-sky-100 text-sky-700">{activeFilterCount}</Badge>
-          )}
-        </span>
-        {filtersExpanded ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
-      </button>
-
-      <div className={`p-4 ${filtersExpanded ? "block" : "hidden"} lg:block`}>
-        <div className="flex flex-col lg:flex-row gap-3 items-start lg:items-end">
-          <div className="flex-1 w-full">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-              <Input
-                placeholder={t("Search by customer, order #, address...", "Buscar por cliente, # de orden, dirección...")}
-                value={searchInput}
-                onChange={(e) => { setSearchInput(e.target.value); setPage(1); }}
-                className="pl-9"
-              />
-              {searchInput && (
-                <button
-                  type="button"
-                  onClick={() => setSearchInput("")}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <Select
-              value={filters.status}
-              onValueChange={(v) => { setFilters({ ...filters, status: v }); setPage(1); }}
-            >
-              <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder={t("Status", "Estado")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{t("All statuses", "Todos los estados")}</SelectItem>
-                {Object.entries(STATUS_LABELS).map(([key, val]) => (
-                  <SelectItem key={key} value={key}>
-                    {val.icon} {val.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select
-              value={filters.service}
-              onValueChange={(v) => { setFilters({ ...filters, service: v }); setPage(1); }}
-            >
-              <SelectTrigger className="w-[170px]">
-                <SelectValue placeholder={t("Service", "Servicio")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{t("All services", "Todos los servicios")}</SelectItem>
-                {Object.entries(SERVICE_TYPES).map(([key, val]) => (
-                  <SelectItem key={key} value={key}>
-                    {val.icon} {val.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select
-              value={filters.payment}
-              onValueChange={(v) => { setFilters({ ...filters, payment: v }); setPage(1); }}
-            >
-              <SelectTrigger className="w-[140px]">
-                <SelectValue placeholder={t("Payment", "Pago")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{t("All payments", "Todos los pagos")}</SelectItem>
-                <SelectItem value="paid">💳 {t("Paid", "Pagado")}</SelectItem>
-                <SelectItem value="pending">⏳ {t("Pending", "Pendiente")}</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Input
-              type="date"
-              value={filters.dateFrom}
-              onChange={(e) => { setFilters({ ...filters, dateFrom: e.target.value }); setPage(1); }}
-              className="w-[150px]"
-              aria-label={t("From date", "Fecha inicial")}
-            />
-
-            <Input
-              type="date"
-              value={filters.dateTo}
-              onChange={(e) => { setFilters({ ...filters, dateTo: e.target.value }); setPage(1); }}
-              className="w-[150px]"
-              aria-label={t("To date", "Fecha final")}
-            />
-
-            {activeFilterCount > 0 && (
-              <Button variant="outline" size="sm" onClick={clearFilters}>
-                <X className="h-4 w-4 mr-1" />
-                {t("Clear", "Limpiar")} ({activeFilterCount})
-              </Button>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Button
-              variant={viewMode === "cards" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setViewMode("cards")}
-              className={viewMode === "cards" ? "bg-sky-600" : ""}
-              aria-label={t("Card view", "Vista de tarjetas")}
-            >
-              <LayoutGrid className="h-4 w-4" />
-            </Button>
-            <Button
-              variant={viewMode === "table" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setViewMode("table")}
-              className={viewMode === "table" ? "bg-sky-600" : ""}
-              aria-label={t("Table view", "Vista de tabla")}
-            >
-              <List className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  // ─── QR EXPORT SECTION ───────────────────────────────────────────────────
-  const QrExportSection = () => (
-    <div className="bg-slate-50 rounded-xl border border-slate-200 p-4 mb-6">
-      <div className="flex flex-col lg:flex-row gap-3 items-start lg:items-end">
-        <div>
-          <Label className="text-xs">{t("Start", "Inicio")}</Label>
-          <Input
-            type="date"
-            value={qrStartDate}
-            onChange={(e) => setQrStartDate(e.target.value)}
-            className="h-8 text-sm"
-          />
-        </div>
-        <div>
-          <Label className="text-xs">{t("End", "Fin")}</Label>
-          <Input
-            type="date"
-            value={qrEndDate}
-            onChange={(e) => setQrEndDate(e.target.value)}
-            className="h-8 text-sm"
-          />
-        </div>
-        <div>
-          <Label className="text-xs">{t("Status", "Estado")}</Label>
-          <select
-            className="h-8 rounded-md border border-slate-200 px-2 text-sm bg-white"
-            value={qrStatusFilter}
-            onChange={(e) => setQrStatusFilter(e.target.value)}
-          >
-            <option value="">{t("All", "Todos")}</option>
-            {Object.keys(STATUS_LABELS).map(key => (
-              <option key={key} value={key}>{STATUS_LABELS[key].label}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <Label className="text-xs">{t("Service", "Servicio")}</Label>
-          <select
-            className="h-8 rounded-md border border-slate-200 px-2 text-sm bg-white"
-            value={qrServiceFilter}
-            onChange={(e) => setQrServiceFilter(e.target.value)}
-          >
-            <option value="">{t("All", "Todos")}</option>
-            {Object.keys(SERVICE_TYPES).map(key => (
-              <option key={key} value={key}>{SERVICE_TYPES[key].label}</option>
-            ))}
-          </select>
-        </div>
-        <Button
-          variant="outline"
-          onClick={handleExportQrBatch}
-          disabled={exportingQr}
-          className="h-8"
-        >
-          <Download className="h-4 w-4 mr-2" />
-          {exportingQr ? t("Exporting...", "Exportando...") : t("Export Tickets", "Exportar Tickets")}
-        </Button>
-      </div>
-    </div>
-  );
-
-  // ─── PAGINATION BAR ──────────────────────────────────────────────────────
-  const PaginationBar = () => {
-    if (loading || sortedOrders.length === 0) return null;
-    const start = (page - 1) * pageSize + 1;
-    const end = Math.min(page * pageSize, sortedOrders.length);
-    return (
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t border-slate-100 bg-slate-50/50">
-        <p className="text-xs text-slate-500">
-          {t(
-            `Showing ${start}-${end} of ${sortedOrders.length}`,
-            `Mostrando ${start}-${end} de ${sortedOrders.length}`
-          )}
-        </p>
-        <div className="flex items-center gap-3">
-          <select
-            className="h-8 rounded-md border border-slate-200 px-2 text-xs bg-white"
-            value={pageSize}
-            onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
-          >
-            {PAGE_SIZE_OPTIONS.map((size) => (
-              <option key={size} value={size}>{size} / {t("page", "página")}</option>
-            ))}
-          </select>
-          <div className="flex items-center gap-1">
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-8 w-8"
-              disabled={page <= 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <span className="text-xs text-slate-500 px-2 min-w-[70px] text-center">
-              {t("Page", "Página")} {page} / {totalPages}
-            </span>
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-8 w-8"
-              disabled={page >= totalPages}
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
   };
 
   // ─── MAIN RENDER ─────────────────────────────────────────────────────────
@@ -1324,7 +1583,10 @@ export default function Orders() {
                     <SelectContent>
                       {Object.entries(SERVICE_TYPES).map(([key, val]) => (
                         <SelectItem key={key} value={key}>
-                          {val.icon} {val.label}
+                          <span className="inline-flex items-center gap-1.5">
+                            <val.Icon className="w-3.5 h-3.5" />
+                            {val.label}
+                          </span>
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -1447,16 +1709,52 @@ export default function Orders() {
       </div>
 
       {/* ── Stats ── */}
-      <DashboardStats />
+      <DashboardStats stats={stats} activeFilterCount={activeFilterCount} totalOrders={orders.length} t={t} />
 
       {/* ── Filters ── */}
-      <FilterBar />
+      <FilterBar
+        filters={filters}
+        setFilters={setFilters}
+        searchInput={searchInput}
+        setSearchInput={setSearchInput}
+        setPage={setPage}
+        activeFilterCount={activeFilterCount}
+        clearFilters={clearFilters}
+        filtersExpanded={filtersExpanded}
+        setFiltersExpanded={setFiltersExpanded}
+        viewMode={viewMode}
+        setViewMode={setViewMode}
+        t={t}
+      />
 
       {/* ── QR Export ── */}
-      <QrExportSection />
+      <QrExportSection
+        qrStartDate={qrStartDate}
+        setQrStartDate={setQrStartDate}
+        qrEndDate={qrEndDate}
+        setQrEndDate={setQrEndDate}
+        qrStatusFilter={qrStatusFilter}
+        setQrStatusFilter={setQrStatusFilter}
+        qrServiceFilter={qrServiceFilter}
+        setQrServiceFilter={setQrServiceFilter}
+        exportingQr={exportingQr}
+        handleExportQrBatch={handleExportQrBatch}
+        t={t}
+      />
 
       {/* ── Orders View ── */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        {viewMode === "table" && (
+          <BulkActionsBar
+            count={selectedIds.size}
+            onMarkPaid={() => bulkUpdatePayment("paid")}
+            onMarkPending={() => bulkUpdatePayment("pending")}
+            onDownloadTickets={bulkDownloadTickets}
+            onCancel={requestBulkCancel}
+            onClear={clearSelection}
+            t={t}
+          />
+        )}
         {viewMode === "cards" ? (
           <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {loading ? (
@@ -1465,18 +1763,43 @@ export default function Orders() {
               ))
             ) : paginatedOrders.length === 0 ? (
               <div className="col-span-full">
-                <EmptyState onClear={activeFilterCount > 0 ? clearFilters : undefined} />
+                <EmptyState onClear={activeFilterCount > 0 ? clearFilters : undefined} t={t} />
               </div>
             ) : (
               paginatedOrders.map(order => (
-                <OrderCard key={order.id} order={order} />
+                <OrderCard key={order.id} order={order} onSelect={fetchOrderDetails} locale={locale} />
               ))
             )}
           </div>
         ) : (
-          <OrderTable />
+          <OrderTable
+            loading={loading}
+            paginatedOrders={paginatedOrders}
+            activeFilterCount={activeFilterCount}
+            clearFilters={clearFilters}
+            onView={fetchOrderDetails}
+            onDownloadQr={handleDownloadQr}
+            onRequestStatusUpdate={requestStatusUpdate}
+            onUpdatePaymentStatus={updatePaymentStatus}
+            sort={sort}
+            toggleSort={toggleSort}
+            selectedIds={selectedIds}
+            onToggleSelect={toggleSelect}
+            onTogglePage={togglePageSelection}
+            t={t}
+            locale={locale}
+          />
         )}
-        <PaginationBar />
+        <PaginationBar
+          loading={loading}
+          totalItems={sortedOrders.length}
+          page={page}
+          setPage={setPage}
+          pageSize={pageSize}
+          setPageSize={setPageSize}
+          totalPages={totalPages}
+          t={t}
+        />
       </div>
 
       {/* ── Order Detail Modal ── */}
@@ -1516,9 +1839,8 @@ export default function Orders() {
                     </div>
                     <div>
                       <p className="text-xs text-slate-500">{t("Service", "Servicio")}</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-lg">{getServiceIcon(viewOrder.service_type)}</span>
-                        <span className="font-medium">{getServiceLabel(viewOrder.service_type)}</span>
+                      <div className="mt-1">
+                        <ServiceTag serviceType={viewOrder.service_type} className="text-base font-medium text-slate-900" iconClassName="w-5 h-5 text-slate-500" />
                       </div>
                       {viewOrder.service_plan && (
                         <Badge className={`mt-1 ${getPlanBadge(viewOrder.service_plan)}`}>
@@ -1533,9 +1855,7 @@ export default function Orders() {
                     </div>
                     <div>
                       <p className="text-xs text-slate-500">{t("Status", "Estado")}</p>
-                      <Badge className={getStatusColor(viewOrder.status)}>
-                        {getStatusIcon(viewOrder.status)} {getStatusLabel(viewOrder.status)}
-                      </Badge>
+                      <StatusPill status={viewOrder.status} />
                       <p className="text-xs text-slate-400 mt-1">
                         {t("Payment", "Pago")}: {getPaymentLabel(viewOrder.payment_status)}
                       </p>
@@ -1671,12 +1991,20 @@ export default function Orders() {
           </div>
         </DialogContent>
       </Dialog>
+
       <ConfirmDialog
         open={!!confirmDialog}
         title={confirmDialog?.title}
         description={confirmDialog?.description}
         onConfirm={handleConfirmDialogAccept}
         onCancel={() => setConfirmDialog(null)}
+      />
+      <ConfirmDialog
+        open={!!bulkConfirm}
+        title={bulkConfirm?.title}
+        description={bulkConfirm?.description}
+        onConfirm={handleBulkCancelAccept}
+        onCancel={() => setBulkConfirm(null)}
       />
     </div>
   );

@@ -1,7 +1,7 @@
 """
 Shared utility functions: QR generation, ticket formatting, order helpers, membership, etc.
 
-UNIFIED PRICING v16 — Single Source of Truth
+UNIFIED PRICING v17 — Single Source of Truth
 ═══════════════════════════════════════════════════════════════════════════════
 
 MEMBERSHIP PRICING RULES:
@@ -51,6 +51,16 @@ FIX v16 (2026-07-22):
      asi que ese plan NUNCA hacia match y devolvia 0 lbs de allowance
      (el cliente se cobraba como si no tuviera membresia). Corregido a
      minusculas.
+
+FIX v17 (2026-08-08):
+  4) BUG DE ADDONS CON PRECIO EDITADO: calculate_final_amount_with_membership()
+     solo leia addon.get("price") para sumar addons_total, ignorando
+     "custom_price" (el precio editado a mano por el operador en
+     OrderDetailDialog.jsx). El ticket impreso (get_order_ticket en
+     orders.py) SI respetaba custom_price, asi que el total mostrado en el
+     ticket y el total realmente cobrado (extra_charge/total_amount) podian
+     no coincidir. Ahora esta funcion tambien prioriza custom_price sobre
+     price, igual que el resto del sistema.
 """
 import io
 import json
@@ -636,8 +646,17 @@ async def calculate_final_amount_with_membership(
     addons_total = 0.0
     for addon in (order.get("addon_services") or []):
         try:
-            qty         = int(addon.get("qty") or addon.get("quantity") or 1)
-            addon_price = float(addon.get("price") or 0)
+            qty = int(addon.get("qty") or addon.get("quantity") or 1)
+            # FIX v17: priorizar custom_price (precio editado a mano por el
+            # operador en OrderDetailDialog.jsx) sobre price. Antes esta
+            # funcion solo leia "price", asi que un precio editado se
+            # ignoraba en el cobro REAL aunque el ticket impreso
+            # (get_order_ticket en orders.py) si lo respetaba -> el total
+            # cobrado podia no coincidir con el total mostrado en el ticket.
+            raw_price = addon.get("custom_price")
+            if raw_price in (None, ""):
+                raw_price = addon.get("price")
+            addon_price = float(raw_price or 0)
             addons_total += addon_price * qty
         except (TypeError, ValueError):
             pass
@@ -661,7 +680,7 @@ async def calculate_final_amount_with_membership(
                 "lbs_from_allowance": 0.0, "extra_lbs_billed": 0.0,
                 "membership_discount": 0.0,
                 "subtotal": 0.0, "amount_to_charge": 0.0,
-                # FIX: antes era 0.0 fijo, aunque hubiera addons/envío por
+                # FIX: antes era 0.0 fijo, aunque hubiera addons/envio por
                 # cobrar — se veía como "cubierto por membresía" sin estarlo.
                 # Ahora refleja el monto real a cobrar (igual que "total").
                 "extra_charge": final_total,
