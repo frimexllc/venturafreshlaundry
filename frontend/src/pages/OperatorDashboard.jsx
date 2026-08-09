@@ -334,7 +334,7 @@ const OrderRow = ({
               className="inline-flex items-center gap-1 text-[10px] font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded-full border border-red-300"
               data-testid={`urgent-badge-${order.order_id}`}
             >
-              ⚠️ {t("Urgent", "Urgente")}
+              <AlertTriangle className="h-2.5 w-2.5" /> {t("Urgent", "Urgente")}
             </span>
           )}
           <span
@@ -510,7 +510,7 @@ const OrderViewFilterBar = ({ value, onChange, completedCount, urgentCount, t })
         className="inline-flex items-center gap-1 text-xs font-bold text-red-700 bg-red-50 border border-red-200 px-3 py-1.5 rounded-full sm:ml-auto"
         data-testid="urgent-orders-indicator"
       >
-        ⚠️ {urgentCount} {t("urgent", "urgentes")}
+        <AlertTriangle className="h-3 w-3" /> {urgentCount} {t("urgent", "urgentes")}
       </span>
     )}
   </div>
@@ -539,7 +539,9 @@ export default function OperatorDashboard() {
   const [searchTerm, setSearchTerm] = useState("");
   const [orderFilters, setOrderFilters] = useState({});
   // 'active' (oculta completadas) | 'completed' (solo completadas) | 'all'
-  const [orderViewFilter, setOrderViewFilter] = useState("active");
+  // Por defecto "all": al cargar el panel no se aplica ningún filtro, se
+  // muestra todo lo que devuelva el backend tal cual.
+  const [orderViewFilter, setOrderViewFilter] = useState("all");
 
   const [mapFilters, setMapFilters] = useState({});
   const [filteredMapOrders, setFilteredMapOrders] = useState(null);
@@ -1531,7 +1533,7 @@ export default function OperatorDashboard() {
                               <span className="font-mono font-semibold text-slate-800 text-sm">{formatOrderNumber(order)}</span>
                               {urgent && (
                                 <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded-full border border-red-300">
-                                  ⚠️ {t("Urgent", "Urgente")}
+                                  <AlertTriangle className="h-2.5 w-2.5" /> {t("Urgent", "Urgente")}
                                 </span>
                               )}
                               <span className={`px-2 py-0.5 text-[11px] font-semibold rounded-full border ${getStatusInfo(order.status, order.service_type).color}`}>{getStatusInfo(order.status, order.service_type).label}</span>
@@ -1632,7 +1634,7 @@ export default function OperatorDashboard() {
                               <span className="font-mono font-semibold text-slate-800 text-sm">{formatOrderNumber(order)}</span>
                               {urgent && (
                                 <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded-full border border-red-300">
-                                  ⚠️ {t("Urgent", "Urgente")}
+                                  <AlertTriangle className="h-2.5 w-2.5" /> {t("Urgent", "Urgente")}
                                 </span>
                               )}
                               <span className={`px-2 py-0.5 text-[11px] font-semibold rounded-full border ${getStatusInfo(order.status, order.service_type).color}`}>{getStatusInfo(order.status, order.service_type).label}</span>

@@ -1,6 +1,6 @@
 // src/components/MapFilters.jsx
 // Filtros profesionales del Logistics Map — sincronizados con el backend
-// Soporta: fecha (default hoy), service_type, time_window y phase (pickup/delivery/both)
+// Soporta: fecha (default: todas, sin filtrar), service_type, time_window y phase (pickup/delivery/both)
 import { useState, useEffect, useCallback } from "react";
 import { Calendar, X, Truck, ShoppingBag, Home, Building2, ArrowUpFromLine, ArrowDownToLine } from "lucide-react";
 
@@ -31,21 +31,23 @@ function todayISO() {
 }
 
 function MapFilters({ onFilterChange, activeFilters = {} }) {
-  // Inicializar con HOY por defecto
-  const [date, setDate] = useState(activeFilters.date || todayISO());
+  // Sin fecha por defecto: al montar no se filtra por día, se ven órdenes
+  // de todos los días. El botón "HOY" sigue disponible para saltar al día
+  // actual cuando el operador lo quiera explícitamente.
+  const [date, setDate] = useState(activeFilters.date ?? "");
   const [timeWindow, setTimeWindow] = useState(activeFilters.time_window || "");
   const [serviceType, setServiceType] = useState(activeFilters.service_type || "all");
   const [phase, setPhase] = useState(activeFilters.phase || "both");
 
   // Sincronizar con props (controlled)
   useEffect(() => {
-    if (activeFilters.date !== undefined) setDate(activeFilters.date || todayISO());
+    if (activeFilters.date !== undefined) setDate(activeFilters.date || "");
     if (activeFilters.time_window !== undefined) setTimeWindow(activeFilters.time_window || "");
     if (activeFilters.service_type !== undefined) setServiceType(activeFilters.service_type || "all");
     if (activeFilters.phase !== undefined) setPhase(activeFilters.phase || "both");
   }, [activeFilters]);
 
-  // Aplicar al montar (auto-hoy)
+  // Aplicar al montar (sin fecha: no se filtra nada de entrada)
   useEffect(() => {
     onFilterChange({
       date,
@@ -68,7 +70,7 @@ function MapFilters({ onFilterChange, activeFilters = {} }) {
   }, [date, timeWindow, serviceType, phase, onFilterChange]);
 
   const isDefault =
-    date === todayISO() &&
+    !date &&
     !timeWindow &&
     serviceType === "all" &&
     phase === "both";
@@ -96,6 +98,19 @@ function MapFilters({ onFilterChange, activeFilters = {} }) {
           data-testid="filter-date"
           className="text-xs outline-none border border-slate-200 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-lg px-2.5 py-1.5 bg-white text-slate-700 focus:border-indigo-300 focus:ring-1 focus:ring-indigo-300"
         />
+        {date && (
+          <button
+            onClick={() => {
+              setDate("");
+              apply({ date: "" });
+            }}
+            className="text-[10px] font-semibold text-slate-400 hover:text-red-500 px-1.5"
+            title="Ver todos los días"
+            data-testid="filter-date-clear"
+          >
+            TODOS
+          </button>
+        )}
         <button
           onClick={() => {
             const t = todayISO();
@@ -200,16 +215,15 @@ function MapFilters({ onFilterChange, activeFilters = {} }) {
         })}
       </div>
 
-      {/* Limpiar (vuelve a defaults: hoy + ambos + todos) */}
+      {/* Limpiar (vuelve a defaults: todos los días + ambos + todos) */}
       {!isDefault && (
         <button
           onClick={() => {
-            const t = todayISO();
-            setDate(t);
+            setDate("");
             setTimeWindow("");
             setServiceType("all");
             setPhase("both");
-            onFilterChange({ date: t, time_window: "", service_type: "all", phase: "both" });
+            onFilterChange({ date: "", time_window: "", service_type: "all", phase: "both" });
           }}
           data-testid="filter-clear"
           className="ml-auto flex items-center gap-1 text-[11px] text-slate-400 hover:text-red-500 transition-colors"
