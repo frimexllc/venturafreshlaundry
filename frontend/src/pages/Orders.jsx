@@ -1165,6 +1165,85 @@ function PaginationBar({ loading, totalItems, page, setPage, pageSize, setPageSi
   );
 }
 
+// Searchable customer picker: types ahead and filters by name/email/phone,
+// instead of scrolling a plain dropdown. Lives at module scope for the same
+// reason as everything else above — a component redefined inside Orders on
+// every render would lose input focus after each keystroke.
+function CustomerCombobox({ customers, value, onChange, t }) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    const selected = customers.find((c) => c.id === value);
+    setQuery(selected ? selected.name : "");
+  }, [value, customers]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return customers;
+    return customers.filter((c) =>
+      (c.name || "").toLowerCase().includes(q) ||
+      (c.email || "").toLowerCase().includes(q) ||
+      (c.phone || "").toLowerCase().includes(q)
+    );
+  }, [customers, query]);
+
+  return (
+    <div className="relative">
+      <Input
+        value={query}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setOpen(true);
+          if (value) onChange("");
+        }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 120)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && filtered.length > 0) {
+            e.preventDefault();
+            onChange(filtered[0].id);
+            setQuery(filtered[0].name);
+            setOpen(false);
+          } else if (e.key === "Escape") {
+            setOpen(false);
+          }
+        }}
+        placeholder={t("Type a name, email or phone...", "Escribe nombre, correo o teléfono...")}
+        autoComplete="off"
+      />
+      {open && (
+        <div className="absolute z-50 mt-1 w-full max-h-64 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg">
+          {filtered.length === 0 ? (
+            <p className="px-3 py-2 text-sm text-slate-400">{t("No customers found", "Sin clientes encontrados")}</p>
+          ) : (
+            filtered.map((c) => (
+              <button
+                type="button"
+                key={c.id}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  onChange(c.id);
+                  setQuery(c.name);
+                  setOpen(false);
+                }}
+                className={`w-full text-left px-3 py-2 text-sm hover:bg-sky-50 ${
+                  value === c.id ? "bg-sky-50 text-sky-700 font-medium" : "text-slate-700"
+                }`}
+              >
+                <p className="truncate">{c.name}</p>
+                {(c.email || c.phone) && (
+                  <p className="text-xs text-slate-400 truncate">{c.email || c.phone}</p>
+                )}
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── MAIN COMPONENT ─────────────────────────────────────────────────────────
 
 export default function Orders() {
@@ -1275,8 +1354,22 @@ export default function Orders() {
 
   const fetchCustomers = async () => {
     try {
-      const res = await axios.get(`${API}/customers`);
-      setCustomers(res.data);
+      const pageSizeReq = 100;
+      let pageReq = 1;
+      let keepLoading = true;
+      const collected = [];
+
+      while (keepLoading) {
+        const res = await axios.get(`${API}/customers`, {
+          params: { page: pageReq, page_size: pageSizeReq },
+        });
+        const batch = Array.isArray(res.data) ? res.data : [];
+        collected.push(...batch);
+        keepLoading = batch.length === pageSizeReq;
+        pageReq += 1;
+      }
+
+      setCustomers(collected);
     } catch (error) {
       console.error("Error loading customers");
     }
@@ -1557,19 +1650,14 @@ export default function Orders() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>{t("Customer *", "Cliente *")}</Label>
-                  <Select
-                    value={form.customer_id}
-                    onValueChange={(v) => setForm({ ...form, customer_id: v })}
-                  >
-                    <SelectTrigger className="mt-1.5">
-                      <SelectValue placeholder={t("Select customer", "Seleccionar cliente")} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {customers.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="mt-1.5">
+                    <CustomerCombobox
+                      customers={customers}
+                      value={form.customer_id}
+                      onChange={(id) => setForm({ ...form, customer_id: id })}
+                      t={t}
+                    />
+                  </div>
                 </div>
                 <div>
                   <Label>{t("Service Type *", "Tipo de Servicio *")}</Label>
