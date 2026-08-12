@@ -24,17 +24,18 @@ STORE_LNG = -119.213742
 STORE_ADDRESS = "5722 Telephone Rd Suite 5, Ventura CA 93003"
 
 # ── Delivery constants ────────────────────────────────────────────────────────
-MAX_DELIVERY_MILES = 10.0
+MAX_DELIVERY_MILES = 15.0
 FREE_MILES_LIMIT = 3.0
 METERS_PER_MILE = 1609.34
 DEFAULT_FUEL_PRICE_PER_GALLON = 4.89
 DRIVER_HOURLY_RATE = 18.0
 
 DELIVERY_FEE_TIERS = [
-    {"max_miles": 3, "fee": 0.00, "label": "Free (0-3 mi)"},
-    {"max_miles": 5, "fee": 3.00, "label": "$3.00 (3-5 mi)"},
-    {"max_miles": 7, "fee": 6.00, "label": "$6.00 (5-7 mi)"},
-    {"max_miles": 10, "fee": 10.50, "label": "$10.50 (7-10 mi)"},
+    {"max_miles": 3,  "fee": 0.00, "label": "Free (0-3 mi)"},
+    {"max_miles": 5,  "fee": 1.99, "label": "$1.99 (3-5 mi)"},
+    {"max_miles": 8,  "fee": 2.99, "label": "$2.99 (5-8 mi)"},
+    {"max_miles": 12, "fee": 4.99, "label": "$4.99 (8-12 mi)"},
+    {"max_miles": 15, "fee": 8.99, "label": "$8.99 (12-15 mi)"},
 ]
 
 

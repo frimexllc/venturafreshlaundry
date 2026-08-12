@@ -49,7 +49,14 @@ function parseAddress(item) {
     country,
     // Para mostrar en el dropdown
     display: item.display_name,
-    // Dirección completa limpia
+    // FIX: SchedulePickup.jsx (y cualquier consumidor) lee `addr.full` como
+    // la dirección de línea 1 (SOLO calle, sin ciudad/estado/CP). Antes este
+    // campo no existía, así que `addr.full || addr.formatted` siempre caía
+    // en `formatted` (que ya incluye calle+ciudad+estado+CP juntos),
+    // duplicando esos datos dentro de address_line1 y rompiendo el
+    // geocoding/validación de distancia en el backend.
+    full: street,
+    // Dirección completa limpia (calle + ciudad + estado + CP)
     formatted: [street, city, state, zip].filter(Boolean).join(", ")
   };
 }
@@ -60,7 +67,7 @@ function parseAddress(item) {
  * Props:
  *   value          — current input value (controlled)
  *   onChange        — (newValue: string) => void
- *   onSelect        — ({ street, city, state, zip, display }) => void
+ *   onSelect        — ({ street, city, state, zip, full, formatted, display }) => void
  *   placeholder     — input placeholder
  *   inputClassName  — className for the <input>
  *   inputStyle      — inline style for the <input>
@@ -158,7 +165,7 @@ export default function AddressAutocomplete({
     // Actualizar el input con una dirección más limpia
     onChange(cleanAddress.displayName);
     
-    // Enviar los datos limpios al padre
+    // Enviar los datos limpios al padre (incluye `full` y `formatted` gracias al ...parsed)
     onSelect({
       ...parsed,
       fullAddress: cleanAddress.address,

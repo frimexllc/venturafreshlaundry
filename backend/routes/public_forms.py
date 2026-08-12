@@ -271,20 +271,24 @@ async def calculate_auto_delivery_fee(address: str) -> dict:
     if not address or len(address.strip()) < 5:
         return {"distance_miles": None, "delivery_fee": 0, "coords": None}
     try:
-        from routes.logistics import geocode_address
-        from routes.delivery_rules import haversine_miles, STORE_COORDS
-        coords = await geocode_address(address)
-        if not coords.get("lat") or not coords.get("lng"):
-            return {"distance_miles": None, "delivery_fee": 0, "coords": None}
-        distance = haversine_miles(
-            STORE_COORDS[0], STORE_COORDS[1],
-            coords["lat"], coords["lng"]
-        )
-        if distance > 10:
-            return {"distance_miles": round(distance, 2), "delivery_fee": 0, "coords": coords, "rejected": True}
-        from utils import calculate_delivery_fee
-        fee = calculate_delivery_fee(distance)
-        return {"distance_miles": round(distance, 2), "delivery_fee": fee, "coords": coords}
+        from routes.delivery_rules import calculate_auto_delivery_fee as _calc_fee
+        from delivery_config import ORS_API_KEY, GOOGLE_MAPS_API_KEY
+
+        result = await _calc_fee(address, ORS_API_KEY, GOOGLE_MAPS_API_KEY)
+
+        if result.get("rejected"):
+            return {
+                "distance_miles": result.get("distance_miles"),
+                "delivery_fee": 0,
+                "coords": result.get("coords"),
+                "rejected": True,
+            }
+
+        return {
+            "distance_miles": result.get("distance_miles"),
+            "delivery_fee": result.get("delivery_fee", 0),
+            "coords": result.get("coords"),
+        }
     except Exception as e:
         logger.warning(f"Auto delivery fee calculation failed: {e}")
         return {"distance_miles": None, "delivery_fee": 0, "coords": None}
@@ -473,7 +477,11 @@ def get_public_forms_router(
         delivery_info = await calculate_auto_delivery_fee(normalized_address)
         if delivery_info.get("rejected"):
             dist = delivery_info.get("distance_miles", 0)
-            raise HTTPException(status_code=400, detail=f"Lo sentimos, solo atendemos direcciones dentro de 10 millas. Tu dirección está a {dist:.1f} millas de distancia.")
+            from delivery_config import MAX_DELIVERY_MILES
+            raise HTTPException(
+                status_code=400,
+                detail=f"Lo sentimos, solo atendemos direcciones dentro de {MAX_DELIVERY_MILES:.0f} millas. Tu dirección está a {dist:.1f} millas de distancia."
+            )
         delivery_fee = delivery_info.get("delivery_fee", 0)
         distance_miles = delivery_info.get("distance_miles")
         coords = delivery_info.get("coords")

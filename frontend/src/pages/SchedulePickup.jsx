@@ -129,7 +129,12 @@ const WeekdaySelector = ({ selectedDays, onChange, locale, t }) => {
 };
 
 // ─── Address Validation Status Component ─────────────────────────────────────
-const AddressValidationStatus = ({ checking, valid, error, distanceMiles, locale, t }) => {
+// FIX: este componente ahora usa el `deliveryFee` REAL que llega del backend
+// (calculado por delivery_config.py / calculate_shipping_distance en el paso 1)
+// en lugar de recalcularlo con una fórmula local aproximada. Antes existían
+// dos fuentes de verdad para el mismo dato y el usuario podía ver un monto
+// distinto al que realmente se le cobraría.
+const AddressValidationStatus = ({ checking, valid, error, distanceMiles, deliveryFee, locale, t }) => {
   if (!checking && !valid && !error) return null;
 
   if (checking) {
@@ -195,13 +200,13 @@ const AddressValidationStatus = ({ checking, valid, error, distanceMiles, locale
   }
 
   if (valid) {
-    const isFree = distanceMiles && parseFloat(distanceMiles) <= 3;
-    const deliveryFee = distanceMiles
-      ? parseFloat(distanceMiles) > 10
-        ? "$5.99"
-        : parseFloat(distanceMiles) <= 3
-          ? t("FREE", "GRATIS")
-          : `$${Math.round(Math.max(2.99, Math.min((parseFloat(distanceMiles) - 3) * 1.5, 5.99)) * 100) / 100}`
+    // FIX: ya no se recalcula el fee localmente. Se usa directamente el valor
+    // que vino del backend (prop `deliveryFee`). `isFree` se deriva de ese
+    // mismo valor real, no de una fórmula aparte basada solo en millas.
+    const hasFeeValue = deliveryFee !== null && deliveryFee !== undefined;
+    const isFree = hasFeeValue && parseFloat(deliveryFee) === 0;
+    const deliveryFeeLabel = hasFeeValue
+      ? (isFree ? t("FREE", "GRATIS") : `$${parseFloat(deliveryFee).toFixed(2)}`)
       : null;
 
     return (
@@ -221,17 +226,19 @@ const AddressValidationStatus = ({ checking, valid, error, distanceMiles, locale
           <div style={{ fontSize: 12, fontWeight: 700, color: "#059669" }}>
             {t("Address verified — we cover your area!", "¡Dirección verificada — cubrimos tu área!")}
           </div>
-          {distanceMiles && (
+          {(distanceMiles || deliveryFeeLabel) && (
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 5, flexWrap: "wrap" }}>
-              <span style={{
-                display: "inline-flex", alignItems: "center", gap: 4,
-                padding: "3px 9px", borderRadius: 20,
-                background: "rgba(5,150,105,.1)", border: "1px solid rgba(5,150,105,.25)",
-                fontSize: 11, fontWeight: 600, color: "#059669",
-              }}>
-                📍 {parseFloat(distanceMiles).toFixed(1)} mi {t("from store", "de la tienda")}
-              </span>
-              {deliveryFee && (
+              {distanceMiles && (
+                <span style={{
+                  display: "inline-flex", alignItems: "center", gap: 4,
+                  padding: "3px 9px", borderRadius: 20,
+                  background: "rgba(5,150,105,.1)", border: "1px solid rgba(5,150,105,.25)",
+                  fontSize: 11, fontWeight: 600, color: "#059669",
+                }}>
+                  📍 {parseFloat(distanceMiles).toFixed(1)} mi {t("from store", "de la tienda")}
+                </span>
+              )}
+              {deliveryFeeLabel && (
                 <span style={{
                   display: "inline-flex", alignItems: "center", gap: 4,
                   padding: "3px 9px", borderRadius: 20,
@@ -240,7 +247,7 @@ const AddressValidationStatus = ({ checking, valid, error, distanceMiles, locale
                   fontSize: 11, fontWeight: 700,
                   color: isFree ? "#059669" : "#0ea5e9",
                 }}>
-                  🚚 {t("Delivery", "Entrega")}: {deliveryFee}
+                  🚚 {t("Delivery", "Entrega")}: {deliveryFeeLabel}
                 </span>
               )}
             </div>
@@ -1151,6 +1158,22 @@ export default function SchedulePickup() {
 
   const setF = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
+  // FIX: helper centralizado para limpiar TODO el estado de validación de
+  // dirección de golpe (estado en memoria + lo cacheado en localStorage).
+  // Antes, al editar un campo de dirección después de haber sido validada,
+  // el "✅ verificado" con millas/tarifa de la dirección ANTERIOR se quedaba
+  // visible durante los 700ms del debounce (o incluso más, si el usuario
+  // borraba y volvía a escribir), mostrando información obsoleta.
+  const clearAddressValidation = useCallback(() => {
+    setDistanceValid(false);
+    setDistanceError("");
+    setDistanceMiles(null);
+    setDeliveryFee(null);
+    setDistanceChecking(false);
+    lastValidatedAddrRef.current = null;
+    try { localStorage.removeItem(LS_ADDR_KEY); } catch {}
+  }, []);
+
   const formatLocalDate = (date) => {
     const y = date.getFullYear();
     const m = String(date.getMonth() + 1).padStart(2, "0");
@@ -1290,6 +1313,17 @@ export default function SchedulePickup() {
       return;
     }
 
+    // FIX: en cuanto la dirección deja de coincidir con la última validada,
+    // se limpia el estado de inmediato (en vez de esperar los 700ms del
+    // debounce de abajo). Así la UI no muestra un "✅ verificado" obsoleto
+    // mientras el usuario sigue escribiendo/editando.
+    if (lastValidatedAddrRef.current && lastValidatedAddrRef.current !== fullAddress) {
+      setDistanceValid(false);
+      setDistanceError("");
+      setDistanceMiles(null);
+      setDeliveryFee(null);
+    }
+
     checkDistanceDebounce.current = setTimeout(() => {
       checkDistance(fullAddress);
     }, 700);
@@ -1418,7 +1452,12 @@ export default function SchedulePickup() {
       if (!form.state.trim())         return err(t("Enter your state",   "Ingresa tu estado"));
       if (!form.zip_code.trim())      return err(t("Enter your ZIP",     "Ingresa tu código postal"));
       if (distanceError)              { toast.error(distanceError); return false; }
-      if (!distanceValid && form.zip_code && form.zip_code.trim().length >= 5) {
+      // FIX: antes esta validación solo se aplicaba si `zip_code.length >= 5`,
+      // lo que permitía saltarse por completo la verificación de dirección
+      // con un ZIP corto/incompleto. Ahora la dirección SIEMPRE debe estar
+      // verificada (distanceValid === true) para avanzar, sin importar el
+      // largo del ZIP.
+      if (!distanceValid) {
         toast.error(t("Please verify your address is within our service area.",
                       "Verifica que tu dirección esté dentro de nuestra área de servicio."));
         return false;
@@ -1524,11 +1563,7 @@ export default function SchedulePickup() {
     setWashPhase(-1); setWashDone(false);
     setShowResumeBanner(false);
     setSelectedAddons(new Map());
-    setDistanceError(""); setDistanceValid(false);
-    setDistanceMiles(null); setDeliveryFee(null);
-    setDistanceChecking(false);
-    lastValidatedAddrRef.current = null;
-    clearSavedSession();
+    clearAddressValidation();
     scrollToForm();
   };
 
@@ -1739,14 +1774,21 @@ export default function SchedulePickup() {
                       <FF label={t("Street address *", "Dirección *")}>
                         <AddressAutocomplete
                           value={form.address_line1}
-                          onChange={(v) => setF("address_line1", v)}
+                          onChange={(v) => { setF("address_line1", v); clearAddressValidation(); }}
                           onSelect={(addr) => {
+                            // FIX: `addr.full` ahora sí existe (viene de la
+                            // corrección en AddressAutocomplete.js) y contiene
+                            // SOLO la calle, sin ciudad/estado/CP repetidos.
                             const fullStreet = addr.full || addr.formatted ||
                               (addr.street_number && addr.route ? `${addr.street_number} ${addr.route}` : addr.street);
                             setF("address_line1", fullStreet);
                             if (addr.city)  setF("city", addr.city);
                             if (addr.state) setF("state", addr.state.length > 2 ? addr.state.substring(0, 2).toUpperCase() : addr.state.toUpperCase());
                             if (addr.zip)   setF("zip_code", addr.zip);
+                            // Nueva selección de dirección → invalidar cualquier
+                            // verificación previa; se re-verificará contra la
+                            // dirección nueva en el useEffect de checkDistance.
+                            clearAddressValidation();
                           }}
                           placeholder={t("123 Main St", "Calle Principal 123")}
                           renderInput={(props) => <FInput {...props} data-testid="pickup-address-autocomplete" />}
@@ -1754,10 +1796,10 @@ export default function SchedulePickup() {
                       </FF>
                       <FF label={t("Apt / Suite (optional)", "Apto / Suite (opcional)")}><FInput value={form.address_line2} onChange={(e) => setF("address_line2", e.target.value)} placeholder={t("Apt 4B…", "Apto 4B…")} /></FF>
                       <div style={g3}>
-                        <FF label={t("City *", "Ciudad *")}><FInput value={form.city} onChange={(e) => setF("city", e.target.value)} placeholder="Los Angeles" autoComplete="address-level2" /></FF>
-                        <FF label={t("State *", "Estado *")}><FInput value={form.state} onChange={(e) => setF("state", e.target.value.toUpperCase())} placeholder="CA" maxLength={2} /></FF>
+                        <FF label={t("City *", "Ciudad *")}><FInput value={form.city} onChange={(e) => { setF("city", e.target.value); clearAddressValidation(); }} placeholder="Los Angeles" autoComplete="address-level2" /></FF>
+                        <FF label={t("State *", "Estado *")}><FInput value={form.state} onChange={(e) => { setF("state", e.target.value.toUpperCase()); clearAddressValidation(); }} placeholder="CA" maxLength={2} /></FF>
                         <FF label={t("ZIP *", "CP *")}>
-                          <FInput value={form.zip_code} onChange={(e) => setF("zip_code", e.target.value)} placeholder="90001" maxLength={10} />
+                          <FInput value={form.zip_code} onChange={(e) => { setF("zip_code", e.target.value); clearAddressValidation(); }} placeholder="90001" maxLength={10} />
                         </FF>
                       </div>
 
