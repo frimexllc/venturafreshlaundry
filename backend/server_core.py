@@ -230,9 +230,6 @@ async def health_check():
 # ═══════════════════════════════════════════════════════════════════════
 # ENDPOINT: TRANSACCIONES REALES (store/transactions)
 # ═══════════════════════════════════════════════════════════════════════
-# ═══════════════════════════════════════════════════════════════════════
-# ENDPOINT: TRANSACCIONES REALES (store/transactions)
-# ═══════════════════════════════════════════════════════════════════════
 @api_router.get("/store/transactions")
 async def get_store_transactions(current_user: dict = Depends(get_current_user)):
     """Devuelve transacciones de órdenes de servicio y membresías pagadas (últimos 30 días)."""
@@ -521,13 +518,20 @@ try:
 except Exception as e:
     logger.warning(f"Inventory Alerts router not loaded: {e}")
 
-# Include Delivery Rules router (ZIP codes, pricing, payment validation)
-try:
-    from routes.delivery_rules import delivery_rules_router
-    app.include_router(delivery_rules_router, prefix="/api/delivery-rules")
-    logger.info("Delivery Rules router enabled at /api/delivery-rules/*")
-except Exception as e:
-    logger.warning(f"Delivery Rules router not loaded: {e}")
+# NOTE: The "Delivery Rules router" block that used to live here has been
+# removed. routes/delivery_rules.py is a thin wrapper module that only
+# exports plain async/sync FUNCTIONS (calculate_auto_delivery_fee,
+# validate_delivery_address, geocode_address, etc.) delegating to
+# delivery_config.py — it never defined an APIRouter or a
+# `delivery_rules_router` object. The old `from routes.delivery_rules import
+# delivery_rules_router` therefore always raised ImportError at startup and
+# was silently swallowed into a WARNING log line ("Delivery Rules router
+# not loaded: cannot import name 'delivery_rules_router'..."), every single
+# run. No endpoint under /api/delivery-rules/* was ever actually served,
+# and nothing in the frontend calls that prefix — address validation goes
+# through /api/store/check-address (store.py), and public.py imports the
+# delivery_rules functions directly (not via HTTP), so removing this block
+# loses no functionality and just stops the spurious warning on boot.
 
 # Include KPIs router (operational dashboard)
 try:
@@ -740,48 +744,31 @@ async def serve_react_app(full_path: str = ""):
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
-    
-# ==================== LEGACY ORDER ENDPOINTS (sin /store) ====================
-from store import store_router, get_current_user, db
 
-@api_router.get("/orders/{order_id}")
-async def legacy_get_order(order_id: str, current_user = Depends(get_current_user)):
-    # Reutilizar lógica de store
-    from store import get_store_order
-    return await get_store_order(order_id, current_user)
-
-@api_router.put("/orders/{order_id}")
-async def legacy_update_order(order_id: str, body: dict, current_user = Depends(get_current_user)):
-    # Reutilizar lógica de store
-    from store import update_store_order  # Necesitas crear esa función en store.py o copiar lógica
-    # Por simplicidad, llama directamente al endpoint de store si existe
-    # Pero como store_router tiene prefix /store, necesitas invocar la función interna.
-
-    # Mejor: mover la lógica a una función compartida en utils.py
-    # Por ahora, reimplementa la actualización de lbs/addons
-    order = await db.orders.find_one({"id": order_id})
-    if not order:
-        raise HTTPException(404, "Order not found")
-    # Verificar permisos...
-    if "actual_lbs" in body:
-        update_data = {"actual_lbs": body["actual_lbs"], "updated_at": datetime.now(timezone.utc).isoformat()}
-        # Recalcular total (llamar a función de utils)
-        await db.orders.update_one({"id": order_id}, {"$set": update_data})
-    return {"ok": True}
-
-@api_router.post("/orders/{order_id}/payment")
-async def legacy_order_payment(order_id: str, payload: dict, current_user = Depends(get_current_user)):
-    from store import register_store_order_payment
-    # Adaptar la llamada (necesitas crear una función auxiliar)
-    # ...
-
-@api_router.get("/orders/{order_id}/ticket")
-async def legacy_order_ticket(order_id: str, current_user = Depends(get_current_user)):
-    from store import get_order_ticket  # función que devuelve html
-    return await get_order_ticket(order_id, current_user)
-
-# Endpoint para recibos
-@api_router.get("/files/receipts-by-order/{order_id}")
-async def legacy_receipts_by_order(order_id: str, current_user = Depends(get_current_user)):
-    receipts = await db.files.find({"context": order_id, "type": "receipt"}).to_list(100)
-    return receipts    
+# NOTE: A "LEGACY ORDER ENDPOINTS (sin /store)" block used to live here,
+# defining @api_router.get/put/post("/orders/{order_id}", ...) handlers
+# (legacy_get_order, legacy_update_order, legacy_order_payment,
+# legacy_order_ticket, legacy_receipts_by_order). It has been removed:
+#
+#   1) It was dead code. These routes were added to `api_router` AFTER
+#      `app.include_router(api_router)` was already called earlier in this
+#      file. FastAPI copies a router's routes into the app at the moment
+#      `include_router()` runs — anything appended to `api_router` after
+#      that point is never mounted on `app` and can never be reached by a
+#      real request. The `GET /api/files/receipts-by-order/{id} 200 OK`
+#      seen in server logs was always served by the real handler
+#      registered earlier (routes/file_uploads.py), never by this block.
+#
+#   2) Even if it had been reachable, it was broken: legacy_update_order
+#      imported `update_store_order` from `store.py`, a function that does
+#      not exist there (ImportError on first call), and
+#      legacy_order_payment's body was left unfinished ("# ..."), so it
+#      would have returned None instead of a valid response. It also
+#      wrote `actual_lbs` directly to the order without recalculating
+#      total_amount/extra_charge via calculate_final_amount_with_membership()
+#      — reintroducing the exact billing bug already fixed in utils.py.
+#
+# The real, working endpoints for order retrieval, updates, payment,
+# tickets, and receipts are served by routes/orders.py and
+# routes/file_uploads.py, both registered earlier in the router-loading
+# loop above. No functionality is lost by removing this block.

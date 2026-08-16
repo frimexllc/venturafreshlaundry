@@ -897,18 +897,24 @@ async def get_operator_order_by_id(
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    # ── Enrich with customer data if missing ──────────────────────────────
+    # FIX: antes el enriquecimiento completo del cliente (membresía, tarjeta,
+    # preferred_contact, etc.) solo se ejecutaba si faltaba customer_phone O
+    # customer_email en el documento de la orden. Como ambos campos casi
+    # siempre están presentes (se guardan al crear la orden en public.py),
+    # ese "gate" casi nunca se activaba, y campos como membership_plan,
+    # membership_status, card_last4 y card_brand -- que NUNCA se guardan en
+    # el documento de la orden al crearla -- jamás se jalaban desde el
+    # cliente. Ahora se busca al cliente siempre que exista customer_id, y
+    # cada campo se rellena individualmente solo si falta en la orden.
     customer_id = order.get("customer_id")
-    if customer_id and (not order.get("customer_phone") or not order.get("customer_email")):
+    if customer_id:
         customer = await db.customers.find_one({"id": customer_id}, {"_id": 0})
         if customer:
-            # Only fill in fields missing from the order document
             for field in ("customer_phone", "customer_email", "preferred_contact",
                           "membership_plan", "membership_status", "stripe_customer_id",
                           "card_last4", "card_brand", "distance_miles"):
                 if not order.get(field) and customer.get(field):
                     order[field] = customer[field]
-            # customer_name fallback
             if not order.get("customer_name") and customer.get("name"):
                 order["customer_name"] = customer["name"]
 

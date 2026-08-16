@@ -531,12 +531,16 @@ export default function ContactPage() {
         </section>
 
         {/* ══ DARK TAGLINE ══════════════════════════════════════════════════ */}
-        <section className="relative py-28 overflow-hidden bg-sky-950">
-          <div className="absolute inset-0 will-change-transform"
-            style={{ backgroundImage: "url('https://images.unsplash.com/photo-1517677208171-0bc6725a3e60?w=1920&h=1080&fit=crop')", backgroundSize: "cover", backgroundPosition: "center", transform: `translateY(${scrollY * 0.18}px) scale(1.1)` }} />
-          <div className="absolute inset-0 bg-sky-950/70" /><div className="absolute inset-0 bg-gradient-to-br from-sky-950/80 to-sky-900/75" />
-          <div className="absolute inset-0 opacity-[0.04]" style={{ backgroundImage: "radial-gradient(rgba(255,255,255,0.8) 1px,transparent 1px)", backgroundSize: "28px 28px" }} />
-          <div className="relative z-10 max-w-3xl mx-auto px-6 text-center">
+       <section className="relative py-28 overflow-hidden bg-sky-950">
+  <div className="absolute inset-0 will-change-transform"
+    style={{ backgroundImage: "url('https://images.unsplash.com/photo-1517677208171-0bc6725a3e60?w=1920&h=1080&fit=crop')", backgroundSize: "cover", backgroundPosition: "center", transform: `translateY(${scrollY * 0.18}px) scale(1.1)` }} />
+  {/* FIX: antes había dos overlays apilados (bg-sky-950/70 + un gradiente de
+      80-75%) que combinados dejaban la imagen casi 93% opaca, ocultándola
+      casi por completo. Se deja un solo overlay con gradiente a opacidad
+      moderada para que la foto sí se note detrás del texto. */}
+   <div className="absolute inset-0 bg-sky-950/40" />
+  <div className="absolute inset-0 opacity-[0.04]" style={{ backgroundImage: "radial-gradient(rgba(255,255,255,0.8) 1px,transparent 1px)", backgroundSize: "28px 50px" }} />
+  ...          <div className="relative z-10 max-w-3xl mx-auto px-6 text-center">
             <Reveal dir="scale" dur={400}>
               <div>
                 <Sparkles className="w-7 h-7 text-sky-400/60 mx-auto mb-5" />
