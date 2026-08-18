@@ -9,6 +9,7 @@ import {
   User, MapPin, CreditCard, Banknote, SlidersHorizontal, Inbox, Camera,
   Shirt, Store, Building2, Home, Sparkles, CheckCircle2, CalendarClock,
   PackageCheck, BadgeCheck, PartyPopper, XCircle, Undo2, AlertTriangle,
+  Edit, // <-- NUEVO
 } from "lucide-react";
 import { useLocale } from "../context/LocaleContext";
 import { formatShortDatePT } from "../utils/dateUtils";
@@ -98,9 +99,6 @@ const EVIDENCE_IMAGE_LABELS = {
   delivery: { en: "Delivery", es: "Entrega" },
 };
 
-// Urgency is derived, not stored — it only applies to orders still in play
-// (not completed/cancelled/delivered), and is the single loudest signal in
-// the whole UI on purpose: it tells an operator what needs attention *now*.
 const URGENCY_META = {
   overdue: {
     label: { en: "Overdue", es: "Atrasada" },
@@ -194,9 +192,6 @@ const shouldShowEvidenceSection = (order) => {
   return getOrderEvidenceTypes(order).length > 0;
 };
 
-// Lookup helpers — pure functions over the constants above, no component
-// state involved, so they live at module scope and can be shared safely by
-// every subcomponent below without being re-created on each render.
 const getServiceLabel = (key) => SERVICE_TYPES[key]?.label || key || "-";
 const getServiceIcon = (key) => SERVICE_TYPES[key]?.Icon || Package;
 const getServiceColor = (key) => SERVICE_TYPES[key]?.color || "#64748b";
@@ -214,9 +209,6 @@ const getLocalDate = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
-// Pickup/created dates may come back as "2026-07-11" or as full ISO
-// timestamps ("2026-07-11T12:00:00Z"). Normalize to YYYY-MM-DD so
-// string comparisons against <input type="date"> values are reliable.
 const dateOnly = (dateStr) => {
   if (!dateStr) return "";
   const str = dateStr.toString();
@@ -226,9 +218,6 @@ const dateOnly = (dateStr) => {
 const isActiveStatus = (status) =>
   !["completed", "cancelled", "delivered"].includes(normalizeStatus(status));
 
-// Derives the single most relevant urgency signal for an order, in priority
-// order: overdue beats today beats express. Returns null for orders that
-// don't need attention (or are already done/cancelled).
 const getUrgency = (order) => {
   if (!isActiveStatus(order.status)) return null;
   const pickup = dateOnly(order.pickup_date);
@@ -239,8 +228,6 @@ const getUrgency = (order) => {
   return null;
 };
 
-// Self-contained, dependency-free filtering. Every field is matched
-// defensively (missing/undefined values never crash the comparison).
 const orderMatchesFilters = (order, filters) => {
   if (!order) return false;
 
@@ -305,10 +292,6 @@ const sortOrders = (list, sort) => {
 };
 
 // ─── SHARED VISUAL PIECES (module scope) ────────────────────────────────────
-// Real icons instead of emoji: consistent rendering across every OS/browser,
-// and reused everywhere a service/status/payment needs to be shown so the
-// whole app stays visually consistent instead of re-implementing the same
-// icon+label pairing in five different places.
 
 function ServiceTag({ serviceType, className = "text-sm", iconClassName = "w-4 h-4 text-slate-400" }) {
   const Icon = getServiceIcon(serviceType);
@@ -422,13 +405,6 @@ function EvidenceImageThumb({ orderId, type, label, onOpen, token }) {
 }
 
 // ─── SUBCOMPONENTS (module scope) ───────────────────────────────────────────
-// IMPORTANT: these live OUTSIDE the Orders component on purpose. A component
-// declared *inside* another component's function body gets a brand-new
-// function identity on every render of the parent, so React treats it as a
-// completely different component type: it unmounts the old instance and
-// mounts a new one — including the DOM nodes inside it. For an <input>, that
-// means it loses focus after every keystroke. Keeping them here means React
-// can keep reusing the same DOM node across renders.
 
 function SortHeader({ sortKey, children, align = "left", sort, toggleSort }) {
   const active = sort.key === sortKey;
@@ -812,8 +788,6 @@ function OrderTable({
   );
 }
 
-// Stats: flat, solid-color icon chips instead of pastel gradient cards —
-// more legible at a glance and doesn't read as the generic default.
 function DashboardStats({ stats, activeFilterCount, totalOrders, t }) {
   const items = [
     {
@@ -847,9 +821,6 @@ function DashboardStats({ stats, activeFilterCount, totalOrders, t }) {
   );
 }
 
-// Filtro con búsqueda manual (botón "Buscar" / Enter). El input vive en un
-// componente estable a nivel de módulo, así que ya no se desmonta en cada
-// tecla: puedes escribir normalmente sin perder el foco.
 function FilterBar({
   filters,
   setFilters,
@@ -894,7 +865,6 @@ function FilterBar({
 
       <div className={`p-4 ${filtersExpanded ? "block" : "hidden"} lg:block`}>
         <div className="flex flex-col lg:flex-row gap-3 items-start lg:items-end">
-          {/* Campo de búsqueda con botón de acción */}
           <div className="flex-1 w-full">
             <div className="relative flex items-center">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
@@ -1165,10 +1135,6 @@ function PaginationBar({ loading, totalItems, page, setPage, pageSize, setPageSi
   );
 }
 
-// Searchable customer picker: types ahead and filters by name/email/phone,
-// instead of scrolling a plain dropdown. Lives at module scope for the same
-// reason as everything else above — a component redefined inside Orders on
-// every render would lose input focus after each keystroke.
 function CustomerCombobox({ customers, value, onChange, t }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -1253,7 +1219,7 @@ export default function Orders() {
   const [orders, setOrders] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState("table"); // "table" | "cards"
+  const [viewMode, setViewMode] = useState("table");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [submitting, setSubmitting] = useState(false);
@@ -1265,7 +1231,11 @@ export default function Orders() {
   const [bulkConfirm, setBulkConfirm] = useState(null);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
 
-  // Filters – la búsqueda se aplica manualmente (botón / Enter)
+  // ─── EDIT STATE ──────────────────────────────────────────────────────────
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState({});
+
+  // Filters
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [searchInput, setSearchInput] = useState("");
   const [filtersExpanded, setFiltersExpanded] = useState(true);
@@ -1384,6 +1354,9 @@ export default function Orders() {
         estimated_lbs: res.data.estimated_lbs ?? "",
         actual_lbs: res.data.actual_lbs ?? ""
       });
+      // Reset edit mode when loading new order
+      setIsEditing(false);
+      setEditForm({});
     } catch (error) {
       toast.error(t("Error loading order details", "Error cargando detalles de la orden"));
     } finally {
@@ -1486,6 +1459,39 @@ export default function Orders() {
       toast.error(error.response?.data?.detail || t("Error updating weights", "Error actualizando libras"));
     } finally {
       setSavingWeights(false);
+    }
+  };
+
+  // ─── EDIT FUNCTIONS ──────────────────────────────────────────────────────
+  const startEditing = () => {
+    setEditForm({
+      customer_id: viewOrder.customer_id,
+      service_type: viewOrder.service_type,
+      service_plan: viewOrder.service_plan,
+      pickup_date: viewOrder.pickup_date || "",
+      pickup_time_window: viewOrder.pickup_time_window || "",
+      pickup_address: viewOrder.pickup_address || "",
+      delivery_address: viewOrder.delivery_address || "",
+      estimated_lbs: viewOrder.estimated_lbs || "",
+      notes: viewOrder.notes || "",
+      gate_code: viewOrder.gate_code || "",
+    });
+    setIsEditing(true);
+  };
+
+  const handleEditSave = async () => {
+    try {
+      const payload = { ...editForm };
+      if (payload.estimated_lbs !== "") payload.estimated_lbs = parseFloat(payload.estimated_lbs);
+      else payload.estimated_lbs = null;
+
+      const res = await axios.put(`${API}/orders/${viewOrder.id}`, payload);
+      toast.success(t("Order updated", "Orden actualizada"));
+      setViewOrder(res.data);
+      await fetchOrders();
+      setIsEditing(false);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || t("Error updating order", "Error al actualizar"));
     }
   };
 
@@ -1891,7 +1897,7 @@ export default function Orders() {
       </div>
 
       {/* ── Order Detail Modal ── */}
-      <Dialog open={!!viewOrder} onOpenChange={() => setViewOrder(null)}>
+      <Dialog open={!!viewOrder} onOpenChange={() => { setViewOrder(null); setIsEditing(false); }}>
         <DialogContent className="sm:max-w-3xl bg-white p-0 max-h-[90vh] flex flex-col">
           <div className="flex items-center justify-between p-4 border-b sticky top-0 bg-white z-10">
             <DialogHeader className="p-0">
@@ -1904,9 +1910,16 @@ export default function Orders() {
                 {t("Order details and laundry preferences.", "Detalle de la orden y preferencias de lavado.")}
               </DialogDescription>
             </DialogHeader>
-            <Button variant="ghost" size="icon" onClick={() => setViewOrder(null)} className="rounded-full">
-              <X className="h-4 w-4" />
-            </Button>
+            <div className="flex items-center gap-2">
+              {!isEditing && viewOrder && (
+                <Button variant="outline" size="sm" onClick={startEditing}>
+                  <Edit className="h-4 w-4 mr-1" /> {t("Edit", "Editar")}
+                </Button>
+              )}
+              <Button variant="ghost" size="icon" onClick={() => { setViewOrder(null); setIsEditing(false); }} className="rounded-full">
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -1917,139 +1930,260 @@ export default function Orders() {
               </div>
             ) : viewOrder ? (
               <>
-                {/* ── Summary Card ── */}
-                <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {isEditing ? (
+                  // ── EDIT MODE ──
+                  <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <p className="text-xs text-slate-500">{t("Customer", "Cliente")}</p>
-                      <p className="font-medium">{viewOrder.customer_name}</p>
-                      <p className="text-xs text-slate-400">{viewOrder.customer_email}</p>
+                      <Label>{t("Customer", "Cliente")}</Label>
+                      <CustomerCombobox
+                        customers={customers}
+                        value={editForm.customer_id}
+                        onChange={(id) => setEditForm({ ...editForm, customer_id: id })}
+                        t={t}
+                      />
                     </div>
                     <div>
-                      <p className="text-xs text-slate-500">{t("Service", "Servicio")}</p>
-                      <div className="mt-1">
-                        <ServiceTag serviceType={viewOrder.service_type} className="text-base font-medium text-slate-900" iconClassName="w-5 h-5 text-slate-500" />
+                      <Label>{t("Service Type", "Tipo de Servicio")}</Label>
+                      <Select
+                        value={editForm.service_type}
+                        onValueChange={(v) => setEditForm({ ...editForm, service_type: v })}
+                      >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(SERVICE_TYPES).map(([key, val]) => (
+                            <SelectItem key={key} value={key}>
+                              <span className="inline-flex items-center gap-1.5">
+                                <val.Icon className="w-3.5 h-3.5" />
+                                {val.label}
+                              </span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>{t("Service Plan", "Plan")}</Label>
+                      <Select
+                        value={editForm.service_plan}
+                        onValueChange={(v) => setEditForm({ ...editForm, service_plan: v })}
+                      >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(PLAN_LABELS).map(([key, val]) => (
+                            <SelectItem key={key} value={key}>{val.label} ({val.time})</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>{t("Pickup Date", "Fecha de Pickup")}</Label>
+                      <Input
+                        type="date"
+                        value={editForm.pickup_date}
+                        onChange={(e) => setEditForm({ ...editForm, pickup_date: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <Label>{t("Time Window", "Ventana")}</Label>
+                      <Select
+                        value={editForm.pickup_time_window}
+                        onValueChange={(v) => setEditForm({ ...editForm, pickup_time_window: v })}
+                      >
+                        <SelectTrigger><SelectValue placeholder={t("Select", "Seleccionar")} /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="8-12">8am - 12am</SelectItem>
+                          <SelectItem value="14-18">2pm - 6pm</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <Label>{t("Pickup Address", "Dirección de Pickup")}</Label>
+                      <Input
+                        value={editForm.pickup_address}
+                        onChange={(e) => setEditForm({ ...editForm, pickup_address: e.target.value })}
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <Label>{t("Delivery Address", "Dirección de Entrega")}</Label>
+                      <Input
+                        value={editForm.delivery_address}
+                        onChange={(e) => setEditForm({ ...editForm, delivery_address: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <Label>{t("Est. Lbs", "Est. Lbs")}</Label>
+                      <Input
+                        type="number"
+                        step="0.1"
+                        value={editForm.estimated_lbs}
+                        onChange={(e) => setEditForm({ ...editForm, estimated_lbs: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <Label>{t("Gate Code", "Código de acceso")}</Label>
+                      <Input
+                        value={editForm.gate_code}
+                        onChange={(e) => setEditForm({ ...editForm, gate_code: e.target.value })}
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <Label>{t("Notes", "Notas")}</Label>
+                      <Textarea
+                        value={editForm.notes}
+                        onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+                        rows={2}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  // ── READ-ONLY VIEW ──
+                  <>
+                    {/* ── Summary Card ── */}
+                    <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div>
+                          <p className="text-xs text-slate-500">{t("Customer", "Cliente")}</p>
+                          <p className="font-medium">{viewOrder.customer_name}</p>
+                          <p className="text-xs text-slate-400">{viewOrder.customer_email}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-slate-500">{t("Service", "Servicio")}</p>
+                          <div className="mt-1">
+                            <ServiceTag serviceType={viewOrder.service_type} className="text-base font-medium text-slate-900" iconClassName="w-5 h-5 text-slate-500" />
+                          </div>
+                          {viewOrder.service_plan && (
+                            <Badge className={`mt-1 ${getPlanBadge(viewOrder.service_plan)}`}>
+                              {getPlanLabel(viewOrder.service_plan)}
+                            </Badge>
+                          )}
+                        </div>
+                        <div>
+                          <p className="text-xs text-slate-500">{t("Pickup", "Pickup")}</p>
+                          <p className="font-medium">{formatDate(viewOrder.pickup_date)}</p>
+                          <p className="text-xs text-slate-400">{viewOrder.pickup_time_window || "-"}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-slate-500">{t("Status", "Estado")}</p>
+                          <StatusPill status={viewOrder.status} />
+                          <p className="text-xs text-slate-400 mt-1">
+                            {t("Payment", "Pago")}: {getPaymentLabel(viewOrder.payment_status)}
+                          </p>
+                        </div>
                       </div>
-                      {viewOrder.service_plan && (
-                        <Badge className={`mt-1 ${getPlanBadge(viewOrder.service_plan)}`}>
-                          {getPlanLabel(viewOrder.service_plan)}
-                        </Badge>
-                      )}
                     </div>
-                    <div>
-                      <p className="text-xs text-slate-500">{t("Pickup", "Pickup")}</p>
-                      <p className="font-medium">{formatDate(viewOrder.pickup_date)}</p>
-                      <p className="text-xs text-slate-400">{viewOrder.pickup_time_window || "-"}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-slate-500">{t("Status", "Estado")}</p>
-                      <StatusPill status={viewOrder.status} />
-                      <p className="text-xs text-slate-400 mt-1">
-                        {t("Payment", "Pago")}: {getPaymentLabel(viewOrder.payment_status)}
-                      </p>
-                    </div>
-                  </div>
-                </div>
 
-                {/* ── Addresses ── */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-                    <p className="text-xs text-slate-500 mb-1">{t("Pickup Address", "Dirección Pickup")}</p>
-                    <p className="font-medium">{viewOrder.pickup_address || "-"}</p>
-                    {viewOrder.gate_code && (
-                      <p className="text-xs text-amber-600 mt-1">
-                        🔑 {t("Gate code", "Código de acceso")}: {viewOrder.gate_code}
-                      </p>
+                    {/* ── Addresses ── */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                        <p className="text-xs text-slate-500 mb-1">{t("Pickup Address", "Dirección Pickup")}</p>
+                        <p className="font-medium">{viewOrder.pickup_address || "-"}</p>
+                        {viewOrder.gate_code && (
+                          <p className="text-xs text-amber-600 mt-1">
+                            🔑 {t("Gate code", "Código de acceso")}: {viewOrder.gate_code}
+                          </p>
+                        )}
+                      </div>
+                      <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                        <p className="text-xs text-slate-500 mb-1">{t("Delivery Address", "Dirección Entrega")}</p>
+                        <p className="font-medium">{viewOrder.delivery_address || "-"}</p>
+                      </div>
+                    </div>
+
+                    {/* ── Notes ── */}
+                    {viewOrder.notes && (
+                      <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                        <p className="text-xs text-slate-500 mb-1">{t("Notes", "Notas")}</p>
+                        <p className="text-sm whitespace-pre-wrap">{viewOrder.notes}</p>
+                      </div>
                     )}
-                  </div>
-                  <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-                    <p className="text-xs text-slate-500 mb-1">{t("Delivery Address", "Dirección Entrega")}</p>
-                    <p className="font-medium">{viewOrder.delivery_address || "-"}</p>
-                  </div>
-                </div>
 
-                {/* ── Notes ── */}
-                {viewOrder.notes && (
-                  <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-                    <p className="text-xs text-slate-500 mb-1">{t("Notes", "Notas")}</p>
-                    <p className="text-sm whitespace-pre-wrap">{viewOrder.notes}</p>
-                  </div>
-                )}
-
-                {/* ── Weight & Billing ── */}
-                <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-                  <h3 className="font-semibold text-slate-700 mb-3">
-                    {t("Weight & Billing", "Peso y facturación")}
-                  </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div>
-                      <p className="text-xs text-slate-500">{t("Est. Lbs", "Est. Lbs")}</p>
-                      <Input
-                        type="number"
-                        step="0.1"
-                        value={weightForm.estimated_lbs}
-                        onChange={(e) => setWeightForm({ ...weightForm, estimated_lbs: e.target.value })}
-                        className="mt-1"
-                      />
-                    </div>
-                    <div>
-                      <p className="text-xs text-slate-500">{t("Actual Lbs", "Actual Lbs")}</p>
-                      <Input
-                        type="number"
-                        step="0.1"
-                        value={weightForm.actual_lbs}
-                        onChange={(e) => setWeightForm({ ...weightForm, actual_lbs: e.target.value })}
-                        className="mt-1"
-                      />
-                    </div>
-                    <div>
-                      <p className="text-xs text-slate-500">{t("Total", "Total")}</p>
-                      <p className="font-bold text-xl">
-                        {formatCurrency(viewOrder.total_amount)}
-                      </p>
-                      {viewOrder.membership_discount > 0 && (
-                        <p className="text-xs text-green-600">
-                          {t("Membership discount", "Descuento membresía")}: -{formatCurrency(viewOrder.membership_discount)}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex gap-2 mt-4">
-                    <Button variant="outline" size="sm" onClick={handleUpdateWeights} disabled={savingWeights}>
-                      {savingWeights ? t("Saving...", "Guardando...") : t("Update Weights", "Actualizar Pesos")}
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => handleDownloadQr(viewOrder)}>
-                      <Download className="h-4 w-4 mr-2" />
-                      {t("Ticket", "Ticket")}
-                    </Button>
-                  </div>
-                </div>
-
-                {/* ── Evidence Images ── */}
-                {(() => {
-                  const evidenceTypes = getOrderEvidenceTypes(viewOrder);
-                  const token = getAdminToken();
-                  if (!shouldShowEvidenceSection(viewOrder) || !token) return null;
-                  return (
+                    {/* ── Weight & Billing ── */}
                     <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
                       <h3 className="font-semibold text-slate-700 mb-3">
-                        {t("Evidence Images", "Imágenes de evidencia")}
+                        {t("Weight & Billing", "Peso y facturación")}
                       </h3>
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        {evidenceTypes.map((type) => (
-                          <EvidenceImageThumb
-                            key={`${viewOrder.id}-${type}`}
-                            orderId={viewOrder.id}
-                            type={type}
-                            token={token}
-                            label={locale === "es" ? EVIDENCE_IMAGE_LABELS[type].es : EVIDENCE_IMAGE_LABELS[type].en}
-                            onOpen={setSelectedImage}
+                        <div>
+                          <p className="text-xs text-slate-500">{t("Est. Lbs", "Est. Lbs")}</p>
+                          <Input
+                            type="number"
+                            step="0.1"
+                            value={weightForm.estimated_lbs}
+                            onChange={(e) => setWeightForm({ ...weightForm, estimated_lbs: e.target.value })}
+                            className="mt-1"
                           />
-                        ))}
+                        </div>
+                        <div>
+                          <p className="text-xs text-slate-500">{t("Actual Lbs", "Actual Lbs")}</p>
+                          <Input
+                            type="number"
+                            step="0.1"
+                            value={weightForm.actual_lbs}
+                            onChange={(e) => setWeightForm({ ...weightForm, actual_lbs: e.target.value })}
+                            className="mt-1"
+                          />
+                        </div>
+                        <div>
+                          <p className="text-xs text-slate-500">{t("Total", "Total")}</p>
+                          <p className="font-bold text-xl">
+                            {formatCurrency(viewOrder.total_amount)}
+                          </p>
+                          {viewOrder.membership_discount > 0 && (
+                            <p className="text-xs text-green-600">
+                              {t("Membership discount", "Descuento membresía")}: -{formatCurrency(viewOrder.membership_discount)}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex gap-2 mt-4">
+                        <Button variant="outline" size="sm" onClick={handleUpdateWeights} disabled={savingWeights}>
+                          {savingWeights ? t("Saving...", "Guardando...") : t("Update Weights", "Actualizar Pesos")}
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => handleDownloadQr(viewOrder)}>
+                          <Download className="h-4 w-4 mr-2" />
+                          {t("Ticket", "Ticket")}
+                        </Button>
                       </div>
                     </div>
-                  );
-                })()}
+
+                    {/* ── Evidence Images ── */}
+                    {(() => {
+                      const evidenceTypes = getOrderEvidenceTypes(viewOrder);
+                      const token = getAdminToken();
+                      if (!shouldShowEvidenceSection(viewOrder) || !token) return null;
+                      return (
+                        <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                          <h3 className="font-semibold text-slate-700 mb-3">
+                            {t("Evidence Images", "Imágenes de evidencia")}
+                          </h3>
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            {evidenceTypes.map((type) => (
+                              <EvidenceImageThumb
+                                key={`${viewOrder.id}-${type}`}
+                                orderId={viewOrder.id}
+                                type={type}
+                                token={token}
+                                label={locale === "es" ? EVIDENCE_IMAGE_LABELS[type].es : EVIDENCE_IMAGE_LABELS[type].en}
+                                onOpen={setSelectedImage}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </>
+                )}
+
+                {isEditing && (
+                  <div className="flex justify-end gap-2 pt-4 border-t">
+                    <Button variant="outline" onClick={() => setIsEditing(false)}>
+                      {t("Cancel", "Cancelar")}
+                    </Button>
+                    <Button className="bg-sky-600 hover:bg-sky-700" onClick={handleEditSave}>
+                      {t("Save", "Guardar")}
+                    </Button>
+                  </div>
+                )}
               </>
             ) : null}
           </div>
@@ -2097,5 +2231,3 @@ export default function Orders() {
     </div>
   );
 }
-
-

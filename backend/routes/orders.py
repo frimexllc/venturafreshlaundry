@@ -71,9 +71,6 @@ except ImportError:
     NOTIFICATIONS_ENABLED = False
 
 # ── Stripe Checkout (native) ─────────────────────────────────────────────────
-# NOTE: `stripe` used to be imported a second time right here, duplicating
-# the top-of-file import. Harmless at runtime but a copy-paste smell —
-# removed; `stripe` is already available from the import block above.
 class CheckoutSessionRequest(BaseModel):
     amount: float
     currency: str
@@ -133,11 +130,7 @@ STRIPE_CHECKOUT_AVAILABLE = True
 
 router = APIRouter(prefix="/api", tags=["Orders"])
 
-# FIX 1 (v17): campos que, al cambiar via PUT /orders/{id}, obligan a
-# recalcular total_amount/extra_charge/membership_discount/etc. Antes solo
-# se recalculaba si "actual_lbs" venia en el payload; OrderDetailDialog.jsx
-# guarda add-ons con un PUT que SOLO manda {addon_services: [...]}, asi que
-# el total se quedaba desactualizado hasta el siguiente cambio de peso.
+# FIX 1 (v17): campos que, via PUT, obligan a recalcular total
 PRICING_RELEVANT_FIELDS = {
     "actual_lbs", "addon_services", "distance_miles",
     "service_plan", "service_type",
@@ -339,7 +332,6 @@ async def get_orders(
 ) -> List[OrderResponse]:
     query = {}
     if status:
-        # Cubre TODAS las variantes legacy (UPPERCASE, hyphen, alias)
         from order_status import status_in_query
         query["status"] = status_in_query(status)
     if customer_id:
@@ -354,7 +346,6 @@ async def get_orders(
         "created_at", -1
     ).skip(skip).limit(page_size).to_list(page_size)
 
-    # Normaliza el status canónico de cada orden en la respuesta
     for o in orders:
         if o.get("status"):
             o["status"] = normalize_status(o["status"]) or o["status"]
@@ -372,7 +363,6 @@ async def get_order(
         order = await db.orders.find_one({"order_number": order_id}, {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    # Normalizar status canónico
     if order.get("status"):
         order["status"] = normalize_status(order["status"]) or order["status"]
     return OrderResponse(**order)
@@ -550,11 +540,19 @@ async def update_order(
     update_data = data.copy()
     update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
 
-    # FIX 1 (v17): antes esto solo se ejecutaba si "actual_lbs" venia en el
-    # payload. saveAddonsList() en OrderDetailDialog.jsx hace PUT solo con
-    # {addon_services: [...]} -> total_amount/extra_charge/membership_discount
-    # se quedaban con el valor viejo hasta el siguiente cambio de peso.
-    # Ahora se recalcula si cambia cualquier campo relevante para el precio.
+    # === NUEVO: sincronizar datos de contacto si se cambia el cliente ===
+    if "customer_id" in update_data:
+        new_customer = await db.customers.find_one(
+            {"id": update_data["customer_id"]}, {"_id": 0}
+        )
+        if new_customer:
+            update_data["customer_name"]  = new_customer.get("name", "")
+            update_data["customer_phone"] = new_customer.get("phone", "")
+            update_data["customer_email"] = new_customer.get("email", "")
+        else:
+            raise HTTPException(status_code=404, detail="Customer not found")
+
+    # Recalcular total si cambian campos relevantes
     if PRICING_RELEVANT_FIELDS & update_data.keys():
         current_order = await db.orders.find_one({"id": order_id}, {"_id": 0})
         if current_order:
@@ -605,7 +603,6 @@ async def update_order_status(
 ) -> dict:
     from order_status import normalize_status, CANONICAL_STATUSES
 
-    # Normaliza alias/legacy/uppercase → canónico
     normalized_status = normalize_status(status)
 
     if normalized_status not in CANONICAL_STATUSES:
@@ -706,18 +703,13 @@ async def update_order_status(
         "order_number": order.get("order_number"),
     })
 
-    # ═══════════════════════════════════════════════════════════════════════
-    # 🔥 POST-DELIVERY AUTOMATION: SURVEY + RECURRENCE
-    # ═══════════════════════════════════════════════════════════════════════
     if normalized_status in ("delivered", "completed"):
-        # Survey automation (every 3 completed orders)
         try:
             asyncio.create_task(maybe_send_survey_after_delivery(order_id))
             logger.info(f"Survey scheduled for order {order_id}")
         except Exception as e:
             logger.error(f"Failed to schedule survey for order {order_id}: {e}")
 
-        # Recurrence automation (weekly/biweekly/twice_week)
         try:
             asyncio.create_task(maybe_create_next_recurring_order(order_id))
             logger.info(f"Recurrence automation scheduled for order {order_id}")
@@ -787,12 +779,6 @@ async def capture_order_payment(
     total_amount    = order.get("total_amount")
     amount_received = data.amount_received
 
-    # FIX: antes solo se validaba amount_received para "cash". Si el metodo
-    # era card/transfer/zelle/other y la orden aun no tenia total_amount
-    # calculado (peso nunca registrado), amount_received quedaba en None y la
-    # orden se marcaba como "paid" con amount_paid: None — un cobro fantasma
-    # sin monto real guardado en finances. Ahora se exige que total_amount
-    # exista (no sea None) para CUALQUIER metodo de pago antes de continuar.
     if total_amount is None:
         raise HTTPException(
             status_code=400,
@@ -1318,7 +1304,6 @@ async def get_order_ticket(
     delivery_fee        = calculate_delivery_fee(distance_miles)
     addon_services      = order.get("addon_services", [])
 
-    # ========== CORREGIDO: addons_total SIEMPRE se calcula y se incluye ==========
     addons_total = 0.0
     for addon in addon_services:
         addon_price = float(addon.get("custom_price") or addon.get("price") or 0)
@@ -1327,13 +1312,9 @@ async def get_order_ticket(
 
     membership_discount = float(order.get("membership_discount") or 0)
 
-    # ========== CORREGIDO: total = subtotal_lbs + delivery + addons - discount ==========
-    # Ya NO se usa ciegamente order.get("total_amount"), porque pudiera ser 0
-    # cuando no hay libras pero sí addons.
     raw_total = subtotal_lbs + delivery_fee + addons_total - membership_discount
     total = round(max(0.0, raw_total), 2)
 
-    # Sólo usamos el total_amount del backend si es MAYOR (por si había cálculos extras).
     stored_total = float(order.get("total_amount") or order.get("extra_charge") or 0)
     if stored_total > total:
         total = stored_total
@@ -1372,7 +1353,6 @@ async def get_order_ticket(
     if membership_discount > 0:
         items_html += f'<tr><td>Membership discount</td><td class="r">-${membership_discount:.2f}</td></tr>'
     if addons_total > 0 and lbs == 0:
-        # Muestra subtotal de addons claramente si no hay peso
         items_html += f'<tr><td style="padding-top:4px">Subtotal Add-ons</td><td class="r" style="padding-top:4px">${addons_total:.2f}</td></tr>'
 
     addr_html  = ""
@@ -1382,12 +1362,6 @@ async def get_order_ticket(
         addr_html += f'<tr><td>Entrega</td><td class="r addr">{delivery_addr}</td></tr>'
     phone_html = f'<tr><td>Tel</td><td class="r">{phone}</td></tr>' if phone else ""
 
-    # FIX: el bloque de "Pago"/"Metodo" tenia un caracter corrupto ("能",
-    # aparentemente filtrado por un autocompletado/paste) suelto FUERA de
-    # cualquier tabla, y a los <tr> les faltaba el <table> que los envolviera.
-    # Eso rompia el HTML del ticket impreso (texto chino visible + markup
-    # invalido). Ahora esta envuelto correctamente en su propio <table> y sin
-    # caracteres extraños.
     html_content = f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Ticket {order_num}</title>
@@ -1404,25 +1378,22 @@ td{{padding:3px 0;font-size:11px;vertical-align:top}}
 td:first-child{{white-space:normal;width:28mm;padding-right:4px;word-break:break-word}}
 .r{{text-align:right;font-weight:600;word-break:break-word;overflow-wrap:anywhere}}
 .addr{{font-size:10px;font-weight:500}}
-
-/* ========== TOTAL - MEJORADO: LETRA GRANDE Y NEGRAS FUERTES ========== */
 .total-row td{{
-  font-size:24px !important;       /* MUY grande para destacarse */
-  font-weight:900 !important;      /* Negritas MÁXIMAS */
-  padding:10px 0 !important;       /* Espacio arriba y abajo */
-  border-top:3px double #000 !important; /* Doble línea negra encima */
+  font-size:24px !important;
+  font-weight:900 !important;
+  padding:10px 0 !important;
+  border-top:3px double #000 !important;
   letter-spacing:0.5px;
   text-transform:uppercase;
 }}
 .total-row td:first-child{{
-  font-size:20px !important;        /* Etiqueta TOTAL también resaltada */
+  font-size:20px !important;
   letter-spacing:2px;
 }}
 .total-row td.r{{
-  font-size:28px !important;        /* Monto MÁS GRANDE que el texto */
-  color:#000 !important;            /* Negro puro */
+  font-size:28px !important;
+  color:#000 !important;
 }}
-
 .badge{{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700}}
 .badge-paid{{background:#dcfce7;color:#166534}}
 .badge-pending{{background:#fef3c7;color:#92400e}}
@@ -1447,7 +1418,6 @@ td:first-child{{white-space:normal;width:28mm;padding-right:4px;word-break:break
 <hr>
 <table>
   {items_html}
-  <!-- TOTAL en NEGRITAS GIGANTES -->
   <tr class="total-row"><td>TOTAL</td><td class="r">${total:.2f}</td></tr>
 </table>
 <hr>
@@ -1735,10 +1705,6 @@ async def operator_auto_charge_order(
 
     order_number = order.get("order_number", order_id[:8].upper())
 
-    # Delegates to the consolidated payment service (services/payments.py),
-    # which handles idempotency and locking the order against double
-    # charges — see that module's docstring for why this used to be
-    # unsafe when implemented inline here.
     try:
         charge = await charge_order_saved_card(
             order=order,
