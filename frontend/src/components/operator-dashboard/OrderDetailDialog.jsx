@@ -194,7 +194,19 @@ function calculateOrderTotal(order, payMethod) {
     (s, a) => s + Number(a.custom_price || a.price || 0) * Number(a.qty || a.quantity || 1), 0
   );
   if (extraCharge > 0) {
-    const baseTotal = extraCharge + deliveryFee + addonsTotal;
+    // FIX: `order.extra_charge` from the backend (utils.py v17,
+    // calculate_final_amount_with_membership) is already the FULL total —
+    // it bakes in the weight charge, delivery fee, AND every add-on
+    // (per-piece included, per the "extra_charge == total" contract
+    // documented in utils.py). Re-adding deliveryFee and addonsTotal here
+    // double-counted them, so a $20 per-piece-only Wash & Fold order (no
+    // weight yet) showed as $40 the moment a non-card payment method was
+    // picked — this branch is only reached from the cash/zelle/venmo/other
+    // path in handlePayment(); the card/Stripe path uses
+    // buildDisplayBreakdown() instead, which doesn't have this bug.
+    // deliveryFee/addonsTotal are still returned below for display purposes
+    // (e.g. breakdown UI), just no longer added into the total twice.
+    const baseTotal = extraCharge;
     return {
       baseTotal, total: baseTotal,
       discount: Number(order.membership_discount || 0),
