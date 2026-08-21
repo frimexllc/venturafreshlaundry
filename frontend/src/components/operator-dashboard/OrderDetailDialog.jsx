@@ -2,6 +2,10 @@
 // FIXED: no flash, no disappear, stable dialog state
 // ADDED: Recurrence information display
 // ADDED: Custom price per add-on item
+// UPDATED: Address & pickup date/time merged into "Customer & Service"
+// UPDATED: Receipts and Evidence Images merged into a single collapsible section
+// UPDATED: Order is now Customer & Service -> Receipts & Evidence -> ... -> Weight & Total,
+//          every section collapsible/expandable
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
@@ -1329,48 +1333,6 @@ const handleAddAddon = (item) => {
     setImageCarouselOpen(true);
   };
 
-  // ─── Render helpers ────────────────────────────────────────────────────────
-
-  const renderEvidenceSection = () => {
-    if (!localOrder) return null;
-    const imageTypes = getEvidenceImageTypes(localOrder);
-    const images = imageTypes.map((key) => ({
-      key,
-      label: locale === "es" ? EVIDENCE_IMAGE_CONFIG[key].label.es : EVIDENCE_IMAGE_CONFIG[key].label.en,
-      url: buildEvidenceImageUrl(localOrder.id, key),
-    }));
-    return (
-      <Section
-        icon={<Camera className="w-4 h-4" />}
-        title={t("Evidence Images", "Imágenes de evidencia")}
-        collapsible defaultOpen={true}
-        badge={images.length > 0 ? (
-          <span className="text-[11px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">{images.length}</span>
-        ) : null}
-      >
-        {images.length === 0 ? (
-          <div className="text-center py-6 text-slate-400 text-sm">
-            <Camera className="w-8 h-8 mx-auto mb-2 opacity-40" />
-            <p>{t("No images yet.", "Aún no hay imágenes.")}</p>
-            <p className="text-xs mt-1 text-slate-300">{t("Pickup, delivery and weight photos will appear here.", "Las fotos de recogida, entrega y peso aparecerán aquí.")}</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-3 gap-2">
-            {images.map((img) => (
-              <EvidenceImageThumb
-                key={img.key}
-                orderId={localOrder.id}
-                type={img.key}
-                label={img.label}
-                onOpen={(blobUrl) => openImageCarousel([{ ...img, url: blobUrl }], 0)}
-              />
-            ))}
-          </div>
-        )}
-      </Section>
-    );
-  };
-
   // ─── Guard ────────────────────────────────────────────────────────────────
 
   if (!order) return null;
@@ -1387,6 +1349,14 @@ const handleAddAddon = (item) => {
   const groupedAddons    = groupBy(addons, "category");
   const groupedCatalog   = groupBy(addonCatalog, "category");
   const dynamicTotal     = calculateOrderTotal(o, payMethod).baseTotal;
+
+  // Evidence images (used by the combined "Receipts & Evidence" section below)
+  const evidenceImageTypes = getEvidenceImageTypes(o);
+  const evidenceImages     = evidenceImageTypes.map((key) => ({
+    key,
+    label: locale === "es" ? EVIDENCE_IMAGE_CONFIG[key].label.es : EVIDENCE_IMAGE_CONFIG[key].label.en,
+    url: buildEvidenceImageUrl(o.id, key),
+  }));
 
   return (
     <>
@@ -1449,14 +1419,33 @@ const handleAddAddon = (item) => {
 
           <div className="p-4 space-y-3">
 
-            {/* ── Customer & Service ── */}
-            <Section icon={<User className="w-4 h-4" />} title={t("Customer & Service", "Cliente y Servicio")}>
+            {/* ── 1) Customer & Service (name, service, address, pickup date/time) ── */}
+            <Section
+              icon={<User className="w-4 h-4" />}
+              title={t("Customer & Service", "Cliente y Servicio")}
+              collapsible
+              defaultOpen={true}
+            >
               <div className="grid grid-cols-2 gap-x-5 gap-y-3">
                 <DataRow label={t("Name", "Nombre")}      value={safeString(o.customer_name,  "—")} />
                 <DataRow label={t("Phone", "Teléfono")}   value={safeString(o.customer_phone, "—")} />
                 <DataRow label="Email"                     value={safeString(o.customer_email, "—")} className="col-span-2" />
                 <DataRow label={t("Service", "Servicio")} value={isWF ? "Wash & Fold" : "Pickup & Delivery"} />
                 <DataRow label={t("Plan", "Plan")}        value={safeString(o.service_plan)} />
+                <DataRow
+                  label={t("Address", "Dirección")}
+                  value={safeString(o.address || o.pickup_address || o.delivery_address || o.customer_address, "—")}
+                  className="col-span-2"
+                />
+                {o.pickup_date && (
+                  <DataRow
+                    label={t("Pickup Date", "Fecha de recogida")}
+                    value={parseLocalDate(o.pickup_date)?.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                  />
+                )}
+                {(o.pickup_time || o.pickup_time_window) && (
+                  <DataRow label={t("Time", "Hora")} value={o.pickup_time || o.pickup_time_window} />
+                )}
                 {o.card_brand && (
                   <DataRow
                     label={t("Card on file", "Tarjeta guardada")}
@@ -1503,38 +1492,6 @@ const handleAddAddon = (item) => {
               />
             )}
 
-            {/* ── Address ── */}
-            {o.pickup_address && (
-              <Section icon={<MapPin className="w-4 h-4" />} title={t("Address", "Dirección")}>
-                <DataRow label={t("Pickup address", "Dirección de recogida")} value={o.pickup_address} />
-                {o.gate_code && (
-                  <div className="mt-2">
-                    <p className="text-[10px] font-semibold tracking-widest text-slate-400 uppercase mb-1">{t("Gate code", "Código de entrada")}</p>
-                    <span className="font-mono font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5 text-sm inline-block">
-                      {o.gate_code}
-                    </span>
-                  </div>
-                )}
-              </Section>
-            )}
-
-            {/* ── Schedule ── */}
-            {(o.pickup_date || o.pickup_time) && (
-              <Section icon={<Calendar className="w-4 h-4" />} title={t("Schedule", "Horario")}>
-                <div className="flex gap-6">
-                  {o.pickup_date && (
-                    <DataRow
-                      label={t("Date", "Fecha")}
-                      value={parseLocalDate(o.pickup_date)?.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                    />
-                  )}
-                  {(o.pickup_time || o.pickup_time_window) && (
-                    <DataRow label={t("Time", "Hora")} value={o.pickup_time || o.pickup_time_window} />
-                  )}
-                </div>
-              </Section>
-            )}
-
             {/* ── Notes ── */}
             {o.notes && (
               <Section icon={<StickyNote className="w-4 h-4" />} title={t("Notes / Instructions", "Notas / Instrucciones")}>
@@ -1567,41 +1524,82 @@ const handleAddAddon = (item) => {
               </Section>
             )}
 
-            {/* ── RECURRENCE INFORMATION (NEW) ── */}
+            {/* ── RECURRENCE INFORMATION ── */}
             <RecurrenceInfo order={o} t={t} locale={locale} />
 
-            {/* ── Receipts ── */}
+            {/* ── 2) Receipts & Evidence Images (merged, collapsible) ── */}
             <Section
               icon={<ImageIcon className="w-4 h-4" />}
-              title={t("Receipts", "Comprobantes")}
-              badge={verifiedReceipts.length > 0 ? (
-                <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">
-                  <CheckCircle2 className="w-3 h-3" />{verifiedReceipts.length}
-                </span>
-              ) : null}
+              title={t("Receipts & Evidence", "Comprobantes y Evidencia")}
+              collapsible
+              defaultOpen={true}
+              badge={
+                <div className="flex items-center gap-1.5">
+                  {verifiedReceipts.length > 0 && (
+                    <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">
+                      <CheckCircle2 className="w-3 h-3" />{verifiedReceipts.length}
+                    </span>
+                  )}
+                  {evidenceImages.length > 0 && (
+                    <span className="flex items-center gap-1 text-[11px] font-bold text-sky-600 bg-sky-50 border border-sky-200 rounded-full px-2 py-0.5">
+                      <Camera className="w-3 h-3" />{evidenceImages.length}
+                    </span>
+                  )}
+                </div>
+              }
             >
-              <div className="space-y-3">
-                {receiptsLoading ? (
-                  <div className="py-6 text-center text-slate-400 text-xs">
-                    <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-1" />
-                    {t("Loading...", "Cargando...")}
+              <div className="space-y-5">
+                {/* Receipts */}
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">{t("Receipts", "Comprobantes")}</p>
+                  <div className="space-y-3">
+                    {receiptsLoading ? (
+                      <div className="py-6 text-center text-slate-400 text-xs">
+                        <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-1" />
+                        {t("Loading...", "Cargando...")}
+                      </div>
+                    ) : receipts.length === 0 ? (
+                      <div className="py-6 text-center text-slate-400 text-xs">
+                        <ImageIcon className="w-8 h-8 opacity-20 mx-auto mb-1" />
+                        {t("No receipts", "Sin comprobantes")}
+                      </div>
+                    ) : (
+                      receipts.map(r => (
+                        <ReceiptCard key={r.id} receipt={r} onValidate={handleValidateReceipt} validating={validatingId} />
+                      ))
+                    )}
+                    <button
+                      onClick={() => loadReceipts(o.id)}
+                      className="w-full py-1.5 text-[11px] text-slate-400 hover:text-slate-600 flex items-center justify-center gap-1"
+                    >
+                      <RefreshCw className="w-3 h-3" />{t("Refresh", "Actualizar")}
+                    </button>
                   </div>
-                ) : receipts.length === 0 ? (
-                  <div className="py-6 text-center text-slate-400 text-xs">
-                    <ImageIcon className="w-8 h-8 opacity-20 mx-auto mb-1" />
-                    {t("No receipts", "Sin comprobantes")}
-                  </div>
-                ) : (
-                  receipts.map(r => (
-                    <ReceiptCard key={r.id} receipt={r} onValidate={handleValidateReceipt} validating={validatingId} />
-                  ))
-                )}
-                <button
-                  onClick={() => loadReceipts(o.id)}
-                  className="w-full py-1.5 text-[11px] text-slate-400 hover:text-slate-600 flex items-center justify-center gap-1"
-                >
-                  <RefreshCw className="w-3 h-3" />{t("Refresh", "Actualizar")}
-                </button>
+                </div>
+
+                {/* Evidence images */}
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">{t("Evidence Images", "Imágenes de evidencia")}</p>
+                  {evidenceImages.length === 0 ? (
+                    <div className="text-center py-6 text-slate-400 text-sm">
+                      <Camera className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                      <p>{t("No images yet.", "Aún no hay imágenes.")}</p>
+                      <p className="text-xs mt-1 text-slate-300">{t("Pickup, delivery and weight photos will appear here.", "Las fotos de recogida, entrega y peso aparecerán aquí.")}</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-3 gap-2">
+                      {evidenceImages.map((img) => (
+                        <EvidenceImageThumb
+                          key={img.key}
+                          orderId={o.id}
+                          type={img.key}
+                          label={img.label}
+                          onOpen={(blobUrl) => openImageCarousel([{ ...img, url: blobUrl }], 0)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </Section>
 
@@ -1724,11 +1722,8 @@ const handleAddAddon = (item) => {
               </div>
             </Section>
 
-            {/* ── Evidence images ── */}
-            {renderEvidenceSection()}
-
-            {/* ── Weight & Total ── */}
-            <Section icon={<Scale className="w-4 h-4" />} title={t("Weight & Total", "Peso y Total")}>
+            {/* ── 3) Weight & Total ── */}
+            <Section icon={<Scale className="w-4 h-4" />} title={t("Weight & Total", "Peso y Total")} collapsible defaultOpen={true}>
               <div className="space-y-4">
                 <div>
                   <Label className="text-[10px] font-semibold tracking-widest text-slate-400 uppercase mb-1.5 block">

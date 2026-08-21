@@ -66,6 +66,10 @@ import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
+// ─── Importar iconos numerados ──────────────────────────────────────────────
+import Icon1 from "../assets/1.png";
+import Icon2 from "../assets/2.png";
+
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png",
@@ -162,19 +166,12 @@ function getMarkerColor(status) {
 }
 
 // ─── Utilidades de estado "completada" / "urgente" ────────────────────────────
-// Regla de negocio: por defecto NUNCA mostramos órdenes completadas en los
-// listados operativos (para no saturar al operador con trabajo ya cerrado).
-// Solo aparecen si el usuario busca un término (que puede matchear una
-// completada) o si explícitamente selecciona el filtro "Completadas" / "Todas".
-
 const COMPLETED_STATUS = "completed";
 
 function isOrderCompleted(order) {
   return (order?.status || "").toString().toLowerCase() === COMPLETED_STATUS;
 }
 
-// Una orden se considera "vencida" si su fecha de pickup ya pasó y todavía
-// no llega a un estado terminal (completada, cancelada o entregada).
 function isOrderOverdue(order) {
   const s = (order?.status || "").toString().toUpperCase();
   if (["COMPLETED", "CANCELLED", "DELIVERED"].includes(s)) return false;
@@ -186,8 +183,6 @@ function isOrderOverdue(order) {
   return pickupDate < today;
 }
 
-// Punto único de verdad para decidir si una orden merece énfasis visual de
-// urgencia: bandera explícita del backend, prioridad alta/urgente, o vencida.
 function isOrderUrgent(order) {
   if (!order) return false;
   if (order.is_urgent || order.urgent) return true;
@@ -195,7 +190,6 @@ function isOrderUrgent(order) {
   return isOrderOverdue(order);
 }
 
-// Ordena dejando primero las urgentes, sin alterar el orden relativo del resto.
 function sortByUrgency(orders) {
   return [...orders].sort((a, b) => {
     const au = isOrderUrgent(a) ? 1 : 0;
@@ -235,21 +229,46 @@ const calculatePriceWithPaymentMethod = (baseAmount, paymentMethod) => {
   };
 };
 
+// ─── Componente para iconos numerados ──────────────────────────────────────────
+const SectionNumber = ({ number }) => {
+  const icons = {
+    "1": Icon1,
+    "2": Icon2,
+  };
+
+  const icon = icons[number];
+
+  return (
+    <div className="shrink-0 mt-4 flex flex-col items-center">
+      <div className="w-14 h-14 rounded-xl shadow-lg flex items-center justify-center overflow-hidden bg-white border border-slate-200">
+        <img 
+          src={icon} 
+          alt={`Número ${number}`} 
+          className="w-11 h-11 object-contain"
+        />
+      </div>
+      <div className="w-0.5 h-8 bg-gradient-to-b from-slate-400 to-transparent mt-1" />
+    </div>
+  );
+};
+
 // ─── Sub-componentes mejorados ────────────────────────────────────────────────
 
 const CardHeader = ({
   icon,
   title,
   count,
-  bgClass = "bg-white",
+  bgClass = "bg-black",
   testId,
 }) => (
-  <div className={`px-5 py-3.5 border-b border-slate-100 ${bgClass}`}>
-    <div className="flex items-center gap-2.5">
-      <span className="shrink-0 text-slate-500">{icon}</span>
-      <h2 className="font-semibold text-slate-700 flex-1 text-sm truncate">{title}</h2>
+  <div className={`px-5 py-3.5 border-b border-slate-800 ${bgClass}`}>
+    <div className="flex items-center gap-3">
+      <span className="shrink-0 text-white/80">{icon}</span>
+      <h2 className="font-bold text-white flex-1 text-sm tracking-wide uppercase">
+        {title}
+      </h2>
       <span
-        className="shrink-0 text-xs font-bold text-white bg-indigo-500 rounded-full min-w-[22px] h-[22px] flex items-center justify-center px-1.5"
+        className="shrink-0 text-xs font-bold text-black bg-white rounded-full min-w-[24px] h-[24px] flex items-center justify-center px-1.5 shadow-sm"
         data-testid={testId}
       >
         {count}
@@ -323,7 +342,6 @@ const OrderRow = ({
     data-testid={`order-row-${order.order_id || "unknown"}`}
   >
     <div className="flex items-center gap-3">
-      {/* Info principal */}
       <div className="flex-1 min-w-0 space-y-1">
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="font-mono font-semibold text-slate-800 text-sm">
@@ -386,7 +404,6 @@ const OrderRow = ({
         )}
       </div>
 
-      {/* Acciones */}
       <div className="flex items-center gap-1.5 shrink-0">
         {showPrint && (
           <>
@@ -433,12 +450,10 @@ const OrderRow = ({
   </div>
 );
 
-// FAB móvil reposicionado para no chocar con el chat button
 const MobileServiceSwitch = ({ onSwitch, currentService, t }) => {
   const isMobile = useMobile();
   if (!isMobile) return null;
   return (
-    // Posicionado a la IZQUIERDA para no colisionar con el chat bubble (que suele estar abajo-derecha)
     <div className="fixed bottom-6 left-4 z-40 flex flex-col items-start gap-2">
       <button
         onClick={onSwitch}
@@ -454,7 +469,6 @@ const MobileServiceSwitch = ({ onSwitch, currentService, t }) => {
   );
 };
 
-// Sub-tabs de servicio mejorados — se expanden en desktop
 const ServiceSubTabs = ({ value, onChange, t }) => {
   const isMobile = useMobile();
   if (isMobile) return null;
@@ -481,43 +495,10 @@ const ServiceSubTabs = ({ value, onChange, t }) => {
   );
 };
 
-// Chips de filtro Activas / Completadas / Todas + indicador de urgentes
-const OrderViewFilterBar = ({ value, onChange, completedCount, urgentCount, t }) => (
-  <div className="flex flex-wrap items-center gap-2 mb-4">
-    {[
-      { key: "active", label: t("Active", "Activas") },
-      { key: "completed", label: t("Completed", "Completadas") },
-      { key: "all", label: t("All", "Todas") },
-    ].map(({ key, label }) => (
-      <button
-        key={key}
-        onClick={() => onChange(key)}
-        className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
-          value === key
-            ? "bg-slate-900 text-white border-slate-900"
-            : "text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50 bg-white"
-        }`}
-        data-testid={`order-view-filter-${key}`}
-      >
-        {label}
-        {key === "completed" && completedCount > 0 && (
-          <span className="ml-1.5 text-[10px] font-bold opacity-80">({completedCount})</span>
-        )}
-      </button>
-    ))}
-    {urgentCount > 0 && (
-      <span
-        className="inline-flex items-center gap-1 text-xs font-bold text-red-700 bg-red-50 border border-red-200 px-3 py-1.5 rounded-full sm:ml-auto"
-        data-testid="urgent-orders-indicator"
-      >
-        <AlertTriangle className="h-3 w-3" /> {urgentCount} {t("urgent", "urgentes")}
-      </span>
-    )}
-  </div>
-);
+
 
 export default function OperatorDashboard() {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const isMobile = useMobile();
 
   const [confirmDialog, setConfirmDialog] = useState(null);
@@ -538,9 +519,6 @@ export default function OperatorDashboard() {
   const [pickupImageModal, setPickupImageModal] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [orderFilters, setOrderFilters] = useState({});
-  // 'active' (oculta completadas) | 'completed' (solo completadas) | 'all'
-  // Por defecto "all": al cargar el panel no se aplica ningún filtro, se
-  // muestra todo lo que devuelva el backend tal cual.
   const [orderViewFilter, setOrderViewFilter] = useState("all");
 
   const [mapFilters, setMapFilters] = useState({});
@@ -896,15 +874,20 @@ export default function OperatorDashboard() {
           return;
         }
       }
-      // Show confirmation dialog for ALL status changes!
+      const statusLabel = getStatusLabel(newStatus, order?.service_type);
+      const isSpanish = locale === "es";
+      const description = isSpanish
+        ? `¿Estás seguro de que quieres cambiar el estado de la orden a ${statusLabel}?`
+        : `Are you sure you want to change the order status to ${statusLabel}?`;
+      
       setConfirmDialog({
         orderId,
         newStatus,
         title: t("Confirm status change", "Confirmar cambio de estado"),
-        description: t(`Are you sure you want to change the order status to {{status}}?`, `¿Estás seguro de que quieres cambiar el estado de la orden a {{status}}?`, { status: getStatusLabel(newStatus, order?.service_type) }),
+        description,
       });
     },
-    [allServiceOrdersById, dashboard, t, getStatusLabel]
+    [allServiceOrdersById, dashboard, t, getStatusLabel, locale]
   );
 
   const handlePickupImageConfirm = async (imageResult) => {
@@ -1242,14 +1225,11 @@ export default function OperatorDashboard() {
       let result = orders;
       const searchActive = searchTerm.trim().length > 0;
 
-      // Regla: ocultar completadas salvo que el usuario busque algo o filtre
-      // explícitamente por "Completadas" / "Todas".
       if (orderViewFilter === "completed") {
         result = result.filter((o) => isOrderCompleted(o));
       } else if (orderViewFilter === "active" && !searchActive) {
         result = result.filter((o) => !isOrderCompleted(o));
       }
-      // orderViewFilter === "all" -> sin filtro adicional por estado
 
       if (orderFilters.date) result = result.filter((o) => o.pickup_date === orderFilters.date);
       if (orderFilters.time_window) result = result.filter((o) => isWithinTimeWindow(o.pickup_time_window, orderFilters.time_window));
@@ -1277,7 +1257,6 @@ export default function OperatorDashboard() {
   const filteredPickupPaymentQueue = useMemo(() => sortByUrgency(filterOrders(allPickupPaymentQueue)), [filterOrders, allPickupPaymentQueue]);
   const filteredWashFoldPaymentQueue = useMemo(() => sortByUrgency(filterOrders(allWashFoldPaymentQueue)), [filterOrders, allWashFoldPaymentQueue]);
 
-  // Conteos para los chips de filtro, calculados sobre el sub-tab de servicio activo
   const currentServiceAllOrders = useMemo(() => {
     return serviceSubTab === "pickup"
       ? dedupeOrders([...allPickupOrders, ...allPickupDeliveries])
@@ -1335,7 +1314,6 @@ export default function OperatorDashboard() {
       {/* ── Header ── */}
       <div className="rounded-2xl bg-gradient-to-br from-indigo-600 via-indigo-500 to-violet-600 p-5 shadow-lg">
         <div className="flex flex-col gap-4">
-          {/* Título */}
           <div className="flex items-center gap-3 text-white">
             <div className="p-2 bg-white/20 rounded-xl">
               <Zap className="h-5 w-5" />
@@ -1346,7 +1324,6 @@ export default function OperatorDashboard() {
             </div>
           </div>
 
-          {/* Controles */}
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative flex-1 min-w-[180px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-white/50" />
@@ -1447,224 +1424,245 @@ export default function OperatorDashboard() {
         {/* ── Tab: Órdenes de Servicio ── */}
         <TabsContent value="orders">
           <MapFilters onFilterChange={setOrderFilters} activeFilters={orderFilters} />
-
-          {/* Sub-tabs desktop — expandidos al ancho completo */}
           <ServiceSubTabs value={serviceSubTab} onChange={setServiceSubTab} t={t} />
-
-          {/* FAB móvil reposicionado a la izquierda */}
           <MobileServiceSwitch onSwitch={handleSwitchService} currentService={serviceSubTab} t={t} />
-
-          {/* Chips Activas / Completadas / Todas + indicador de urgentes */}
-          <OrderViewFilterBar
-            value={orderViewFilter}
-            onChange={setOrderViewFilter}
-            completedCount={completedOrdersCount}
-            urgentCount={urgentOrdersCount}
-            t={t}
-          />
+         
 
           {serviceSubTab === "pickup" ? (
             <div className="space-y-4">
 
-              {/* Creadas / Confirmadas */}
-              <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
-                <CardHeader
-                  icon={<Truck className="h-4 w-4" />}
-                  title={t("Pickup & Delivery — Created / Confirmed", "Pickup & Delivery — Creadas / Confirmadas")}
-                  count={filteredPickupOrders.length}
-                  testId="pos-pickup-today-count"
-                />
-                {filteredPickupOrders.length === 0 ? (
-                  <EmptyState icon={<Truck className="h-7 w-7" />} text={t("No created or confirmed orders", "No hay órdenes creadas o confirmadas")} testId="pos-pickup-today-empty" />
-                ) : (
-                  filteredPickupOrders.map((order) => {
-                    const ns = getNextStatus(order.status, order.service_type);
-                    return (
-                      <OrderRow
-                        key={order.order_id ?? order.order_number}
-                        order={order}
-                        statusInfo={getStatusInfo(order.status, order.service_type)}
-                        nextStatus={ns}
-                        nextStatusInfo={ns ? getStatusInfo(ns, order.service_type) : null}
-                        updating={updating}
-                        onRowClick={setSelectedOrder}
-                        onAdvance={updateOrderStatus}
-                        onPrint={handlePrintTicket}
-                        onPDF={handleDownloadPDF}
-                        showPrint
-                        urgent={isOrderUrgent(order)}
-                        advanceBtnClass="bg-sky-600 hover:bg-sky-700"
-                        t={t}
-                      />
-                    );
-                  })
-                )}
+              {/* ── 1. Creadas / Confirmadas ── */}
+              <div className="flex items-start gap-4">
+                <SectionNumber number="1" />
+                <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                  <CardHeader
+                    icon={<Truck className="h-4 w-4" />}
+                    title={t("Pickup & Delivery — Created / Confirmed", "Pickup & Delivery — Creadas / Confirmadas")}
+                    count={filteredPickupOrders.length}
+                    testId="pos-pickup-today-count"
+                  />
+                  {filteredPickupOrders.length === 0 ? (
+                    <EmptyState icon={<Truck className="h-7 w-7" />} text={t("No created or confirmed orders", "No hay órdenes creadas o confirmadas")} testId="pos-pickup-today-empty" />
+                  ) : (
+                    filteredPickupOrders.map((order) => {
+                      const ns = getNextStatus(order.status, order.service_type);
+                      return (
+                        <OrderRow
+                          key={order.order_id ?? order.order_number}
+                          order={order}
+                          statusInfo={getStatusInfo(order.status, order.service_type)}
+                          nextStatus={ns}
+                          nextStatusInfo={ns ? getStatusInfo(ns, order.service_type) : null}
+                          updating={updating}
+                          onRowClick={setSelectedOrder}
+                          onAdvance={updateOrderStatus}
+                          onPrint={handlePrintTicket}
+                          onPDF={handleDownloadPDF}
+                          showPrint
+                          urgent={isOrderUrgent(order)}
+                          advanceBtnClass="bg-sky-600 hover:bg-sky-700"
+                          t={t}
+                        />
+                      );
+                    })
+                  )}
+                </div>
               </div>
 
-              {/* Cobros pendientes */}
-              <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
-                <CardHeader
-                  icon={<DollarSign className="h-4 w-4" />}
-                  title={t("Pickup & Delivery — Request Payment", "Pickup & Delivery — Solicitar pago")}
-                  count={filteredPickupPaymentQueue.length}
-                  testId="pos-pickup-payment-count"
-                />
-                {filteredPickupPaymentQueue.length === 0 ? (
-                  <EmptyState icon={<DollarSign className="h-7 w-7" />} text={t("No pickup payments pending", "Sin pagos pendientes")} testId="pos-pickup-payment-empty" />
-                ) : (
-                  filteredPickupPaymentQueue.map((order) => {
-                    const amount = Number(order.extra_charge ?? order.total_amount ?? 0);
-                    const urgent = isOrderUrgent(order);
-                    return (
-                      <div
-                        key={order.order_id ?? order.order_number}
-                        className={`px-4 py-3.5 transition-colors cursor-pointer border-b last:border-b-0 ${
-                          urgent
-                            ? "bg-red-50/60 hover:bg-red-50 border-red-100 border-l-4 border-l-red-500"
-                            : "bg-white hover:bg-slate-50/50 border-slate-100"
-                        }`}
-                        role="button"
-                        onClick={() => setSelectedOrder(order)}
-                        data-testid={`pos-pickup-payment-${order.order_id || "unknown"}`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="flex-1 min-w-0 space-y-1">
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-mono font-semibold text-slate-800 text-sm">{formatOrderNumber(order)}</span>
-                              {urgent && (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded-full border border-red-300">
-                                  <AlertTriangle className="h-2.5 w-2.5" /> {t("Urgent", "Urgente")}
-                                </span>
-                              )}
-                              <span className={`px-2 py-0.5 text-[11px] font-semibold rounded-full border ${getStatusInfo(order.status, order.service_type).color}`}>{getStatusInfo(order.status, order.service_type).label}</span>
+              {/* ── 2. En proceso / Lista / En camino ── */}
+              <div className="flex items-start gap-4">
+                <SectionNumber number="2" />
+                <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                  <CardHeader
+                    icon={<CheckCircle className="h-4 w-4" />}
+                    title={t("Pickup & Delivery — In Process / Ready / Out for Delivery", "Pickup & Delivery — En proceso / Lista / En camino")}
+                    count={filteredPickupDeliveries.length}
+                    testId="pos-pickup-delivery-count"
+                  />
+                  {filteredPickupDeliveries.length === 0 ? (
+                    <EmptyState icon={<Package className="h-7 w-7" />} text={t("No active process or delivery orders", "No hay órdenes en proceso o entrega")} testId="operator-delivery-empty" />
+                  ) : (
+                    filteredPickupDeliveries.map((order) => {
+                      const ns = getNextStatus(order.status, order.service_type);
+                      return (
+                        <OrderRow
+                          key={order.order_id ?? order.order_number}
+                          order={order}
+                          statusInfo={getStatusInfo(order.status, order.service_type)}
+                          nextStatus={ns}
+                          nextStatusInfo={ns ? getStatusInfo(ns, order.service_type) : null}
+                          updating={updating}
+                          onRowClick={setSelectedOrder}
+                          onAdvance={updateOrderStatus}
+                          onPrint={handlePrintTicket}
+                          onPDF={handleDownloadPDF}
+                          showPrint
+                          urgent={isOrderUrgent(order)}
+                          advanceBtnClass="bg-emerald-600 hover:bg-emerald-700"
+                          t={t}
+                        />
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              {/* ── 3. Request Payment (SIN NÚMERO) ── */}
+              <div className="flex items-start gap-4">
+                <div className="shrink-0 w-14" /> {/* Espacio vacío para alinear */}
+                <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                  <CardHeader
+                    icon={<DollarSign className="h-4 w-4" />}
+                    title={t("Request Payment", "Solicitar pago")}
+                    count={filteredPickupPaymentQueue.length}
+                    testId="pos-pickup-payment-count"
+                  />
+                  {filteredPickupPaymentQueue.length === 0 ? (
+                    <EmptyState icon={<DollarSign className="h-7 w-7" />} text={t("No pickup payments pending", "Sin pagos pendientes")} testId="pos-pickup-payment-empty" />
+                  ) : (
+                    filteredPickupPaymentQueue.map((order) => {
+                      const amount = Number(order.extra_charge ?? order.total_amount ?? 0);
+                      const urgent = isOrderUrgent(order);
+                      return (
+                        <div
+                          key={order.order_id ?? order.order_number}
+                          className={`px-4 py-3.5 transition-colors cursor-pointer border-b last:border-b-0 ${
+                            urgent
+                              ? "bg-red-50/60 hover:bg-red-50 border-red-100 border-l-4 border-l-red-500"
+                              : "bg-white hover:bg-slate-50/50 border-slate-100"
+                          }`}
+                          role="button"
+                          onClick={() => setSelectedOrder(order)}
+                          data-testid={`pos-pickup-payment-${order.order_id || "unknown"}`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="flex-1 min-w-0 space-y-1">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-mono font-semibold text-slate-800 text-sm">{formatOrderNumber(order)}</span>
+                                {urgent && (
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded-full border border-red-300">
+                                    <AlertTriangle className="h-2.5 w-2.5" /> {t("Urgent", "Urgente")}
+                                  </span>
+                                )}
+                                <span className={`px-2 py-0.5 text-[11px] font-semibold rounded-full border ${getStatusInfo(order.status, order.service_type).color}`}>{getStatusInfo(order.status, order.service_type).label}</span>
+                              </div>
+                              <p className="text-sm font-semibold text-slate-700 truncate">{safeString(order.customer_name, t("Customer", "Cliente"))}</p>
+                              <p className="text-xs text-slate-400">
+                                {t("Charge", "Cobro")}: <span className="font-semibold text-slate-600">{amount ? formatCurrency(amount) : t("Set actual lbs", "Ingresa lbs reales")}</span>
+                              </p>
                             </div>
-                            <p className="text-sm font-semibold text-slate-700 truncate">{safeString(order.customer_name, t("Customer", "Cliente"))}</p>
-                            <p className="text-xs text-slate-400">
-                              {t("Charge", "Cobro")}: <span className="font-semibold text-slate-600">{amount ? formatCurrency(amount) : t("Set actual lbs", "Ingresa lbs reales")}</span>
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400 hover:text-sky-600 hover:bg-sky-50 hidden sm:flex" onClick={(e) => { e.stopPropagation(); handlePrintTicket(order); }} data-testid={`pos-pickup-payment-print-${order.order_id}`}><Printer className="h-3.5 w-3.5" /></Button>
-                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 hidden sm:flex" onClick={(e) => { e.stopPropagation(); handleDownloadPDF(order); }} data-testid={`pos-pickup-payment-pdf-${order.order_id}`}><FileDown className="h-3.5 w-3.5" /></Button>
-                            <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-xs h-8 px-3 rounded-lg shadow-sm" onClick={(e) => { e.stopPropagation(); setSelectedOrder(order); }} data-testid={`pos-pickup-collect-${order.order_id}`}>{t("Collect", "Cobrar")}</Button>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400 hover:text-sky-600 hover:bg-sky-50 hidden sm:flex" onClick={(e) => { e.stopPropagation(); handlePrintTicket(order); }} data-testid={`pos-pickup-payment-print-${order.order_id}`}><Printer className="h-3.5 w-3.5" /></Button>
+                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 hidden sm:flex" onClick={(e) => { e.stopPropagation(); handleDownloadPDF(order); }} data-testid={`pos-pickup-payment-pdf-${order.order_id}`}><FileDown className="h-3.5 w-3.5" /></Button>
+                              <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-xs h-8 px-3 rounded-lg shadow-sm" onClick={(e) => { e.stopPropagation(); setSelectedOrder(order); }} data-testid={`pos-pickup-collect-${order.order_id}`}>{t("Collect", "Cobrar")}</Button>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-
-              {/* En proceso / Lista / En camino */}
-              <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
-                <CardHeader
-                  icon={<CheckCircle className="h-4 w-4" />}
-                  title={t("Pickup & Delivery — In Process / Ready / Out for Delivery", "Pickup & Delivery — En proceso / Lista / En camino")}
-                  count={filteredPickupDeliveries.length}
-                  testId="pos-pickup-delivery-count"
-                />
-                {filteredPickupDeliveries.length === 0 ? (
-                  <EmptyState icon={<Package className="h-7 w-7" />} text={t("No active process or delivery orders", "No hay órdenes en proceso o entrega")} testId="operator-delivery-empty" />
-                ) : (
-                  filteredPickupDeliveries.map((order) => {
-                    const ns = getNextStatus(order.status, order.service_type);
-                    return (
-                      <OrderRow
-                        key={order.order_id ?? order.order_number}
-                        order={order}
-                        statusInfo={getStatusInfo(order.status, order.service_type)}
-                        nextStatus={ns}
-                        nextStatusInfo={ns ? getStatusInfo(ns, order.service_type) : null}
-                        updating={updating}
-                        onRowClick={setSelectedOrder}
-                        onAdvance={updateOrderStatus}
-                        onPrint={handlePrintTicket}
-                        onPDF={handleDownloadPDF}
-                        showPrint
-                        urgent={isOrderUrgent(order)}
-                        advanceBtnClass="bg-emerald-600 hover:bg-emerald-700"
-                        t={t}
-                      />
-                    );
-                  })
-                )}
+                      );
+                    })
+                  )}
+                </div>
               </div>
             </div>
 
           ) : (
             <div className="space-y-4">
 
-              {/* Wash & Fold — Creadas / Confirmadas */}
-              <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
-                <CardHeader icon={<Package className="h-4 w-4" />} title={t("Wash & Fold — Created / Confirmed", "Wash & Fold — Creadas / Confirmadas")} count={filteredWashFoldDropoffs.length} testId="pos-washfold-dropoff-count" />
-                {filteredWashFoldDropoffs.length === 0 ? (
-                  <EmptyState icon={<Package className="h-7 w-7" />} text={t("No created or confirmed orders", "Sin órdenes creadas o confirmadas")} testId="pos-washfold-dropoff-empty" />
-                ) : (
-                  filteredWashFoldDropoffs.map((order) => {
-                    const ns = getNextStatus(order.status, order.service_type);
-                    return <OrderRow key={order.order_id ?? order.order_number} order={order} statusInfo={getStatusInfo(order.status, order.service_type)} nextStatus={ns} nextStatusInfo={ns ? getStatusInfo(ns, order.service_type) : null} updating={updating} onRowClick={setSelectedOrder} onAdvance={updateOrderStatus} onPrint={handlePrintTicket} onPDF={handleDownloadPDF} showPrint urgent={isOrderUrgent(order)} advanceBtnClass="bg-purple-600 hover:bg-purple-700" t={t} />;
-                  })
-                )}
+              {/* ── 1. Wash & Fold — Creadas / Confirmadas ── */}
+              <div className="flex items-start gap-4">
+                <SectionNumber number="1" />
+                <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                  <CardHeader
+                    icon={<Package className="h-4 w-4" />}
+                    title={t("Wash & Fold — Created / Confirmed", "Wash & Fold — Creadas / Confirmadas")}
+                    count={filteredWashFoldDropoffs.length}
+                    testId="pos-washfold-dropoff-count"
+                  />
+                  {filteredWashFoldDropoffs.length === 0 ? (
+                    <EmptyState icon={<Package className="h-7 w-7" />} text={t("No created or confirmed orders", "Sin órdenes creadas o confirmadas")} testId="pos-washfold-dropoff-empty" />
+                  ) : (
+                    filteredWashFoldDropoffs.map((order) => {
+                      const ns = getNextStatus(order.status, order.service_type);
+                      return <OrderRow key={order.order_id ?? order.order_number} order={order} statusInfo={getStatusInfo(order.status, order.service_type)} nextStatus={ns} nextStatusInfo={ns ? getStatusInfo(ns, order.service_type) : null} updating={updating} onRowClick={setSelectedOrder} onAdvance={updateOrderStatus} onPrint={handlePrintTicket} onPDF={handleDownloadPDF} showPrint urgent={isOrderUrgent(order)} advanceBtnClass="bg-purple-600 hover:bg-purple-700" t={t} />;
+                    })
+                  )}
+                </div>
               </div>
 
-              {/* Wash & Fold — Cobros pendientes */}
-              <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
-                <CardHeader icon={<DollarSign className="h-4 w-4" />} title={t("Wash & Fold — Request Payment", "Wash & Fold — Solicitar pago")} count={filteredWashFoldPaymentQueue.length} testId="pos-washfold-payment-count" />
-                {filteredWashFoldPaymentQueue.length === 0 ? (
-                  <EmptyState icon={<DollarSign className="h-7 w-7" />} text={t("No wash & fold payments pending", "Sin pagos pendientes")} testId="pos-washfold-payment-empty" />
-                ) : (
-                  filteredWashFoldPaymentQueue.map((order) => {
-                    const amount = Number(order.extra_charge ?? order.total_amount ?? 0);
-                    const urgent = isOrderUrgent(order);
-                    return (
-                      <div
-                        key={order.order_id ?? order.order_number}
-                        className={`px-4 py-3.5 transition-colors cursor-pointer border-b last:border-b-0 ${
-                          urgent
-                            ? "bg-red-50/60 hover:bg-red-50 border-red-100 border-l-4 border-l-red-500"
-                            : "bg-white hover:bg-slate-50/50 border-slate-100"
-                        }`}
-                        role="button"
-                        onClick={() => setSelectedOrder(order)}
-                        data-testid={`pos-washfold-payment-${order.order_id || "unknown"}`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="flex-1 min-w-0 space-y-1">
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-mono font-semibold text-slate-800 text-sm">{formatOrderNumber(order)}</span>
-                              {urgent && (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded-full border border-red-300">
-                                  <AlertTriangle className="h-2.5 w-2.5" /> {t("Urgent", "Urgente")}
-                                </span>
-                              )}
-                              <span className={`px-2 py-0.5 text-[11px] font-semibold rounded-full border ${getStatusInfo(order.status, order.service_type).color}`}>{getStatusInfo(order.status, order.service_type).label}</span>
+              {/* ── 2. Wash & Fold — Procesando / Lista ── */}
+              <div className="flex items-start gap-4">
+                <SectionNumber number="2" />
+                <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                  <CardHeader
+                    icon={<CheckCircle className="h-4 w-4" />}
+                    title={t("Wash & Fold — Processing / Ready for pickup", "Wash & Fold — Procesando / Lista para recoger")}
+                    count={filteredWashFoldReady.length}
+                    testId="pos-washfold-ready-count"
+                  />
+                  {filteredWashFoldReady.length === 0 ? (
+                    <EmptyState icon={<CheckCircle className="h-7 w-7" />} text={t("No orders in process or ready", "Sin órdenes en proceso o listas")} testId="pos-washfold-ready-empty" />
+                  ) : (
+                    filteredWashFoldReady.map((order) => {
+                      const ns = getNextStatus(order.status, order.service_type);
+                      return <OrderRow key={order.order_id ?? order.order_number} order={order} statusInfo={getStatusInfo(order.status, order.service_type)} nextStatus={ns} nextStatusInfo={ns ? getStatusInfo(ns, order.service_type) : null} updating={updating} onRowClick={setSelectedOrder} onAdvance={updateOrderStatus} onPrint={handlePrintTicket} onPDF={handleDownloadPDF} showPrint urgent={isOrderUrgent(order)} advanceBtnClass="bg-emerald-600 hover:bg-emerald-700" t={t} />;
+                    })
+                  )}
+                </div>
+              </div>
+
+              {/* ── 3. Request Payment (SIN NÚMERO) ── */}
+              <div className="flex items-start gap-4">
+                <div className="shrink-0 w-14" /> {/* Espacio vacío para alinear */}
+                <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                  <CardHeader
+                    icon={<DollarSign className="h-4 w-4" />}
+                    title={t("Request Payment", "Solicitar pago")}
+                    count={filteredWashFoldPaymentQueue.length}
+                    testId="pos-washfold-payment-count"
+                  />
+                  {filteredWashFoldPaymentQueue.length === 0 ? (
+                    <EmptyState icon={<DollarSign className="h-7 w-7" />} text={t("No wash & fold payments pending", "Sin pagos pendientes")} testId="pos-washfold-payment-empty" />
+                  ) : (
+                    filteredWashFoldPaymentQueue.map((order) => {
+                      const amount = Number(order.extra_charge ?? order.total_amount ?? 0);
+                      const urgent = isOrderUrgent(order);
+                      return (
+                        <div
+                          key={order.order_id ?? order.order_number}
+                          className={`px-4 py-3.5 transition-colors cursor-pointer border-b last:border-b-0 ${
+                            urgent
+                              ? "bg-red-50/60 hover:bg-red-50 border-red-100 border-l-4 border-l-red-500"
+                              : "bg-white hover:bg-slate-50/50 border-slate-100"
+                          }`}
+                          role="button"
+                          onClick={() => setSelectedOrder(order)}
+                          data-testid={`pos-washfold-payment-${order.order_id || "unknown"}`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="flex-1 min-w-0 space-y-1">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-mono font-semibold text-slate-800 text-sm">{formatOrderNumber(order)}</span>
+                                {urgent && (
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded-full border border-red-300">
+                                    <AlertTriangle className="h-2.5 w-2.5" /> {t("Urgent", "Urgente")}
+                                  </span>
+                                )}
+                                <span className={`px-2 py-0.5 text-[11px] font-semibold rounded-full border ${getStatusInfo(order.status, order.service_type).color}`}>{getStatusInfo(order.status, order.service_type).label}</span>
+                              </div>
+                              <p className="text-sm font-semibold text-slate-700 truncate">{safeString(order.customer_name, t("Customer", "Cliente"))}</p>
+                              <p className="text-xs text-slate-400">{t("Charge", "Cobro")}: <span className="font-semibold text-slate-600">{amount ? formatCurrency(amount) : t("Set actual lbs", "Ingresa lbs reales")}</span></p>
                             </div>
-                            <p className="text-sm font-semibold text-slate-700 truncate">{safeString(order.customer_name, t("Customer", "Cliente"))}</p>
-                            <p className="text-xs text-slate-400">{t("Charge", "Cobro")}: <span className="font-semibold text-slate-600">{amount ? formatCurrency(amount) : t("Set actual lbs", "Ingresa lbs reales")}</span></p>
-                          </div>
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400 hover:text-sky-600 hover:bg-sky-50 hidden sm:flex" onClick={(e) => { e.stopPropagation(); handlePrintTicket(order); }} data-testid={`pos-washfold-print-payment-${order.order_id}`}><Printer className="h-3.5 w-3.5" /></Button>
-                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 hidden sm:flex" onClick={(e) => { e.stopPropagation(); handleDownloadPDF(order); }} data-testid={`pos-washfold-pdf-payment-${order.order_id}`}><FileDown className="h-3.5 w-3.5" /></Button>
-                            <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-xs h-8 px-3 rounded-lg shadow-sm" onClick={(e) => { e.stopPropagation(); setSelectedOrder(order); }} data-testid={`pos-washfold-collect-${order.order_id}`}>{t("Collect", "Cobrar")}</Button>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400 hover:text-sky-600 hover:bg-sky-50 hidden sm:flex" onClick={(e) => { e.stopPropagation(); handlePrintTicket(order); }} data-testid={`pos-washfold-print-payment-${order.order_id}`}><Printer className="h-3.5 w-3.5" /></Button>
+                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 hidden sm:flex" onClick={(e) => { e.stopPropagation(); handleDownloadPDF(order); }} data-testid={`pos-washfold-pdf-payment-${order.order_id}`}><FileDown className="h-3.5 w-3.5" /></Button>
+                              <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-xs h-8 px-3 rounded-lg shadow-sm" onClick={(e) => { e.stopPropagation(); setSelectedOrder(order); }} data-testid={`pos-washfold-collect-${order.order_id}`}>{t("Collect", "Cobrar")}</Button>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-
-              {/* Wash & Fold — Procesando / Lista */}
-              <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
-                <CardHeader icon={<CheckCircle className="h-4 w-4" />} title={t("Wash & Fold — Processing / Ready for pickup", "Wash & Fold — Procesando / Lista para recoger")} count={filteredWashFoldReady.length} testId="pos-washfold-ready-count" />
-                {filteredWashFoldReady.length === 0 ? (
-                  <EmptyState icon={<CheckCircle className="h-7 w-7" />} text={t("No orders in process or ready", "Sin órdenes en proceso o listas")} testId="pos-washfold-ready-empty" />
-                ) : (
-                  filteredWashFoldReady.map((order) => {
-                    const ns = getNextStatus(order.status, order.service_type);
-                    return <OrderRow key={order.order_id ?? order.order_number} order={order} statusInfo={getStatusInfo(order.status, order.service_type)} nextStatus={ns} nextStatusInfo={ns ? getStatusInfo(ns, order.service_type) : null} updating={updating} onRowClick={setSelectedOrder} onAdvance={updateOrderStatus} onPrint={handlePrintTicket} onPDF={handleDownloadPDF} showPrint urgent={isOrderUrgent(order)} advanceBtnClass="bg-emerald-600 hover:bg-emerald-700" t={t} />;
-                  })
-                )}
+                      );
+                    })
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -1684,7 +1682,6 @@ export default function OperatorDashboard() {
                 </Button>
               </div>
 
-              {/* Filtros */}
               <div className="px-4 py-2.5 border-b border-slate-100 flex flex-wrap items-center gap-2">
                 <div className="relative flex-1 min-w-[160px]">
                   <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
@@ -1708,7 +1705,6 @@ export default function OperatorDashboard() {
                 </div>
               ) : (
                 <>
-                  {/* Desktop tabla */}
                   <div className="hidden md:block overflow-x-auto">
                     <table className="min-w-full text-sm">
                       <thead className="bg-slate-50 text-slate-400 text-xs uppercase tracking-wide">
@@ -1745,7 +1741,6 @@ export default function OperatorDashboard() {
                     </table>
                   </div>
 
-                  {/* Mobile cards */}
                   <div className="md:hidden divide-y divide-slate-100">
                     {filteredStoreOrders.map((order) => {
                       const ns = getNextStoreStatus(order.status);
@@ -1862,7 +1857,6 @@ export default function OperatorDashboard() {
             <DialogDescription className="text-xs">{t("Select products and collect payment quickly.", "Selecciona productos y cobra rápido.")}</DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" data-testid="store-pos-modal">
-            {/* Productos */}
             <div className="space-y-3">
               <Input placeholder={t("Search products", "Buscar productos")} value={storeSearch} onChange={(e) => setStoreSearch(e.target.value)} className="text-sm h-9" data-testid="store-pos-search" />
               <div className="border border-slate-100 rounded-xl overflow-hidden">
@@ -1895,7 +1889,6 @@ export default function OperatorDashboard() {
               </div>
             </div>
 
-            {/* Carrito y pago */}
             <div className="space-y-3">
               <div className="border border-slate-100 rounded-xl p-3" data-testid="store-pos-cart">
                 <h4 className="font-semibold text-slate-700 mb-2 text-sm">{t("Cart", "Carrito")}</h4>

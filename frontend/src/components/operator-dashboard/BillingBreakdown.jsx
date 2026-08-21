@@ -3,6 +3,9 @@
  * 
  * AHORA: Los add-ons de tipo "per_piece" NO se suman al total si el servicio es wash & fold
  * ya que esos artículos ya están incluidos en el peso.
+ * 
+ * CORRECCIÓN DE DUPLICACIÓN: Cuando el backend proporciona extraCharge o total_amount,
+ * ya incluyen los add-ons, por lo que no se suman nuevamente.
  */
 
 import { Award, AlertCircle, Truck, Package, CreditCard, TrendingUp, Calendar, Info } from "lucide-react";
@@ -70,8 +73,6 @@ export default function BillingBreakdown({ order, t, hasMembership, customerCycl
   const allowanceSurcharge = MEMBERSHIP_ALLOWANCE_SURCHARGE[plan] || 0;
 
   // ─── FUENTE DE VERDAD: campos del backend ────────────────────────────────
-  // CORREGIDO: Ya no requiere lbs > 0, porque una orden puede tener addons
-  // sin libras y debemos respetar extra_charge / total_amount del backend.
   const backendLbsCovered  = order.lbs_from_allowance != null ? Number(order.lbs_from_allowance) : null;
   const backendLbsExtra    = order.extra_lbs_billed    != null ? Number(order.extra_lbs_billed)   : null;
   const backendExtraCharge = order.extra_charge        != null ? Number(order.extra_charge)       : null;
@@ -125,21 +126,45 @@ export default function BillingBreakdown({ order, t, hasMembership, customerCycl
   const deliveryFee = Number(order.delivery_fee ?? calcDeliveryFee(order.distance_miles) ?? 0);
 
   const hasAllowance = isMember && lbsCovered > 0;
-  const fullyCovered = hasAllowance && lbsExtra === 0 && allowanceSurcharge === 0
-    && addonsTotal === 0 && deliveryFee === 0 && extraCharge <= 0.50;
+  
+  // 🔥 CORRECCIÓN: Determinar si está totalmente cubierto (incluyendo add-ons)
+  const fullyCovered = hasAllowance && 
+    lbsExtra === 0 && 
+    allowanceSurcharge === 0 && 
+    addonsTotal === 0 && 
+    deliveryFee === 0 && 
+    extraCharge <= 0.50;
 
   const totalWeightCharge = hasAllowance
     ? (lbsCovered * allowanceSurcharge) + (lbsExtra * regularRate)
     : extraCharge;
   const totalSavings = fullRegularPrice - totalWeightCharge;
 
-  // CORREGIDO: Si el backend ya nos dio un total_amount calculado (y es >= suma), usarlo
-  let rawTotal = fullyCovered
-    ? 0
-    : Math.round((extraCharge + deliveryFee + addonsTotal) * 100) / 100;
-  if (backendTotalAmount != null && backendTotalAmount > rawTotal) {
+  // ════════════════════════════════════════════════════════════
+  // 🔥 CORRECCIÓN DE DUPLICACIÓN DE ADD-ONS
+  // ════════════════════════════════════════════════════════════
+  // Cuando el backend proporciona extraCharge o total_amount,
+  // estos valores YA INCLUYEN los add-ons. No debemos sumar
+  // addonsTotal nuevamente para evitar duplicación.
+  // ════════════════════════════════════════════════════════════
+  let rawTotal;
+  
+  if (fullyCovered) {
+    rawTotal = 0;
+  } else if (backendTotalAmount !== null) {
+    // El backend nos da el total exacto (ya incluye add-ons)
     rawTotal = backendTotalAmount;
+  } else if (backendExtraCharge !== null) {
+    // El extraCharge del backend ya incluye add-ons
+    // Solo sumamos deliveryFee (que no está incluido en extraCharge)
+    rawTotal = Math.round((extraCharge + deliveryFee) * 100) / 100;
+  } else {
+    // Fallback: sin datos del backend, calculamos todo
+    // En este caso SÍ sumamos addonsTotal porque extraCharge solo incluye peso
+    rawTotal = Math.round((extraCharge + deliveryFee + addonsTotal) * 100) / 100;
   }
+  
+  // Asegurar que el total no sea negativo
   const total = Math.max(0, rawTotal);
 
   // Progreso del ciclo (solo visual)
@@ -414,7 +439,6 @@ export default function BillingBreakdown({ order, t, hasMembership, customerCycl
           )}
 
           {/* ── Total ────────────────────────────────────────── */}
-          {/* MEJORADO: Total en NEGRITAS MÁXIMAS y letra MUY GRANDE */}
           <div className="flex items-center justify-between mt-4 pt-4 pb-3 px-0.5 border-t-[3px] border-double border-slate-800 bg-white rounded-b-lg">
             <span className="font-black text-slate-900 text-base uppercase tracking-[0.08em]">
               {t("Total", "Total")}
@@ -425,7 +449,6 @@ export default function BillingBreakdown({ order, t, hasMembership, customerCycl
           </div>
 
           {/* Nota tarjeta */}
-          
           {!fullyCovered && total > 0 && (
             <div className="flex items-center gap-1.5 mt-2 text-[10px] text-slate-400">
               <CreditCard className="w-3.5 h-3.5 shrink-0" />
