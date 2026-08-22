@@ -312,7 +312,7 @@ const Section = forwardRef(function Section(
       {...rest}
     >
       <div
-        className={`flex items-center gap-2.5 px-4 py-3 bg-gradient-to-r from-slate-50 to-white border-b border-slate-100 ${collapsible ? "cursor-pointer select-none" : ""}`}
+        className={`flex items-center gap-2 sm:gap-2.5 px-3 sm:px-4 py-2.5 sm:py-3 bg-gradient-to-r from-slate-50 to-white border-b border-slate-100 ${collapsible ? "cursor-pointer select-none" : ""}`}
         onClick={() => collapsible && setOpen(v => !v)}
       >
         <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-sky-50 text-sky-600 shrink-0">{icon}</span>
@@ -324,7 +324,7 @@ const Section = forwardRef(function Section(
           </span>
         )}
       </div>
-      {(!collapsible || open) && <div className="p-4">{children}</div>}
+      {(!collapsible || open) && <div className="p-3 sm:p-4">{children}</div>}
     </div>
   );
 });
@@ -552,7 +552,7 @@ function AddonPriceEditor({ addon, onSave, onCancel }) {
   const [customPrice, setCustomPrice] = useState(String(addon.custom_price || addon.price || 0));
   
   return (
-    <div className="absolute top-full right-0 mt-1 z-20 bg-white border border-slate-200 rounded-xl shadow-lg p-2 min-w-[140px]">
+    <div className="absolute top-full right-0 mt-1 z-20 bg-white border border-slate-200 rounded-xl shadow-lg p-2 min-w-[140px] max-w-[calc(100vw-2rem)]">
       <div className="flex items-center gap-1">
         <span className="text-xs text-slate-500">$</span>
         <Input
@@ -1381,14 +1381,14 @@ export default function OrderDetailDialog({ order, onClose, onRefresh, scrollTar
     <>
       <Dialog open={isOpen} onOpenChange={(open) => { if (!open) handleClose(); }}>
         <DialogContent
-          className="w-[95vw] max-w-xl max-h-[92vh] overflow-y-auto bg-slate-50 p-0 gap-0 rounded-2xl"
+          className="w-full h-full sm:w-[95vw] sm:h-auto max-w-full sm:max-w-xl max-h-full sm:max-h-[92vh] overflow-y-auto bg-slate-50 p-0 gap-0 rounded-none sm:rounded-2xl"
           data-testid="order-detail-dialog"
         >
           <DialogTitle className="sr-only">{t("Order Details", "Detalles de Orden")}</DialogTitle>
 
           {/* ── Header ── */}
           <div className="sticky top-0 z-20 bg-white border-b border-slate-200 rounded-t-2xl">
-            <div className="flex items-center gap-3 px-5 py-3">
+            <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-5 py-3">
               <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-sky-600 text-white shrink-0">
                 <Hash className="w-4 h-4" />
               </div>
@@ -1412,7 +1412,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh, scrollTar
 
             {/* Customer quick info bar */}
             {o.customer_name && (
-              <div className="px-5 pb-3 flex flex-wrap gap-2">
+              <div className="px-3 sm:px-5 pb-3 flex flex-wrap gap-2">
                 <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 bg-slate-100 rounded-lg px-2.5 py-1.5">
                   <User className="w-3.5 h-3.5 text-slate-500" />
                   {o.customer_name}
@@ -1436,7 +1436,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh, scrollTar
             )}
           </div>
 
-          <div className="p-4 space-y-3">
+          <div className="p-3 sm:p-4 space-y-3">
 
             {/* ── 1) Customer & Service (name, service, address, pickup date/time) ── */}
             <Section
@@ -1445,7 +1445,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh, scrollTar
               collapsible
               defaultOpen={true}
             >
-              <div className="grid grid-cols-2 gap-x-5 gap-y-3">
+              <div className="grid grid-cols-2 gap-x-3 sm:gap-x-5 gap-y-3">
                 <DataRow label={t("Name", "Nombre")}      value={safeString(o.customer_name,  "—")} />
                 <DataRow label={t("Phone", "Teléfono")}   value={safeString(o.customer_phone, "—")} />
                 <DataRow label="Email"                     value={safeString(o.customer_email, "—")} className="col-span-2" />
@@ -1606,7 +1606,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh, scrollTar
                       <p className="text-xs mt-1 text-slate-300">{t("Pickup, delivery and weight photos will appear here.", "Las fotos de recogida, entrega y peso aparecerán aquí.")}</p>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                       {evidenceImages.map((img) => (
                         <EvidenceImageThumb
                           key={img.key}
@@ -1652,7 +1652,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh, scrollTar
                             const effectivePrice = getEffectivePrice(a);
                             const hasCustomPrice = a.custom_price !== undefined && a.custom_price !== null && a.custom_price !== a.original_price;
                             return (
-                              <div key={a.id} className="flex items-center justify-between bg-sky-50 border border-sky-100 rounded-xl px-3 py-2.5 mb-1.5 last:mb-0 relative">
+                              <div key={a.id} className="flex flex-wrap items-center justify-between gap-2 bg-sky-50 border border-sky-100 rounded-xl px-3 py-2.5 mb-1.5 last:mb-0 relative">
                                 <div className="flex-1">
                                   <span className="text-sm text-slate-700 font-medium">
                                     {getAddonDisplayName(a, locale) || a.name}{a.qty > 1 && <span className="ml-1 text-sky-500 font-bold">×{a.qty}</span>}
@@ -1711,7 +1711,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh, scrollTar
                     {Object.entries(groupedCatalog).map(([cat, items]) => (
                       <div key={cat}>
                         <p className="text-[10px] font-semibold text-slate-500 mb-1.5">{catLabel(cat, items)}</p>
-                        <div className="grid grid-cols-2 gap-1.5">
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-1.5">
                           {items.map(item => {
                             const ex = addons.find(a => a.id === item.id);
                             const qty = ex?.qty || 0;
@@ -1756,12 +1756,12 @@ export default function OrderDetailDialog({ order, onClose, onRefresh, scrollTar
                       {t("Weight photo on file", "Foto de peso registrada")}
                     </div>
                   )}
-                  <div className="flex items-end gap-2">
+                  <div className="flex flex-wrap items-end gap-2">
                     <Input
                       type="number" step="0.1" min="0" placeholder="0.0"
                       value={lbs}
                       onChange={e => setLbs(e.target.value)}
-                      className="flex-1 h-10 text-sm rounded-xl border-slate-200 focus:border-sky-400 focus:ring-sky-200"
+                      className="flex-1 min-w-[110px] h-10 text-sm rounded-xl border-slate-200 focus:border-sky-400 focus:ring-sky-200"
                     />
                     <Button
                       size="sm"
@@ -1809,7 +1809,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh, scrollTar
                   <div className="space-y-4 border border-sky-200 bg-sky-50/40 rounded-2xl p-4">
                     <div>
                       <p className="text-[10px] font-bold tracking-widest text-slate-400 uppercase mb-2.5">{t("Payment method", "Método de pago")}</p>
-                      <div className="grid grid-cols-3 gap-2">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                         {[
                           { val: "zelle",   label: "Zelle",               icon: <Send       className="w-4 h-4" /> },
                           { val: "venmo",   label: "Venmo",               icon: <Send       className="w-4 h-4" /> },

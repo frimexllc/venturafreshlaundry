@@ -172,6 +172,26 @@ function isOrderCompleted(order) {
   return (order?.status || "").toString().toLowerCase() === COMPLETED_STATUS;
 }
 
+// ─── Payment / membership helpers (used to gate "Completed" and to build the
+//     payment summary shown inside the status-change confirmation dialog) ──
+function isOrderPaid(order) {
+  return (order?.payment_status || "").toString().toLowerCase() === "paid";
+}
+
+function isOrderCoveredByMembership(order) {
+  if (!order?.membership_plan) return false;
+  const status = (order?.membership_status || "").toString().toLowerCase();
+  if (["inactive", "cancelled", "canceled", "expired"].includes(status)) return false;
+  // Mirrors the "Covered by membership" check used in OrderDetailDialog:
+  // if the plan absorbed the charge, extra_charge/total_amount is ~0.
+  const charge = Number(order?.extra_charge ?? order?.total_amount ?? 0);
+  return charge <= 0.5;
+}
+
+function canMarkOrderCompleted(order) {
+  return isOrderPaid(order) || isOrderCoveredByMembership(order);
+}
+
 function isOrderOverdue(order) {
   const s = (order?.status || "").toString().toUpperCase();
   if (["COMPLETED", "CANCELLED", "DELIVERED"].includes(s)) return false;
@@ -239,15 +259,15 @@ const SectionNumber = ({ number }) => {
   const icon = icons[number];
 
   return (
-    <div className="shrink-0 mt-4 flex flex-col items-center">
-      <div className="w-14 h-14 rounded-xl shadow-lg flex items-center justify-center overflow-hidden bg-white border border-slate-200">
+    <div className="shrink-0 mt-2 sm:mt-4 flex flex-col items-center">
+      <div className="w-9 h-9 sm:w-14 sm:h-14 rounded-xl shadow-lg flex items-center justify-center overflow-hidden bg-white border border-slate-200">
         <img 
           src={icon} 
           alt={`Número ${number}`} 
-          className="w-11 h-11 object-contain"
+          className="w-7 h-7 sm:w-11 sm:h-11 object-contain"
         />
       </div>
-      <div className="w-0.5 h-8 bg-gradient-to-b from-slate-400 to-transparent mt-1" />
+      <div className="w-0.5 h-6 sm:h-8 bg-gradient-to-b from-slate-400 to-transparent mt-1" />
     </div>
   );
 };
@@ -264,7 +284,7 @@ const CardHeader = ({
   <div className={`px-5 py-3.5 border-b border-slate-800 ${bgClass}`}>
     <div className="flex items-center gap-3">
       <span className="shrink-0 text-white/80">{icon}</span>
-      <h2 className="font-bold text-white flex-1 text-sm tracking-wide uppercase">
+      <h2 className="font-bold text-white flex-1 text-xs sm:text-sm tracking-wide uppercase">
         {title}
       </h2>
       <span
@@ -288,25 +308,29 @@ const EmptyState = ({ icon, text, testId }) => (
 
 const StatCard = ({ icon, bg, count, label, testId, highlight }) => (
   <div
-    className={`bg-white rounded-xl border p-4 transition-all hover:shadow-md ${
+    className={`bg-white rounded-xl border p-2.5 sm:p-4 transition-all hover:shadow-md ${
       highlight ? "border-red-200 bg-red-50/30" : "border-slate-100"
     }`}
   >
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-2 sm:gap-3">
       <div
-        className={`h-11 w-11 rounded-xl ${bg} flex items-center justify-center shrink-0`}
+        className={`h-9 w-9 sm:h-11 sm:w-11 rounded-xl ${bg} flex items-center justify-center shrink-0`}
       >
         {icon}
       </div>
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <p
-          className="text-2xl font-bold text-slate-900 leading-none"
+          className="text-lg sm:text-2xl font-bold text-slate-900 leading-none"
           data-testid={`operator-stat-${testId}-count`}
         >
           {count}
         </p>
+        {/* FIX: removed `truncate` (was cutting labels like "Pickups Today" down
+            to "PICKU…"). Labels now wrap onto up to 2 lines instead of being
+            clipped, with a slightly smaller/tighter font on phones. */}
         <p
-          className="text-[11px] font-semibold text-slate-400 mt-1 uppercase tracking-wide truncate"
+          className="text-[9px] sm:text-[11px] font-semibold text-slate-400 mt-0.5 sm:mt-1 uppercase tracking-wide leading-tight break-words"
+          style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}
           data-testid={`operator-stat-${testId}-label`}
         >
           {label}
@@ -341,7 +365,11 @@ const OrderRow = ({
     onClick={() => onRowClick(order)}
     data-testid={`order-row-${order.order_id || "unknown"}`}
   >
-    <div className="flex items-center gap-3">
+    {/* FIX: was `flex items-center gap-3` — on narrow phones this squeezed the
+        customer info and the status/action button into the same row, cutting
+        text off. Now it stacks vertically on phones (button appears below the
+        customer data) and goes back to a side-by-side row from `sm:` up. */}
+    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
       <div className="flex-1 min-w-0 space-y-1">
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="font-mono font-semibold text-slate-800 text-sm">
@@ -404,7 +432,7 @@ const OrderRow = ({
         )}
       </div>
 
-      <div className="flex items-center gap-1.5 shrink-0">
+      <div className="flex items-center gap-1.5 shrink-0 w-full sm:w-auto">
         {showPrint && (
           <>
             <Button
@@ -430,7 +458,7 @@ const OrderRow = ({
         {nextStatus && (
           <Button
             size="sm"
-            className={`${advanceBtnClass} text-white text-xs h-8 px-3 rounded-lg shadow-sm whitespace-nowrap`}
+            className={`${advanceBtnClass} text-white text-xs h-9 sm:h-8 px-3 rounded-lg shadow-sm whitespace-nowrap w-full sm:w-auto justify-center`}
             onClick={(e) => { e.stopPropagation(); onAdvance(order.order_id, nextStatus); }}
             disabled={updating[order.order_id]}
             data-testid={`advance-btn-${order.order_id}`}
@@ -850,6 +878,28 @@ export default function OperatorDashboard() {
     return map;
   }, [dashboard]);
 
+  // Human-readable payment/membership summary shown inside the status-change
+  // confirmation dialog, e.g. "Payment status: Unpaid — requires a payment of $24.00."
+  const getPaymentStatusLine = useCallback(
+    (order) => {
+      if (!order) return "";
+      if (isOrderCoveredByMembership(order)) {
+        return t("Covered by membership — no payment required.", "Cubierta por membresía — no requiere pago.");
+      }
+      if (isOrderPaid(order)) {
+        return t("Payment status: Paid.", "Estado de pago: Pagada.");
+      }
+      const amount = Number(order.extra_charge ?? order.total_amount ?? 0);
+      return amount > 0
+        ? t(
+            `Payment status: Unpaid — requires a payment of ${formatCurrency(amount)}.`,
+            `Estado de pago: Sin pagar — requiere un pago de ${formatCurrency(amount)}.`
+          )
+        : t("Payment status: Unpaid.", "Estado de pago: Sin pagar.");
+    },
+    [t]
+  );
+
 const updateOrderStatus = useCallback(
   async (orderId, newStatus) => {
     const statusLower = newStatus.toLowerCase();
@@ -882,11 +932,25 @@ const updateOrderStatus = useCallback(
         return;
       }
     }
+    if (statusLower === "completed") {
+      const currentOrderData = allServiceOrdersById.get(orderId) || order;
+      if (!canMarkOrderCompleted(currentOrderData)) {
+        toast.warning(t(
+          "Cannot mark as Completed until the order is paid or covered by membership",
+          "No se puede marcar como Completada hasta que la orden esté pagada o cubierta por membresía"
+        ));
+        // Open the order detail and jump straight to Weight & Total / payment section
+        setSelectedOrderScrollTarget("billing");
+        setSelectedOrder(currentOrderData || order);
+        return;
+      }
+    }
     const statusLabel = getStatusLabel(newStatus, order?.service_type);
     const isSpanish = locale === "es";
+    const paymentLine = getPaymentStatusLine(order);
     const description = isSpanish
-      ? `¿Estás seguro de que quieres cambiar el estado de la orden a ${statusLabel}?`
-      : `Are you sure you want to change the order status to ${statusLabel}?`;
+      ? `¿Estás seguro de que quieres cambiar el estado de la orden a ${statusLabel}?${paymentLine ? `\n\n${paymentLine}` : ""}`
+      : `Are you sure you want to change the order status to ${statusLabel}?${paymentLine ? `\n\n${paymentLine}` : ""}`;
     
     setConfirmDialog({
       orderId,
@@ -895,7 +959,7 @@ const updateOrderStatus = useCallback(
       description,
     });
   },
-  [allServiceOrdersById, dashboard, t, getStatusLabel, locale]
+  [allServiceOrdersById, dashboard, t, getStatusLabel, getPaymentStatusLine, locale]
 );
   const handlePickupImageConfirm = async (imageResult) => {
     const { order, pendingStatus } = pickupImageModal;
@@ -1316,23 +1380,23 @@ const updateOrderStatus = useCallback(
 
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
-    <div className="mx-auto max-w-7xl px-3 sm:px-5 lg:px-8 pt-5 pb-20 space-y-5">
+    <div className="mx-auto max-w-7xl px-2 sm:px-5 lg:px-8 pt-3 sm:pt-5 pb-20 space-y-4 sm:space-y-5">
 
       {/* ── Header ── */}
-      <div className="rounded-2xl bg-gradient-to-br from-indigo-600 via-indigo-500 to-violet-600 p-5 shadow-lg">
+      <div className="rounded-2xl bg-gradient-to-br from-indigo-600 via-indigo-500 to-violet-600 p-4 sm:p-5 shadow-lg">
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-3 text-white">
             <div className="p-2 bg-white/20 rounded-xl">
               <Zap className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="text-xl font-bold tracking-tight">{t("Operator Dashboard", "Panel del Operador")}</h1>
+              <h1 className="text-lg sm:text-xl font-bold tracking-tight">{t("Operator Dashboard", "Panel del Operador")}</h1>
               <p className="text-white/70 text-xs mt-0.5">{t("Update status — the system does the rest", "Actualiza el estado — el sistema hace el resto")}</p>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <div className="relative flex-1 min-w-[180px]">
+            <div className="relative flex-1 min-w-[140px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-white/50" />
               <Input
                 type="text"
@@ -1439,7 +1503,7 @@ const updateOrderStatus = useCallback(
             <div className="space-y-4">
 
               {/* ── 1. Creadas / Confirmadas ── */}
-              <div className="flex items-start gap-4">
+              <div className="flex items-start gap-2 sm:gap-4">
                 <SectionNumber number="1" />
                 <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                   <CardHeader
@@ -1477,7 +1541,7 @@ const updateOrderStatus = useCallback(
               </div>
 
               {/* ── 2. En proceso / Lista / En camino ── */}
-              <div className="flex items-start gap-4">
+              <div className="flex items-start gap-2 sm:gap-4">
                 <SectionNumber number="2" />
                 <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                   <CardHeader
@@ -1515,8 +1579,8 @@ const updateOrderStatus = useCallback(
               </div>
 
               {/* ── 3. Request Payment (SIN NÚMERO) ── */}
-              <div className="flex items-start gap-4">
-                <div className="shrink-0 w-14" /> {/* Espacio vacío para alinear */}
+              <div className="flex items-start gap-2 sm:gap-4">
+                <div className="shrink-0 w-9 sm:w-14" /> {/* Espacio vacío para alinear */}
                 <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                   <CardHeader
                     icon={<DollarSign className="h-4 w-4" />}
@@ -1542,9 +1606,9 @@ const updateOrderStatus = useCallback(
                           onClick={() => openOrderDetail(order)}
                           data-testid={`pos-pickup-payment-${order.order_id || "unknown"}`}
                         >
-                          <div className="flex items-center gap-3">
+                          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
                             <div className="flex-1 min-w-0 space-y-1">
-                              <div className="flex items-center gap-1.5">
+                              <div className="flex flex-wrap items-center gap-1.5">
                                 <span className="font-mono font-semibold text-slate-800 text-sm">{formatOrderNumber(order)}</span>
                                 {urgent && (
                                   <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded-full border border-red-300">
@@ -1558,10 +1622,12 @@ const updateOrderStatus = useCallback(
                                 {t("Charge", "Cobro")}: <span className="font-semibold text-slate-600">{amount ? formatCurrency(amount) : t("Set actual lbs", "Ingresa lbs reales")}</span>
                               </p>
                             </div>
-                            <div className="flex items-center gap-1.5 shrink-0">
+                            {/* FIX: buttons now sit in their own full-width row below the
+                                customer data on phones instead of squeezing next to it. */}
+                            <div className="flex items-center gap-1.5 shrink-0 w-full sm:w-auto">
                               <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400 hover:text-sky-600 hover:bg-sky-50 hidden sm:flex" onClick={(e) => { e.stopPropagation(); handlePrintTicket(order); }} data-testid={`pos-pickup-payment-print-${order.order_id}`}><Printer className="h-3.5 w-3.5" /></Button>
                               <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 hidden sm:flex" onClick={(e) => { e.stopPropagation(); handleDownloadPDF(order); }} data-testid={`pos-pickup-payment-pdf-${order.order_id}`}><FileDown className="h-3.5 w-3.5" /></Button>
-                              <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-xs h-8 px-3 rounded-lg shadow-sm" onClick={(e) => { e.stopPropagation(); openOrderDetail(order, "billing"); }} data-testid={`pos-pickup-collect-${order.order_id}`}>{t("Collect", "Cobrar")}</Button>
+                              <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-xs h-9 sm:h-8 px-3 rounded-lg shadow-sm w-full sm:w-auto justify-center" onClick={(e) => { e.stopPropagation(); openOrderDetail(order, "billing"); }} data-testid={`pos-pickup-collect-${order.order_id}`}>{t("Collect", "Cobrar")}</Button>
                             </div>
                           </div>
                         </div>
@@ -1576,7 +1642,7 @@ const updateOrderStatus = useCallback(
             <div className="space-y-4">
 
               {/* ── 1. Wash & Fold — Creadas / Confirmadas ── */}
-              <div className="flex items-start gap-4">
+              <div className="flex items-start gap-2 sm:gap-4">
                 <SectionNumber number="1" />
                 <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                   <CardHeader
@@ -1597,7 +1663,7 @@ const updateOrderStatus = useCallback(
               </div>
 
               {/* ── 2. Wash & Fold — Procesando / Lista ── */}
-              <div className="flex items-start gap-4">
+              <div className="flex items-start gap-2 sm:gap-4">
                 <SectionNumber number="2" />
                 <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                   <CardHeader
@@ -1618,8 +1684,8 @@ const updateOrderStatus = useCallback(
               </div>
 
               {/* ── 3. Request Payment (SIN NÚMERO) ── */}
-              <div className="flex items-start gap-4">
-                <div className="shrink-0 w-14" /> {/* Espacio vacío para alinear */}
+              <div className="flex items-start gap-2 sm:gap-4">
+                <div className="shrink-0 w-9 sm:w-14" /> {/* Espacio vacío para alinear */}
                 <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                   <CardHeader
                     icon={<DollarSign className="h-4 w-4" />}
@@ -1645,9 +1711,9 @@ const updateOrderStatus = useCallback(
                           onClick={() => openOrderDetail(order)}
                           data-testid={`pos-washfold-payment-${order.order_id || "unknown"}`}
                         >
-                          <div className="flex items-center gap-3">
+                          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
                             <div className="flex-1 min-w-0 space-y-1">
-                              <div className="flex items-center gap-1.5">
+                              <div className="flex flex-wrap items-center gap-1.5">
                                 <span className="font-mono font-semibold text-slate-800 text-sm">{formatOrderNumber(order)}</span>
                                 {urgent && (
                                   <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded-full border border-red-300">
@@ -1659,10 +1725,12 @@ const updateOrderStatus = useCallback(
                               <p className="text-sm font-semibold text-slate-700 truncate">{safeString(order.customer_name, t("Customer", "Cliente"))}</p>
                               <p className="text-xs text-slate-400">{t("Charge", "Cobro")}: <span className="font-semibold text-slate-600">{amount ? formatCurrency(amount) : t("Set actual lbs", "Ingresa lbs reales")}</span></p>
                             </div>
-                            <div className="flex items-center gap-1.5 shrink-0">
+                            {/* FIX: buttons now sit in their own full-width row below the
+                                customer data on phones instead of squeezing next to it. */}
+                            <div className="flex items-center gap-1.5 shrink-0 w-full sm:w-auto">
                               <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400 hover:text-sky-600 hover:bg-sky-50 hidden sm:flex" onClick={(e) => { e.stopPropagation(); handlePrintTicket(order); }} data-testid={`pos-washfold-print-payment-${order.order_id}`}><Printer className="h-3.5 w-3.5" /></Button>
                               <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 hidden sm:flex" onClick={(e) => { e.stopPropagation(); handleDownloadPDF(order); }} data-testid={`pos-washfold-pdf-payment-${order.order_id}`}><FileDown className="h-3.5 w-3.5" /></Button>
-                              <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-xs h-8 px-3 rounded-lg shadow-sm" onClick={(e) => { e.stopPropagation(); openOrderDetail(order, "billing"); }} data-testid={`pos-washfold-collect-${order.order_id}`}>{t("Collect", "Cobrar")}</Button>
+                              <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-xs h-9 sm:h-8 px-3 rounded-lg shadow-sm w-full sm:w-auto justify-center" onClick={(e) => { e.stopPropagation(); openOrderDetail(order, "billing"); }} data-testid={`pos-washfold-collect-${order.order_id}`}>{t("Collect", "Cobrar")}</Button>
                             </div>
                           </div>
                         </div>
@@ -1805,7 +1873,7 @@ const updateOrderStatus = useCallback(
                 <span className="ml-2">({(filteredMapOrders || ordersWithCoordinates).length} {t("orders", "órdenes")})</span>
               </div>
             )}
-            <div className="h-[400px] w-full" style={{ position: "relative", zIndex: 0 }}>
+            <div className="h-[280px] sm:h-[400px] w-full" style={{ position: "relative", zIndex: 0 }}>
               <MapContainer key={mapKey} center={[STORE_COORDINATES.lat, STORE_COORDINATES.lng]} zoom={12} style={{ height: "100%", width: "100%", zIndex: 0 }}>
                 <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' />
                 {(() => {
@@ -1863,7 +1931,7 @@ const updateOrderStatus = useCallback(
 
       {/* Store POS Modal */}
       <Dialog open={storePosOpen} onOpenChange={(open) => (!open ? resetStorePos() : setStorePosOpen(true))}>
-        <DialogContent className="w-[96vw] max-w-5xl bg-white max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-full h-full sm:w-[96vw] sm:h-auto max-w-full sm:max-w-5xl bg-white max-h-full sm:max-h-[90vh] overflow-y-auto rounded-none sm:rounded-lg">
           <DialogHeader>
             <DialogTitle className="text-base">{t("New Store Sale", "Nueva venta en tienda")}</DialogTitle>
             <DialogDescription className="text-xs">{t("Select products and collect payment quickly.", "Selecciona productos y cobra rápido.")}</DialogDescription>
@@ -1977,7 +2045,7 @@ const updateOrderStatus = useCallback(
 
       {/* Store Payment Modal */}
       <Dialog open={!!storePaymentOrder} onOpenChange={(open) => !open && setStorePaymentOrder(null)}>
-        <DialogContent className="w-[96vw] max-w-md bg-white">
+        <DialogContent className="w-full sm:w-[96vw] max-w-full sm:max-w-md bg-white">
           <DialogHeader>
             <DialogTitle className="text-base">{t("Request payment", "Solicitar pago")}</DialogTitle>
             <DialogDescription className="text-xs">{safeString(storePaymentOrder?.order_number)}</DialogDescription>
