@@ -218,7 +218,7 @@ Use natural language, no markdown, and keep it under 200 words.
             raise HTTPException(status_code=503, detail="GROQ_API_KEY not configured")
         client = Groq(api_key=api_key)
         completion = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model="openai/gpt-oss-120b",
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": prompt}

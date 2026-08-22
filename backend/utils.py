@@ -1352,7 +1352,7 @@ def call_ollama(prompt: str):
     if not api_key:
         raise HTTPException(status_code=500, detail="Groq API key not configured")
     client     = Groq(api_key=api_key)
-    models     = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+    models     = ["openai/gpt-oss-120b", "llama-3.1-8b-instant"]
     last_error = None
     for model in models:
         for attempt in range(3):

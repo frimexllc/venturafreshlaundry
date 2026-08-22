@@ -6,8 +6,10 @@
 // UPDATED: Receipts and Evidence Images merged into a single collapsible section
 // UPDATED: Order is now Customer & Service -> Receipts & Evidence -> ... -> Weight & Total,
 //          every section collapsible/expandable
+// FIXED: Section now uses forwardRef so addonsSectionRef actually attaches to the DOM
+//        node, which makes the auto-scroll-to-addons behavior work correctly.
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, forwardRef } from "react";
 import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -293,10 +295,22 @@ const STATUS_CONFIG = {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function Section({ icon, title, badge, children, collapsible = false, defaultOpen = true, className = "", ...rest }) {
+// FIX: wrapped in forwardRef so that parent components can pass a `ref`
+// (e.g. `addonsSectionRef`) that actually attaches to the underlying DOM
+// node. Without this, React silently drops the `ref` prop on a plain
+// function component and `ref.current` stays `null` forever — which is
+// why scrollIntoView("addons") never worked before.
+const Section = forwardRef(function Section(
+  { icon, title, badge, children, collapsible = false, defaultOpen = true, className = "", ...rest },
+  ref
+) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className={`rounded-2xl border border-slate-200 overflow-hidden bg-white shadow-sm ${className}`} {...rest}>
+    <div
+      ref={ref}
+      className={`rounded-2xl border border-slate-200 overflow-hidden bg-white shadow-sm ${className}`}
+      {...rest}
+    >
       <div
         className={`flex items-center gap-2.5 px-4 py-3 bg-gradient-to-r from-slate-50 to-white border-b border-slate-100 ${collapsible ? "cursor-pointer select-none" : ""}`}
         onClick={() => collapsible && setOpen(v => !v)}
@@ -313,7 +327,7 @@ function Section({ icon, title, badge, children, collapsible = false, defaultOpe
       {(!collapsible || open) && <div className="p-4">{children}</div>}
     </div>
   );
-}
+});
 
 function DataRow({ label, value, className = "", mono = false }) {
   if (value === null || value === undefined || value === "") return null;
@@ -463,6 +477,8 @@ function EvidenceImageThumb({ orderId, type, label, onOpen }) {
   const [blobUrl, setBlobUrl] = useState(null);
   const [loading, setLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
+  const [forceAddonsOpen, setForceAddonsOpen] = useState(false);
+
 
   useEffect(() => {
     if (!orderId) return undefined;
@@ -685,7 +701,7 @@ function RecurrenceInfo({ order, t, locale }) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function OrderDetailDialog({ order, onClose, onRefresh }) {
+export default function OrderDetailDialog({ order, onClose, onRefresh, scrollTarget }) {
   const { t, locale } = useLocale();
 
   // ── FIX: use a stable internal open state, decoupled from the order prop ──
@@ -714,6 +730,8 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
   const [addonCategoryLabels, setAddonCategoryLabels] = useState(CAT_LABELS);
 
   const currentOrderIdRef = useRef(null);
+  const billingSectionRef = useRef(null);
+  const addonsSectionRef = useRef(null);
 
   // Load dynamic add-on prices from services page config
   useEffect(() => {
@@ -753,6 +771,35 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
       setIsOpen(true);
     }
   }, [order, addonCatalog]);
+
+  // ── Scroll to the Billing / Weight & Total section when opened via "Collect" ──
+  // ── Scroll to the Billing / Weight & Total section when opened via "Collect" ──
+  // ── Scroll to the Billing / Weight & Total section when opened via "Collect" ──
+  useEffect(() => {
+    if (isOpen && scrollTarget === "billing") {
+      const timer = setTimeout(() => {
+        billingSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 350);
+      return () => clearTimeout(timer);
+    }
+    // ✅ NUEVO: scroll a la sección de add-ons
+    if (isOpen && scrollTarget === "addons") {
+      // Aumentar el delay para asegurar que el DOM esté renderizado
+      const timer = setTimeout(() => {
+        if (addonsSectionRef.current) {
+          addonsSectionRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+          console.log("✅ Scrolling to add-ons section"); // Para debug
+        } else {
+          console.warn("⚠️ addonsSectionRef is null, retrying...");
+          // Reintentar después de 300ms más
+          setTimeout(() => {
+            addonsSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+          }, 300);
+        }
+      }, 600); // Aumentado de 400 a 600
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen, scrollTarget, order?.id]);
 
   const fetchOrderDetails = useCallback(async (oid) => {
     if (!oid) return;
@@ -836,31 +883,31 @@ export default function OrderDetailDialog({ order, onClose, onRefresh }) {
 
   // ─── Add-on handlers with custom price support ─────────────────────────────
 
-// Modifica handleAddAddon para mostrar advertencia
-const handleAddAddon = (item) => {
-  // Para servicios Wash & Fold, mostrar advertencia si el artículo es per-piece
-  if (isWF && isPerPieceItem(item)) {
-    const confirmAdd = window.confirm(
-      `${item.name} is typically included in the weight-based pricing for Wash & Fold.\n\n` +
-      `Adding it as an extra item will charge it separately ($${item.price.toFixed(2)}).\n\n` +
-      `Are you sure you want to add it as an extra charge?`
-    );
-    if (!confirmAdd) return;
-  }
-  
-  const ex = addons.find(a => a.id === item.id);
-  if (ex) {
-    setAddons(prev => prev.map(a => a.id === item.id ? { ...a, qty: (a.qty || 1) + 1 } : a));
-  } else {
-    setAddons(prev => [...prev, { 
-      ...item, 
-      qty: 1,
-      custom_price: item.custom_price || item.price,
-      original_price: item.price,
-      is_per_piece: isPerPieceItem(item),
-    }]);
-  }
-};
+  // Modifica handleAddAddon para mostrar advertencia
+  const handleAddAddon = (item) => {
+    // Para servicios Wash & Fold, mostrar advertencia si el artículo es per-piece
+    if (isWF && isPerPieceItem(item)) {
+      const confirmAdd = window.confirm(
+        `${item.name} is typically included in the weight-based pricing for Wash & Fold.\n\n` +
+        `Adding it as an extra item will charge it separately ($${item.price.toFixed(2)}).\n\n` +
+        `Are you sure you want to add it as an extra charge?`
+      );
+      if (!confirmAdd) return;
+    }
+    
+    const ex = addons.find(a => a.id === item.id);
+    if (ex) {
+      setAddons(prev => prev.map(a => a.id === item.id ? { ...a, qty: (a.qty || 1) + 1 } : a));
+    } else {
+      setAddons(prev => [...prev, { 
+        ...item, 
+        qty: 1,
+        custom_price: item.custom_price || item.price,
+        original_price: item.price,
+        is_per_piece: isPerPieceItem(item),
+      }]);
+    }
+  };
   const handleUpdateAddonQty = (id, newQty) => {
     if (newQty <= 0) {
       setAddons(prev => prev.filter(a => a.id !== id));
@@ -882,11 +929,11 @@ const handleAddAddon = (item) => {
       : (addon.price || 0);
   };
   const isPerPieceItem = (item) => {
-  const categoryKey = slugifyAddonKey(
-    item?.category || item?.category_label || item?.category_es || item?.category_label_es
-  );
-  return !["add_on_services", "addon_services"].includes(categoryKey);
-};
+    const categoryKey = slugifyAddonKey(
+      item?.category || item?.category_label || item?.category_es || item?.category_label_es
+    );
+    return !["add_on_services", "addon_services"].includes(categoryKey);
+  };
 
   const saveAddonsList = useCallback(async (list) => {
     const oid = localOrder?.id;
@@ -1167,36 +1214,6 @@ const handleAddAddon = (item) => {
     const oid = localOrder?.id;
     if (!oid) return;
     const normalizedMethod = normalizePayMethod(payMethod);
-
-    if (normalizedMethod === "card") {
-      setProcessing(true);
-      try {
-        const breakdown = buildDisplayBreakdown(localOrder);
-        const amountWithFee = breakdown.total * 1.03;
-        if (amountWithFee <= 0.5) {
-          toast.error(t("Amount too small for payment", "Monto demasiado pequeño para pagar"));
-          return;
-        }
-        const res = await fetch(`${API_URL}/api/orders/${oid}/stripe-checkout`, {
-          method: "POST", headers: authHdrs(),
-          body: JSON.stringify({ origin_url: window.location.origin, amount: amountWithFee }),
-        });
-        if (handle401(res)) return;
-        if (res.ok) {
-          const d = await res.json();
-          window.location.href = d.url || d.checkout_url;
-          return;
-        }
-        const err = await res.json().catch(() => ({}));
-        toast.error(err.detail || t("Stripe error", "Error de Stripe"));
-      } catch {
-        toast.error(t("Connection error", "Error de conexión"));
-      } finally {
-        setProcessing(false);
-      }
-      return;
-    }
-
     const { total: dynamicTotal } = calculateOrderTotal(localOrder, payMethod);
 
     if (normalizedMethod === "cash") {
@@ -1231,6 +1248,8 @@ const handleAddAddon = (item) => {
       return;
     }
 
+    // Card (Stripe), Zelle, Venmo, CashApp, Other — register the payment directly
+    // instead of redirecting to an external checkout portal.
     setProcessing(true);
     try {
       const res = await fetch(`${API_URL}/api/orders/${oid}/payment`, {
@@ -1605,6 +1624,7 @@ const handleAddAddon = (item) => {
 
             {/* ── Add-ons with manual price editing ── */}
             <Section
+              ref={addonsSectionRef}  // ✅ REFERENCIA AGREGADA — ahora sí funciona gracias al forwardRef
               icon={<Package className="w-4 h-4" />}
               title={t("Individual Items / Add-ons", "Artículos / Extras")}
               collapsible defaultOpen={true}
@@ -1723,6 +1743,7 @@ const handleAddAddon = (item) => {
             </Section>
 
             {/* ── 3) Weight & Total ── */}
+            <div ref={billingSectionRef}>
             <Section icon={<Scale className="w-4 h-4" />} title={t("Weight & Total", "Peso y Total")} collapsible defaultOpen={true}>
               <div className="space-y-4">
                 <div>
@@ -1822,14 +1843,13 @@ const handleAddAddon = (item) => {
                     <Button className="w-full h-11 bg-emerald-600 hover:bg-emerald-700 rounded-xl font-bold shadow-md"
                       onClick={handlePayment} disabled={processing || dynamicTotal <= 0}>
                       {processing ? <RefreshCw className="w-4 h-4 animate-spin mr-2" /> : <DollarSign className="w-4 h-4 mr-2" />}
-                      {payMethod === "card"
-                        ? t("Pay Stripe / Tap", "Pagar Stripe / Tap")
-                        : `${t("Register payment", "Registrar pago")} — ${formatCurrency(dynamicTotal)}`}
+                      {`${t("Register payment", "Registrar pago")} — ${formatCurrency(dynamicTotal)}`}
                     </Button>
                   </div>
                 )}
               </div>
             </Section>
+            </div>
 
             {/* ── Actions bar ── */}
             <div className="flex flex-wrap items-center gap-2 pt-1 pb-2">

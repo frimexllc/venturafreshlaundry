@@ -165,7 +165,7 @@ def _groq_call(client: Groq, messages: list, max_tokens: int,
     for attempt in range(2):
         try:
             response = client.chat.completions.create(
-                messages=messages, model="llama-3.3-70b-versatile",
+                messages=messages, model="openai/gpt-oss-120b",
                 temperature=temperature, max_tokens=max_tokens,
             )
             text = response.choices[0].message.content.strip()

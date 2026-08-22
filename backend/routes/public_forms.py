@@ -1280,7 +1280,7 @@ PERSONALITY GUIDELINES:
             try:
                 completion = await asyncio.to_thread(
                     client.chat.completions.create,
-                    model="llama-3.3-70b-versatile",
+                    model="openai/gpt-oss-120b",
                     temperature=0.5,
                     max_tokens=220,
                     messages=[

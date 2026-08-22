@@ -1298,7 +1298,7 @@ async def generate_ai_message(
         response = await asyncio.to_thread(
             client.chat.completions.create,
             messages=[{"role": "user", "content": prompt}],
-            model="llama-3.3-70b-versatile",
+            model="openai/gpt-oss-120b",
             temperature=0.4,
             max_tokens=200,
         )

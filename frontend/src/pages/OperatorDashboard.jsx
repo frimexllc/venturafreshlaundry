@@ -516,6 +516,7 @@ export default function OperatorDashboard() {
   const [realtimeStatus, setRealtimeStatus] = useState("offline");
 
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [selectedOrderScrollTarget, setSelectedOrderScrollTarget] = useState(null);
   const [pickupImageModal, setPickupImageModal] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [orderFilters, setOrderFilters] = useState({});
@@ -561,6 +562,11 @@ export default function OperatorDashboard() {
   useEffect(() => {
     autoRefreshRef.current = autoRefresh;
   }, [autoRefresh]);
+
+  const openOrderDetail = useCallback((order, scrollTo = null) => {
+    setSelectedOrderScrollTarget(scrollTo);
+    setSelectedOrder(order);
+  }, []);
 
   const handleSwitchService = useCallback(() => {
     setServiceSubTab((prev) => (prev === "pickup" ? "wash" : "pickup"));
@@ -844,52 +850,53 @@ export default function OperatorDashboard() {
     return map;
   }, [dashboard]);
 
-  const updateOrderStatus = useCallback(
-    async (orderId, newStatus) => {
-      const statusLower = newStatus.toLowerCase();
-      let order = allServiceOrdersById.get(orderId);
-      if (!order && dashboard) {
-        const allOrders = [
-          ...(dashboard.todays_pickups || []),
-          ...(dashboard.ready_for_delivery || []),
-          ...(dashboard.wash_fold_dropoffs || []),
-          ...(dashboard.wash_fold_ready || []),
-        ];
-        order = allOrders.find((o) => o.order_id === orderId) || null;
-      }
-      if (statusLower === "picked_up" || statusLower === "delivered") {
-        setPickupImageModal({
-          order: order || { order_id: orderId, order_number: orderId, customer_name: "" },
-          pendingStatus: statusLower,
-        });
+const updateOrderStatus = useCallback(
+  async (orderId, newStatus) => {
+    const statusLower = newStatus.toLowerCase();
+    let order = allServiceOrdersById.get(orderId);
+    if (!order && dashboard) {
+      const allOrders = [
+        ...(dashboard.todays_pickups || []),
+        ...(dashboard.ready_for_delivery || []),
+        ...(dashboard.wash_fold_dropoffs || []),
+        ...(dashboard.wash_fold_ready || []),
+      ];
+      order = allOrders.find((o) => o.order_id === orderId) || null;
+    }
+    if (statusLower === "picked_up" || statusLower === "delivered") {
+      setPickupImageModal({
+        order: order || { order_id: orderId, order_number: orderId, customer_name: "" },
+        pendingStatus: statusLower,
+      });
+      return;
+    }
+    if (statusLower === "processing") {
+      const currentOrderData = allServiceOrdersById.get(orderId);
+      const hasWeight = currentOrderData?.actual_lbs && Number(currentOrderData.actual_lbs) > 0;
+      const hasAddons = (currentOrderData?.addon_services || []).length > 0;
+      if (!hasWeight && !hasAddons) {
+        toast.warning(t("Must enter weight or add-ons before processing", "Debe ingresar el peso o agregar artículos (add-ons) antes de avanzar a Procesando"));
+        // ✅ Abrir el dialog y scrollear a la sección de add-ons
+        setSelectedOrderScrollTarget("addons");
+        setSelectedOrder(currentOrderData || order);
         return;
       }
-      if (statusLower === "processing") {
-        const currentOrderData = allServiceOrdersById.get(orderId);
-        const hasWeight = currentOrderData?.actual_lbs && Number(currentOrderData.actual_lbs) > 0;
-        const hasAddons = (currentOrderData?.addon_services || []).length > 0;
-        if (!hasWeight && !hasAddons) {
-          toast.warning(t("Must enter weight or add-ons before processing", "Debe ingresar el peso o agregar artículos (add-ons) antes de avanzar a Procesando"));
-          setSelectedOrder(currentOrderData || order);
-          return;
-        }
-      }
-      const statusLabel = getStatusLabel(newStatus, order?.service_type);
-      const isSpanish = locale === "es";
-      const description = isSpanish
-        ? `¿Estás seguro de que quieres cambiar el estado de la orden a ${statusLabel}?`
-        : `Are you sure you want to change the order status to ${statusLabel}?`;
-      
-      setConfirmDialog({
-        orderId,
-        newStatus,
-        title: t("Confirm status change", "Confirmar cambio de estado"),
-        description,
-      });
-    },
-    [allServiceOrdersById, dashboard, t, getStatusLabel, locale]
-  );
-
+    }
+    const statusLabel = getStatusLabel(newStatus, order?.service_type);
+    const isSpanish = locale === "es";
+    const description = isSpanish
+      ? `¿Estás seguro de que quieres cambiar el estado de la orden a ${statusLabel}?`
+      : `Are you sure you want to change the order status to ${statusLabel}?`;
+    
+    setConfirmDialog({
+      orderId,
+      newStatus,
+      title: t("Confirm status change", "Confirmar cambio de estado"),
+      description,
+    });
+  },
+  [allServiceOrdersById, dashboard, t, getStatusLabel, locale]
+);
   const handlePickupImageConfirm = async (imageResult) => {
     const { order, pendingStatus } = pickupImageModal;
     setPickupImageModal(null);
@@ -1454,7 +1461,7 @@ export default function OperatorDashboard() {
                           nextStatus={ns}
                           nextStatusInfo={ns ? getStatusInfo(ns, order.service_type) : null}
                           updating={updating}
-                          onRowClick={setSelectedOrder}
+                          onRowClick={(o) => openOrderDetail(o)}
                           onAdvance={updateOrderStatus}
                           onPrint={handlePrintTicket}
                           onPDF={handleDownloadPDF}
@@ -1492,7 +1499,7 @@ export default function OperatorDashboard() {
                           nextStatus={ns}
                           nextStatusInfo={ns ? getStatusInfo(ns, order.service_type) : null}
                           updating={updating}
-                          onRowClick={setSelectedOrder}
+                          onRowClick={(o) => openOrderDetail(o)}
                           onAdvance={updateOrderStatus}
                           onPrint={handlePrintTicket}
                           onPDF={handleDownloadPDF}
@@ -1532,7 +1539,7 @@ export default function OperatorDashboard() {
                               : "bg-white hover:bg-slate-50/50 border-slate-100"
                           }`}
                           role="button"
-                          onClick={() => setSelectedOrder(order)}
+                          onClick={() => openOrderDetail(order)}
                           data-testid={`pos-pickup-payment-${order.order_id || "unknown"}`}
                         >
                           <div className="flex items-center gap-3">
@@ -1554,7 +1561,7 @@ export default function OperatorDashboard() {
                             <div className="flex items-center gap-1.5 shrink-0">
                               <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400 hover:text-sky-600 hover:bg-sky-50 hidden sm:flex" onClick={(e) => { e.stopPropagation(); handlePrintTicket(order); }} data-testid={`pos-pickup-payment-print-${order.order_id}`}><Printer className="h-3.5 w-3.5" /></Button>
                               <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 hidden sm:flex" onClick={(e) => { e.stopPropagation(); handleDownloadPDF(order); }} data-testid={`pos-pickup-payment-pdf-${order.order_id}`}><FileDown className="h-3.5 w-3.5" /></Button>
-                              <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-xs h-8 px-3 rounded-lg shadow-sm" onClick={(e) => { e.stopPropagation(); setSelectedOrder(order); }} data-testid={`pos-pickup-collect-${order.order_id}`}>{t("Collect", "Cobrar")}</Button>
+                              <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-xs h-8 px-3 rounded-lg shadow-sm" onClick={(e) => { e.stopPropagation(); openOrderDetail(order, "billing"); }} data-testid={`pos-pickup-collect-${order.order_id}`}>{t("Collect", "Cobrar")}</Button>
                             </div>
                           </div>
                         </div>
@@ -1583,7 +1590,7 @@ export default function OperatorDashboard() {
                   ) : (
                     filteredWashFoldDropoffs.map((order) => {
                       const ns = getNextStatus(order.status, order.service_type);
-                      return <OrderRow key={order.order_id ?? order.order_number} order={order} statusInfo={getStatusInfo(order.status, order.service_type)} nextStatus={ns} nextStatusInfo={ns ? getStatusInfo(ns, order.service_type) : null} updating={updating} onRowClick={setSelectedOrder} onAdvance={updateOrderStatus} onPrint={handlePrintTicket} onPDF={handleDownloadPDF} showPrint urgent={isOrderUrgent(order)} advanceBtnClass="bg-purple-600 hover:bg-purple-700" t={t} />;
+                      return <OrderRow key={order.order_id ?? order.order_number} order={order} statusInfo={getStatusInfo(order.status, order.service_type)} nextStatus={ns} nextStatusInfo={ns ? getStatusInfo(ns, order.service_type) : null} updating={updating} onRowClick={(o) => openOrderDetail(o)} onAdvance={updateOrderStatus} onPrint={handlePrintTicket} onPDF={handleDownloadPDF} showPrint urgent={isOrderUrgent(order)} advanceBtnClass="bg-purple-600 hover:bg-purple-700" t={t} />;
                     })
                   )}
                 </div>
@@ -1604,7 +1611,7 @@ export default function OperatorDashboard() {
                   ) : (
                     filteredWashFoldReady.map((order) => {
                       const ns = getNextStatus(order.status, order.service_type);
-                      return <OrderRow key={order.order_id ?? order.order_number} order={order} statusInfo={getStatusInfo(order.status, order.service_type)} nextStatus={ns} nextStatusInfo={ns ? getStatusInfo(ns, order.service_type) : null} updating={updating} onRowClick={setSelectedOrder} onAdvance={updateOrderStatus} onPrint={handlePrintTicket} onPDF={handleDownloadPDF} showPrint urgent={isOrderUrgent(order)} advanceBtnClass="bg-emerald-600 hover:bg-emerald-700" t={t} />;
+                      return <OrderRow key={order.order_id ?? order.order_number} order={order} statusInfo={getStatusInfo(order.status, order.service_type)} nextStatus={ns} nextStatusInfo={ns ? getStatusInfo(ns, order.service_type) : null} updating={updating} onRowClick={(o) => openOrderDetail(o)} onAdvance={updateOrderStatus} onPrint={handlePrintTicket} onPDF={handleDownloadPDF} showPrint urgent={isOrderUrgent(order)} advanceBtnClass="bg-emerald-600 hover:bg-emerald-700" t={t} />;
                     })
                   )}
                 </div>
@@ -1635,7 +1642,7 @@ export default function OperatorDashboard() {
                               : "bg-white hover:bg-slate-50/50 border-slate-100"
                           }`}
                           role="button"
-                          onClick={() => setSelectedOrder(order)}
+                          onClick={() => openOrderDetail(order)}
                           data-testid={`pos-washfold-payment-${order.order_id || "unknown"}`}
                         >
                           <div className="flex items-center gap-3">
@@ -1655,7 +1662,7 @@ export default function OperatorDashboard() {
                             <div className="flex items-center gap-1.5 shrink-0">
                               <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400 hover:text-sky-600 hover:bg-sky-50 hidden sm:flex" onClick={(e) => { e.stopPropagation(); handlePrintTicket(order); }} data-testid={`pos-washfold-print-payment-${order.order_id}`}><Printer className="h-3.5 w-3.5" /></Button>
                               <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 hidden sm:flex" onClick={(e) => { e.stopPropagation(); handleDownloadPDF(order); }} data-testid={`pos-washfold-pdf-payment-${order.order_id}`}><FileDown className="h-3.5 w-3.5" /></Button>
-                              <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-xs h-8 px-3 rounded-lg shadow-sm" onClick={(e) => { e.stopPropagation(); setSelectedOrder(order); }} data-testid={`pos-washfold-collect-${order.order_id}`}>{t("Collect", "Cobrar")}</Button>
+                              <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-xs h-8 px-3 rounded-lg shadow-sm" onClick={(e) => { e.stopPropagation(); openOrderDetail(order, "billing"); }} data-testid={`pos-washfold-collect-${order.order_id}`}>{t("Collect", "Cobrar")}</Button>
                             </div>
                           </div>
                         </div>
@@ -1831,7 +1838,7 @@ export default function OperatorDashboard() {
                               <span className={`px-1.5 py-0.5 rounded-full text-xs ${statusInfo.color}`}>{statusInfo.label}</span>
                               {order.payment_status !== "paid" && <span className="text-xs text-amber-600">{t("Pending", "Pendiente")}</span>}
                             </div>
-                            <Button size="sm" className="w-full bg-slate-900 hover:bg-slate-800 text-xs mt-1" onClick={() => setSelectedOrder(order)}>{t("View details", "Ver detalles")}</Button>
+                            <Button size="sm" className="w-full bg-slate-900 hover:bg-slate-800 text-xs mt-1" onClick={() => openOrderDetail(order)}>{t("View details", "Ver detalles")}</Button>
                           </div>
                         </Popup>
                       </Marker>
@@ -1845,7 +1852,12 @@ export default function OperatorDashboard() {
       </Tabs>
 
       {/* ── Modales ── */}
-      <OrderDetailDialog order={selectedOrder} onClose={() => setSelectedOrder(null)} onRefresh={loadDashboard} />
+      <OrderDetailDialog
+        order={selectedOrder}
+        scrollTarget={selectedOrderScrollTarget}
+        onClose={() => { setSelectedOrder(null); setSelectedOrderScrollTarget(null); }}
+        onRefresh={loadDashboard}
+      />
       <PickupImageModal open={!!pickupImageModal} order={pickupImageModal?.order} pendingStatus={pickupImageModal?.pendingStatus} onClose={() => setPickupImageModal(null)} onConfirm={handlePickupImageConfirm} />
       <ConfirmDialog open={!!confirmDialog} title={confirmDialog?.title} description={confirmDialog?.description} onConfirm={handleConfirmDialogAccept} onCancel={() => setConfirmDialog(null)} />
 
