@@ -258,7 +258,6 @@ export default function Finances() {
   const { t } = useLocale();
   const [activeTab, setActiveTab]   = useState("dashboard");
   const [period, setPeriod]         = useState("month");
-  const [dateRange, setDateRange]   = useState({ start: monthStart(), end: today() });
   const [summary, setSummary]       = useState(defaultSummary);
   const [loading, setLoading]       = useState(true);
 
@@ -277,8 +276,22 @@ export default function Finances() {
   const [maintenanceAlerts, setMaintenanceAlerts]   = useState([]);
   const [machineFilterStart, setMachineFilterStart] = useState(monthStart());
   const [machineFilterEnd, setMachineFilterEnd]     = useState(today());
-  const [bulkIncomeForm, setBulkIncomeForm]         = useState({ start_date: monthStart(), end_date: today(), amount: "" });
+
+  // ─── Ingreso general (conteo de caja) / reparto y ajuste por máquina ──────
+  const [bulkIncomeForm, setBulkIncomeForm]         = useState({ start_date: monthStart(), end_date: today(), total_amount: "" });
   const [showBulkModal, setShowBulkModal]           = useState(false);
+  const [bulkAdjustMode, setBulkAdjustMode]         = useState(false);
+  const [bulkDistribution, setBulkDistribution]     = useState([]); // [{ machine_id, name, amount }]
+
+  // Registros generales (CRUD: listado, edición, eliminación, paginación)
+  const [generalIncomeRecords, setGeneralIncomeRecords] = useState([]);
+  const [generalIncomePage, setGeneralIncomePage]        = useState(1);
+  const generalIncomePageSize                            = 10;
+  const [editingGeneralIncome, setEditingGeneralIncome]  = useState(null);
+
+  // Paginación del historial de ingresos por máquina
+  const [incomeHistoryPage, setIncomeHistoryPage]   = useState(1);
+  const incomeHistoryPageSize                       = 10;
 
   const [mileage, setMileage]     = useState([]);
   const [vehicles, setVehicles]   = useState([]);
@@ -340,10 +353,17 @@ export default function Finances() {
 
   const fetchMachineIncome = useCallback(async () => {
     try {
-      const r = await axios.get(`${API}/api/finances/machine-income`, { params: { start_date: dateRange.start, end_date: dateRange.end }, headers: getAuth() });
+      const r = await axios.get(`${API}/api/finances/machine-income`, { params: { start_date: machineFilterStart, end_date: machineFilterEnd }, headers: getAuth() });
       setMachineIncomeRecords(r.data);
     } catch {}
-  }, [dateRange]);
+  }, [machineFilterStart, machineFilterEnd]);
+
+  const fetchGeneralIncome = useCallback(async () => {
+    try {
+      const r = await axios.get(`${API}/api/finances/general-income`, { params: { start_date: machineFilterStart, end_date: machineFilterEnd }, headers: getAuth() });
+      setGeneralIncomeRecords(Array.isArray(r.data) ? r.data : []);
+    } catch { setGeneralIncomeRecords([]); }
+  }, [machineFilterStart, machineFilterEnd]);
 
   const fetchMileage   = useCallback(async () => { try { const r = await axios.get(`${API}/api/finances/mileage`, { headers: getAuth() }); setMileage(r.data); } catch {} }, []);
   const fetchVehicles  = useCallback(async () => { try { const r = await axios.get(`${API}/api/finances/vehicles`, { headers: getAuth() }); setVehicles(r.data); } catch {} }, []);
@@ -559,12 +579,24 @@ export default function Finances() {
 
   useEffect(() => { fetchSummary(); }, [fetchSummary]);
   useEffect(() => { fetchExpenses(); fetchCategories(); }, [fetchExpenses, fetchCategories]);
-  useEffect(() => { fetchMachines(); fetchMachineIncome(); }, [fetchMachines, fetchMachineIncome]);
+  useEffect(() => { fetchMachines(); fetchMachineIncome(); fetchGeneralIncome(); }, [fetchMachines, fetchMachineIncome, fetchGeneralIncome]);
   useEffect(() => { fetchMileage(); fetchVehicles(); }, [fetchMileage, fetchVehicles]);
   useEffect(() => { fetchTransactions(); }, [fetchTransactions]);
 
+  // Si el historial cambia (nuevo filtro / nuevos registros) y la página actual
+  // queda fuera de rango, la regresamos a la última página válida.
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(machineIncomeRecords.length / incomeHistoryPageSize));
+    if (incomeHistoryPage > totalPages) setIncomeHistoryPage(totalPages);
+  }, [machineIncomeRecords, incomeHistoryPage]);
+
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(generalIncomeRecords.length / generalIncomePageSize));
+    if (generalIncomePage > totalPages) setGeneralIncomePage(totalPages);
+  }, [generalIncomeRecords, generalIncomePage]);
+
   const refreshAll = () => {
-    fetchSummary(); fetchExpenses(); fetchMachines(); fetchMachineIncome();
+    fetchSummary(); fetchExpenses(); fetchMachines(); fetchMachineIncome(); fetchGeneralIncome();
     fetchMileage(); fetchVehicles(); fetchTransactions();
     toast.success("Datos actualizados");
   };
@@ -633,31 +665,157 @@ export default function Finances() {
     }
   };
 
+  // ─── Ingreso general (conteo de caja) ─────────────────────────────────────
+  // El monto capturado es el CONTEO GENERAL del período (p. ej. el retiro de
+  // caja de monedas de todo el negocio). POR DEFECTO se registra como UN SOLO
+  // ingreso general — no se reparte ni se asocia a ninguna máquina en
+  // particular. Solo si el usuario elige explícitamente "Ajustar reparto por
+  // máquina" se abre el desglose editable para atribuir montos a máquinas
+  // específicas (por ejemplo, si una estuvo fuera de servicio ese período).
+  // Nada se calcula ni se reparte de forma automática mientras el ajuste no
+  // esté activado.
+
+  const bulkTotalNum = Number(bulkIncomeForm.total_amount) || 0;
+
+  const bulkDaysValid = !!bulkIncomeForm.start_date && !!bulkIncomeForm.end_date
+    && bulkIncomeForm.start_date <= bulkIncomeForm.end_date;
+
+  const distributionSum = bulkDistribution.reduce((s, d) => s + (Number(d.amount) || 0), 0);
+
+  // Validación de la suma solo aplica cuando el modo ajuste está activo
+  const bulkDistributionValid = !bulkAdjustMode || (bulkDistribution.length > 0 && Math.abs(distributionSum - bulkTotalNum) < 0.01);
+
+  const isBulkValid = bulkTotalNum > 0 && bulkDaysValid
+    && (!bulkAdjustMode || machines.length > 0)
+    && bulkDistributionValid;
+
+  // Genera el reparto equitativo SOLO cuando el usuario pide ajustar — nunca
+  // se ejecuta de forma automática ni al abrir el modal ni al escribir el monto.
+  const initBulkDistribution = () => {
+    const validMachines = machines.filter(m => m && m.id);
+    if (validMachines.length === 0) { setBulkDistribution([]); return; }
+    const share = bulkTotalNum / validMachines.length;
+    const dist = validMachines.map(m => ({ machine_id: m.id, name: m.name, amount: share.toFixed(2) }));
+    const sumSoFar = dist.reduce((s, d) => s + Number(d.amount), 0);
+    const diff = bulkTotalNum - sumSoFar;
+    if (dist.length > 0) {
+      dist[dist.length - 1].amount = (Number(dist[dist.length - 1].amount) + diff).toFixed(2);
+    }
+    setBulkDistribution(dist);
+  };
+
   const addBulkIncome = async () => {
-    if (!bulkIncomeForm.amount || bulkIncomeForm.amount <= 0) {
-      toast.error("Monto inválido");
+    const total = bulkTotalNum;
+    if (total <= 0) {
+      toast.error("Ingresa el monto total del conteo general");
       return;
     }
-    if (!bulkIncomeForm.start_date || !bulkIncomeForm.end_date) {
-      toast.error("Selecciona un rango de fechas");
+    if (!bulkDaysValid) {
+      toast.error("Selecciona un rango de fechas válido");
       return;
     }
+
+    // ── Caso 1: SIN ajuste — registro general único, no ligado a una máquina.
+    if (!bulkAdjustMode) {
+      try {
+        await axios.post(`${API}/api/finances/general-income`, {
+          start_date: bulkIncomeForm.start_date,
+          end_date: bulkIncomeForm.end_date,
+          amount: total
+        }, { headers: getAuth() });
+        toast.success("Conteo general registrado");
+        setBulkIncomeForm({ start_date: monthStart(), end_date: today(), total_amount: "" });
+        setShowBulkModal(false);
+        setGeneralIncomePage(1);
+        fetchGeneralIncome();
+        fetchSummary();
+      } catch (err) {
+        console.error("General income error:", err);
+        toast.error("Error al registrar el conteo general");
+      }
+      return;
+    }
+
+    // ── Caso 2: CON ajuste — el usuario decidió repartir el total entre máquinas.
+    if (machines.length === 0) {
+      toast.error("No hay máquinas registradas para ajustar el reparto");
+      return;
+    }
+    if (Math.abs(distributionSum - total) >= 0.01) {
+      toast.error("La suma del ajuste debe coincidir con el monto total del conteo");
+      return;
+    }
+    const distribution = bulkDistribution.map(d => ({ machine_id: d.machine_id, amount: Number(d.amount) || 0 }));
+
     try {
-      await axios.post(`${API}/api/finances/machine-income/bulk-range`, {
-        start_date: bulkIncomeForm.start_date,
-        end_date: bulkIncomeForm.end_date,
-        amount: parseFloat(bulkIncomeForm.amount)
-      }, { headers: getAuth() });
-      toast.success(`Ingreso masivo registrado para el período`);
-      setBulkIncomeForm({ start_date: monthStart(), end_date: today(), amount: "" });
+      await Promise.all(distribution.map(d =>
+        axios.post(`${API}/api/finances/machine-income`, {
+          machine_id: d.machine_id,
+          date: bulkIncomeForm.end_date,
+          amount: d.amount
+        }, { headers: getAuth() })
+      ));
+      toast.success("Conteo general registrado y repartido entre las máquinas ajustadas");
+      setBulkIncomeForm({ start_date: monthStart(), end_date: today(), total_amount: "" });
+      setBulkAdjustMode(false);
+      setBulkDistribution([]);
       setShowBulkModal(false);
+      setIncomeHistoryPage(1);
       fetchMachineIncome();
       fetchMachines();
       fetchSummary();
       await updateAllMachinesCycles();
     } catch (err) {
       console.error("Bulk income error:", err);
-      toast.error("Error en ingreso masivo");
+      toast.error("Error al registrar el ajuste por máquina");
+    }
+  };
+
+  // ─── CRUD de registros generales (editar / eliminar) ──────────────────────
+  const openGeneralIncomeEdit = (record) => {
+    setEditingGeneralIncome({
+      id: record.id,
+      start_date: record.start_date,
+      end_date: record.end_date,
+      amount: String(record.amount ?? "")
+    });
+    setModal("generalIncomeForm");
+  };
+
+  const updateGeneralIncome = async () => {
+    if (!editingGeneralIncome) return;
+    const amount = Number(editingGeneralIncome.amount) || 0;
+    if (amount <= 0) { toast.error("Ingresa un monto válido"); return; }
+    if (!editingGeneralIncome.start_date || !editingGeneralIncome.end_date || editingGeneralIncome.start_date > editingGeneralIncome.end_date) {
+      toast.error("Selecciona un rango de fechas válido");
+      return;
+    }
+    try {
+      await axios.put(`${API}/api/finances/general-income/${editingGeneralIncome.id}`, {
+        start_date: editingGeneralIncome.start_date,
+        end_date: editingGeneralIncome.end_date,
+        amount
+      }, { headers: getAuth() });
+      toast.success("Registro general actualizado");
+      setModal(null);
+      setEditingGeneralIncome(null);
+      fetchGeneralIncome();
+      fetchSummary();
+    } catch (err) {
+      console.error("Update general income error:", err);
+      toast.error("Error al actualizar el registro general");
+    }
+  };
+
+  const deleteGeneralIncome = async (id) => {
+    try {
+      await axios.delete(`${API}/api/finances/general-income/${id}`, { headers: getAuth() });
+      toast.success("Registro general eliminado");
+      fetchGeneralIncome();
+      fetchSummary();
+    } catch (err) {
+      console.error("Delete general income error:", err);
+      toast.error("Error al eliminar el registro general");
     }
   };
 
@@ -720,6 +878,20 @@ export default function Finances() {
   });
   const txTotalPages = Math.ceil(filteredTx.length / txPageSize);
   const paginatedTx = filteredTx.slice((txPage - 1) * txPageSize, txPage * txPageSize);
+
+  const incomeHistoryTotalPages = Math.max(1, Math.ceil(machineIncomeRecords.length / incomeHistoryPageSize));
+  const paginatedIncomeHistory = machineIncomeRecords.slice(
+    (incomeHistoryPage - 1) * incomeHistoryPageSize,
+    incomeHistoryPage * incomeHistoryPageSize
+  );
+
+  const sortedGeneralIncome = [...generalIncomeRecords].sort((a, b) => (b.end_date || "").localeCompare(a.end_date || ""));
+  const generalIncomeTotalPages = Math.max(1, Math.ceil(sortedGeneralIncome.length / generalIncomePageSize));
+  const paginatedGeneralIncome = sortedGeneralIncome.slice(
+    (generalIncomePage - 1) * generalIncomePageSize,
+    generalIncomePage * generalIncomePageSize
+  );
+  const generalIncomeTotal = generalIncomeRecords.reduce((s, r) => s + (Number(r.amount) || 0), 0);
 
   const onStatDragStart = (i) => { dragStat.current = i; };
   const onStatDragEnter = (i) => { dragStatOv.current = i; };
@@ -1335,10 +1507,10 @@ export default function Finances() {
                   <label style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "#94a3b8", display: "block", marginBottom: 6 }}>Hasta</label>
                   <input type="date" value={machineFilterEnd} onChange={e => setMachineFilterEnd(e.target.value)} style={{ ...inputStyle, width: 148 }} />
                 </div>
-                <button style={{ ...btnOutline, alignSelf: "flex-end" }} onClick={fetchMachineIncome}><Filter size={14} />Filtrar</button>
+                <button style={{ ...btnOutline, alignSelf: "flex-end" }} onClick={() => { setIncomeHistoryPage(1); setGeneralIncomePage(1); fetchMachineIncome(); fetchGeneralIncome(); }}><Filter size={14} />Filtrar</button>
                 <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignSelf: "flex-end", flexWrap: "wrap" }}>
                   <button style={btnOutline} onClick={() => { setEditingMachine({}); setModal("machineForm"); }}><Plus size={14} />Nueva máquina</button>
-                  <button style={btnPrimary} onClick={() => setShowBulkModal(true)}><FileSpreadsheet size={14} />Ingreso masivo</button>
+                  <button style={btnPrimary} onClick={() => { setBulkAdjustMode(false); setBulkDistribution([]); setShowBulkModal(true); }}><FileSpreadsheet size={14} />Conteo general</button>
                 </div>
               </div>
 
@@ -1424,10 +1596,60 @@ export default function Finances() {
               </div>
             </div>
 
+            {/* ── Registros generales (conteo total, no ligado a una máquina) ── */}
+            <div style={card}>
+              <div style={{ padding: "16px 20px", borderBottom: "1.5px solid #f1f5f9", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+                <div>
+                  <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#0f172a" }}>Registros generales</p>
+                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "#94a3b8" }}>Conteos totales del período, sin atribuir a una máquina en particular</p>
+                </div>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "#10b981" }}>{fmtCurrency(generalIncomeTotal)}</span>
+              </div>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr>
+                      {["Período", "Monto", ""].map(h => <th key={h} style={thStyle}>{h}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paginatedGeneralIncome.map(r => (
+                      <tr key={r.id} className="finance-row" style={{ borderBottom: "1px solid #f8fafc" }}>
+                        <td style={{ ...tdStyle, color: "#64748b" }}>{fmtShortDate(r.start_date)} — {fmtShortDate(r.end_date)}</td>
+                        <td style={{ ...tdStyle, fontWeight: 700, color: "#10b981" }}>{fmtCurrency(r.amount)}</td>
+                        <td style={tdStyle}>
+                          <div className="action-btn" style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
+                            <button style={btnGhost} onClick={() => openGeneralIncomeEdit(r)}><Edit size={14} /></button>
+                            <button style={{ ...btnGhost, color: "#ef4444" }}
+                              onClick={() => setDeleteTarget({ type: "general-income", id: r.id, name: `${fmtShortDate(r.start_date)} — ${fmtShortDate(r.end_date)} (${fmtCurrency(r.amount)})` })}>
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                    {paginatedGeneralIncome.length === 0 && (
+                      <tr><td colSpan={3} style={{ padding: "30px", textAlign: "center", color: "#94a3b8" }}>Sin registros generales en este período</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              {generalIncomeTotalPages > 1 && (
+                <div style={{ padding: "12px 16px", borderTop: "1.5px solid #f1f5f9", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 13, color: "#64748b" }}>Página {generalIncomePage} de {generalIncomeTotalPages}</span>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button style={btnOutline} disabled={generalIncomePage === 1} onClick={() => setGeneralIncomePage(p => p - 1)}><ChevronLeft size={14} /></button>
+                    <button style={btnOutline} disabled={generalIncomePage === generalIncomeTotalPages} onClick={() => setGeneralIncomePage(p => p + 1)}><ChevronRight size={14} /></button>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {machineIncomeRecords.length > 0 && (
               <div style={card}>
-                <div style={{ padding: "16px 20px", borderBottom: "1.5px solid #f1f5f9" }}>
+                <div style={{ padding: "16px 20px", borderBottom: "1.5px solid #f1f5f9", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#0f172a" }}>Historial de ingresos</p>
+                  <span style={{ fontSize: 12, color: "#94a3b8" }}>{machineIncomeRecords.length} registro{machineIncomeRecords.length !== 1 ? "s" : ""}</span>
                 </div>
                 <div style={{ overflowX: "auto" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -1437,7 +1659,7 @@ export default function Finances() {
                       </tr>
                     </thead>
                     <tbody>
-                      {machineIncomeRecords.slice(0, 10).map(r => {
+                      {paginatedIncomeHistory.map(r => {
                         const machine = machines.find(m => m.id === r.machine_id);
                         return (
                           <tr key={r.id} className="finance-row" style={{ borderBottom: "1px solid #f8fafc" }}>
@@ -1453,9 +1675,21 @@ export default function Finances() {
                           </tr>
                         );
                       })}
+                      {paginatedIncomeHistory.length === 0 && (
+                        <tr><td colSpan={4} style={{ padding: "30px", textAlign: "center", color: "#94a3b8" }}>Sin registros en esta página</td></tr>
+                      )}
                     </tbody>
                   </table>
                 </div>
+                {incomeHistoryTotalPages > 1 && (
+                  <div style={{ padding: "12px 16px", borderTop: "1.5px solid #f1f5f9", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: 13, color: "#64748b" }}>Página {incomeHistoryPage} de {incomeHistoryTotalPages}</span>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button style={btnOutline} disabled={incomeHistoryPage === 1} onClick={() => setIncomeHistoryPage(p => p - 1)}><ChevronLeft size={14} /></button>
+                      <button style={btnOutline} disabled={incomeHistoryPage === incomeHistoryTotalPages} onClick={() => setIncomeHistoryPage(p => p + 1)}><ChevronRight size={14} /></button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1806,31 +2040,113 @@ export default function Finances() {
         </div>
       </PortalModal>
 
-      {/* Bulk income modal CON RANGO DE FECHAS */}
-      <PortalModal open={showBulkModal} onClose={() => setShowBulkModal(false)}>
-        <ModalHeader title="Ingreso masivo por período" onClose={() => setShowBulkModal(false)} />
+      {/* Editar registro general */}
+      <PortalModal open={modal === "generalIncomeForm"} onClose={() => { setModal(null); setEditingGeneralIncome(null); }}>
+        <ModalHeader title="Editar registro general" onClose={() => setModal(null)} />
         <div style={{ padding: "20px 24px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
-          <Field label="Fecha inicio">
-            <input type="date" style={inputStyle} value={bulkIncomeForm.start_date}
-              onChange={e => setBulkIncomeForm(f => ({ ...f, start_date: e.target.value }))} />
-          </Field>
-          <Field label="Fecha fin">
-            <input type="date" style={inputStyle} value={bulkIncomeForm.end_date}
-              onChange={e => setBulkIncomeForm(f => ({ ...f, end_date: e.target.value }))} />
-          </Field>
-          <Field label="Monto por máquina (por día)">
-            <input type="number" step="0.01" style={inputStyle} placeholder="$0.00"
-              value={bulkIncomeForm.amount}
-              onChange={e => setBulkIncomeForm(f => ({ ...f, amount: e.target.value }))} />
-          </Field>
-          <div style={{ background: "#fffbeb", border: "1.5px solid #fde68a", borderRadius: 10, padding: "12px 14px", fontSize: 13, color: "#78350f" }}>
-            ⚠️ Se registrará <strong>{fmtCurrency(bulkIncomeForm.amount || 0)}</strong> por día para <strong>{machines.length}</strong> máquina(s)
-            desde <strong>{fmtShortDate(bulkIncomeForm.start_date)}</strong> hasta <strong>{fmtShortDate(bulkIncomeForm.end_date)}</strong>.
-            <br /><br />
-            📊 Total estimado por máquina: <strong>{fmtCurrency((bulkIncomeForm.amount || 0) * getDaysBetweenDates(bulkIncomeForm.start_date, bulkIncomeForm.end_date))}</strong>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Field label="Fecha inicio">
+              <input type="date" style={inputStyle} value={editingGeneralIncome?.start_date || ""}
+                onChange={e => setEditingGeneralIncome(f => ({ ...f, start_date: e.target.value }))} />
+            </Field>
+            <Field label="Fecha fin">
+              <input type="date" style={inputStyle} value={editingGeneralIncome?.end_date || ""}
+                onChange={e => setEditingGeneralIncome(f => ({ ...f, end_date: e.target.value }))} />
+            </Field>
           </div>
-          <button style={{ ...btnPrimary, background: "#10b981", justifyContent: "center", height: 42 }} onClick={addBulkIncome}>
-            Registrar ingreso masivo
+          <Field label="Monto total del conteo">
+            <input type="number" step="0.01" style={inputStyle} placeholder="$0.00"
+              value={editingGeneralIncome?.amount || ""}
+              onChange={e => setEditingGeneralIncome(f => ({ ...f, amount: e.target.value }))} />
+          </Field>
+          <button style={{ ...btnPrimary, justifyContent: "center", height: 42 }} onClick={updateGeneralIncome}>
+            Actualizar registro
+          </button>
+        </div>
+      </PortalModal>
+
+      {/* Ingreso general (conteo total) — registro general por defecto; ajuste por máquina solo si se elige explícitamente */}
+      <PortalModal open={showBulkModal} onClose={() => { setShowBulkModal(false); setBulkAdjustMode(false); setBulkDistribution([]); }}>
+        <ModalHeader title="Conteo general de ingresos" onClose={() => setShowBulkModal(false)} />
+        <div style={{ padding: "20px 24px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Field label="Fecha inicio">
+              <input type="date" style={inputStyle} value={bulkIncomeForm.start_date}
+                onChange={e => setBulkIncomeForm(f => ({ ...f, start_date: e.target.value }))} />
+            </Field>
+            <Field label="Fecha fin">
+              <input type="date" style={inputStyle} value={bulkIncomeForm.end_date}
+                onChange={e => setBulkIncomeForm(f => ({ ...f, end_date: e.target.value }))} />
+            </Field>
+          </div>
+
+          <Field label="Monto total del conteo (ingreso masivo general)">
+            <input type="number" step="0.01" style={inputStyle} placeholder="$0.00"
+              value={bulkIncomeForm.total_amount}
+              onChange={e => setBulkIncomeForm(f => ({ ...f, total_amount: e.target.value }))} />
+          </Field>
+
+          <div style={{ background: "#f0f9ff", border: "1.5px solid #bae6fd", borderRadius: 10, padding: "12px 14px", fontSize: 13, color: "#0c4a6e" }}>
+            Este monto es el <strong>conteo general</strong> del período (por ejemplo, el retiro de caja de monedas de todo el negocio). Se registrará como <strong>un solo ingreso general</strong>, sin asociarlo a ninguna máquina en particular.
+          </div>
+
+          {/* El reparto/ajuste por máquina es 100% opcional y solo se activa a petición del usuario */}
+          <button
+            style={{ ...btnOutline, width: "100%", justifyContent: "center" }}
+            onClick={() => {
+              const next = !bulkAdjustMode;
+              if (next) initBulkDistribution();
+              else setBulkDistribution([]);
+              setBulkAdjustMode(next);
+            }}
+          >
+            <Settings2 size={14} />{bulkAdjustMode ? "Cancelar ajuste (volver a registro general)" : "Ajustar y atribuir a máquinas específicas"}
+          </button>
+
+          {bulkAdjustMode && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <p style={{ fontSize: 12, color: "#94a3b8", margin: 0 }}>
+                Atribuye el monto a máquinas específicas según corresponda a la situación real (por ejemplo, si una estuvo fuera de servicio o tuvo más uso que las demás). Se inicia con un reparto equitativo como punto de partida, pero puedes cambiar cualquier valor — la suma debe coincidir con el monto total del conteo.
+              </p>
+
+              {machines.length === 0 ? (
+                <div style={{ background: "#fef2f2", border: "1.5px solid #fecaca", borderRadius: 10, padding: "12px 14px", fontSize: 13, color: "#991b1b" }}>
+                  No hay máquinas registradas. Agrega al menos una máquina para poder atribuir el ajuste.
+                </div>
+              ) : (
+                <>
+                  {bulkDistribution.map((d, i) => (
+                    <div key={`${d.machine_id}-${i}`} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: "#0f172a" }}>{d.name}</span>
+                      <input
+                        type="number" step="0.01" style={{ ...inputStyle, width: 130 }}
+                        value={d.amount}
+                        onChange={e => setBulkDistribution(prev => prev.map((x, xi) => xi === i ? { ...x, amount: e.target.value } : x))}
+                      />
+                    </div>
+                  ))}
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 700, paddingTop: 8, borderTop: "1.5px solid #f1f5f9" }}>
+                    <span style={{ color: "#64748b" }}>Suma asignada</span>
+                    <span style={{ color: Math.abs(distributionSum - bulkTotalNum) < 0.01 ? "#10b981" : "#dc2626" }}>
+                      {fmtCurrency(distributionSum)} / {fmtCurrency(bulkTotalNum)}
+                    </span>
+                  </div>
+                  {Math.abs(distributionSum - bulkTotalNum) >= 0.01 && (
+                    <p style={{ fontSize: 12, color: "#dc2626", margin: 0 }}>
+                      La suma del ajuste debe coincidir con el monto total antes de guardar.
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          <button
+            style={{ ...btnPrimary, background: "#10b981", justifyContent: "center", height: 42, opacity: isBulkValid ? 1 : 0.5, cursor: isBulkValid ? "pointer" : "not-allowed" }}
+            disabled={!isBulkValid}
+            onClick={addBulkIncome}
+          >
+            {bulkAdjustMode ? "Registrar ajuste por máquina" : "Registrar conteo general"}
           </button>
         </div>
       </PortalModal>
@@ -1854,6 +2170,11 @@ export default function Finances() {
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <button style={{ ...btnOutline, flex: 1, justifyContent: "center" }} onClick={() => setDeleteTarget(null)}>Cancelar</button>
               <button style={{ ...btnPrimary, flex: 1, justifyContent: "center", background: "#dc2626" }} onClick={async () => {
+                if (deleteTarget.type === "general-income") {
+                  await deleteGeneralIncome(deleteTarget.id);
+                  setDeleteTarget(null);
+                  return;
+                }
                 try {
                   if (deleteTarget.type === "machine") await axios.delete(`${API}/api/finances/machines/${deleteTarget.id}`, { headers: getAuth() });
                   else if (deleteTarget.type === "machine-income") await axios.delete(`${API}/api/finances/machine-income/${deleteTarget.id}`, { headers: getAuth() });

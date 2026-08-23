@@ -1,6 +1,7 @@
 # routes/finances.py
 """
-Finances module — Expenses, Receipts, Mileage, Vehicles, Vendors, Categories, Machines.
+Finances module — Expenses, Receipts, Mileage, Vehicles, Vendors, Categories, Machines,
+General Income (conteo general, no ligado a una máquina).
 Full ERP-lite financial management for Ventura Fresh Laundry.
 """
 import uuid
@@ -56,6 +57,28 @@ class MachineBulkRangeCreate(BaseModel):
     start_date: str
     end_date: str
     amount: float
+
+class GeneralIncomeCreate(BaseModel):
+    """
+    Conteo general de ingresos para un período (p. ej. retiro de caja de
+    monedas de todo el negocio). Representa UN SOLO monto total para todo el
+    rango de fechas — no se multiplica por día ni se reparte entre máquinas.
+    Si en algún momento se requiere atribuirlo a máquinas específicas, eso se
+    hace aparte, creando registros individuales en /machine-income.
+    """
+    start_date: str
+    end_date: str
+    amount: float
+    notes: Optional[str] = ""
+
+class GeneralIncomeResponse(BaseModel):
+    id: str
+    start_date: str
+    end_date: str
+    amount: float
+    notes: str = ""
+    created_at: str
+    updated_at: Optional[str] = None
 
 class ExpenseCreate(BaseModel):
     date: str
@@ -259,6 +282,20 @@ async def create_bulk_machine_income(data: MachineBulkIncomeCreate, user: dict =
 
 @router.post("/machine-income/bulk-range")
 async def create_bulk_machine_income_range(data: MachineBulkRangeCreate, user: dict = Depends(get_current_user)):
+    """
+    ⚠️ OBSOLETO — mantenido solo por compatibilidad con integraciones previas.
+
+    Este endpoint inserta `amount` POR CADA DÍA del rango Y POR CADA MÁQUINA
+    (días × máquinas registros, cada uno con el monto completo). Por ejemplo,
+    con amount=1000, 2 máquinas y 22 días, esto crea 44 registros de $1000
+    (=$44,000 en total) — NO reparte ni promedia el monto, lo repite.
+
+    El frontend de Finanzas ya NO usa este endpoint para el "Conteo general de
+    ingresos"; ahora usa POST /api/finances/general-income, que registra el
+    monto tal cual se captura, una sola vez, sin multiplicarlo por día ni por
+    máquina. Se recomienda eliminar este endpoint (o dejar de exponerlo) una
+    vez confirmado que ninguna otra integración lo sigue llamando.
+    """
     machines = await db.machines.find({}, {"_id": 0, "id": 1}).to_list(100)
     if not machines:
         raise HTTPException(status_code=404, detail="No hay máquinas registradas")
@@ -352,6 +389,78 @@ async def delete_machine_income(income_id: str, user: dict = Depends(get_current
         {"id": machine_id},
         {"$set": {"total_income": total_income, "total_cycles": cycles}}
     )
+    return {"ok": True}
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# GENERAL INCOME — conteo general de ingresos, NO ligado a una máquina
+# ──────────────────────────────────────────────────────────────────────────
+# Representa un retiro/conteo total del negocio para un rango de fechas
+# (p. ej. la caja de monedas completa de un período). El monto se guarda tal
+# cual se captura: UN SOLO registro por conteo, sin multiplicarlo por día ni
+# repartirlo entre máquinas. Si se necesita atribuir a máquinas específicas,
+# eso se hace por separado con /machine-income (uno por máquina).
+
+def _validate_general_income(data: GeneralIncomeCreate):
+    if data.amount <= 0:
+        raise HTTPException(status_code=400, detail="El monto debe ser mayor a 0")
+    if not data.start_date or not data.end_date:
+        raise HTTPException(status_code=400, detail="Debes indicar fecha de inicio y fin")
+    if data.start_date > data.end_date:
+        raise HTTPException(status_code=400, detail="La fecha de inicio no puede ser posterior a la fecha de fin")
+
+@router.post("/general-income", response_model=GeneralIncomeResponse)
+async def create_general_income(data: GeneralIncomeCreate, user: dict = Depends(get_current_user)):
+    _validate_general_income(data)
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "id": str(uuid.uuid4()),
+        **data.dict(),
+        "created_at": now,
+        "updated_at": now,
+    }
+    await db.general_income.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+@router.get("/general-income", response_model=List[GeneralIncomeResponse])
+async def list_general_income(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    user: dict = Depends(get_current_user),
+):
+    # Devuelve registros cuyo rango [start_date, end_date] se traslapa con el
+    # filtro solicitado, no solo los que caen exactamente dentro de él.
+    query = {}
+    if start_date:
+        query["end_date"] = {"$gte": start_date}
+    if end_date:
+        query["start_date"] = {"$lte": end_date}
+    records = await db.general_income.find(query, {"_id": 0}).sort("end_date", -1).to_list(1000)
+    return records
+
+@router.get("/general-income/{record_id}", response_model=GeneralIncomeResponse)
+async def get_general_income(record_id: str, user: dict = Depends(get_current_user)):
+    doc = await db.general_income.find_one({"id": record_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="General income record not found")
+    return doc
+
+@router.put("/general-income/{record_id}", response_model=GeneralIncomeResponse)
+async def update_general_income(record_id: str, data: GeneralIncomeCreate, user: dict = Depends(get_current_user)):
+    _validate_general_income(data)
+    now = datetime.now(timezone.utc).isoformat()
+    result = await db.general_income.update_one({"id": record_id}, {"$set": {**data.dict(), "updated_at": now}})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="General income record not found")
+    doc = await db.general_income.find_one({"id": record_id}, {"_id": 0})
+    return doc
+
+@router.delete("/general-income/{record_id}")
+async def delete_general_income(record_id: str, user: dict = Depends(get_current_user)):
+    result = await db.general_income.delete_one({"id": record_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="General income record not found")
     return {"ok": True}
 
 
@@ -575,7 +684,16 @@ async def get_financial_dashboard(
     ).to_list(2000)
     machine_revenue = sum(m.get("amount", 0) for m in machine_income_data)
 
-    total_revenue = order_revenue + membership_revenue + machine_revenue
+    # Conteos generales cuyo período se traslapa con la ventana del dashboard
+    # (end_date >= date_from cubre el caso de un conteo que empezó antes pero
+    # terminó dentro del período consultado).
+    general_income_data = await db.general_income.find(
+        {"end_date": {"$gte": date_from}},
+        {"_id": 0, "amount": 1}
+    ).to_list(2000)
+    general_income_revenue = sum(g.get("amount", 0) for g in general_income_data)
+
+    total_revenue = order_revenue + membership_revenue + machine_revenue + general_income_revenue
     net_income = total_revenue - total_expenses
 
     mileage = await db.mileage_logs.find({"date": {"$gte": date_from}}, {"_id": 0}).to_list(500)
@@ -588,6 +706,7 @@ async def get_financial_dashboard(
         "order_revenue": round(order_revenue, 2),
         "membership_revenue": round(membership_revenue, 2),
         "machine_revenue": round(machine_revenue, 2),
+        "general_income_revenue": round(general_income_revenue, 2),
         "total_expenses": round(total_expenses, 2),
         "net_income": round(net_income, 2),
         "by_category": {k: round(v, 2) for k, v in sorted(by_category.items(), key=lambda x: -x[1])},
@@ -692,4 +811,3 @@ async def get_finances_summary(
         "total_memberships": len(paid_signups),
         "payment_methods": payment_methods,
     }
-
