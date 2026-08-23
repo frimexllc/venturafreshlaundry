@@ -811,3 +811,4 @@ async def get_finances_summary(
         "total_memberships": len(paid_signups),
         "payment_methods": payment_methods,
     }
+    
