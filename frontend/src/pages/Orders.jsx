@@ -218,13 +218,60 @@ const dateOnly = (dateStr) => {
 const isActiveStatus = (status) =>
   !["completed", "cancelled", "delivered"].includes(normalizeStatus(status));
 
+// ─── SLA / URGENCY LOGIC ────────────────────────────────────────────────────
+// El plazo se cuenta desde que la orden fue CREADA (created_at), no desde
+// la fecha de pickup. Cada plan tiene una ventana distinta:
+//   Standard -> 36 horas
+//   Premium  -> 24 horas
+//   Express  -> mismo día (vence a las 23:59:59 del día de creación)
+const PLAN_SLA_HOURS = {
+  standard: 36,
+  premium: 24,
+};
+
+const parseServerDate = (dateStr) => {
+  if (!dateStr) return null;
+  const d = new Date(dateStr);
+  return isNaN(d.getTime()) ? null : d;
+};
+
+const getSlaDeadline = (order) => {
+  const createdAt = parseServerDate(order?.created_at);
+  if (!createdAt) return null;
+
+  const plan = (order?.service_plan || "standard").toLowerCase();
+
+  if (plan === "express") {
+    // Vence al final del mismo día calendario en que se creó la orden
+    const deadline = new Date(createdAt);
+    deadline.setHours(23, 59, 59, 999);
+    return deadline;
+  }
+
+  const hours = PLAN_SLA_HOURS[plan] ?? PLAN_SLA_HOURS.standard;
+  return new Date(createdAt.getTime() + hours * 60 * 60 * 1000);
+};
+
 const getUrgency = (order) => {
   if (!isActiveStatus(order.status)) return null;
+
+  const deadline = getSlaDeadline(order);
+  const now = new Date();
+
+  // Fuera de tiempo: ya se venció el plazo real (fecha + hora), según el plan
+  if (deadline && now.getTime() > deadline.getTime()) {
+    return { level: "overdue" };
+  }
+
+  // Aún dentro del plazo, pero el pickup es hoy
   const pickup = dateOnly(order.pickup_date);
   const today = getLocalDate();
-  if (pickup && pickup < today) return { level: "overdue" };
   if (pickup && pickup === today) return { level: "today" };
-  if (order.service_plan === "express") return { level: "express" };
+
+  if ((order.service_plan || "").toLowerCase() === "express") {
+    return { level: "express" };
+  }
+
   return null;
 };
 
