@@ -8,6 +8,7 @@
 //          every section collapsible/expandable
 // FIXED: Section now uses forwardRef so addonsSectionRef actually attaches to the DOM
 //        node, which makes the auto-scroll-to-addons behavior work correctly.
+// ADDED: Editable recurrence (frequency/days/end date) directly from the operator dashboard.
 
 import { useState, useEffect, useCallback, useRef, forwardRef } from "react";
 import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
@@ -273,6 +274,16 @@ const RECURRENCE_LABELS = {
     twice_week: "Dos veces por semana",
   },
 };
+
+const RECURRENCE_WEEKDAYS = [
+  { value: "mon", en: "Mon", es: "Lun" },
+  { value: "tue", en: "Tue", es: "Mar" },
+  { value: "wed", en: "Wed", es: "Mié" },
+  { value: "thu", en: "Thu", es: "Jue" },
+  { value: "fri", en: "Fri", es: "Vie" },
+  { value: "sat", en: "Sat", es: "Sáb" },
+  { value: "sun", en: "Sun", es: "Dom" },
+];
 
 const groupBy = (arr, key) =>
   arr.reduce((acc, x) => {
@@ -581,16 +592,33 @@ function AddonPriceEditor({ addon, onSave, onCancel }) {
   );
 }
 
-// ─── RECURRENCE COMPONENT ──────────────────────────────────────────────────────
-function RecurrenceInfo({ order, t, locale }) {
+// ─── RECURRENCE COMPONENT (now editable from the operator side) ──────────────
+function RecurrenceInfo({ order, t, locale, onSave, saving }) {
   const [upcomingOrders, setUpcomingOrders] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showUpcoming, setShowUpcoming] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editRecurrence, setEditRecurrence] = useState(order?.recurrence || "once");
+  const [editDays, setEditDays] = useState(order?.recurrence_days || []);
+  const [editEndDate, setEditEndDate] = useState(
+    order?.recurrence_end_date ? String(order.recurrence_end_date).slice(0, 10) : ""
+  );
 
   const isRecurring = order?.is_recurring === true && order?.recurrence !== "once";
   const recurrenceKey = order?.recurrence || "once";
-  const recurrenceLabel = RECURRENCE_LABELS[locale === "es" ? "es" : "en"][recurrenceKey] || RECURRENCE_LABELS.en[recurrenceKey];
+  const langKey = locale === "es" ? "es" : "en";
+  const recurrenceLabel = RECURRENCE_LABELS[langKey][recurrenceKey] || RECURRENCE_LABELS.en[recurrenceKey];
   const recurrenceDays = order?.recurrence_days || [];
+
+  // Reset the edit form to the order's current values whenever edit mode opens
+  // (or the underlying order changes while editing is closed).
+  useEffect(() => {
+    if (!editing) {
+      setEditRecurrence(order?.recurrence || "once");
+      setEditDays(order?.recurrence_days || []);
+      setEditEndDate(order?.recurrence_end_date ? String(order.recurrence_end_date).slice(0, 10) : "");
+    }
+  }, [order, editing]);
 
   const fetchUpcomingOrders = useCallback(async () => {
     if (!order?.id) return;
@@ -616,7 +644,143 @@ function RecurrenceInfo({ order, t, locale }) {
     }
   }, [showUpcoming, isRecurring, fetchUpcomingOrders]);
 
-  if (!isRecurring) return null;
+  const toggleEditDay = (day) => {
+    setEditDays((prev) => {
+      if (prev.includes(day)) return prev.filter((d) => d !== day);
+      if (editRecurrence === "twice_week" && prev.length >= 2) return [prev[1], day];
+      return [...prev, day];
+    });
+  };
+
+  const handleStartEdit = (e) => {
+    e?.stopPropagation?.();
+    setEditing(true);
+  };
+
+  const handleCancelEdit = () => {
+    setEditing(false);
+    setEditRecurrence(order?.recurrence || "once");
+    setEditDays(order?.recurrence_days || []);
+    setEditEndDate(order?.recurrence_end_date ? String(order.recurrence_end_date).slice(0, 10) : "");
+  };
+
+  const handleSaveEdit = async () => {
+    const payload = {
+      recurrence: editRecurrence,
+      is_recurring: editRecurrence !== "once",
+      recurrence_days: editRecurrence === "twice_week" ? editDays : [],
+      recurrence_end_date: editRecurrence !== "once" && editEndDate ? editEndDate : null,
+    };
+    const ok = await onSave?.(payload);
+    if (ok) setEditing(false);
+  };
+
+  const editForm = (
+    <div className="space-y-3">
+      <div>
+        <Label className="text-[10px] font-bold text-slate-400 uppercase">{t("Frequency", "Frecuencia")}</Label>
+        <select
+          value={editRecurrence}
+          onChange={(e) => setEditRecurrence(e.target.value)}
+          className="w-full mt-1 h-9 text-sm border border-slate-200 rounded-lg px-2.5 bg-white"
+          data-testid="recurrence-select"
+        >
+          <option value="once">{RECURRENCE_LABELS[langKey].once}</option>
+          <option value="weekly">{RECURRENCE_LABELS[langKey].weekly}</option>
+          <option value="biweekly">{RECURRENCE_LABELS[langKey].biweekly}</option>
+          <option value="twice_week">{RECURRENCE_LABELS[langKey].twice_week}</option>
+        </select>
+      </div>
+
+      {editRecurrence === "twice_week" && (
+        <div>
+          <Label className="text-[10px] font-bold text-slate-400 uppercase">{t("Days (pick 2)", "Días (elige 2)")}</Label>
+          <div className="flex flex-wrap gap-1.5 mt-1">
+            {RECURRENCE_WEEKDAYS.map((d) => (
+              <button
+                key={d.value}
+                type="button"
+                onClick={() => toggleEditDay(d.value)}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                  editDays.includes(d.value)
+                    ? "bg-purple-600 text-white border-purple-600"
+                    : "bg-white text-slate-500 border-slate-200 hover:border-purple-300"
+                }`}
+                data-testid={`recurrence-day-${d.value}`}
+              >
+                {d[langKey]}
+              </button>
+            ))}
+          </div>
+          {editDays.length !== 2 && (
+            <p className="text-[11px] text-amber-600 mt-1">{t("Pick exactly 2 days", "Elige exactamente 2 días")}</p>
+          )}
+        </div>
+      )}
+
+      {editRecurrence !== "once" && (
+        <div>
+          <Label className="text-[10px] font-bold text-slate-400 uppercase">{t("End date (optional)", "Fecha fin (opcional)")}</Label>
+          <Input
+            type="date"
+            value={editEndDate}
+            onChange={(e) => setEditEndDate(e.target.value)}
+            className="mt-1 h-9 text-sm"
+            data-testid="recurrence-end-date"
+          />
+        </div>
+      )}
+
+      <div className="flex gap-2 pt-1">
+        <Button
+          size="sm"
+          onClick={handleSaveEdit}
+          disabled={saving || (editRecurrence === "twice_week" && editDays.length !== 2)}
+          className="flex-1 h-9 bg-purple-600 hover:bg-purple-700 text-xs rounded-xl"
+          data-testid="recurrence-save"
+        >
+          {saving && <RefreshCw className="w-3 h-3 animate-spin mr-1" />}
+          {t("Save frequency", "Guardar frecuencia")}
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={handleCancelEdit}
+          disabled={saving}
+          className="flex-1 h-9 text-xs rounded-xl"
+          data-testid="recurrence-cancel"
+        >
+          {t("Cancel", "Cancelar")}
+        </Button>
+      </div>
+    </div>
+  );
+
+  // Order is currently one-time and not being edited: show a compact row
+  // with a button to turn it into a recurring order, instead of hiding
+  // this section entirely (which is what made frequency uneditable before).
+  if (!isRecurring && !editing) {
+    return (
+      <Section
+        icon={<Repeat className="w-4 h-4" />}
+        title={t("Recurring Order", "Orden Recurrente")}
+        collapsible={false}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs text-slate-400">{t("This order is one-time.", "Esta orden es de una sola vez.")}</span>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 text-xs gap-1.5 rounded-lg"
+            onClick={handleStartEdit}
+            data-testid="recurrence-set-frequency"
+          >
+            <Edit2 className="w-3.5 h-3.5" />{t("Set frequency", "Definir frecuencia")}
+          </Button>
+        </div>
+      </Section>
+    );
+  }
 
   return (
     <Section
@@ -625,76 +789,92 @@ function RecurrenceInfo({ order, t, locale }) {
       collapsible={true}
       defaultOpen={true}
       badge={
-        <span className="text-[11px] font-bold text-purple-600 bg-purple-50 border border-purple-200 rounded-full px-2 py-0.5">
-          {recurrenceLabel}
-        </span>
+        !editing ? (
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] font-bold text-purple-600 bg-purple-50 border border-purple-200 rounded-full px-2 py-0.5">
+              {recurrenceLabel}
+            </span>
+            <button
+              onClick={handleStartEdit}
+              className="w-6 h-6 rounded-lg text-slate-400 hover:text-purple-600 hover:bg-purple-50 flex items-center justify-center"
+              title={t("Edit frequency", "Editar frecuencia")}
+              data-testid="recurrence-edit-btn"
+            >
+              <Edit2 className="w-3 h-3" />
+            </button>
+          </div>
+        ) : null
       }
     >
-      <div className="space-y-3">
-        <div className="flex items-center gap-3 flex-wrap">
-          <InfoChip
-            icon={<CalendarRange className="w-3.5 h-3.5" />}
-            label={t("Frequency", "Frecuencia")}
-            value={recurrenceLabel}
-            color="purple"
-          />
-          {recurrenceDays.length > 0 && (
+      {editing ? (
+        editForm
+      ) : (
+        <div className="space-y-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <InfoChip
-              icon={<CalendarDays className="w-3.5 h-3.5" />}
-              label={t("Days", "Días")}
-              value={recurrenceDays.join(", ")}
-              color="sky"
+              icon={<CalendarRange className="w-3.5 h-3.5" />}
+              label={t("Frequency", "Frecuencia")}
+              value={recurrenceLabel}
+              color="purple"
             />
-          )}
-          {order?.recurrence_end_date && (
-            <InfoChip
-              icon={<Calendar className="w-3.5 h-3.5" />}
-              label={t("End date", "Fecha fin")}
-              value={new Date(order.recurrence_end_date).toLocaleDateString()}
-              color="amber"
-            />
-          )}
-        </div>
-
-        {/* Upcoming pickups toggle */}
-        <button
-          onClick={() => setShowUpcoming(!showUpcoming)}
-          className="flex items-center gap-1.5 text-xs font-medium text-sky-600 hover:text-sky-700 transition-colors"
-        >
-          {showUpcoming ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-          {showUpcoming ? t("Hide upcoming", "Ocultar próximos") : t("Show upcoming pickups", "Ver próximos pickups")}
-        </button>
-
-        {showUpcoming && (
-          <div className="mt-2 rounded-xl border border-slate-100 bg-slate-50/50 overflow-hidden">
-            {loading ? (
-              <div className="p-4 text-center text-slate-400 text-xs">
-                <RefreshCw className="w-4 h-4 animate-spin mx-auto mb-1" />
-                {t("Loading...", "Cargando...")}
-              </div>
-            ) : upcomingOrders.length === 0 ? (
-              <div className="p-4 text-center text-slate-400 text-xs">
-                <Calendar className="w-5 h-5 opacity-30 mx-auto mb-1" />
-                {t("No upcoming recurring pickups", "No hay pickups recurrentes próximos")}
-              </div>
-            ) : (
-              <div className="divide-y divide-slate-100">
-                {upcomingOrders.map((uo) => (
-                  <div key={uo.id} className="flex items-center justify-between px-3 py-2.5 hover:bg-slate-100 transition-colors">
-                    <div className="flex items-center gap-2">
-                      <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                      <span className="text-xs font-mono text-slate-600">#{uo.order_number}</span>
-                    </div>
-                    <span className="text-xs font-medium text-slate-700">
-                      {new Date(uo.pickup_date).toLocaleDateString()}
-                    </span>
-                  </div>
-                ))}
-              </div>
+            {recurrenceDays.length > 0 && (
+              <InfoChip
+                icon={<CalendarDays className="w-3.5 h-3.5" />}
+                label={t("Days", "Días")}
+                value={recurrenceDays.join(", ")}
+                color="sky"
+              />
+            )}
+            {order?.recurrence_end_date && (
+              <InfoChip
+                icon={<Calendar className="w-3.5 h-3.5" />}
+                label={t("End date", "Fecha fin")}
+                value={new Date(order.recurrence_end_date).toLocaleDateString()}
+                color="amber"
+              />
             )}
           </div>
-        )}
-      </div>
+
+          {/* Upcoming pickups toggle */}
+          <button
+            onClick={() => setShowUpcoming(!showUpcoming)}
+            className="flex items-center gap-1.5 text-xs font-medium text-sky-600 hover:text-sky-700 transition-colors"
+          >
+            {showUpcoming ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            {showUpcoming ? t("Hide upcoming", "Ocultar próximos") : t("Show upcoming pickups", "Ver próximos pickups")}
+          </button>
+
+          {showUpcoming && (
+            <div className="mt-2 rounded-xl border border-slate-100 bg-slate-50/50 overflow-hidden">
+              {loading ? (
+                <div className="p-4 text-center text-slate-400 text-xs">
+                  <RefreshCw className="w-4 h-4 animate-spin mx-auto mb-1" />
+                  {t("Loading...", "Cargando...")}
+                </div>
+              ) : upcomingOrders.length === 0 ? (
+                <div className="p-4 text-center text-slate-400 text-xs">
+                  <Calendar className="w-5 h-5 opacity-30 mx-auto mb-1" />
+                  {t("No upcoming recurring pickups", "No hay pickups recurrentes próximos")}
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {upcomingOrders.map((uo) => (
+                    <div key={uo.id} className="flex items-center justify-between px-3 py-2.5 hover:bg-slate-100 transition-colors">
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                        <span className="text-xs font-mono text-slate-600">#{uo.order_number}</span>
+                      </div>
+                      <span className="text-xs font-medium text-slate-700">
+                        {new Date(uo.pickup_date).toLocaleDateString()}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </Section>
   );
 }
@@ -728,6 +908,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh, scrollTar
   const [editingAddonPrice, setEditingAddonPrice] = useState(null); // { id, currentPrice }
   const [addonCatalog, setAddonCatalog] = useState(DEFAULT_ADDON_CATALOG);
   const [addonCategoryLabels, setAddonCategoryLabels] = useState(CAT_LABELS);
+  const [savingRecurrence, setSavingRecurrence] = useState(false);
 
   const currentOrderIdRef = useRef(null);
   const billingSectionRef = useRef(null);
@@ -880,6 +1061,44 @@ export default function OrderDetailDialog({ order, onClose, onRefresh, scrollTar
     }, 200);
     onClose();
   }, [onClose]);
+
+  // ─── Recurrence handler ─────────────────────────────────────────────────────
+
+  const handleUpdateRecurrence = useCallback(async (payload) => {
+    const oid = localOrder?.id;
+    if (!oid) return false;
+    setSavingRecurrence(true);
+    try {
+      const res = await fetch(`${API_URL}/api/orders/${oid}`, {
+        method: "PUT",
+        headers: authHdrs(),
+        body: JSON.stringify(payload),
+      });
+      if (handle401(res)) return false;
+      if (handle403(res)) return false;
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.detail || t("Error updating frequency", "Error al actualizar frecuencia"));
+        return false;
+      }
+      const updated = await res.json();
+      setLocalOrder(prev => ({
+        ...prev,
+        recurrence: updated.recurrence ?? payload.recurrence,
+        is_recurring: updated.is_recurring ?? payload.is_recurring,
+        recurrence_days: updated.recurrence_days ?? payload.recurrence_days,
+        recurrence_end_date: updated.recurrence_end_date ?? payload.recurrence_end_date,
+      }));
+      toast.success(t("Frequency updated", "Frecuencia actualizada"));
+      onRefresh?.();
+      return true;
+    } catch {
+      toast.error(t("Connection error", "Error de conexión"));
+      return false;
+    } finally {
+      setSavingRecurrence(false);
+    }
+  }, [localOrder?.id, onRefresh, t]);
 
   // ─── Add-on handlers with custom price support ─────────────────────────────
 
@@ -1543,8 +1762,14 @@ export default function OrderDetailDialog({ order, onClose, onRefresh, scrollTar
               </Section>
             )}
 
-            {/* ── RECURRENCE INFORMATION ── */}
-            <RecurrenceInfo order={o} t={t} locale={locale} />
+            {/* ── RECURRENCE INFORMATION (now editable from the operator side) ── */}
+            <RecurrenceInfo
+              order={o}
+              t={t}
+              locale={locale}
+              onSave={handleUpdateRecurrence}
+              saving={savingRecurrence}
+            />
 
             {/* ── 2) Receipts & Evidence Images (merged, collapsible) ── */}
             <Section
