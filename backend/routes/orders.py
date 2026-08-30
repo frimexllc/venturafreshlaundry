@@ -540,7 +540,10 @@ async def update_order(
     update_data = data.copy()
     update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
 
-    # === NUEVO: sincronizar datos de contacto si se cambia el cliente ===
+    # === Sincronizar datos de contacto si se cambia el cliente ===
+    # FIX (v19): si el payload ya trae "preferred_contact" explícito (p.ej. el
+    # operador lo cambió a mano en el mismo guardado), esa elección manual
+    # tiene prioridad y NO se pisa con el valor por defecto del nuevo cliente.
     if "customer_id" in update_data:
         new_customer = await db.customers.find_one(
             {"id": update_data["customer_id"]}, {"_id": 0}
@@ -549,48 +552,125 @@ async def update_order(
             update_data["customer_name"]  = new_customer.get("name", "")
             update_data["customer_phone"] = new_customer.get("phone", "")
             update_data["customer_email"] = new_customer.get("email", "")
+            if "preferred_contact" not in update_data:
+                update_data["preferred_contact"] = new_customer.get("preferred_contact")
         else:
             raise HTTPException(status_code=404, detail="Customer not found")
 
+    current_order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not current_order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    # ← NUEVO: detectar si el peso se está registrando por primera vez en esta llamada
+    weight_just_confirmed = (
+        "actual_lbs" in update_data
+        and update_data.get("actual_lbs")
+        and float(update_data["actual_lbs"]) > 0
+        and not current_order.get("actual_lbs")
+    )
+
+    breakdown = None
+
     # Recalcular total si cambian campos relevantes
     if PRICING_RELEVANT_FIELDS & update_data.keys():
-        current_order = await db.orders.find_one({"id": order_id}, {"_id": 0})
-        if current_order:
-            customer = None
-            if current_order.get("customer_id"):
-                customer = await db.customers.find_one(
-                    {"id": current_order["customer_id"]}, {"_id": 0}
-                )
-            merged    = {**current_order, **update_data}
-            breakdown = await calculate_final_amount_with_membership(merged, customer)
+        customer = None
+        if current_order.get("customer_id"):
+            customer = await db.customers.find_one(
+                {"id": current_order["customer_id"]}, {"_id": 0}
+            )
+        merged    = {**current_order, **update_data}
+        breakdown = await calculate_final_amount_with_membership(merged, customer)
 
-            if breakdown:
-                new_total = breakdown["total"]
-                update_data.update({
-                    "total_amount":        new_total,
-                    "extra_charge":        new_total,
-                    "membership_discount": breakdown["membership_discount"],
-                    "price_per_lb":        breakdown["rate_used"],
-                    "lbs_from_allowance":  breakdown["lbs_covered"],
-                    "extra_lbs_billed":    breakdown["lbs_extra"],
-                })
+        if breakdown:
+            new_total = breakdown["total"]
+            update_data.update({
+                "total_amount":        new_total,
+                "extra_charge":        new_total,
+                "membership_discount": breakdown["membership_discount"],
+                "price_per_lb":        breakdown["rate_used"],
+                "lbs_from_allowance":  breakdown["lbs_covered"],
+                "extra_lbs_billed":    breakdown["lbs_extra"],
+            })
 
-                if new_total <= 0.50:
-                    update_data["payment_status"] = "paid"
-                    update_data["paid_at"]        = update_data["updated_at"]
-                    update_data["payment_method"] = "membership_covered"
-                    update_data["amount_paid"]    = 0.0
-                elif (
-                    current_order.get("payment_status") == "paid"
-                    and current_order.get("payment_method") == "membership_covered"
-                ):
-                    update_data["payment_status"] = "pending"
+            if new_total <= 0.50:
+                update_data["payment_status"] = "paid"
+                update_data["paid_at"]        = update_data["updated_at"]
+                update_data["payment_method"] = "membership_covered"
+                update_data["amount_paid"]    = 0.0
+            elif (
+                current_order.get("payment_status") == "paid"
+                and current_order.get("payment_method") == "membership_covered"
+            ):
+                update_data["payment_status"] = "pending"
 
     result = await db.orders.update_one({"id": order_id}, {"$set": update_data})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Order not found")
 
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+
+    # ── NUEVO: auto-cobro al confirmar peso ─────────────────────────────────
+    # Se dispara SOLO la primera vez que actual_lbs pasa de vacío a un valor,
+    # para no re-cobrar en ediciones posteriores del mismo campo.
+    if weight_just_confirmed and order.get("payment_status") not in ("paid", "processing"):
+        customer = None
+        if order.get("customer_id"):
+            customer = await db.customers.find_one({"id": order["customer_id"]}, {"_id": 0})
+
+        if customer:
+            amount_due = (breakdown or {}).get("total")
+            if amount_due is None:
+                # breakdown no se calculó arriba (actual_lbs no estaba en
+                # PRICING_RELEVANT_FIELDS por algún motivo raro) — recalcular.
+                breakdown = await calculate_final_amount_with_membership(order, customer)
+                amount_due = breakdown["total"] if breakdown else float(order.get("total_amount") or 0)
+
+            if amount_due <= 0.50:
+                # Cubierto por membresía — no hay nada que cobrar en Stripe.
+                await mark_order_covered_by_membership(
+                    order_id=order_id,
+                    lbs_covered=(breakdown or {}).get("lbs_covered", 0),
+                    membership_discount=(breakdown or {}).get("membership_discount", 0),
+                )
+                await create_audit_log(
+                    "ORDER_AUTO_COVERED_ON_WEIGHT", "order", order_id, current_user["id"],
+                    {"lbs_covered": (breakdown or {}).get("lbs_covered", 0)},
+                )
+            elif customer.get("stripe_payment_method_id"):
+                order_number = order.get("order_number", order_id[:8].upper())
+                try:
+                    charge = await charge_order_saved_card(
+                        order=order,
+                        customer=customer,
+                        amount=amount_due,
+                        description=f"Ventura Fresh Laundry — Order {order_number}",
+                        metadata={
+                            "order_number": order_number,
+                            "operator_id":  current_user.get("id", ""),
+                            "type":         "auto_charge_on_weight_confirmed",
+                        },
+                    )
+                    await create_audit_log(
+                        "ORDER_AUTO_CHARGE_ON_WEIGHT", "order", order_id, current_user["id"],
+                        charge.to_dict(),
+                    )
+                    if charge.charged:
+                        await emit_realtime("notification", {
+                            "type":     "order_payment",
+                            "order_id": order_id,
+                            "status":   "paid",
+                            "method":   "card_auto",
+                        })
+                except CustomerNotChargeable:
+                    logger.info(f"Order {order_id}: customer has no saved card, skipping auto-charge")
+                except OrderAlreadyProcessing as e:
+                    logger.warning(f"Order {order_id}: auto-charge skipped, {e}")
+            # else: no membership coverage and no saved card —
+            # queda "unpaid" y el cliente paga manualmente desde su cuenta
+            # (Zelle/Venmo/CashApp/Card), como ya soporta CustomerAccount.jsx.
+
+            order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+
     return OrderResponse(**order)
 
 

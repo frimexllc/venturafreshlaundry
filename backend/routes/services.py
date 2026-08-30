@@ -68,7 +68,86 @@ except ImportError:
 
 # Stripe fee configuration
 STRIPE_FEE_PERCENTAGE = 0.03  # 3% Stripe fee
+# ── Membership non-payment suspension policy ────────────────────────────────
+MEMBERSHIP_GRACE_DAYS = 5            # días de gracia tras la fecha de vencimiento
+MEMBERSHIP_MAX_FAILED_ATTEMPTS = 3   # intentos fallidos antes de suspender
+# ── Membership non-payment suspension policy ────────────────────────────────
+MEMBERSHIP_GRACE_DAYS = 5            # días de gracia tras la fecha de vencimiento
+MEMBERSHIP_MAX_FAILED_ATTEMPTS = 3   # intentos fallidos antes de suspender
 
+
+async def _maybe_suspend_membership_for_nonpayment(
+    customer_id: str,
+    due_date: Optional[datetime],
+    now: datetime,
+) -> dict:
+    """
+    Se llama SOLO cuando un intento de renovación automática (require_due=True)
+    falla. Incrementa el contador de intentos fallidos y, si se supera el
+    umbral (por número de intentos O por días de gracia vencidos), pausa la
+    membresía: is_active_member() dejará de otorgar allowance y
+    process_due_membership_renewals() dejará de reintentar cobrar (porque
+    auto_renew queda en False y el filtro de la query ya no lo selecciona).
+    """
+    customer = await db.customers.find_one({"id": customer_id}, {"_id": 0})
+    if not customer:
+        return {"suspended": False, "failed_attempts": 0}
+
+    failed_attempts = (customer.get("membership_failed_renewal_attempts") or 0) + 1
+    days_overdue = (now - due_date).days if due_date else 0
+
+    should_suspend = (
+        failed_attempts >= MEMBERSHIP_MAX_FAILED_ATTEMPTS
+        or days_overdue >= MEMBERSHIP_GRACE_DAYS
+    )
+
+    update = {
+        "membership_failed_renewal_attempts": failed_attempts,
+        "updated_at": now.isoformat(),
+    }
+
+    if should_suspend:
+        update.update({
+            "membership_status": "paused",
+            "auto_renew": False,
+            "membership_suspended_at": now.isoformat(),
+            "membership_suspended_reason": "non_payment",
+        })
+
+    await db.customers.update_one({"id": customer_id}, {"$set": update})
+
+    if should_suspend:
+        await create_audit_log(
+            "MEMBERSHIP_AUTO_SUSPENDED", "customer", customer_id, "auto_scheduler",
+            {
+                "failed_attempts": failed_attempts,
+                "days_overdue": days_overdue,
+                "grace_days": MEMBERSHIP_GRACE_DAYS,
+                "max_attempts": MEMBERSHIP_MAX_FAILED_ATTEMPTS,
+            },
+        )
+        try:
+            from notifications import send_email
+            frontend_url = os.environ.get("FRONTEND_URL", "")
+            await send_email(
+                customer.get("email"),
+                "Membership Paused — Payment Required",
+                f"Hi {customer.get('name')},\n\n"
+                f"We were unable to charge your membership after {failed_attempts} "
+                f"attempt(s) over {days_overdue} day(s). Your membership has been "
+                f"paused and your monthly allowance is no longer active.\n\n"
+                f"Add a payment method and reactivate your membership here: "
+                f"{frontend_url}/account\n\n"
+                f"Ventura Fresh Laundry"
+            )
+        except Exception as e:
+            logger.warning(f"Failed to send suspension email to {customer_id}: {e}")
+        logger.warning(
+            f"Membership auto-suspended for customer {customer_id} "
+            f"(attempts={failed_attempts}, days_overdue={days_overdue})"
+        )
+
+    return {"suspended": should_suspend, "failed_attempts": failed_attempts}
 # ============================================================
 # SERVICES PAGE CONFIG MODELS
 # ============================================================
@@ -586,7 +665,7 @@ async def _process_membership_renewal(
             "error": "No active membership to renew",
         }
 
-    due_date = _get_customer_membership_due_date(customer)
+    due_date = _get_customer_membership_due_date(customer)  # ← se usa también para suspensión
     if require_due and due_date and due_date > datetime.now(timezone.utc):
         return {
             "success": False,
@@ -635,7 +714,11 @@ async def _process_membership_renewal(
                 }
             },
         )
-        if require_due:
+        suspension_result = None
+        if require_due:  # ← NUEVO: solo suspende en intentos automáticos, no en clic manual del cliente
+            suspension_result = await _maybe_suspend_membership_for_nonpayment(
+                customer_id, due_date, datetime.now(timezone.utc)
+            )
             await _record_membership_transaction(
                 customer_id=customer_id,
                 subtotal=subtotal,
@@ -649,6 +732,7 @@ async def _process_membership_renewal(
                 metadata={
                     "automatic": require_due,
                     "previous_plan": current_plan if is_plan_change else None,
+                    "suspended": (suspension_result or {}).get("suspended", False),
                 },
                 error_message="No saved payment method",
             )
@@ -659,6 +743,7 @@ async def _process_membership_renewal(
             "plan_name": new_plan_name,
             "subtotal": subtotal,
             "total_with_fee": amount_to_charge,
+            "membership_suspended": (suspension_result or {}).get("suspended", False),  # ← NUEVO
         }
 
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -678,6 +763,7 @@ async def _process_membership_renewal(
                     "membership_last_renewal_status": "succeeded",
                     "membership_last_renewal_error": None,
                     "membership_payment_method_required": False,
+                    "membership_failed_renewal_attempts": 0,  # ← NUEVO: reset contador
                     "updated_at": now_iso,
                 }
             },
@@ -695,18 +781,9 @@ async def _process_membership_renewal(
         }
 
     try:
-        # Idempotency key scoped to customer + plan + day: a retried
-        # renewal attempt within the same day (network retry, duplicate
-        # cron trigger) reuses the same Stripe charge instead of billing
-        # the membership twice. A genuinely new renewal the next day gets
-        # a fresh key.
         membership_idempotency_key = (
             f"membership-charge:{customer_id}:{new_plan_name}:{now_iso[:10]}"
         )
-        # stripe-python is a synchronous SDK; running it directly here
-        # would block the FastAPI event loop for the duration of the
-        # network round-trip to Stripe, stalling every other concurrent
-        # request. Offload it to a worker thread.
         payment_intent = await asyncio.to_thread(
             stripe.PaymentIntent.create,
             amount=int(amount_to_charge * 100),
@@ -743,6 +820,11 @@ async def _process_membership_renewal(
                     }
                 },
             )
+            suspension_result = None
+            if require_due:  # ← NUEVO
+                suspension_result = await _maybe_suspend_membership_for_nonpayment(
+                    customer_id, due_date, datetime.now(timezone.utc)
+                )
             await _record_membership_transaction(
                 customer_id=customer_id,
                 subtotal=subtotal,
@@ -758,6 +840,7 @@ async def _process_membership_renewal(
                     "automatic": require_due,
                     "previous_plan": current_plan if is_plan_change else None,
                     "days_remaining": usage.get("days_remaining") if usage else None,
+                    "suspended": (suspension_result or {}).get("suspended", False),
                 },
                 error_message=f"Payment failed: {payment_intent.status}",
             )
@@ -766,6 +849,7 @@ async def _process_membership_renewal(
                 "error": f"Payment failed: {payment_intent.status}",
                 "requires_payment_method": True,
                 "payment_intent_id": payment_intent.id,
+                "membership_suspended": (suspension_result or {}).get("suspended", False),  # ← NUEVO
             }
 
         await db.customers.update_one(
@@ -782,6 +866,7 @@ async def _process_membership_renewal(
                     "membership_last_renewal_status": "succeeded",
                     "membership_last_renewal_error": None,
                     "membership_payment_method_required": False,
+                    "membership_failed_renewal_attempts": 0,  # ← NUEVO: reset contador
                     "updated_at": now_iso,
                 }
             },
@@ -840,6 +925,11 @@ async def _process_membership_renewal(
                 }
             },
         )
+        suspension_result = None
+        if require_due:  # ← NUEVO
+            suspension_result = await _maybe_suspend_membership_for_nonpayment(
+                customer_id, due_date, datetime.now(timezone.utc)
+            )
         await _record_membership_transaction(
             customer_id=customer_id,
             subtotal=subtotal,
@@ -855,6 +945,7 @@ async def _process_membership_renewal(
                 "previous_plan": current_plan if is_plan_change else None,
                 "days_remaining": usage.get("days_remaining") if usage else None,
                 "decline_code": e.error.code,
+                "suspended": (suspension_result or {}).get("suspended", False),
             },
             error_message=error_message,
         )
@@ -863,6 +954,7 @@ async def _process_membership_renewal(
             "error": error_message,
             "decline_code": e.error.code,
             "requires_payment_method": True,
+            "membership_suspended": (suspension_result or {}).get("suspended", False),  # ← NUEVO
         }
     except stripe.error.StripeError as e:
         error_message = str(e.user_message or e)
@@ -879,6 +971,11 @@ async def _process_membership_renewal(
                 }
             },
         )
+        suspension_result = None
+        if require_due:  # ← NUEVO
+            suspension_result = await _maybe_suspend_membership_for_nonpayment(
+                customer_id, due_date, datetime.now(timezone.utc)
+            )
         await _record_membership_transaction(
             customer_id=customer_id,
             subtotal=subtotal,
@@ -893,6 +990,7 @@ async def _process_membership_renewal(
                 "automatic": require_due,
                 "previous_plan": current_plan if is_plan_change else None,
                 "days_remaining": usage.get("days_remaining") if usage else None,
+                "suspended": (suspension_result or {}).get("suspended", False),
             },
             error_message=error_message,
         )
@@ -900,6 +998,7 @@ async def _process_membership_renewal(
             "success": False,
             "error": error_message,
             "requires_payment_method": True,
+            "membership_suspended": (suspension_result or {}).get("suspended", False),  # ← NUEVO
         }
     except Exception as e:
         error_message = str(e)
@@ -915,6 +1014,11 @@ async def _process_membership_renewal(
                 }
             },
         )
+        suspension_result = None
+        if require_due:  # ← NUEVO
+            suspension_result = await _maybe_suspend_membership_for_nonpayment(
+                customer_id, due_date, datetime.now(timezone.utc)
+            )
         await _record_membership_transaction(
             customer_id=customer_id,
             subtotal=subtotal,
@@ -929,12 +1033,14 @@ async def _process_membership_renewal(
                 "automatic": require_due,
                 "previous_plan": current_plan if is_plan_change else None,
                 "days_remaining": usage.get("days_remaining") if usage else None,
+                "suspended": (suspension_result or {}).get("suspended", False),
             },
             error_message=error_message,
         )
         return {
             "success": False,
             "error": error_message,
+            "membership_suspended": (suspension_result or {}).get("suspended", False),  # ← NUEVO
         }
 
 

@@ -50,6 +50,13 @@ const PLAN_LABELS = {
   express: { label: "Express", time: "Same Day", badge: "bg-amber-100 text-amber-700" },
 };
 
+// Mismas opciones que en Customers.jsx (preferred_contact del cliente)
+const CONTACT_PREFERENCE_LABELS = {
+  email: { en: "Email", es: "Correo" },
+  phone: { en: "Phone", es: "Teléfono" },
+  sms: { en: "SMS", es: "SMS" },
+};
+
 const STATUS_LABELS = {
   new: { label: "New", color: "bg-blue-100 text-blue-700", Icon: Sparkles },
   confirmed: { label: "Confirmed", color: "bg-cyan-100 text-cyan-700", Icon: CheckCircle2 },
@@ -197,6 +204,11 @@ const getServiceIcon = (key) => SERVICE_TYPES[key]?.Icon || Package;
 const getServiceColor = (key) => SERVICE_TYPES[key]?.color || "#64748b";
 const getPlanLabel = (key) => PLAN_LABELS[key]?.label || key || "-";
 const getPlanBadge = (key) => PLAN_LABELS[key]?.badge || "bg-slate-100 text-slate-700";
+const getContactPreferenceLabel = (key, locale) => {
+  const entry = CONTACT_PREFERENCE_LABELS[key];
+  if (!entry) return key || "-";
+  return locale === "es" ? entry.es : entry.en;
+};
 const getStatusLabel = (key) => STATUS_LABELS[normalizeStatus(key)]?.label || key || "-";
 const getStatusColor = (key) => STATUS_LABELS[normalizeStatus(key)]?.color || "bg-slate-100 text-slate-700";
 const getStatusIcon = (key) => STATUS_LABELS[normalizeStatus(key)]?.Icon || Package;
@@ -1522,6 +1534,7 @@ export default function Orders() {
       estimated_lbs: viewOrder.estimated_lbs || "",
       notes: viewOrder.notes || "",
       gate_code: viewOrder.gate_code || "",
+      preferred_contact: viewOrder.preferred_contact || "email",
     });
     setIsEditing(true);
   };
@@ -2073,6 +2086,28 @@ export default function Orders() {
                         onChange={(e) => setEditForm({ ...editForm, gate_code: e.target.value })}
                       />
                     </div>
+                    <div>
+                      <Label>{t("Contact Preference", "Preferencia de contacto")}</Label>
+                      <Select
+                        value={editForm.preferred_contact}
+                        onValueChange={(v) => setEditForm({ ...editForm, preferred_contact: v })}
+                      >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(CONTACT_PREFERENCE_LABELS).map(([key, val]) => (
+                            <SelectItem key={key} value={key}>
+                              {locale === "es" ? val.es : val.en}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-slate-400 mt-1">
+                        {t(
+                          "Applies only to this order. Doesn't change the customer's default.",
+                          "Aplica solo a esta orden. No cambia la preferencia por defecto del cliente."
+                        )}
+                      </p>
+                    </div>
                     <div className="sm:col-span-2">
                       <Label>{t("Notes", "Notas")}</Label>
                       <Textarea
@@ -2114,6 +2149,9 @@ export default function Orders() {
                           <StatusPill status={viewOrder.status} />
                           <p className="text-xs text-slate-400 mt-1">
                             {t("Payment", "Pago")}: {getPaymentLabel(viewOrder.payment_status)}
+                          </p>
+                          <p className="text-xs text-slate-400 mt-0.5">
+                            {t("Contact", "Contacto")}: {getContactPreferenceLabel(viewOrder.preferred_contact, locale)}
                           </p>
                         </div>
                       </div>

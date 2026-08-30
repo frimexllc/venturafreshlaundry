@@ -250,7 +250,8 @@ def is_active_member(order: Optional[dict], customer: Optional[dict]) -> bool:
     elif order:
         status_value = order.get("membership_status") or ""
     status_normalized = normalize_spaces(status_value).lower() if status_value else ""
-    if status_normalized in ("inactive", "cancelled", "canceled", "expired"):
+    # ← CAMBIO: se agrega "paused" a los estados que NO cuentan como activos
+    if status_normalized in ("inactive", "cancelled", "canceled", "expired", "paused"):
         return False
     if status_normalized in ("active", "current", "paid", "yes", "true"):
         plan = None
