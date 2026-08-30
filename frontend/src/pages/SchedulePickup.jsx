@@ -1545,6 +1545,16 @@ export default function SchedulePickup() {
         sms_consent:    form.sms_consent,
         notes,
         addon_services: addonList.map(s => ({ id: s.id, name: s.name, price: s.price, price_unit: s.price_unit, category: s.category })),
+        // FIX: distance_miles y delivery_fee se calculaban correctamente en
+        // el paso 2 (vía /store/check-address, con geocodificación real) y
+        // se mostraban en el resumen de confirmación — pero nunca se
+        // incluían en el payload que crea la orden. Esto hacía que el
+        // backend guardara la orden sin distance_miles, y por lo tanto
+        // calculate_delivery_fee() siempre recibía None y cobraba $0 de
+        // envío sin importar la distancia real. Ahora se mandan ambos
+        // valores ya calculados para que el backend los guarde en la orden.
+        distance_miles: form.distance_miles,
+        delivery_fee:   form.delivery_fee,
         ...recurrencePayload,
       });
     } catch (e) { toast.error(getErr(e)); }
@@ -2046,7 +2056,7 @@ export default function SchedulePickup() {
                     ) : (
                       <>🚀 {t("Start the wash cycle!", "¡Iniciar ciclo de lavado!")}</>
                     )}
-                    <span style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg,transparent,rgba(255,255,255,.1),transparent)", transform: "translateX(-100%)", animation: "tl_shimmer 2s ease infinite", pointerEvents: "none" }} />
+                    <span style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg,transparent,rgba(255,255,255,.1),transparent)", transform: "translateX(-100%)", animation: "tl_shimmer 2s ease infinite" }} />
                   </button>
                 </div>
               </div>
