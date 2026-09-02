@@ -266,6 +266,7 @@ const PhoneInput = ({ value, dialCode, dialIso, onValueChange, onDialCodeChange 
   const [srch, setSrch] = useState("");
   const [foc,  setFoc]  = useState(false);
   const ref = useRef(null);
+  const inputRef = useRef(null);
 
   useEffect(() => {
     const fn = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
@@ -276,11 +277,36 @@ const PhoneInput = ({ value, dialCode, dialIso, onValueChange, onDialCodeChange 
   const cur  = COUNTRIES.find((c) => c.code === dialCode && c.iso === dialIso) || COUNTRIES[0];
   const list = COUNTRIES.filter((c) => c.name.toLowerCase().includes(srch.toLowerCase()) || c.code.includes(srch));
   const fmt  = (raw) => {
-    const d = raw.replace(/\D/g, "").slice(0, 10);
+    let d = raw.replace(/\D/g, "");
+    // FIX: si el autofill del navegador pega el código de país pegado al
+    // número (ej. "14845088966", 11 dígitos empezando en 1), un simple
+    // .slice(0,10) cortaba los primeros 10 dígitos y descartaba el último
+    // dígito REAL del número en vez de quitar el "1" inicial. Ahora, si hay
+    // 11 dígitos y el primero es "1", se quita ese primer dígito antes de
+    // recortar a 10.
+    if (d.length === 11 && d[0] === "1") d = d.slice(1);
+    d = d.slice(0, 10);
     if (d.length >= 7) return `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`;
     if (d.length >= 4) return `(${d.slice(0,3)}) ${d.slice(3)}`;
     if (d.length >= 1) return `(${d}`;
     return "";
+  };
+
+  // FIX: cuando Chrome/otros navegadores autocompletan este campo, en varios
+  // casos NO disparan el evento 'input' nativo que React usa para su
+  // onChange sintético — el navegador escribe el valor directo en el nodo
+  // del DOM. React, al no enterarse, sigue pensando que el campo tiene su
+  // valor controlado anterior (ej. "") y en el siguiente render lo vuelve a
+  // escribir encima, lo que se ve como si el número se fuera "borrando de a
+  // dos" según React reconcilia. Truco estándar para detectar el autofill:
+  // el navegador aplica la pseudo-clase :-webkit-autofill al campo, y le
+  // enganchamos una animación CSS de 0ms (ver <style> más abajo) — cuando
+  // esa animación arranca, leemos el valor REAL del DOM y lo sincronizamos
+  // a mano con React.
+  const handleAutofillDetected = (e) => {
+    if (e.animationName !== "onAutoFillStart") return;
+    const domValue = inputRef.current?.value || "";
+    if (domValue) onValueChange(fmt(domValue));
   };
 
   const wrap = {
@@ -303,8 +329,9 @@ const PhoneInput = ({ value, dialCode, dialIso, onValueChange, onDialCodeChange 
           <span>{cur.code}</span>
           <ChevronDown size={12} style={{ opacity: .6, transform: open ? "rotate(180deg)" : "none", transition: "transform .15s" }} />
         </button>
-        <input type="tel" value={value}
+        <input type="tel" ref={inputRef} value={value} className="tl-phone-autofill-input"
           onChange={(e) => onValueChange(dialCode === "+1" ? fmt(e.target.value) : e.target.value.replace(/[^\d\s\-()+]/g, ""))}
+          onAnimationStart={handleAutofillDetected}
           placeholder={dialCode === "+1" ? "(___) ___-____" : "Phone number"}
           onFocus={() => setFoc(true)} onBlur={() => setFoc(false)}
           style={{ flex: 1, padding: "10px 12px", border: "none", outline: "none", background: "transparent",
@@ -1616,6 +1643,15 @@ export default function SchedulePickup() {
         @keyframes tl_shimmer{ 0%{transform:translateX(-100%)} 100%{transform:translateX(100%)} }
         .scrollbar-hide::-webkit-scrollbar{display:none}
         .scrollbar-hide{scrollbar-width:none}
+        /* FIX: truco de detección de autofill — dispara una animación de
+           0ms apenas Chrome/Edge/Safari marcan el campo como autocompletado,
+           así podemos leer el valor real del DOM y sincronizarlo con React
+           (ver handleAutofillDetected en PhoneInput). */
+        @keyframes onAutoFillStart { from {} to {} }
+        .tl-phone-autofill-input:-webkit-autofill {
+          animation-name: onAutoFillStart;
+          animation-duration: 0.001s;
+        }
       `}</style>
 
       <section ref={topRef} style={{ paddingTop: 80, paddingBottom: 0,
