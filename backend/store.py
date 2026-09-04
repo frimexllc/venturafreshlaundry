@@ -239,57 +239,47 @@ def geocode_address(address: str):
 
 
 async def calculate_shipping_fee(address: str) -> Dict[str, float]:
-    store_address, _, rate_per_km, min_fee, max_fee = get_store_config()
-    client = get_ors_client()
-    origin_coords = geocode_address(store_address)
-    destination_coords = geocode_address(address)
-    matrix = client.distance_matrix(
-        locations=[origin_coords, destination_coords],
-        profile="driving-car",
-        metrics=["distance"],
-        units="km"
+    coords = geocode_address_gmaps(address)
+    if not coords:
+        try:
+            dest_coords = geocode_address(address)
+            if dest_coords and len(dest_coords) >= 2:
+                coords = {"lat": dest_coords[1], "lng": dest_coords[0]}
+        except Exception as e:
+            logger.warning(f"ORS geocode fallback failed: {e}")
+
+    if not coords:
+        raise HTTPException(
+            status_code=400,
+            detail="Could not geocode address. Please provide a more precise address (street number + name + city + state + ZIP)."
+        )
+
+    straight_line_miles = haversine_miles(
+        STORE_LOCATION["lat"], STORE_LOCATION["lng"],
+        coords["lat"], coords["lng"]
     )
-    distances = matrix.get("distances") if matrix else None
-    if not distances or distances[0][1] is None:
-        raise HTTPException(status_code=400, detail="Unable to calculate distance")
-    distance_km = float(distances[0][1])
-    if distance_km > 200:
-        distance_km = distance_km / 1000
+    straight_line_miles = round(straight_line_miles * 100) / 100
 
-    zones = await get_zones_with_defaults(origin_coords)
-    matching = []
-    for zone in zones:
-        zone_type = zone.get("type")
-        if zone_type == "circle":
-            radius = float(zone.get("radius_km") or 0)
-            if radius and haversine_km(origin_coords, destination_coords) <= radius:
-                matching.append(zone)
-        elif zone_type == "polygon":
-            polygon = zone.get("polygon") or []
-            if polygon and point_in_polygon(destination_coords, polygon):
-                matching.append(zone)
+    config = DELIVERY_CONFIG
+    if straight_line_miles > config["max_service_miles"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Address is {straight_line_miles:.1f} miles away. Maximum distance is {config['max_service_miles']} miles."
+        )
 
-    if not matching:
-        raise HTTPException(status_code=400, detail="Address outside delivery zones")
+    fee = 0.00
+    for tier in config.get("fee_tiers", []):
+        if straight_line_miles <= tier["max_miles"]:
+            fee = tier["fee"]
+            break
 
-    best_zone = None
-    best_fee = None
-    for zone in matching:
-        z_rate = float(zone.get("rate_per_km") or rate_per_km)
-        z_min = float(zone.get("min_fee") or min_fee)
-        z_max = float(zone.get("max_fee") or max_fee)
-        fee = distance_km * z_rate
-        fee = max(fee, z_min)
-        fee = min(fee, z_max)
-        if best_fee is None or fee < best_fee:
-            best_fee = fee
-            best_zone = zone
+    distance_km = straight_line_miles * 1.60934
 
     return {
         "distance_km": round(distance_km, 2),
-        "fee": round(best_fee, 2),
-        "zone_id": best_zone.get("id") if best_zone else None,
-        "zone_name": best_zone.get("name") if best_zone else None
+        "fee": round(fee, 2),
+        "zone_id": None,
+        "zone_name": "Tiered Pricing"
     }
 
 def haversine_km(coord1: List[float], coord2: List[float]) -> float:

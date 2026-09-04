@@ -1218,6 +1218,59 @@ export default function SchedulePickup() {
     return formatLocalDate(tomorrow);
   };
 
+  const getMaxPickupDate = () => {
+    const d = new Date();
+    d.setFullYear(d.getFullYear() + 2);
+    return formatLocalDate(d);
+  };
+
+  const isValidDateFormat = (value) => /^\d{4}-\d{2}-\d{2}$/.test(value || "");
+
+  const validatePickupDateValue = (value) => {
+    if (!value) return { ok: true, reason: null };
+    if (!isValidDateFormat(value)) return { ok: false, reason: "format" };
+    const minDate = getMinPickupDate(form.service_plan || "standard");
+    const maxDate = getMaxPickupDate();
+    const year = parseInt(value.slice(0, 4), 10);
+    const currentYear = new Date().getFullYear();
+    if (year < currentYear - 1 || year > currentYear + 5) return { ok: false, reason: "year" };
+    if (value < minDate) return { ok: false, reason: "past", minDate };
+    if (value > maxDate) return { ok: false, reason: "future", maxDate };
+    try {
+      const parts = value.split("-").map(Number);
+      const dt = new Date(parts[0], parts[1] - 1, parts[2]);
+      if (dt.getFullYear() !== parts[0] || dt.getMonth() + 1 !== parts[1] || dt.getDate() !== parts[2]) {
+        return { ok: false, reason: "invalid" };
+      }
+    } catch {
+      return { ok: false, reason: "invalid" };
+    }
+    return { ok: true, reason: null };
+  };
+
+  const handlePickupDateChange = (rawValue) => {
+    if (!rawValue) { setF("pickup_date", ""); return; }
+    const check = validatePickupDateValue(rawValue);
+    if (!check.ok) {
+      if (check.reason === "past") {
+        toast.error(t("Pickup date cannot be in the past. Select a date from today onwards.",
+                       "La fecha de recogida no puede ser pasada. Selecciona una fecha desde hoy en adelante."));
+      } else if (check.reason === "year") {
+        toast.error(t("Enter a valid year for the pickup date.",
+                       "Ingresa un año válido para la fecha de recogida."));
+      } else if (check.reason === "format" || check.reason === "invalid") {
+        toast.error(t("Enter a valid date (YYYY-MM-DD).",
+                       "Ingresa una fecha válida (AAAA-MM-DD)."));
+      } else if (check.reason === "future") {
+        toast.error(t("Pickup date is too far in the future.",
+                       "La fecha de recogida está muy adelantada en el futuro."));
+      }
+      setF("pickup_date", "");
+      return;
+    }
+    setF("pickup_date", rawValue);
+  };
+
   useEffect(() => {
     if (!form.pickup_date || !form.pickup_time) return;
     const availability = getTimeSlotAvailability(form.pickup_date, form.service_plan, todayStr);
@@ -1501,6 +1554,21 @@ export default function SchedulePickup() {
     }
 
     if (cur === 3) {
+      if (!form.pickup_date) return err(t("Select a pickup date", "Selecciona una fecha de recogida"));
+      const dateCheck = validatePickupDateValue(form.pickup_date);
+      if (!dateCheck.ok) {
+        if (dateCheck.reason === "past")
+          return err(t("Pickup date cannot be in the past. Select a date from today onwards.",
+                        "La fecha de recogida no puede ser pasada. Selecciona una fecha desde hoy en adelante."));
+        if (dateCheck.reason === "year")
+          return err(t("Enter a valid year for the pickup date.",
+                        "Ingresa un año válido para la fecha de recogida."));
+        if (dateCheck.reason === "future")
+          return err(t("Pickup date is too far in the future.",
+                        "La fecha de recogida está muy adelantada en el futuro."));
+        return err(t("Enter a valid date (YYYY-MM-DD).",
+                      "Ingresa una fecha válida (AAAA-MM-DD)."));
+      }
       if (!form.pickup_time) return err(t("Select a time window", "Selecciona un horario"));
       const avail = getTimeSlotAvailability(form.pickup_date, form.service_plan, todayStr);
       if (form.pickup_time === "8am-12pm" && !avail.morning) {
@@ -1941,8 +2009,9 @@ export default function SchedulePickup() {
                         <FInput
                           type="date"
                           value={form.pickup_date}
-                          onChange={(e) => setF("pickup_date", e.target.value)}
+                          onChange={(e) => handlePickupDateChange(e.target.value)}
                           min={getMinPickupDate(form.service_plan)}
+                          max={getMaxPickupDate()}
                           style={{ cursor: "pointer" }}
                         />
                         {form.service_plan === "express" ? (
@@ -2066,14 +2135,15 @@ export default function SchedulePickup() {
                       (cur === 4 && !form.terms) ||
                       (cur === 1 && !!distanceError) ||
                       (cur === 1 && distanceChecking) ||
-                      (cur === 2 && form.recurrence === "twice_week" && form.recurrence_days.length !== 2)
+                      (cur === 2 && form.recurrence === "twice_week" && form.recurrence_days.length !== 2) ||
+                      (cur === 3 && !form.pickup_date)
                     }
                     style={{ flex: 1, padding: "11px 16px", borderRadius: 9, border: "none",
                       background: "linear-gradient(135deg,#0ea5e9,#2563eb)", color: "white",
                       fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".1em",
-                      cursor: (submitting || (cur === 4 && !form.terms) || (cur === 1 && !!distanceError) || (cur === 1 && distanceChecking) || (cur === 2 && form.recurrence === "twice_week" && form.recurrence_days.length !== 2))
+                      cursor: (submitting || (cur === 4 && !form.terms) || (cur === 1 && !!distanceError) || (cur === 1 && distanceChecking) || (cur === 2 && form.recurrence === "twice_week" && form.recurrence_days.length !== 2) || (cur === 3 && !form.pickup_date))
                         ? "not-allowed" : "pointer",
-                      opacity: (submitting || (cur === 4 && !form.terms) || (cur === 1 && !!distanceError) || (cur === 1 && distanceChecking) || (cur === 2 && form.recurrence === "twice_week" && form.recurrence_days.length !== 2))
+                      opacity: (submitting || (cur === 4 && !form.terms) || (cur === 1 && !!distanceError) || (cur === 1 && distanceChecking) || (cur === 2 && form.recurrence === "twice_week" && form.recurrence_days.length !== 2) || (cur === 3 && !form.pickup_date))
                         ? 0.5 : 1,
                       fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
                       boxShadow: "var(--shadow-sky)", transition: "all .15s", position: "relative", overflow: "hidden" }}>

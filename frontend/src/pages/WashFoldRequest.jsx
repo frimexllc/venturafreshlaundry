@@ -742,6 +742,68 @@ export default function WashFoldRequest() {
   const [foldDone, setFoldDone]     = useState(false);
   const setF = useCallback((k, v) => setForm(p => ({ ...p, [k]: v })), []);
 
+  const formatLocalDate = (date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  };
+
+  const todayStr = formatLocalDate(new Date());
+
+  const getMaxDropoffDate = () => {
+    const d = new Date();
+    d.setFullYear(d.getFullYear() + 2);
+    return formatLocalDate(d);
+  };
+
+  const isValidDateFormat = (value) => /^\d{4}-\d{2}-\d{2}$/.test(value || "");
+
+  const validateDropoffDateValue = (value) => {
+    if (!value) return { ok: true, reason: null };
+    if (!isValidDateFormat(value)) return { ok: false, reason: "format" };
+    const minDate = todayStr;
+    const maxDate = getMaxDropoffDate();
+    const year = parseInt(value.slice(0, 4), 10);
+    const currentYear = new Date().getFullYear();
+    if (year < currentYear - 1 || year > currentYear + 5) return { ok: false, reason: "year" };
+    if (value < minDate) return { ok: false, reason: "past", minDate };
+    if (value > maxDate) return { ok: false, reason: "future", maxDate };
+    try {
+      const parts = value.split("-").map(Number);
+      const dt = new Date(parts[0], parts[1] - 1, parts[2]);
+      if (dt.getFullYear() !== parts[0] || dt.getMonth() + 1 !== parts[1] || dt.getDate() !== parts[2]) {
+        return { ok: false, reason: "invalid" };
+      }
+    } catch {
+      return { ok: false, reason: "invalid" };
+    }
+    return { ok: true, reason: null };
+  };
+
+  const handleDropoffDateChange = (rawValue) => {
+    if (!rawValue) { setF("dropoff_date", ""); return; }
+    const check = validateDropoffDateValue(rawValue);
+    if (!check.ok) {
+      if (check.reason === "past") {
+        toast.error(t("Drop-off date cannot be in the past. Select today or a future date.",
+                       "La fecha de entrega no puede ser pasada. Selecciona hoy o una fecha futura."));
+      } else if (check.reason === "year") {
+        toast.error(t("Enter a valid year for the drop-off date.",
+                       "Ingresa un año válido para la fecha de entrega."));
+      } else if (check.reason === "format" || check.reason === "invalid") {
+        toast.error(t("Enter a valid date (YYYY-MM-DD).",
+                       "Ingresa una fecha válida (AAAA-MM-DD)."));
+      } else if (check.reason === "future") {
+        toast.error(t("Drop-off date is too far in the future.",
+                       "La fecha de entrega está muy adelantada en el futuro."));
+      }
+      setF("dropoff_date", "");
+      return;
+    }
+    setF("dropoff_date", rawValue);
+  };
+
   const scrollToForm = () => {
     if (formRef.current) formRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
   };
@@ -819,8 +881,24 @@ export default function WashFoldRequest() {
       if (form.contact_method === "text" && !form.sms_consent)
         return err(t("Accept SMS consent", "Acepta el consentimiento SMS"));
     }
-    if (cur === 1 && !form.dropoff_date)
-      return err(t("Select a drop-off date", "Selecciona fecha de entrega"));
+    if (cur === 1) {
+      if (!form.dropoff_date)
+        return err(t("Select a drop-off date", "Selecciona fecha de entrega"));
+      const dateCheck = validateDropoffDateValue(form.dropoff_date);
+      if (!dateCheck.ok) {
+        if (dateCheck.reason === "past")
+          return err(t("Drop-off date cannot be in the past. Select today or a future date.",
+                        "La fecha de entrega no puede ser pasada. Selecciona hoy o una fecha futura."));
+        if (dateCheck.reason === "year")
+          return err(t("Enter a valid year for the drop-off date.",
+                        "Ingresa un año válido para la fecha de entrega."));
+        if (dateCheck.reason === "future")
+          return err(t("Drop-off date is too far in the future.",
+                        "La fecha de entrega está muy adelantada en el futuro."));
+        return err(t("Enter a valid date (YYYY-MM-DD).",
+                      "Ingresa una fecha válida (AAAA-MM-DD)."));
+      }
+    }
     if (cur === 2 && !form.plan)
       return err(t("Select a turnaround plan", "Selecciona un plan de tiempo"));
     if (cur === 3 && !form.terms)
@@ -1129,8 +1207,9 @@ export default function WashFoldRequest() {
                       </div>
                       <FF label={t("Preferred drop-off date *","Fecha preferida de entrega *")}>
                         <FInput type="date" value={form.dropoff_date}
-                          onChange={e=>setF("dropoff_date",e.target.value)}
-                          min={new Date().toISOString().split("T")[0]}
+                          onChange={e=>handleDropoffDateChange(e.target.value)}
+                          min={todayStr}
+                          max={getMaxDropoffDate()}
                           style={{ cursor:"pointer" }} data-testid="washfold-date"/>
                       </FF>
                     </>
@@ -1245,13 +1324,13 @@ export default function WashFoldRequest() {
                     </button>
                   )}
                   <button type="button" onClick={handleNext}
-                    disabled={submitting||(cur===3&&!form.terms)}
+                    disabled={submitting||(cur===3&&!form.terms)||(cur===1&&!form.dropoff_date)||(cur===2&&!form.plan)}
                     style={{ flex:1, padding:"12px 16px", borderRadius:10, border:"none",
-                      background:(submitting||(cur===3&&!form.terms))
+                      background:(submitting||(cur===3&&!form.terms)||(cur===1&&!form.dropoff_date)||(cur===2&&!form.plan))
                         ?"#94a3b8":"linear-gradient(135deg,#38bdf8,#0ea5e9,#0284c7)",
                       color:"white", fontSize:12, fontWeight:700, textTransform:"uppercase",
                       letterSpacing:".1em",
-                      cursor:(submitting||(cur===3&&!form.terms))?"not-allowed":"pointer",
+                      cursor:(submitting||(cur===3&&!form.terms)||(cur===1&&!form.dropoff_date)||(cur===2&&!form.plan))?"not-allowed":"pointer",
                       fontFamily:"inherit", display:"flex", alignItems:"center",
                       justifyContent:"center", gap:7,
                       boxShadow:submitting?"none":"0 4px 18px rgba(14,165,233,.35)",

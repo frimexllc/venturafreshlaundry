@@ -368,20 +368,21 @@ export function buildDisplayBreakdown(order) {
   const lbsExtraFromBackend = Number(order.extra_lbs_billed ?? Math.max(0, lbs - lbsCoveredFromBackend));
   const discount = Number(order.membership_discount ?? 0);
   const extraCharge = Number(order.extra_charge ?? 0);
+  const backendTotalAmount = Number(order.total_amount ?? 0);
   const deliveryFee = Number(order.delivery_fee ?? calcDeliveryFee(order.distance_miles));
   const addonsTotal = (order.addon_services || []).reduce(
-    (s, a) => s + Number(a.price || 0) * Number(a.qty || a.quantity || 1), 0
+    (s, a) => s + Number(a.custom_price || a.price || 0) * Number(a.qty || a.quantity || 1), 0
   );
 
   const allowanceExhausted = isMember && lbsCoveredFromBackend === 0 && lbs > 0;
 
-  // Cuando allowance agotado, todas las lbs se cobran a tarifa regular
-  // y no deben mostrarse líneas de "Extra lbs" separadas.
   const lbsCovered = allowanceExhausted ? 0 : lbsCoveredFromBackend;
   const lbsExtra = allowanceExhausted ? 0 : lbsExtraFromBackend;
 
   let total;
-  if (extraCharge > 0) {
+  if (backendTotalAmount > 0) {
+    total = backendTotalAmount;
+  } else if (extraCharge > 0) {
     total = extraCharge + deliveryFee + addonsTotal;
   } else if (isMember && lbsCoveredFromBackend >= lbs && MEMBERSHIP_ALLOWANCE_SURCHARGE[plan] === 0 && addonsTotal === 0 && deliveryFee === 0) {
     total = 0;

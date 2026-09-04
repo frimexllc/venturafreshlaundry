@@ -3,10 +3,11 @@ import uuid
 import asyncio
 import logging
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from typing import Optional, List, Dict, Any
 
 from fastapi import APIRouter, HTTPException, Request, Depends
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, validator
 
 from auth import get_current_user, require_admin
 from utils import (
@@ -23,6 +24,12 @@ from notifications import send_sms, send_email, send_whatsapp, send_voice_call, 
 from ai_assistant import get_groq_client
 
 logger = logging.getLogger(__name__)
+
+# FIX: la validación de "no fechas en el pasado" para pickup_date se hace en
+# hora del Pacífico (misma zona horaria que ya usa create_order() en
+# orders.py vía TZ_PACIFIC), para que un pickup agendado para "hoy" no se
+# rechace erróneamente cerca de la medianoche UTC.
+TZ_PACIFIC = ZoneInfo("America/Los_Angeles")
 
 # ─── Helper para detectar país ────────────────────────────────────────
 def detect_country(phone: str) -> Optional[str]:
@@ -125,7 +132,12 @@ class PublicPickupRequest(BaseModel):
     email: EmailStr
     phone: str
     address: str
-    pickup_date: Optional[str] = None
+    # FIX: pickup_date era Optional[str] = None — una orden podía crearse sin
+    # fecha de recogida. Ahora es obligatorio a nivel de modelo (FastAPI
+    # devuelve 422 si falta el campo), y además se valida abajo en el
+    # endpoint que no sea una cadena vacía/solo-espacios, que tenga el
+    # formato correcto, y que no sea una fecha pasada.
+    pickup_date: str
     pickup_time: Optional[str] = None
     service_type: Optional[str] = "pickup_delivery"
     service_plan: Optional[str] = "standard"
@@ -137,6 +149,12 @@ class PublicPickupRequest(BaseModel):
     recurrence: Optional[str] = "once"
     recurrence_end_date: Optional[str] = None
     recurrence_days: Optional[List[str]] = None   # NUEVO: para 'twice_week'
+
+    @validator("pickup_date")
+    def pickup_date_not_blank(cls, v):
+        if not v or not v.strip():
+            raise ValueError("pickup_date is required")
+        return v.strip()
 
 class PublicWashFoldRequest(BaseModel):
     name: str
@@ -375,6 +393,28 @@ def get_public_forms_router(
     @router.post("/public/pickup-request")
     async def public_pickup_request(data: PublicPickupRequest):
         now = datetime.now(timezone.utc).isoformat()
+
+        # FIX: pickup_date ahora es obligatorio (ver PublicPickupRequest más
+        # arriba — ya no acepta None/faltante gracias al tipo str sin default
+        # y al validator pickup_date_not_blank). Aquí además se valida que:
+        #   1) tenga el formato correcto YYYY-MM-DD, y
+        #   2) no sea una fecha ya pasada (en hora del Pacífico, igual que
+        #      create_order() en orders.py).
+        # Esto evita que se cree una orden sin fecha de recogida o con una
+        # fecha inválida/en el pasado desde el formulario público.
+        try:
+            pickup_date_obj = datetime.strptime(data.pickup_date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="pickup_date must be in YYYY-MM-DD format",
+            )
+        today_pacific = datetime.now(TZ_PACIFIC).date()
+        if pickup_date_obj < today_pacific:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Pickup date cannot be in the past. Today is {today_pacific.isoformat()}",
+            )
 
         normalized_name = normalize_name(data.name)
         normalized_email = normalize_email(data.email) or data.email.lower()

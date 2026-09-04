@@ -998,6 +998,15 @@ def build_ticket_svg(order: dict, customer: Optional[dict], qr_payload: str) -> 
     payment_status = (order.get("payment_status") or "unpaid").upper()
     payment_method = (order.get("payment_method") or "-").upper()
 
+    # --- PLAN LABEL ---
+    plan_key = order.get("service_plan") or "standard"
+    plan_labels = {
+        "standard": "Standard (36h)",
+        "premium":  "Premium (24h)",
+        "express":  "Express (Same Day)",
+    }
+    plan_label = plan_labels.get(plan_key.lower(), plan_key)
+
     def safe_float(v, fallback="--"):
         if v is None or v == "":
             return fallback
@@ -1048,8 +1057,11 @@ def build_ticket_svg(order: dict, customer: Optional[dict], qr_payload: str) -> 
     BC_2 = B2_X + BOX_W / 2
     BC_3 = B3_X + BOX_W / 2
 
-    # Price rows
-    cur_y = 445
+    # --- OFFSET por el nuevo campo PLAN ---
+    OFFSET = 22   # píxeles extra para la línea de PLAN
+
+    # Price rows (se mantienen igual, pero sus coordenadas se calculan a partir de cur_y que se actualiza)
+    cur_y = 445 + OFFSET  # antes 445, sumamos OFFSET
     rows = ""
 
     rows += f"""
@@ -1125,6 +1137,7 @@ def build_ticket_svg(order: dict, customer: Optional[dict], qr_payload: str) -> 
     # Dynamic height so it never cuts the ticket
     H = footer_y + 38
 
+    # Ahora construyo el SVG con las coordenadas ajustadas con OFFSET
     svg = f"""<svg xmlns="http://www.w3.org/2000/svg"
      width="4in" height="{H}px" viewBox="0 0 {W} {H}">
 
@@ -1273,38 +1286,43 @@ def build_ticket_svg(order: dict, customer: Optional[dict], qr_payload: str) -> 
   <text x="145" y="132" class="label">SERVICE / SERVICIO</text>
   <text x="145" y="150" class="value">{html.escape(str(service).replace("_", " ").title())}</text>
 
-  <text x="145" y="176" class="label">DATE / FECHA</text>
-  <text x="145" y="194" class="value">{html.escape(str(pickup_date))} {html.escape(str(window))}</text>
+  <!-- PLAN -->
+  <text x="145" y="176" class="label">PLAN</text>
+  <text x="145" y="194" class="value">{html.escape(plan_label)}</text>
 
-  <line x1="{PAD}" y1="216" x2="{W - PAD}" y2="216" class="dash-line"/>
+  <!-- DATE / FECHA (desplazada por OFFSET) -->
+  <text x="145" y="{216 + OFFSET}" class="label">DATE / FECHA</text>
+  <text x="145" y="{234 + OFFSET}" class="value">{html.escape(str(pickup_date))} {html.escape(str(window))}</text>
 
-  <!-- CUSTOMER -->
-  <text x="{PAD}" y="238" class="section-title">CUSTOMER / CLIENTE</text>
-  <text x="{PAD}" y="260" class="customer-name">{html.escape(str(name))}</text>
-  <text x="{PAD}" y="280" class="small-text">{html.escape(str(phone))}</text>
-  <text x="{PAD}" y="300" class="address-text">{html.escape(addr)}</text>
+  <line x1="{PAD}" y1="{256 + OFFSET}" x2="{W - PAD}" y2="{256 + OFFSET}" class="dash-line"/>
 
-  <line x1="{PAD}" y1="320" x2="{W - PAD}" y2="320" class="dash-line"/>
+  <!-- CUSTOMER / CLIENTE (desplazada) -->
+  <text x="{PAD}" y="{278 + OFFSET}" class="section-title">CUSTOMER / CLIENTE</text>
+  <text x="{PAD}" y="{300 + OFFSET}" class="customer-name">{html.escape(str(name))}</text>
+  <text x="{PAD}" y="{320 + OFFSET}" class="small-text">{html.escape(str(phone))}</text>
+  <text x="{PAD}" y="{340 + OFFSET}" class="address-text">{html.escape(addr)}</text>
+
+  <line x1="{PAD}" y1="{360 + OFFSET}" x2="{W - PAD}" y2="{360 + OFFSET}" class="dash-line"/>
 
   <!-- WEIGHT METRICS -->
-  <text x="{PAD}" y="342" class="section-title">WEIGHT METRICS / METRICAS DE PESO</text>
+  <text x="{PAD}" y="{382 + OFFSET}" class="section-title">WEIGHT METRICS / METRICAS DE PESO</text>
 
-  <rect x="{B1_X}" y="354" width="{BOX_W}" height="{BOX_H}" rx="5" fill="white" stroke="#111" stroke-width="1"/>
-  <text x="{BC_1}" y="372" text-anchor="middle" class="metric-label">EST. LBS</text>
-  <text x="{BC_1}" y="401" text-anchor="middle" class="metric-value">{html.escape(est_lbs)}</text>
+  <rect x="{B1_X}" y="{394 + OFFSET}" width="{BOX_W}" height="{BOX_H}" rx="5" fill="white" stroke="#111" stroke-width="1"/>
+  <text x="{BC_1}" y="{412 + OFFSET}" text-anchor="middle" class="metric-label">EST. LBS</text>
+  <text x="{BC_1}" y="{441 + OFFSET}" text-anchor="middle" class="metric-value">{html.escape(est_lbs)}</text>
 
-  <rect x="{B2_X}" y="354" width="{BOX_W}" height="{BOX_H}" rx="5" fill="white" stroke="#111" stroke-width="1"/>
-  <text x="{BC_2}" y="372" text-anchor="middle" class="metric-label">ACTUAL LBS</text>
-  <text x="{BC_2}" y="401" text-anchor="middle" class="metric-value">{html.escape(act_lbs)}</text>
+  <rect x="{B2_X}" y="{394 + OFFSET}" width="{BOX_W}" height="{BOX_H}" rx="5" fill="white" stroke="#111" stroke-width="1"/>
+  <text x="{BC_2}" y="{412 + OFFSET}" text-anchor="middle" class="metric-label">ACTUAL LBS</text>
+  <text x="{BC_2}" y="{441 + OFFSET}" text-anchor="middle" class="metric-value">{html.escape(act_lbs)}</text>
 
-  <rect x="{B3_X}" y="354" width="{BOX_W}" height="{BOX_H}" rx="5" fill="white" stroke="#111" stroke-width="1"/>
-  <text x="{BC_3}" y="372" text-anchor="middle" class="metric-label">RATE/LB</text>
-  <text x="{BC_3}" y="401" text-anchor="middle" class="metric-value">{html.escape(rate)}</text>
+  <rect x="{B3_X}" y="{394 + OFFSET}" width="{BOX_W}" height="{BOX_H}" rx="5" fill="white" stroke="#111" stroke-width="1"/>
+  <text x="{BC_3}" y="{412 + OFFSET}" text-anchor="middle" class="metric-label">RATE/LB</text>
+  <text x="{BC_3}" y="{441 + OFFSET}" text-anchor="middle" class="metric-value">{html.escape(rate)}</text>
 
-  <line x1="{PAD}" y1="420" x2="{W - PAD}" y2="420" class="dash-line"/>
+  <line x1="{PAD}" y1="{460 + OFFSET}" x2="{W - PAD}" y2="{460 + OFFSET}" class="dash-line"/>
 
   <!-- PRICE BREAKDOWN -->
-  <text x="{PAD}" y="437" class="section-title">PRICE BREAKDOWN / DESGLOSE</text>
+  <text x="{PAD}" y="{477 + OFFSET}" class="section-title">PRICE BREAKDOWN / DESGLOSE</text>
 
   {rows}
 

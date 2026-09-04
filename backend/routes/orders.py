@@ -571,6 +571,31 @@ async def update_order(
 
     breakdown = None
 
+    merged_for_distance = {**current_order, **update_data}
+    existing_distance = merged_for_distance.get("distance_miles")
+    needs_distance = (
+        existing_distance is None
+        or existing_distance == 0
+        or (isinstance(existing_distance, str) and not existing_distance.strip())
+    )
+    if needs_distance:
+        pickup_addr = (
+            merged_for_distance.get("pickup_address")
+            or merged_for_distance.get("delivery_address")
+            or merged_for_distance.get("address")
+            or ""
+        )
+        if pickup_addr and len(pickup_addr.strip()) >= 5:
+            try:
+                from store import calculate_shipping_distance
+                ship_result = await calculate_shipping_distance(pickup_addr)
+                if ship_result and ship_result.get("within_range"):
+                    update_data["distance_miles"] = ship_result.get("straight_line_miles")
+                    if not update_data.get("delivery_fee"):
+                        update_data["delivery_fee"] = ship_result.get("fee")
+            except Exception as _dist_err:
+                logger.warning(f"Could not auto-calculate distance for order {order_id}: {_dist_err}")
+
     # Recalcular total si cambian campos relevantes
     if PRICING_RELEVANT_FIELDS & update_data.keys():
         customer = None
@@ -590,6 +615,8 @@ async def update_order(
                 "price_per_lb":        breakdown["rate_used"],
                 "lbs_from_allowance":  breakdown["lbs_covered"],
                 "extra_lbs_billed":    breakdown["lbs_extra"],
+                "delivery_fee":        breakdown["delivery_fee"],
+                "addons_total":        breakdown["addons_total"],
             })
 
             if new_total <= 0.50:

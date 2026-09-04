@@ -115,7 +115,7 @@ MAX_DELIVERY_MILES = _get_env_float("MAX_SERVICE_MILES", 15.0)
 FREE_MILES_LIMIT = _get_env_float("FREE_MILES_LIMIT", 3.0)
 MIN_DELIVERY_FEE = _get_env_float("SHIPPING_MIN_FEE", 0.00)
 MAX_DELIVERY_FEE = _get_env_float("SHIPPING_MAX_FEE", DELIVERY_FEE_TIERS[-1]["fee"])
-RATE_PER_MILE_AFTER_FREE = _get_env_float("SHIPPING_RATE_PER_KM", 1.5) * 1.60934  # ~2.41 USD/milla
+RATE_PER_MILE_AFTER_FREE = _get_env_float("SHIPPING_RATE_PER_MILE", 1.5)
 
 # ==================== FUEL & COST CONFIGURATION ====================
 DEFAULT_FUEL_PRICE_PER_GALLON = _get_env_float("FUEL_PRICE_PER_GALLON", 4.50)

@@ -9,6 +9,7 @@
 // FIXED: Section now uses forwardRef so addonsSectionRef actually attaches to the DOM
 //        node, which makes the auto-scroll-to-addons behavior work correctly.
 // ADDED: Editable recurrence (frequency/days/end date) directly from the operator dashboard.
+// UPDATED: Distance is now calculated automatically on the backend — removed manual input.
 
 import { useState, useEffect, useCallback, useRef, forwardRef } from "react";
 import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
@@ -195,25 +196,13 @@ const hydrateAddonFromCatalog = (addon, catalog) => {
 };
 
 function calculateOrderTotal(order, payMethod) {
-  const extraCharge = Number(order.extra_charge || 0);
-  const deliveryFee = Number(order.delivery_fee || calcDeliveryFee(order.distance_miles));
+  const storedTotal = Number(order.total_amount ?? order.extra_charge ?? 0);
+  const deliveryFee = Number(order.delivery_fee ?? calcDeliveryFee(order.distance_miles) ?? 0);
   const addonsTotal = (order.addon_services || []).reduce(
     (s, a) => s + Number(a.custom_price || a.price || 0) * Number(a.qty || a.quantity || 1), 0
   );
-  if (extraCharge > 0) {
-    // FIX: `order.extra_charge` from the backend (utils.py v17,
-    // calculate_final_amount_with_membership) is already the FULL total —
-    // it bakes in the weight charge, delivery fee, AND every add-on
-    // (per-piece included, per the "extra_charge == total" contract
-    // documented in utils.py). Re-adding deliveryFee and addonsTotal here
-    // double-counted them, so a $20 per-piece-only Wash & Fold order (no
-    // weight yet) showed as $40 the moment a non-card payment method was
-    // picked — this branch is only reached from the cash/zelle/venmo/other
-    // path in handlePayment(); the card/Stripe path uses
-    // buildDisplayBreakdown() instead, which doesn't have this bug.
-    // deliveryFee/addonsTotal are still returned below for display purposes
-    // (e.g. breakdown UI), just no longer added into the total twice.
-    const baseTotal = extraCharge;
+  if (storedTotal > 0) {
+    const baseTotal = Math.round(storedTotal * 100) / 100;
     return {
       baseTotal, total: baseTotal,
       discount: Number(order.membership_discount || 0),
@@ -235,6 +224,13 @@ function calculateOrderTotal(order, payMethod) {
     plan: breakdown.plan, lbs: breakdown.lbs,
     allowanceExhausted: breakdown.allowanceExhausted,
   };
+}
+
+function getRegisteredPaymentAmount(order, payMethod) {
+  const { total } = calculateOrderTotal(order, payMethod);
+  const normalizedMethod = normalizePayMethod(payMethod);
+  const surchargeMultiplier = normalizedMethod === "card" ? 1.03 : 1;
+  return Math.round(total * surchargeMultiplier * 100) / 100;
 }
 
 // Default catalog with standard prices
@@ -306,11 +302,6 @@ const STATUS_CONFIG = {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-// FIX: wrapped in forwardRef so that parent components can pass a `ref`
-// (e.g. `addonsSectionRef`) that actually attaches to the underlying DOM
-// node. Without this, React silently drops the `ref` prop on a plain
-// function component and `ref.current` stays `null` forever — which is
-// why scrollIntoView("addons") never worked before.
 const Section = forwardRef(function Section(
   { icon, title, badge, children, collapsible = false, defaultOpen = true, className = "", ...rest },
   ref
@@ -488,8 +479,6 @@ function EvidenceImageThumb({ orderId, type, label, onOpen }) {
   const [blobUrl, setBlobUrl] = useState(null);
   const [loading, setLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
-  const [forceAddonsOpen, setForceAddonsOpen] = useState(false);
-
 
   useEffect(() => {
     if (!orderId) return undefined;
@@ -610,8 +599,6 @@ function RecurrenceInfo({ order, t, locale, onSave, saving }) {
   const recurrenceLabel = RECURRENCE_LABELS[langKey][recurrenceKey] || RECURRENCE_LABELS.en[recurrenceKey];
   const recurrenceDays = order?.recurrence_days || [];
 
-  // Reset the edit form to the order's current values whenever edit mode opens
-  // (or the underlying order changes while editing is closed).
   useEffect(() => {
     if (!editing) {
       setEditRecurrence(order?.recurrence || "once");
@@ -756,9 +743,6 @@ function RecurrenceInfo({ order, t, locale, onSave, saving }) {
     </div>
   );
 
-  // Order is currently one-time and not being edited: show a compact row
-  // with a button to turn it into a recurring order, instead of hiding
-  // this section entirely (which is what made frequency uneditable before).
   if (!isRecurring && !editing) {
     return (
       <Section
@@ -835,7 +819,6 @@ function RecurrenceInfo({ order, t, locale, onSave, saving }) {
             )}
           </div>
 
-          {/* Upcoming pickups toggle */}
           <button
             onClick={() => setShowUpcoming(!showUpcoming)}
             className="flex items-center gap-1.5 text-xs font-medium text-sky-600 hover:text-sky-700 transition-colors"
@@ -905,7 +888,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh, scrollTar
   const [imageList, setImageList]           = useState([]);
   const [customerCycleUsage, setCustomerCycleUsage] = useState(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
-  const [editingAddonPrice, setEditingAddonPrice] = useState(null); // { id, currentPrice }
+  const [editingAddonPrice, setEditingAddonPrice] = useState(null);
   const [addonCatalog, setAddonCatalog] = useState(DEFAULT_ADDON_CATALOG);
   const [addonCategoryLabels, setAddonCategoryLabels] = useState(CAT_LABELS);
   const [savingRecurrence, setSavingRecurrence] = useState(false);
@@ -954,8 +937,6 @@ export default function OrderDetailDialog({ order, onClose, onRefresh, scrollTar
   }, [order, addonCatalog]);
 
   // ── Scroll to the Billing / Weight & Total section when opened via "Collect" ──
-  // ── Scroll to the Billing / Weight & Total section when opened via "Collect" ──
-  // ── Scroll to the Billing / Weight & Total section when opened via "Collect" ──
   useEffect(() => {
     if (isOpen && scrollTarget === "billing") {
       const timer = setTimeout(() => {
@@ -963,21 +944,18 @@ export default function OrderDetailDialog({ order, onClose, onRefresh, scrollTar
       }, 350);
       return () => clearTimeout(timer);
     }
-    // ✅ NUEVO: scroll a la sección de add-ons
     if (isOpen && scrollTarget === "addons") {
-      // Aumentar el delay para asegurar que el DOM esté renderizado
       const timer = setTimeout(() => {
         if (addonsSectionRef.current) {
           addonsSectionRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
-          console.log("✅ Scrolling to add-ons section"); // Para debug
+          console.log("✅ Scrolling to add-ons section");
         } else {
           console.warn("⚠️ addonsSectionRef is null, retrying...");
-          // Reintentar después de 300ms más
           setTimeout(() => {
             addonsSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
           }, 300);
         }
-      }, 600); // Aumentado de 400 a 600
+      }, 600);
       return () => clearTimeout(timer);
     }
   }, [isOpen, scrollTarget, order?.id]);
@@ -1102,9 +1080,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh, scrollTar
 
   // ─── Add-on handlers with custom price support ─────────────────────────────
 
-  // Modifica handleAddAddon para mostrar advertencia
   const handleAddAddon = (item) => {
-    // Para servicios Wash & Fold, mostrar advertencia si el artículo es per-piece
     if (isWF && isPerPieceItem(item)) {
       const confirmAdd = window.confirm(
         `${item.name} is typically included in the weight-based pricing for Wash & Fold.\n\n` +
@@ -1159,7 +1135,6 @@ export default function OrderDetailDialog({ order, onClose, onRefresh, scrollTar
     if (!oid) return false;
     setSavingAddons(true);
     try {
-      // Prepare addons for backend - include custom prices
       const addonsToSave = list.map(a => ({
         id: a.id,
         name: a.name,
@@ -1286,7 +1261,9 @@ export default function OrderDetailDialog({ order, onClose, onRefresh, scrollTar
       const res = await fetch(`${API_URL}/api/orders/${oid}`, {
         method: "PUT",
         headers: authHdrs(),
-        body: JSON.stringify({ actual_lbs: lbsToSave }),
+        body: JSON.stringify({
+          actual_lbs: lbsToSave,
+        }),
       });
       if (handle401(res)) return false;
       if (handle403(res)) return false;
@@ -1434,6 +1411,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh, scrollTar
     if (!oid) return;
     const normalizedMethod = normalizePayMethod(payMethod);
     const { total: dynamicTotal } = calculateOrderTotal(localOrder, payMethod);
+    const registeredAmount = getRegisteredPaymentAmount(localOrder, payMethod);
 
     if (normalizedMethod === "cash") {
       const amt = Number(amtReceived);
@@ -1467,17 +1445,21 @@ export default function OrderDetailDialog({ order, onClose, onRefresh, scrollTar
       return;
     }
 
-    // Card (Stripe), Zelle, Venmo, CashApp, Other — register the payment directly
-    // instead of redirecting to an external checkout portal.
     setProcessing(true);
     try {
       const res = await fetch(`${API_URL}/api/orders/${oid}/payment`, {
         method: "POST", headers: authHdrs(),
-        body: JSON.stringify({ payment_method: normalizedMethod }),
+        body: JSON.stringify({ payment_method: normalizedMethod, amount_received: registeredAmount }),
       });
       if (handle401(res)) return;
       if (res.ok) {
-        setLocalOrder(prev => ({ ...prev, payment_status: "paid", payment_method: normalizedMethod, amount_paid: dynamicTotal }));
+        setLocalOrder(prev => ({
+          ...prev,
+          payment_status: "paid",
+          payment_method: normalizedMethod,
+          amount_paid: registeredAmount,
+          processing_fee: normalizedMethod === "card" ? Math.round((registeredAmount - dynamicTotal) * 100) / 100 : 0,
+        }));
         toast.success(t("Payment registered", "Pago registrado"));
         onRefresh?.();
       } else {
@@ -1578,7 +1560,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh, scrollTar
   const o = localOrder || order;
   const isPaid           = (o.payment_status || "").toLowerCase() === "paid";
   const isWF             = isWashFoldService(o.service_type);
-  const deliveryFee      = calcDeliveryFee(o.distance_miles);
+  const deliveryFee      = Number(o.delivery_fee ?? calcDeliveryFee(o.distance_miles) ?? 0);
   const verifiedReceipts = receipts.filter(r => r.ai_validation_status === "verified_paid");
   const addonTotal       = addons.reduce((s, a) => s + getEffectivePrice(a) * Number(a.qty || 1), 0);
   const catLabel         = (cat, items = []) => buildAddonCategoryLabel(cat, addonCategoryLabels, items, locale);
@@ -1586,9 +1568,9 @@ export default function OrderDetailDialog({ order, onClose, onRefresh, scrollTar
   const statusCls        = STATUS_CONFIG[statusKey]?.color || "bg-slate-100 text-slate-700 border-slate-200";
   const groupedAddons    = groupBy(addons, "category");
   const groupedCatalog   = groupBy(addonCatalog, "category");
-  const dynamicTotal     = calculateOrderTotal(o, payMethod).baseTotal;
+  const dynamicTotal     = calculateOrderTotal(o, payMethod).total;
+  const registerAmount   = getRegisteredPaymentAmount(o, payMethod);
 
-  // Evidence images (used by the combined "Receipts & Evidence" section below)
   const evidenceImageTypes = getEvidenceImageTypes(o);
   const evidenceImages     = evidenceImageTypes.map((key) => ({
     key,
@@ -1657,7 +1639,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh, scrollTar
 
           <div className="p-3 sm:p-4 space-y-3">
 
-            {/* ── 1) Customer & Service (name, service, address, pickup date/time) ── */}
+            {/* ── 1) Customer & Service ── */}
             <Section
               icon={<User className="w-4 h-4" />}
               title={t("Customer & Service", "Cliente y Servicio")}
@@ -1693,7 +1675,6 @@ export default function OrderDetailDialog({ order, onClose, onRefresh, scrollTar
                 )}
               </div>
 
-              {/* Membership status */}
               {o.membership_plan && (
                 <div className="mt-3 flex flex-wrap gap-2">
                   <InfoChip
@@ -1712,7 +1693,6 @@ export default function OrderDetailDialog({ order, onClose, onRefresh, scrollTar
                 </div>
               )}
 
-              {/* Preferred contact */}
               {o.preferred_contact && (
                 <div className="mt-2">
                   <DataRow label={t("Preferred contact", "Contacto preferido")} value={o.preferred_contact} />
@@ -1762,7 +1742,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh, scrollTar
               </Section>
             )}
 
-            {/* ── RECURRENCE INFORMATION (now editable from the operator side) ── */}
+            {/* ── RECURRENCE INFORMATION ── */}
             <RecurrenceInfo
               order={o}
               t={t}
@@ -1771,7 +1751,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh, scrollTar
               saving={savingRecurrence}
             />
 
-            {/* ── 2) Receipts & Evidence Images (merged, collapsible) ── */}
+            {/* ── 2) Receipts & Evidence Images ── */}
             <Section
               icon={<ImageIcon className="w-4 h-4" />}
               title={t("Receipts & Evidence", "Comprobantes y Evidencia")}
@@ -1849,7 +1829,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh, scrollTar
 
             {/* ── Add-ons with manual price editing ── */}
             <Section
-              ref={addonsSectionRef}  // ✅ REFERENCIA AGREGADA — ahora sí funciona gracias al forwardRef
+              ref={addonsSectionRef}
               icon={<Package className="w-4 h-4" />}
               title={t("Individual Items / Add-ons", "Artículos / Extras")}
               collapsible defaultOpen={true}
@@ -2022,7 +2002,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh, scrollTar
                 </div>
 
                 {/* Covered by membership badge */}
-                {!isPaid && o.membership_plan && Number(o.extra_charge || 0) <= 0.50 && (
+                {!isPaid && o.membership_plan && Number(dynamicTotal) <= 0.50 && (
                   <div className="flex items-center gap-2 px-3.5 py-2.5 bg-emerald-50 border border-emerald-200 rounded-xl">
                     <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                     <span className="text-xs font-semibold text-emerald-700">{t("Covered by membership", "Cubierto por membresía")}</span>
@@ -2065,10 +2045,21 @@ export default function OrderDetailDialog({ order, onClose, onRefresh, scrollTar
                       </div>
                     )}
 
+                    {payMethod === "card" && (
+                      <div className="bg-white border border-sky-200 rounded-xl p-3.5 text-xs text-sky-800">
+                        <p className="font-semibold">
+                          {t("Stripe adds 3% to the order total.", "Stripe suma 3% al total de la orden.")}
+                        </p>
+                        <p className="mt-1">
+                          {t("Order total", "Total de la orden")}: <strong>{formatCurrency(dynamicTotal)}</strong> · 3%: <strong>{formatCurrency(registerAmount - dynamicTotal)}</strong>
+                        </p>
+                      </div>
+                    )}
+
                     <Button className="w-full h-11 bg-emerald-600 hover:bg-emerald-700 rounded-xl font-bold shadow-md"
                       onClick={handlePayment} disabled={processing || dynamicTotal <= 0}>
                       {processing ? <RefreshCw className="w-4 h-4 animate-spin mr-2" /> : <DollarSign className="w-4 h-4 mr-2" />}
-                      {`${t("Register payment", "Registrar pago")} — ${formatCurrency(dynamicTotal)}`}
+                      {`${t("Register payment", "Registrar pago")} — ${formatCurrency(registerAmount)}`}
                     </Button>
                   </div>
                 )}

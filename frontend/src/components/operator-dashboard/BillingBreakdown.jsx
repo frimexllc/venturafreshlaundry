@@ -152,15 +152,10 @@ export default function BillingBreakdown({ order, t, hasMembership, customerCycl
   if (fullyCovered) {
     rawTotal = 0;
   } else if (backendTotalAmount !== null) {
-    // El backend nos da el total exacto (ya incluye add-ons)
     rawTotal = backendTotalAmount;
   } else if (backendExtraCharge !== null) {
-    // El extraCharge del backend ya incluye add-ons
-    // Solo sumamos deliveryFee (que no está incluido en extraCharge)
-    rawTotal = Math.round((extraCharge + deliveryFee) * 100) / 100;
+    rawTotal = backendExtraCharge;
   } else {
-    // Fallback: sin datos del backend, calculamos todo
-    // En este caso SÍ sumamos addonsTotal porque extraCharge solo incluye peso
     rawTotal = Math.round((extraCharge + deliveryFee + addonsTotal) * 100) / 100;
   }
   
