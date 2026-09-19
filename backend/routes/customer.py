@@ -1137,10 +1137,11 @@ async def get_membership_usage(current_customer: dict = Depends(get_current_cust
     try:
         usage = await get_customer_cycle_usage(current_customer["id"])
         if usage:
+            usage["has_membership"] = True
             return usage
     except Exception:
         logger.warning("get_customer_cycle_usage fallo")
-    return {}
+    return {"has_membership": False}
 
 
 @router.get("/preferences")

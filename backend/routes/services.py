@@ -27,6 +27,7 @@ from pydantic import BaseModel, Field
 import uuid
 import logging
 import os
+import re
 import asyncio
 
 from database import db
@@ -48,6 +49,7 @@ from utils import (
     normalize_spaces,
     get_customer_cycle_usage,
     _get_plan_allowance,
+    _get_plan_allowance_dynamic,
     normalize_preference_payload,
 )
 
@@ -501,22 +503,35 @@ def _get_plan_price(plan_name: str) -> float:
     return 139.00
 
 
-def _get_plan_allowance_from_name(plan_name: str) -> int:
-    allowances = {
-        "most popular": 60,
-        "popular": 60,
-        "standard": 60,
-        "family plus": 90,
-        "family": 90,
-        "elite concierge": 120,
-        "elite": 120,
-        "concierge": 120,
-    }
-    key = plan_name.lower()
-    for k, v in allowances.items():
-        if k in key or key in k:
-            return v
-    return 60
+async def _get_plan_price_dynamic(plan_name: str) -> float:
+    """
+    Obtiene el precio del plan: primero busca en DB (membership_plans),
+    parseando el número desde el campo `price` (ej. "$199 / month" -> 199.00),
+    luego hace fallback al dict hardcodeado _get_plan_price().
+    Esto evita cobrar montos desactualizados cuando el admin edita el precio
+    de un plan o crea un plan custom que _get_plan_price() no reconoce.
+    """
+    if not plan_name:
+        return 0.0
+    try:
+        plan_doc = await db.membership_plans.find_one(
+            {
+                "$or": [
+                    {"name": {"$regex": f"^{re.escape(plan_name)}$", "$options": "i"}},
+                    {"name": {"$regex": re.escape(plan_name), "$options": "i"}},
+                ]
+            },
+            {"_id": 0, "price": 1, "name": 1},
+        )
+        if plan_doc and plan_doc.get("price"):
+            match = re.search(r"[\d,]+(?:\.\d+)?", str(plan_doc["price"]))
+            if match:
+                parsed = float(match.group(0).replace(",", ""))
+                if parsed > 0:
+                    return parsed
+    except Exception as e:
+        logger.warning(f"DB lookup for plan price failed for '{plan_name}': {e}")
+    return _get_plan_price(plan_name)
 
 
 def _calculate_total_with_stripe_fee(amount: float) -> float:
@@ -525,9 +540,9 @@ def _calculate_total_with_stripe_fee(amount: float) -> float:
     return round(amount / (1 - STRIPE_FEE_PERCENTAGE), 2)
 
 
-def _calculate_prorated_amount(old_plan: str, new_plan: str, days_remaining: int) -> float:
-    old_price = _get_plan_price(old_plan)
-    new_price = _get_plan_price(new_plan)
+async def _calculate_prorated_amount(old_plan: str, new_plan: str, days_remaining: int) -> float:
+    old_price = await _get_plan_price_dynamic(old_plan)
+    new_price = await _get_plan_price_dynamic(new_plan)
     
     if days_remaining <= 0:
         return new_price
@@ -688,13 +703,13 @@ async def _process_membership_renewal(
         is_plan_change = True
         usage = await get_customer_cycle_usage(customer_id)
         days_remaining = usage.get("days_remaining", 0) if usage else 0
-        subtotal = _calculate_prorated_amount(current_plan, new_plan_name, days_remaining)
+        subtotal = await _calculate_prorated_amount(current_plan, new_plan_name, days_remaining)
         if subtotal <= 0:
-            subtotal = _get_plan_price(new_plan_name)
+            subtotal = await _get_plan_price_dynamic(new_plan_name)
     else:
         new_plan_name = current_plan
         is_plan_change = False
-        subtotal = _get_plan_price(new_plan_name)
+        subtotal = await _get_plan_price_dynamic(new_plan_name)
 
     amount_to_charge = _calculate_total_with_stripe_fee(subtotal)
     stripe_fee = round(amount_to_charge - subtotal, 2)
@@ -1712,7 +1727,7 @@ async def update_membership_customer(
     update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
     
     if "membership_plan" in update_data and update_data["membership_plan"]:
-        new_allowance = _get_plan_allowance_from_name(update_data["membership_plan"])
+        new_allowance = await _get_plan_allowance_dynamic(update_data["membership_plan"])
         update_data["custom_lbs_allowance"] = new_allowance
     
     result = await db.customers.update_one({"id": customer_id}, {"$set": update_data})
@@ -1754,7 +1769,7 @@ async def adjust_membership_lbs(
     if custom_allowance:
         lbs_allowance = custom_allowance
     else:
-        lbs_allowance = _get_plan_allowance_from_name(customer.get("membership_plan", ""))
+        lbs_allowance = await _get_plan_allowance_dynamic(customer.get("membership_plan", ""))
     
     exceeded = new_lbs_used > lbs_allowance
     excess = max(0, new_lbs_used - lbs_allowance) if exceeded else 0
@@ -1913,7 +1928,7 @@ async def get_membership_adjustment_log(
         "total_adjustments": len(adjustments),
         "current_lbs_used": customer.get("cycle_lbs_used", 0),
         "custom_allowance": customer.get("custom_lbs_allowance"),
-        "plan_allowance": _get_plan_allowance_from_name(customer.get("membership_plan", "")),
+        "plan_allowance": await _get_plan_allowance_dynamic(customer.get("membership_plan", "")),
         "adjustments": adjustments[:limit],
     }
 
@@ -1998,7 +2013,7 @@ async def sync_membership_orders(
         {"orders_synced": len(orders), "total_lbs": total_lbs}
     )
     
-    allowance = customer.get("custom_lbs_allowance") or _get_plan_allowance_from_name(customer.get("membership_plan", ""))
+    allowance = customer.get("custom_lbs_allowance") or await _get_plan_allowance_dynamic(customer.get("membership_plan", ""))
     
     return {
         "success": True,
@@ -2196,9 +2211,9 @@ async def get_membership_status(
     
     usage = await get_customer_cycle_usage(customer_id)
     plan = customer.get("membership_plan")
-    base_price = _get_plan_price(plan) if plan else 0
+    base_price = await _get_plan_price_dynamic(plan) if plan else 0
     total_with_fee = _calculate_total_with_stripe_fee(base_price)
-    
+
     start_date_str = customer.get("membership_start_date")
     next_renewal = None
     if start_date_str:
@@ -2240,7 +2255,7 @@ async def get_membership_renewal_info(
     
     customer = await db.customers.find_one({"id": customer_id}, {"_id": 0})
     current_plan = customer.get("membership_plan")
-    base_price = _get_plan_price(current_plan) if current_plan else 0
+    base_price = await _get_plan_price_dynamic(current_plan) if current_plan else 0
     total_with_fee = _calculate_total_with_stripe_fee(base_price)
     
     return {
