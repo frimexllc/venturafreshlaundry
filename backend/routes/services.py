@@ -2187,10 +2187,158 @@ async def reactivate_membership(
     )
     
     await create_audit_log("MEMBERSHIP_REACTIVATED", "customer", customer_id, customer_id)
-    
+
     return {
         "success": True,
         "message": "Auto-renewal reactivated for your membership.",
+    }
+
+
+@router.post("/api/customer/memberships/reactivate")
+async def reactivate_paused_membership(
+    current_customer: dict = Depends(get_current_customer),
+):
+    """
+    Reactiva una membresia PAUSADA o CANCELADA (a diferencia de
+    /api/membership/reactivate, que solo deshace un cancel suave cuando el
+    status sigue 'active'). Cobra el plan actual de inmediato usando la
+    tarjeta guardada del cliente y, si tiene exito, reactiva el ciclo.
+    """
+    customer_id = current_customer["id"]
+
+    customer = await db.customers.find_one({"id": customer_id}, {"_id": 0})
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    status = (customer.get("membership_status") or "").lower()
+    if status not in ("paused", "cancelled", "canceled"):
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "membership_not_paused", "message": "Membership is not paused or cancelled"},
+        )
+
+    plan_name = customer.get("membership_plan")
+    if not plan_name:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "membership_plan_unknown", "message": "No membership plan on file"},
+        )
+
+    if not STRIPE_AVAILABLE or not STRIPE_API_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "stripe_not_configured", "message": "Payments not configured"},
+        )
+
+    stripe_customer_id, payment_method_id = await _resolve_membership_payment_method(customer)
+    if not payment_method_id or not stripe_customer_id:
+        raise HTTPException(
+            status_code=402,
+            detail={"code": "payment_method_required", "message": "Please add a payment method first"},
+        )
+
+    subtotal = await _get_plan_price_dynamic(plan_name)
+    amount_to_charge = _calculate_total_with_stripe_fee(subtotal)
+    stripe_fee = round(amount_to_charge - subtotal, 2)
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    idempotency_key = f"membership-reactivate:{customer_id}:{now_iso[:10]}"
+
+    try:
+        payment_intent = await asyncio.to_thread(
+            stripe.PaymentIntent.create,
+            amount=int(amount_to_charge * 100),
+            currency="usd",
+            customer=stripe_customer_id,
+            payment_method=payment_method_id,
+            off_session=True,
+            confirm=True,
+            description=f"Membership reactivation ({plan_name})",
+            metadata={
+                "customer_id": customer_id,
+                "plan_name": plan_name,
+                "type": "membership_reactivation",
+            },
+            receipt_email=customer.get("email"),
+            idempotency_key=idempotency_key,
+        )
+    except stripe.error.CardError as e:
+        error_message = e.error.message
+        await _record_membership_transaction(
+            customer_id=customer_id, subtotal=subtotal, stripe_fee=stripe_fee,
+            amount=amount_to_charge, plan_name=plan_name, payment_status="failed",
+            payment_type="membership_reactivation", initiated_by="customer_manual",
+            created_at=now_iso, metadata={"decline_code": e.error.code}, error_message=error_message,
+        )
+        raise HTTPException(
+            status_code=402,
+            detail={"code": "payment_failed", "stripe_code": e.error.code, "message": error_message},
+        )
+    except stripe.error.StripeError as e:
+        error_message = str(e.user_message or e)
+        await _record_membership_transaction(
+            customer_id=customer_id, subtotal=subtotal, stripe_fee=stripe_fee,
+            amount=amount_to_charge, plan_name=plan_name, payment_status="failed",
+            payment_type="membership_reactivation", initiated_by="customer_manual",
+            created_at=now_iso, error_message=error_message,
+        )
+        raise HTTPException(status_code=402, detail={"code": "payment_failed", "message": error_message})
+
+    if payment_intent.status != "succeeded":
+        await _record_membership_transaction(
+            customer_id=customer_id, subtotal=subtotal, stripe_fee=stripe_fee,
+            amount=amount_to_charge, plan_name=plan_name, payment_status=payment_intent.status,
+            payment_type="membership_reactivation", initiated_by="customer_manual",
+            created_at=now_iso, stripe_payment_intent_id=payment_intent.id,
+            error_message=f"Payment {payment_intent.status}",
+        )
+        raise HTTPException(
+            status_code=402,
+            detail={"code": "payment_failed", "message": f"Payment {payment_intent.status}"},
+        )
+
+    await db.customers.update_one(
+        {"id": customer_id},
+        {
+            "$set": {
+                "membership_status": "active",
+                "auto_renew": True,
+                "membership_start_date": now_iso,
+                "cycle_lbs_used": 0,
+                "membership_last_renewed_at": now_iso,
+                "membership_last_renewal_attempt_at": now_iso,
+                "membership_last_renewal_status": "succeeded",
+                "membership_last_renewal_error": None,
+                "membership_payment_method_required": False,
+                "membership_failed_renewal_attempts": 0,
+                "membership_suspended_at": None,
+                "membership_suspended_reason": None,
+                "updated_at": now_iso,
+            },
+            "$unset": {"membership_cancelled_at": ""},
+        },
+    )
+
+    await _record_membership_transaction(
+        customer_id=customer_id, subtotal=subtotal, stripe_fee=stripe_fee,
+        amount=amount_to_charge, plan_name=plan_name, payment_status="succeeded",
+        payment_type="membership_reactivation", initiated_by="customer_manual",
+        created_at=now_iso, stripe_payment_intent_id=payment_intent.id,
+    )
+
+    await create_audit_log(
+        "MEMBERSHIP_REACTIVATED", "customer", customer_id, customer_id,
+        {"plan": plan_name, "amount": amount_to_charge},
+    )
+
+    await _send_membership_renewal_email(customer, plan_name, amount_to_charge, False, subtotal, stripe_fee)
+
+    return {
+        "status": "reactivated",
+        "success": True,
+        "new_start_date": now_iso,
+        "amount": amount_to_charge,
+        "transaction_id": payment_intent.id,
     }
 
 
@@ -2205,10 +2353,21 @@ async def get_membership_status(
         return {"has_membership": False}
     
     has_membership = is_active_member(None, customer)
-    
+
     if not has_membership:
+        membership_status = (customer.get("membership_status") or "").lower()
+        if membership_status in ("paused", "cancelled", "canceled") and customer.get("membership_plan"):
+            return {
+                "has_membership": False,
+                "needs_reactivation": True,
+                "membership_plan": customer.get("membership_plan"),
+                "membership_status": customer.get("membership_status"),
+                "membership_suspended_reason": customer.get("membership_suspended_reason"),
+                "payment_method_required": customer.get("membership_payment_method_required", False),
+                "last_renewal_error": customer.get("membership_last_renewal_error"),
+            }
         return {"has_membership": False}
-    
+
     usage = await get_customer_cycle_usage(customer_id)
     plan = customer.get("membership_plan")
     base_price = await _get_plan_price_dynamic(plan) if plan else 0

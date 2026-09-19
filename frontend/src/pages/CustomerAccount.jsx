@@ -901,6 +901,8 @@ export default function CustomerAccount() {
   const [membershipPlan, setMembershipPlan]   = useState(null);
   const [membershipUsage, setMembershipUsage] = useState(null);
   const [applyingMembership, setApplyingMembership] = useState(null);
+  const [membershipStatusInfo, setMembershipStatusInfo] = useState(null);
+  const [reactivatingMembership, setReactivatingMembership] = useState(false);
 
   const [payingOrderId, setPayingOrderId]       = useState(null);
   const [uploadingReceipt, setUploadingReceipt] = useState(null);
@@ -1006,8 +1008,34 @@ export default function CustomerAccount() {
       const r = await customerAxios.get("/customer/membership-status");
       setHasMembership(r.data?.has_membership || false);
       setMembershipPlan(r.data?.membership_plan || null);
+      setMembershipStatusInfo(r.data || null);
       return r.data?.has_membership || false;
     } catch { return false; }
+  };
+
+  const needsMembershipReactivation = membershipStatusInfo?.needs_reactivation === true;
+
+  const handleReactivateMembership = async () => {
+    setReactivatingMembership(true);
+    try {
+      await customerAxios.post("/customer/memberships/reactivate");
+      toast.success(t("Membership reactivated!", "¡Membresía reactivada!"));
+      await fetchMembershipStatus();
+      await fetchMembershipUsage();
+      await fetchPreferences();
+    } catch (err) {
+      const detail = err.response?.data?.detail;
+      const code = typeof detail === "object" ? detail.code : null;
+      if (code === "payment_method_required") {
+        toast.error(t("Please add a payment method first", "Agrega un método de pago primero"));
+        setShowCardSetup(true);
+      } else {
+        const message = typeof detail === "object" ? detail.message : detail;
+        toast.error(message || t("Payment failed, try another card", "Pago fallido, intenta con otra tarjeta"));
+      }
+    } finally {
+      setReactivatingMembership(false);
+    }
   };
 
   const fetchMembershipUsage = async () => {
@@ -1342,7 +1370,15 @@ export default function CustomerAccount() {
   return (<>
     {showCardSetup && stripePromise && (
       <CardSetupModal stripePromise={stripePromise} onClose={() => setShowCardSetup(false)}
-        onSuccess={() => { setShowCardSetup(false); fetchPaymentMethods(); toast.success(t("You're all set!", "¡Todo listo!")); }} t={t} />
+        onSuccess={() => {
+          setShowCardSetup(false);
+          fetchPaymentMethods();
+          if (needsMembershipReactivation) {
+            handleReactivateMembership();
+          } else {
+            toast.success(t("You're all set!", "¡Todo listo!"));
+          }
+        }} t={t} />
     )}
 
     {paymentModal && (
@@ -1435,6 +1471,40 @@ export default function CustomerAccount() {
       </section>
 
       <div className="max-w-4xl mx-auto px-6 sm:px-8 pb-28 -mt-4 space-y-5 relative z-10">
+
+        {/* Membership paused/cancelled — reactivation banner */}
+        {needsMembershipReactivation && (
+          <Reveal dir="up" delay={0}>
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-5 flex items-start gap-4 flex-wrap">
+              <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center flex-shrink-0">
+                <AlertCircle className="w-5 h-5 text-red-600" />
+              </div>
+              <div className="flex-1 min-w-[220px]">
+                <h3 className="text-sm font-bold text-red-800">
+                  {membershipStatusInfo?.membership_status === "cancelled" || membershipStatusInfo?.membership_status === "canceled"
+                    ? t("Your membership was cancelled", "Tu membresía fue cancelada")
+                    : t("Your membership is paused due to non-payment", "Tu membresía está pausada por falta de pago")}
+                </h3>
+                <p className="text-xs text-red-700 mt-1">
+                  {membershipStatusInfo?.membership_status === "cancelled" || membershipStatusInfo?.membership_status === "canceled"
+                    ? t("Add a card to restart your membership plan.", "Agrega una tarjeta para volver a activar tu plan.")
+                    : t("Add a card to reactivate it and resume your monthly allowance.", "Agrega una tarjeta para reactivarla y recuperar tu cuota mensual.")}
+                </p>
+              </div>
+              <button
+                onClick={() => (paymentMethods.length > 0 ? handleReactivateMembership() : setShowCardSetup(true))}
+                disabled={reactivatingMembership}
+                className="min-h-[44px] px-5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold flex items-center gap-2 transition-all disabled:opacity-60"
+              >
+                {reactivatingMembership
+                  ? <><div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />{t("Reactivating…", "Reactivando…")}</>
+                  : paymentMethods.length > 0
+                    ? t("Reactivate now", "Reactivar ahora")
+                    : t("Save card & reactivate", "Guardar tarjeta y reactivar")}
+              </button>
+            </div>
+          </Reveal>
+        )}
 
         {/* Profile card */}
         <Reveal dir="up" delay={0}>
