@@ -1604,7 +1604,7 @@ async def daily_scheduler_loop():
 
 async def _send_survey_message(customer: dict, survey_link: str, orders_count: int):
     try:
-        from notifications import send_sms, send_email
+        from notifications import send_sms, send_email, detect_language
     except ImportError:
         return
 
@@ -1613,19 +1613,33 @@ async def _send_survey_message(customer: dict, survey_link: str, orders_count: i
     email = customer.get("email")
     preferred = customer.get("preferred_contact", "sms")
 
-    msg = (
-        f"🧼 Hola {name},\n\n"
-        f"Ya has completado {orders_count} servicios con Ventura Fresh Laundry. "
-        f"Tu opinión es muy valiosa para nosotros. ¿Podrías tomarte 2 minutos "
-        f"para responder esta breve encuesta?\n\n"
-        f"👉 {survey_link}\n\n"
-        f"¡Gracias por confiar en nosotros!"
-    )
+    is_es = str(detect_language(customer, phone)).lower().startswith("es")
+
+    if is_es:
+        msg = (
+            f"🧼 Hola {name},\n\n"
+            f"Ya has completado {orders_count} servicios con Ventura Fresh Laundry. "
+            f"Tu opinión es muy valiosa para nosotros. ¿Podrías tomarte 2 minutos "
+            f"para responder esta breve encuesta?\n\n"
+            f"👉 {survey_link}\n\n"
+            f"¡Gracias por confiar en nosotros!"
+        )
+        subject = "Cuéntanos tu experiencia"
+    else:
+        msg = (
+            f"🧼 Hi {name},\n\n"
+            f"You've now completed {orders_count} services with Ventura Fresh Laundry. "
+            f"Your feedback means a lot to us. Could you take 2 minutes "
+            f"to answer this short survey?\n\n"
+            f"👉 {survey_link}\n\n"
+            f"Thank you for trusting us!"
+        )
+        subject = "Tell us about your experience"
 
     if preferred == "sms" and phone:
         await send_sms(phone, msg)
     elif preferred == "email" and email:
-        await send_email(email, "Cuéntanos tu experiencia", msg)
+        await send_email(email, subject, msg)
     else:
         if phone:
             await send_sms(phone, msg)
