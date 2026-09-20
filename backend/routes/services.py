@@ -1997,12 +1997,18 @@ async def sync_membership_orders(
     }).to_list(500)
     
     total_lbs = sum(o.get("actual_lbs", 0) or 0 for o in orders)
-    
+
+    # cycle_lbs_used es el offset de ajuste manual (ver adjust_membership_lbs);
+    # el consumo real siempre se recalcula en vivo desde las ordenes
+    # (get_customer_cycle_usage), asi que "sincronizar" aqui significa
+    # descartar cualquier correccion manual anterior, no sobrescribir el
+    # total con total_lbs (eso duplicaria el conteo la proxima vez que se
+    # muestre el uso del ciclo).
     await db.customers.update_one(
         {"id": customer_id},
         {
             "$set": {
-                "cycle_lbs_used": total_lbs,
+                "cycle_lbs_used": 0,
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             }
         }

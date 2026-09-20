@@ -460,8 +460,17 @@ async def get_customer_cycle_usage(customer_id: str) -> Optional[dict]:
     if membership_status not in ("active", "current", "paid"):
         return None
 
-    # ── Allowance dinámico desde DB ──────────────────────────────────────
-    lbs_allowance = await _get_plan_allowance_dynamic(membership_plan)
+    # ── Allowance dinámico desde DB, con override manual del admin ───────
+    # custom_lbs_allowance (Anular allowance / override-allowance) debe
+    # ganarle siempre al allowance del plan — antes solo se aplicaba en
+    # el endpoint GET /api/customers/{id}/cycle-usage, y el resto de
+    # llamadores de esta funcion (tabla de admin, barra del cliente,
+    # billing preview) ignoraban el override por completo.
+    custom_allowance = customer.get("custom_lbs_allowance")
+    if custom_allowance:
+        lbs_allowance = float(custom_allowance)
+    else:
+        lbs_allowance = await _get_plan_allowance_dynamic(membership_plan)
     if lbs_allowance == 0:
         return None
 
@@ -522,8 +531,16 @@ async def get_customer_cycle_usage(customer_id: str) -> Optional[dict]:
         },
     ]
 
-    result   = await db.orders.aggregate(pipeline).to_list(1)
-    lbs_used = round(float(result[0]["total_lbs"]) if result else 0.0, 1)
+    result       = await db.orders.aggregate(pipeline).to_list(1)
+    orders_lbs   = float(result[0]["total_lbs"]) if result else 0.0
+    # cycle_lbs_used guarda el ajuste manual del admin (Ajustar libras),
+    # un offset que se suma al consumo real calculado desde las ordenes —
+    # sin esto, un ajuste manual nunca se reflejaba en ningun lado porque
+    # esta funcion siempre recalculaba el consumo desde cero a partir de
+    # las ordenes reales, ignorando el campo que adjust_membership_lbs
+    # escribe en el cliente.
+    manual_adjustment = float(customer.get("cycle_lbs_used", 0) or 0)
+    lbs_used = round(max(0.0, orders_lbs + manual_adjustment), 1)
 
     lbs_remaining = max(0.0, lbs_allowance - lbs_used)
     pct_used      = round((lbs_used / lbs_allowance) * 100, 1) if lbs_allowance else 0.0
