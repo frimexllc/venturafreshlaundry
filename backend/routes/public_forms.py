@@ -529,8 +529,6 @@ def get_public_forms_router(
         valid_recurrences = {"once", "weekly", "biweekly", "twice_week"}
         raw_recurrence = (data.recurrence or "once").strip().lower()
         recurrence = raw_recurrence if raw_recurrence in valid_recurrences else "once"
-        if normalized_service_type not in ("airbnb_host", "commercial"):
-            recurrence = "once"
 
         recurrence_end_date = None
         if recurrence != "once" and data.recurrence_end_date:
