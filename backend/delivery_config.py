@@ -191,6 +191,7 @@ def validate_delivery_address(address: str, zip_code: Optional[str] = None) -> d
         "lng": coords["lng"],
         "distance_miles": round(distance, 2),
         "delivery_fee": info["fee"] if allowed else None,
+        "is_free_delivery": info["is_free"] if allowed else False,
         "tier": info["tier"],
         "message": None if allowed else f"Delivery not available beyond {MAX_DELIVERY_MILES} miles",
     }
