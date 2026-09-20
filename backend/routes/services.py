@@ -1113,6 +1113,75 @@ async def process_due_membership_renewals(limit: int = 250) -> dict:
     return summary
 
 
+async def expire_stale_memberships(limit: int = 500) -> dict:
+    """
+    Cierra membresias cuyo ciclo pagado ya termino y que NO se van a
+    reintentar por process_due_membership_renewals() porque auto_renew
+    es False (cliente canceló la auto-renovación, o nunca la activó).
+
+    Sin esto, esos clientes se quedaban con membership_status="active"
+    para siempre — is_active_member() seguia dandoles precios y
+    allowance de miembro indefinidamente despues de que su periodo
+    pagado terminara, porque ningun otro mecanismo los tocaba (la
+    suspension por impago solo aplica a auto_renew=True, y el cancel
+    manual del cliente solo apaga auto_renew sin cambiar el status).
+    """
+    now = datetime.now(timezone.utc)
+    candidates = await db.customers.find(
+        {
+            "membership_plan": {"$exists": True, "$ne": None},
+            "membership_status": {"$in": ["active", "current", "paid"]},
+            "auto_renew": False,
+            "membership_start_date": {"$exists": True, "$ne": None},
+        },
+        {"_id": 0},
+    ).to_list(limit)
+
+    summary = {"checked": len(candidates), "expired": 0, "skipped": 0}
+
+    for customer in candidates:
+        due_date = _get_customer_membership_due_date(customer)
+        if not due_date or due_date > now:
+            summary["skipped"] += 1
+            continue
+
+        customer_id = customer["id"]
+        now_iso = now.isoformat()
+        await db.customers.update_one(
+            {"id": customer_id},
+            {
+                "$set": {
+                    "membership_status": "cancelled",
+                    "membership_cancelled_at": customer.get("membership_cancelled_at") or now_iso,
+                    "membership_cancelled_reason": customer.get("membership_cancelled_reason") or "expired_no_renewal",
+                    "updated_at": now_iso,
+                }
+            },
+        )
+        await create_audit_log(
+            "MEMBERSHIP_EXPIRED", "customer", customer_id, "auto_scheduler",
+            {"plan": customer.get("membership_plan"), "cycle_due_date": due_date.isoformat()},
+        )
+        try:
+            from notifications import send_email
+            frontend_url = os.environ.get("FRONTEND_URL", "")
+            await send_email(
+                customer.get("email"),
+                "Your Membership Has Expired",
+                f"Hi {customer.get('name')},\n\n"
+                f"Your {customer.get('membership_plan')} membership period has ended and "
+                f"auto-renewal was off, so it was not renewed. Your member pricing and "
+                f"monthly allowance are no longer active.\n\n"
+                f"You can restart your membership anytime here: {frontend_url}/membership\n\n"
+                f"Ventura Fresh Laundry"
+            )
+        except Exception as e:
+            logger.warning(f"Failed to send expiration email to {customer_id}: {e}")
+        summary["expired"] += 1
+
+    return summary
+
+
 def _default_membership_section() -> dict:
     now = datetime.now(timezone.utc).isoformat()
     return {

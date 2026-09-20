@@ -1581,6 +1581,13 @@ async def run_daily_scheduler():
         logger.info(f"✅ Membership auto-renew summary: {renewal_summary}")
     except Exception as e:
         logger.error(f"process_due_membership_renewals failed: {e}")
+    try:
+        from routes.services import expire_stale_memberships
+
+        expire_summary = await expire_stale_memberships()
+        logger.info(f"✅ Membership expiration summary: {expire_summary}")
+    except Exception as e:
+        logger.error(f"expire_stale_memberships failed: {e}")
     logger.info("✅ Daily scheduler completed")
 
 
