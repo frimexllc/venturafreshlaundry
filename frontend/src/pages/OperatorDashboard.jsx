@@ -203,6 +203,14 @@ function isOrderOverdue(order) {
   return pickupDate < today;
 }
 
+// Mismos colores que PLAN_LABELS en Orders.jsx, para que el badge de plan
+// se vea igual en ambas pantallas.
+const PLAN_BADGE_STYLES = {
+  standard: "bg-slate-100 text-slate-700 border-slate-200",
+  premium:  "bg-sky-100 text-sky-700 border-sky-200",
+  express:  "bg-amber-100 text-amber-700 border-amber-200",
+};
+
 function isOrderUrgent(order) {
   if (!order) return false;
   if (order.is_urgent || order.urgent) return true;
@@ -412,6 +420,14 @@ const OrderRow = ({
           {order.service_type === "commercial" && (
             <span className="text-[10px] font-medium text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200">
               🏢 B2B
+            </span>
+          )}
+          {order.service_plan && (
+            <span
+              className={`text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wide ${PLAN_BADGE_STYLES[(order.service_plan || "").toLowerCase()] || PLAN_BADGE_STYLES.standard}`}
+              data-testid={`plan-badge-${order.order_id}`}
+            >
+              {(order.service_plan || "").toUpperCase()}
             </span>
           )}
         </div>
