@@ -341,6 +341,78 @@ function DataRow({ label, value, className = "", mono = false }) {
   );
 }
 
+// ─── Preferred contact method (per-order override) ─────────────────────────
+const CONTACT_METHOD_LABELS = {
+  sms:      { en: "SMS / Text",  es: "SMS / Texto" },
+  email:    { en: "Email",       es: "Correo" },
+  call:     { en: "Phone call",  es: "Llamada" },
+  whatsapp: { en: "WhatsApp",    es: "WhatsApp" },
+};
+
+function ContactMethodRow({ order, onSave, saving, t, locale }) {
+  const [editing, setEditing] = useState(false);
+  const current = order?.preferred_contact || "sms";
+  const [value, setValue] = useState(current);
+
+  useEffect(() => {
+    if (!editing) setValue(current);
+  }, [current, editing]);
+
+  if (!current && !editing) return null;
+
+  const label = CONTACT_METHOD_LABELS[current]?.[locale === "es" ? "es" : "en"] || current;
+
+  if (!editing) {
+    return (
+      <div className="mt-2 flex items-end justify-between gap-2">
+        <DataRow label={t("Preferred contact", "Contacto preferido")} value={label} />
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="mb-0.5 text-[10px] font-semibold text-sky-600 hover:text-sky-700 flex items-center gap-1"
+          data-testid="contact-method-edit-btn"
+        >
+          <Edit2 className="w-3 h-3" />{t("Change", "Cambiar")}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-2 space-y-2">
+      <Label className="text-[10px] font-bold text-slate-400 uppercase">
+        {t("Preferred contact (this order only)", "Contacto preferido (solo esta orden)")}
+      </Label>
+      <select
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        className="w-full h-9 text-sm border border-slate-200 rounded-lg px-2.5 bg-white"
+        data-testid="contact-method-select"
+      >
+        {Object.entries(CONTACT_METHOD_LABELS).map(([val, l]) => (
+          <option key={val} value={val}>{locale === "es" ? l.es : l.en}</option>
+        ))}
+      </select>
+      <div className="flex gap-2">
+        <Button
+          size="sm"
+          disabled={saving}
+          onClick={async () => {
+            const ok = await onSave?.(value);
+            if (ok) setEditing(false);
+          }}
+          data-testid="contact-method-save"
+        >
+          {saving ? t("Saving…", "Guardando…") : t("Save", "Guardar")}
+        </Button>
+        <Button size="sm" variant="outline" disabled={saving} onClick={() => setEditing(false)} data-testid="contact-method-cancel">
+          {t("Cancel", "Cancelar")}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function InfoChip({ icon, label, value, color = "sky" }) {
   const colors = {
     sky:     "bg-sky-50 border-sky-200 text-sky-800",
@@ -892,6 +964,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh, scrollTar
   const [addonCatalog, setAddonCatalog] = useState(DEFAULT_ADDON_CATALOG);
   const [addonCategoryLabels, setAddonCategoryLabels] = useState(CAT_LABELS);
   const [savingRecurrence, setSavingRecurrence] = useState(false);
+  const [savingContactMethod, setSavingContactMethod] = useState(false);
 
   const currentOrderIdRef = useRef(null);
   const billingSectionRef = useRef(null);
@@ -1075,6 +1148,38 @@ export default function OrderDetailDialog({ order, onClose, onRefresh, scrollTar
       return false;
     } finally {
       setSavingRecurrence(false);
+    }
+  }, [localOrder?.id, onRefresh, t]);
+
+  // ─── Preferred contact method handler ────────────────────────────────────
+
+  const handleUpdateContactMethod = useCallback(async (preferredContact) => {
+    const oid = localOrder?.id;
+    if (!oid) return false;
+    setSavingContactMethod(true);
+    try {
+      const res = await fetch(`${API_URL}/api/orders/${oid}/contact-method`, {
+        method: "PATCH",
+        headers: authHdrs(),
+        body: JSON.stringify({ preferred_contact: preferredContact }),
+      });
+      if (handle401(res)) return false;
+      if (handle403(res)) return false;
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.detail || t("Error updating contact method", "Error al actualizar el contacto"));
+        return false;
+      }
+      const updated = await res.json();
+      setLocalOrder(prev => ({ ...prev, preferred_contact: updated.preferred_contact ?? preferredContact }));
+      toast.success(t("Contact method updated for this order", "Contacto actualizado para esta orden"));
+      onRefresh?.();
+      return true;
+    } catch {
+      toast.error(t("Connection error", "Error de conexión"));
+      return false;
+    } finally {
+      setSavingContactMethod(false);
     }
   }, [localOrder?.id, onRefresh, t]);
 
@@ -1686,11 +1791,13 @@ export default function OrderDetailDialog({ order, onClose, onRefresh, scrollTar
                 </div>
               )}
 
-              {o.preferred_contact && (
-                <div className="mt-2">
-                  <DataRow label={t("Preferred contact", "Contacto preferido")} value={o.preferred_contact} />
-                </div>
-              )}
+              <ContactMethodRow
+                order={o}
+                onSave={handleUpdateContactMethod}
+                saving={savingContactMethod}
+                t={t}
+                locale={locale}
+              />
             </Section>
 
             {/* ── Distance chip ── */}

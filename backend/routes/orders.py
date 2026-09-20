@@ -1432,6 +1432,57 @@ async def update_order_recurrence(
     return {"ok": True, "updated": update_data}
 
 
+# ==================== CONTACT METHOD (PER-ORDER OVERRIDE) ====================
+
+class ContactMethodUpdateRequest(BaseModel):
+    preferred_contact: str  # sms | email | call | whatsapp
+
+
+@router.patch("/orders/{order_id}/contact-method")
+async def update_order_contact_method(
+    order_id:      str,
+    data:          ContactMethodUpdateRequest,
+    admin_user:    Optional[dict] = Depends(get_optional_staff_user),
+    customer_user: Optional[dict] = Depends(get_optional_customer_user),
+) -> dict:
+    """
+    Override the notification channel for THIS order only. Normally the
+    customer's own preferred_contact (kept current on their profile) is
+    used for every notification; this lets staff (or the customer) pick a
+    different channel just for one order without changing their standing
+    preference. See notify_order_status_changed()'s preference resolution
+    in notifications.py for how contact_method_override is honored.
+    """
+    user = admin_user or customer_user
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    is_admin = admin_user is not None and admin_user.get("role") in ("admin", "operator")
+    if not is_admin:
+        if not customer_user or not await _order_belongs_to_customer(order, customer_user):
+            raise HTTPException(status_code=403, detail="Not your order")
+
+    valid = {"sms", "email", "call", "whatsapp"}
+    preferred_contact = (data.preferred_contact or "").strip().lower()
+    if preferred_contact not in valid:
+        raise HTTPException(status_code=400, detail=f"preferred_contact must be one of: {sorted(valid)}")
+
+    now = datetime.now(timezone.utc).isoformat()
+    await db.orders.update_one(
+        {"id": order_id},
+        {"$set": {
+            "preferred_contact": preferred_contact,
+            "contact_method_override": True,
+            "updated_at": now,
+        }},
+    )
+    return {"ok": True, "preferred_contact": preferred_contact}
+
+
 # ==================== PRINT TICKET ====================
 
 @router.get("/orders/{order_id}/ticket")

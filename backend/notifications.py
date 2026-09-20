@@ -1467,10 +1467,19 @@ async def send_preferred_notification(
         except Exception as e:
             logger.warning(f"AI subject generation failed: {e}")
 
+    # Prioridad: si el operador cambio el metodo de contacto explicitamente
+    # para ESTA orden (contact_method_override=True), eso gana. Si no, la
+    # preferencia ACTUAL del cliente (customer.preferred_contact) es la
+    # fuente de verdad -- antes se usaba primero order.preferred_contact,
+    # que es solo una foto del valor al momento de crear la orden; si el
+    # cliente cambiaba su preferencia despues (en una orden nueva, o el
+    # admin se la editaba desde Customers), las notificaciones de ordenes
+    # ya existentes seguian usando el valor viejo indefinidamente.
     preference = normalize_preferred_contact(
-        (order or {}).get("preferred_contact")
-        or extract_contact_from_notes(order)
+        ((order or {}).get("preferred_contact") if (order or {}).get("contact_method_override") else None)
         or (customer or {}).get("preferred_contact")
+        or (order or {}).get("preferred_contact")
+        or extract_contact_from_notes(order)
     )
     sms_ok = has_sms_consent(order, customer)
     if preference in {"sms", "whatsapp"} and not sms_ok:
