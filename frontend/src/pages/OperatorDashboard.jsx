@@ -966,21 +966,10 @@ const updateOrderStatus = useCallback(
     setPickupImageModal(null);
     const orderId = order.order_id;
     const targetStatus = pendingStatus;
-    if (imageResult && imageResult.id) {
-      let linkEndpoint = null;
-      if (targetStatus === "delivered") linkEndpoint = `/api/driver/orders/${orderId}/delivery-image/link`;
-      else if (targetStatus === "picked_up") linkEndpoint = `/api/driver/orders/${orderId}/pickup-image/link`;
-      if (linkEndpoint) {
-        try {
-          const res = await fetch(`${API_URL}${linkEndpoint}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ image_id: imageResult.id }),
-          });
-          if (!res.ok) console.warn(`Could not link ${targetStatus} image:`, await res.text());
-        } catch (e) { console.warn(`Could not link ${targetStatus} image:`, e); }
-      }
-    }
+    // PickupImageModal already uploaded the photo straight to its own
+    // per-type endpoint (pickup-image / delivery-image / weight-image),
+    // which saves the reference on the order and notifies the customer —
+    // nothing left to "link" here.
     await executeOrderStatusUpdate(orderId, targetStatus);
   };
 

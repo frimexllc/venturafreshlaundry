@@ -1353,19 +1353,12 @@ export default function OrderDetailDialog({ order, onClose, onRefresh, scrollTar
     setWeightPhotoModal(true);
   };
 
-  const handleWeightPhotoConfirm = async (imageResult) => {
+  const handleWeightPhotoConfirm = async () => {
     setWeightPhotoModal(false);
     const oid = localOrder?.id;
     if (!oid) return;
-    if (imageResult?.id) {
-      try {
-        await fetch(`${API_URL}/api/driver/orders/${oid}/weight-image/link`, {
-          method: "POST",
-          headers: authHdrs(),
-          body: JSON.stringify({ image_id: imageResult.id }),
-        });
-      } catch { /* ignore */ }
-    }
+    // PickupImageModal already uploaded the weight photo straight to
+    // /weight-image, which saves it on the order — nothing left to link.
     const ok = await saveLbsValue(lbs);
     if (ok) {
       toast.success(t("Weight photo saved & lbs recorded", "Foto de peso guardada y libras registradas"));

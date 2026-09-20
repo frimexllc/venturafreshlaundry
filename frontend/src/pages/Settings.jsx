@@ -543,8 +543,6 @@ export default function Settings() {
     notify_pickup_delivery:"out_for_delivery", notify_wash_fold:"ready", notify_self_service:"ready",
   });
 
-  const [backupLoading, setBackupLoading] = useState(false);
-  const [backupFormat, setBackupFormat]   = useState("json");
   const [showPaged, setShowPaged]         = useState(true);
   const [selectedCol, setSelectedCol]     = useState("customers");
   const dl = usePagedDownload();
@@ -623,21 +621,6 @@ export default function Settings() {
       _blobDownload(res.data, `${type}.csv`, "text/csv");
       toast.success(`${type}.csv descargado`);
     } catch { toast.error(`Error exportando ${type}`); }
-  };
-
-  const handleFullBackup = async () => {
-    setBackupLoading(true);
-    try {
-      const res = await axios.get(`${API}/admin/backup`,
-        { params:{ format: backupFormat }, responseType:"blob" });
-      const ts = new Date().toISOString().replace(/[:.]/g,"-").slice(0,19);
-      _blobDownload(res.data, `vfl_backup_${backupFormat}_${ts}.zip`, "application/zip");
-      toast.success("Respaldo descargado");
-    } catch(err) {
-      toast.error(err.response?.status===403
-        ? "Solo administradores"
-        : "Error — usa la descarga paginada para colecciones grandes");
-    } finally { setBackupLoading(false); }
   };
 
   const resetRestore = () => { setRestoreErrors([]); setShowRestoreErrors(false); setInvalidLines({}); };
@@ -961,26 +944,6 @@ export default function Settings() {
                 </div>
               </div>
             )}
-          </div>
-
-          {/* ZIP clásico */}
-          <div className="mb-4 p-4 rounded-xl bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-200 space-y-3">
-            <div className="flex items-start gap-3">
-              <div className="h-9 w-9 rounded-lg bg-indigo-600 flex items-center justify-center shrink-0">
-                <Download className="h-4 w-4 text-white"/>
-              </div>
-              <div>
-                <div className="font-semibold text-slate-900 text-sm">{t("Full Backup ZIP","Respaldo completo ZIP")}</div>
-                <div className="text-xs text-red-500 font-medium">{t("⚠ Only for small databases","⚠ Solo para BD pequeñas — puede fallar en BD grandes")}</div>
-              </div>
-            </div>
-            <select className="w-full h-9 rounded-md border border-slate-200 px-2 text-sm" value={backupFormat} onChange={e=>setBackupFormat(e.target.value)} disabled={backupLoading}>
-              <option value="json">JSON (--jsonArray)</option>
-              <option value="jsonl">JSONL</option>
-            </select>
-            <Button onClick={handleFullBackup} disabled={backupLoading} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white">
-              {backupLoading ? <><Spinner/>Generando…</> : <><Download className="h-4 w-4 mr-2"/>Descargar ZIP completo</>}
-            </Button>
           </div>
 
           {/* CSV exports */}

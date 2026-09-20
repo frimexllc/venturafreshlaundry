@@ -8,26 +8,37 @@ export default function PaymentSuccessPage() {
   const [params] = useSearchParams();
   const sessionId = params.get('session_id');
   const orderId = params.get('order_id');
+  // null = still checking (or nothing to check), true = confirmed paid, false = not paid yet / lookup failed
   const [verified, setVerified] = useState(null);
+  const [checking, setChecking] = useState(Boolean(sessionId && orderId));
 
   useEffect(() => {
     if (sessionId && orderId) {
       fetch(`${API_URL}/api/orders/${orderId}/stripe-status?session_id=${sessionId}`)
-        .then(r => r.json())
+        .then(r => r.ok ? r.json() : Promise.reject())
         .then(d => setVerified(d.payment_status === 'paid'))
-        .catch(() => setVerified(null));
+        .catch(() => setVerified(false))
+        .finally(() => setChecking(false));
     }
   }, [sessionId, orderId]);
+
+  const pending = !checking && verified === false;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-sky-50 to-white flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-lg border border-gray-100 max-w-md w-full p-8 text-center">
-        <div className="w-20 h-20 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-6">
-          <CheckCircle className="w-11 h-11 text-emerald-600" />
+        <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 ${pending ? "bg-amber-100" : "bg-emerald-100"}`}>
+          <CheckCircle className={`w-11 h-11 ${pending ? "text-amber-600" : "text-emerald-600"}`} />
         </div>
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">Pago Recibido!</h1>
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">
+          {checking ? "Verificando tu pago…" : pending ? "Confirmando tu pago…" : "Pago Recibido!"}
+        </h1>
         <p className="text-gray-500 text-sm mb-6">
-          Gracias por tu pago. Tu orden esta siendo procesada por nuestro equipo.
+          {checking
+            ? "Un momento mientras confirmamos tu pago con Stripe."
+            : pending
+            ? "Estamos confirmando tu pago con Stripe. Si ya completaste el pago, tu orden se actualizará en unos minutos."
+            : "Gracias por tu pago. Tu orden esta siendo procesada por nuestro equipo."}
         </p>
         {orderId && (
           <p className="text-xs text-gray-400 mb-4">Orden: {orderId}</p>

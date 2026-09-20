@@ -826,6 +826,39 @@ async def update_order_status(
     return {"message": f"Status updated to {normalized_status}", "order_id": order_id}
 
 
+@router.post("/admin/orders/last-completed/notify")
+async def notify_last_completed_order(
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    """Re-send the 'completed' notification for the most recently completed order.
+
+    Manual resend button in the admin chat widget, for cases where the
+    automatic notification on status change failed or needs a retry.
+    """
+    require_admin(current_user)
+
+    if not NOTIFICATIONS_ENABLED:
+        raise HTTPException(status_code=503, detail="Notifications not available")
+
+    order = await db.orders.find_one(
+        {"status": "completed"}, {"_id": 0}, sort=[("updated_at", -1)]
+    )
+    if not order:
+        raise HTTPException(status_code=404, detail="No completed orders found")
+
+    customer = await db.customers.find_one({"id": order.get("customer_id")}, {"_id": 0})
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found for this order")
+
+    try:
+        await notify_order_status_changed(customer, order, "completed")
+    except Exception as e:
+        logger.error(f"Failed to send last-completed notification: {e}")
+        raise HTTPException(status_code=500, detail="Could not send message")
+
+    return {"order_id": order.get("id"), "order_number": order.get("order_number")}
+
+
 @router.patch("/orders/{order_id}/payment-status")
 async def update_order_payment_status(
     order_id:     str,
@@ -1131,6 +1164,23 @@ async def create_order_stripe_checkout(
         amount=amount,
         currency="usd",
     )
+
+
+@router.get("/orders/{order_id}/stripe-status")
+async def get_public_order_stripe_status(order_id: str, session_id: str = Query(...)) -> dict:
+    """Public, read-only payment-status check for a customer landing back on
+    a payment confirmation page after a Stripe redirect. No auth (the
+    customer has no staff session at that point) — the exact session_id
+    issued for this order is required to avoid leaking status by guessing
+    order ids. Does not mutate anything; the actual sync from Stripe happens
+    via the operator-facing /orders/stripe/status/{session_id} endpoint or
+    the webhook, whichever flow issued the session."""
+    transaction = await db.payment_transactions.find_one(
+        {"order_id": order_id, "session_id": session_id}, {"_id": 0, "payment_status": 1}
+    )
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Payment session not found")
+    return {"payment_status": transaction.get("payment_status", "pending")}
 
 
 @router.get("/orders/stripe/status/{session_id}")
