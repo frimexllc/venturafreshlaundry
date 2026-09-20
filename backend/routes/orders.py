@@ -13,7 +13,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 
-from auth import get_current_user, require_admin, require_role, get_current_customer
+from auth import (
+    get_current_user, require_admin, require_role, get_current_customer,
+    get_optional_staff_user, get_optional_customer_user,
+)
 from database import SKIP_SERVER_NOTIFICATIONS, db
 from models import (
     ROLE_OPERATOR,
@@ -1345,8 +1348,8 @@ async def _order_belongs_to_customer(order: dict, customer: dict) -> bool:
 @router.get("/orders/{order_id}/recurrence")
 async def get_order_recurrence(
     order_id:      str,
-    admin_user:    Optional[dict] = Depends(get_current_user),
-    customer_user: Optional[dict] = Depends(get_current_customer),
+    admin_user:    Optional[dict] = Depends(get_optional_staff_user),
+    customer_user: Optional[dict] = Depends(get_optional_customer_user),
 ) -> dict:
     user = admin_user or customer_user
     if not user:
@@ -1391,8 +1394,8 @@ async def get_order_recurrence(
 async def update_order_recurrence(
     order_id:      str,
     data:          RecurrenceUpdateRequest,
-    admin_user:    Optional[dict] = Depends(get_current_user),
-    customer_user: Optional[dict] = Depends(get_current_customer),
+    admin_user:    Optional[dict] = Depends(get_optional_staff_user),
+    customer_user: Optional[dict] = Depends(get_optional_customer_user),
 ) -> dict:
     user = admin_user or customer_user
     if not user:

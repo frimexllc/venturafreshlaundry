@@ -113,6 +113,56 @@ def require_admin(current_user: dict) -> None:
         raise HTTPException(status_code=403, detail="Admin access required")
 
 
+async def get_optional_staff_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+) -> Optional[dict]:
+    """Like get_current_user, but returns None instead of raising when the
+    token is missing/invalid/expired or belongs to a customer rather than a
+    staff user.
+
+    For endpoints that accept EITHER a staff (admin/operator) token OR a
+    customer token: declaring both get_current_user and get_current_customer
+    as Depends() on the same endpoint does NOT work as "try one, fall back to
+    the other" — FastAPI resolves every Depends() unconditionally, and each
+    of those raises HTTPException(401) for the "wrong" token type, so the
+    request always 401s regardless of which token was actually valid. Use
+    this alongside get_optional_customer_user instead, and check whichever
+    one came back non-None.
+    """
+    try:
+        payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except jwt.InvalidTokenError:
+        return None
+    if payload.get("type") == "customer":
+        return None
+    user_id = payload.get("sub")
+    if not user_id:
+        return None
+    user = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not user:
+        return None
+    if not user.get("role"):
+        user = {**user, "role": payload.get("role", ROLE_OPERATOR)}
+    return user
+
+
+async def get_optional_customer_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+) -> Optional[dict]:
+    """Like get_current_customer, but returns None instead of raising.
+    See get_optional_staff_user for why this pairing exists."""
+    try:
+        payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except jwt.InvalidTokenError:
+        return None
+    if payload.get("type") != "customer":
+        return None
+    customer_id = payload.get("sub")
+    if not customer_id:
+        return None
+    return await db.customers.find_one({"id": customer_id}, {"_id": 0})
+
+
 def require_role(allowed_roles: List[str]):
     """FastAPI dependency factory: allow admins always, plus any role in
     `allowed_roles`.
