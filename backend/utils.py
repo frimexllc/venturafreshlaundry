@@ -69,14 +69,12 @@ import base64
 import uuid
 import time
 import logging
-import math
 import os
 from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 import qrcode
-from qrcode.image.svg import SvgImage
 from fastapi import HTTPException
 
 from database import db
@@ -90,32 +88,8 @@ TZ_PACIFIC = ZoneInfo("America/Los_Angeles")
 def now_utc():
     return datetime.now(timezone.utc)
 
-def now_pacific():
-    return datetime.now(TZ_PACIFIC)
-
-def to_pacific(dt_str):
-    if not dt_str:
-        return dt_str
-    try:
-        if isinstance(dt_str, datetime):
-            dt = dt_str
-        else:
-            dt_str = str(dt_str)
-            if dt_str.endswith("Z"):
-                dt_str = dt_str[:-1] + "+00:00"
-            dt = datetime.fromisoformat(dt_str)
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt.astimezone(TZ_PACIFIC).isoformat()
-    except Exception:
-        return dt_str
-
 def now_iso():
     return now_utc().isoformat()
-
-def now_pacific_display():
-    dt = now_pacific()
-    return dt.strftime("%b %d, %Y %I:%M %p PT")
 
 
 import re as _re
@@ -467,32 +441,6 @@ def calculate_delivery_fee(distance_miles) -> float:
         if d <= tier["max_miles"]:
             return tier["fee"]
     return DELIVERY_FEE_TIERS[-1]["fee"]
-
-def stripe_processing_fee(amount: float, include_in_total: bool = True) -> float:
-    if include_in_total:
-        return round(float(amount) * 1.03, 2)
-    return round(float(amount) * 0.03, 2)
-
-
-def haversine_miles(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    R = 3958.8
-    dlat = (lat2 - lat1) * math.pi / 180
-    dlon = (lon2 - lon1) * math.pi / 180
-    a = math.sin(dlat/2)**2 + math.cos(lat1 * math.pi/180) * math.cos(lat2 * math.pi/180) * math.sin(dlon/2)**2
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
-    return R * c
-
-def haversine_km(coord1: List[float], coord2: List[float]) -> float:
-    lon1, lat1 = coord1
-    lon2, lat2 = coord2
-    r = 6371.0
-    phi1 = math.radians(lat1)
-    phi2 = math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dlambda = math.radians(lon2 - lon1)
-    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
-    return 2 * r * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-
 
 # ── Membership cycle usage (VERSIÓN MEJORADA CON PATCH 1) ─────────────────────
 
@@ -871,12 +819,6 @@ def should_notify_order_status(order: dict, status: str) -> bool:
 
 
 # ── QR / Ticket helpers ────────────────────────────────────────────────────────
-
-def build_qr_svg(payload: str):
-    img = qrcode.make(payload, image_factory=SvgImage, box_size=10, border=2)
-    buffer = io.BytesIO()
-    img.save(buffer)
-    return buffer.getvalue()
 
 def build_qr_payload(order: dict):
     return json.dumps({
