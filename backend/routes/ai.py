@@ -71,7 +71,7 @@ def get_ai_router(
 
         await create_audit_log("ORDER_STATUS_CHANGED", "order", order_id, current_user["id"], {"new_status": normalized_status, "source": "ai"})
 
-        if NOTIFICATIONS_ENABLED and not SKIP_SERVER_NOTIFICATIONS and order.get("customer_id") and should_notify_order_status(order, normalized_status):
+        if NOTIFICATIONS_ENABLED and not SKIP_SERVER_NOTIFICATIONS and order.get("customer_id") and await should_notify_order_status(order, normalized_status):
             customer = await db.customers.find_one({"id": order["customer_id"]}, {"_id": 0})
             if customer:
                 order["status"] = normalized_status

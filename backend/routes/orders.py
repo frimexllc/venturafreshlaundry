@@ -775,12 +775,12 @@ async def update_order_status(
         "created_at": now,
     })
 
-    should_send_notification = (
+    should_send_notification = bool(
         notify
         and NOTIFICATIONS_ENABLED
         and not SKIP_SERVER_NOTIFICATIONS
         and order.get("customer_id")
-        and should_notify_order_status(order, normalized_status)
+        and await should_notify_order_status(order, normalized_status)
     )
 
     if should_send_notification:

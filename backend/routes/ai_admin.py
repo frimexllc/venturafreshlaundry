@@ -87,8 +87,8 @@ async def update_order_status_core(order_id: str, new_status: str, user_id: str,
 
     # Notificaciones (si están habilitadas)
     if NOTIFICATIONS_ENABLED:
-        order = await db.orders.find_one({"id": order_id}, {"_id": 0, "customer_id": 1})
-        if order and order.get("customer_id") and should_notify_order_status(order, new_status):
+        order = await db.orders.find_one({"id": order_id}, {"_id": 0, "customer_id": 1, "service_type": 1})
+        if order and order.get("customer_id") and await should_notify_order_status(order, new_status):
             customer = await db.customers.find_one({"id": order["customer_id"]}, {"_id": 0})
             if customer:
                 try:
