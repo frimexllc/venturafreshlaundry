@@ -23,7 +23,7 @@ import {
   ChevronDown, ChevronUp, User, MapPin, Calendar, StickyNote,
   Hash, Award, Plus, Minus, Trash2, Info, Camera, ZoomIn,
   ChevronLeft, ChevronRight, AlertCircle, Phone, Mail,
-  CheckCircle, Repeat, CalendarDays, CalendarRange, Edit2,
+  CheckCircle, Repeat, CalendarDays, CalendarRange, Edit2, Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -33,6 +33,7 @@ import {
 } from "./utils";
 import { useLocale } from "../../context/LocaleContext";
 import PickupImageModal from "../PickupImageModal";
+import SneakerAnalysisModal from "../SneakerAnalysisModal";
 import BillingBreakdown from "./BillingBreakdown";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -965,6 +966,7 @@ export default function OrderDetailDialog({ order, onClose, onRefresh, scrollTar
   const [addonCategoryLabels, setAddonCategoryLabels] = useState(CAT_LABELS);
   const [savingRecurrence, setSavingRecurrence] = useState(false);
   const [savingContactMethod, setSavingContactMethod] = useState(false);
+  const [showSneakerModal, setShowSneakerModal] = useState(false);
 
   const currentOrderIdRef = useRef(null);
   const billingSectionRef = useRef(null);
@@ -1940,6 +1942,16 @@ export default function OrderDetailDialog({ order, onClose, onRefresh, scrollTar
               }
             >
               <div className="space-y-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full gap-2 border-violet-200 text-violet-700 hover:bg-violet-50"
+                  onClick={() => setShowSneakerModal(true)}
+                  data-testid="sneaker-ai-btn"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />{t("AI Sneaker Pricing", "Precio de tenis con IA")}
+                </Button>
+
                 {/* Current add-ons with price editing */}
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">{t("Saved items", "Artículos guardados")}</p>
@@ -2244,6 +2256,17 @@ export default function OrderDetailDialog({ order, onClose, onRefresh, scrollTar
           onConfirm={handleWeightPhotoConfirm}
         />
       )}
+
+      {/* ── AI Sneaker Pricing modal ── */}
+      <SneakerAnalysisModal
+        open={showSneakerModal}
+        onClose={() => setShowSneakerModal(false)}
+        orderId={localOrder?.id}
+        onAccepted={() => {
+          if (localOrder?.id) fetchOrderDetails(localOrder.id);
+          onRefresh?.();
+        }}
+      />
     </>
   );
 }

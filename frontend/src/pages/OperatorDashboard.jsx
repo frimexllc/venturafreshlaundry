@@ -57,6 +57,7 @@ import {
   dedupeOrders,
 } from "../components/operator-dashboard/utils";
 import PickupImageModal from "../components/PickupImageModal";
+import SneakerAnalysisModal from "../components/SneakerAnalysisModal";
 import ConfirmDialog from "../components/ConfirmDialog";
 import { useLocale } from "../context/LocaleContext";
 import { formatDatePT, formatTimePT, formatShortDatePT } from "../utils/dateUtils";
@@ -562,6 +563,7 @@ export default function OperatorDashboard() {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [selectedOrderScrollTarget, setSelectedOrderScrollTarget] = useState(null);
   const [pickupImageModal, setPickupImageModal] = useState(null);
+  const [showSneakerQuoteModal, setShowSneakerQuoteModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [orderFilters, setOrderFilters] = useState({});
   const [orderViewFilter, setOrderViewFilter] = useState("all");
@@ -1421,6 +1423,15 @@ const updateOrderStatus = useCallback(
             <Button onClick={loadDashboard} variant="ghost" size="sm" className="text-white border border-white/20 hover:bg-white/15 h-9 w-9 p-0" data-testid="refresh-dashboard">
               <RefreshCw className="h-3.5 w-3.5" />
             </Button>
+            <Button
+              onClick={() => setShowSneakerQuoteModal(true)}
+              variant="ghost"
+              size="sm"
+              className="text-white border border-white/20 hover:bg-white/15 h-9 px-3 text-xs gap-1.5"
+              data-testid="sneaker-quote-btn"
+            >
+              <Sparkles className="h-3.5 w-3.5" />{t("Sneaker Quote", "Cotizar Tenis")}
+            </Button>
           </div>
         </div>
       </div>
@@ -1932,6 +1943,7 @@ const updateOrderStatus = useCallback(
         onRefresh={loadDashboard}
       />
       <PickupImageModal open={!!pickupImageModal} order={pickupImageModal?.order} pendingStatus={pickupImageModal?.pendingStatus} onClose={() => setPickupImageModal(null)} onConfirm={handlePickupImageConfirm} />
+      <SneakerAnalysisModal open={showSneakerQuoteModal} onClose={() => setShowSneakerQuoteModal(false)} orderId={null} />
       <ConfirmDialog open={!!confirmDialog} title={confirmDialog?.title} description={confirmDialog?.description} onConfirm={handleConfirmDialogAccept} onCancel={() => setConfirmDialog(null)} />
 
       {/* Store POS Modal */}

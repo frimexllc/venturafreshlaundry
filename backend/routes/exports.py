@@ -53,6 +53,7 @@ ALL_COLLECTIONS = [
     "patrones_detectados","payment_transactions","payment_validations",
     "pending_registrations","preferences","products","propuestas_ia",
     "purchase_orders","quotes","reglas_negocio","services","services_page_config",
+    "sneaker_ai_analyses",
     "stock_movements","store_orders","stripe_products","stripe_sync_log","suppliers",
     "survey_responses","tickets","users","vehicles","voice_assistant_sessions",
     # Imágenes disponibles solo vía stream individual (muy pesadas para ZIP)
