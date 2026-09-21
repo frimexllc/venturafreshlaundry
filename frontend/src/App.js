@@ -152,10 +152,10 @@ function AppRoutes() {
       <Route path="/schedule-pickup" element={<SchedulePickup />} />
       <Route path="/wash-fold" element={<WashFoldRequest />} />
       <Route path="/sneaker-quote" element={<PublicSneakerQuote />} />
-      <Route path="/membership" element={<CustomerProtectedRoute><MembershipPage /> </CustomerProtectedRoute>} />
+      <Route path="/membership" element={<MembershipPage />} />
       <Route path="/request-quote" element={<RequestQuotePage />} />
-      <Route path="/commercial" element={<CustomerProtectedRoute><RequestQuotePage /></CustomerProtectedRoute>} />
-      <Route path="/b2b" element={<CustomerProtectedRoute><RequestQuotePage /></CustomerProtectedRoute>} />
+      <Route path="/commercial" element={<RequestQuotePage />} />
+      <Route path="/b2b" element={<RequestQuotePage />} />
       <Route path="/terms-and-conditions" element={<TermsAndConditions />} />
       <Route path="/privacy-policy" element={<PrivacyPolicy />} />
       <Route path="/sms-policy-consent" element={<SmsPolicyConsent />} />
