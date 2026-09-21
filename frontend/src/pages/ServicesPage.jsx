@@ -27,11 +27,11 @@ const AD_CONFIG = {
   },
   right: {
     image: rightBannerImage,
-    badge: "Shoe cleaning",
-    title: "Coming soon",
-    subtitle: "Premium care for your shoes coming soon at Ventura Fresh Laundry.",
-    cta: "Reservar Express",
-    ctaUrl: "/schedule-pickup?express=true",
+    badge: "AI Sneaker Pricing",
+    title: "Get an instant quote",
+    subtitle: "Upload photos, get an AI price estimate for sneaker & shoe cleaning.",
+    cta: "Cotizar ahora",
+    ctaUrl: "/sneaker-quote",
     accent: "#f59e0b",
     overlayFrom: "#1e1b4b",
     overlayTo: "#312e81",
@@ -1513,6 +1513,24 @@ export default function ServicesPage() {
                 </Tilt>
               </Reveal>
             </div>
+
+            <Reveal delay={40} dir="up" dur={700}>
+              <div className="mb-4 sm:mb-8 relative rounded-2xl overflow-hidden border border-violet-100 bg-gradient-to-br from-violet-50 via-white to-sky-50 p-5 sm:p-7 flex flex-col sm:flex-row items-start sm:items-center gap-5 sm:gap-8">
+                <div className="w-14 h-14 flex items-center justify-center text-3xl rounded-2xl bg-white shadow-sm shrink-0">👟</div>
+                <div className="flex-1 min-w-0">
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-violet-100 text-violet-600 text-[11px] font-bold uppercase tracking-wide mb-2">
+                    <Sparkles className="w-3 h-3" />{t("AI-Powered", "Con IA")}
+                  </div>
+                  <h3 className="text-lg sm:text-xl font-bold text-slate-900 mb-1">{t("Sneaker & Shoe Cleaning", "Limpieza de Tenis y Calzado")}</h3>
+                  <p className="text-slate-500 text-sm">{t("Upload a few photos and get an instant AI price estimate — starting at $12 per pair.", "Sube unas fotos y recibe un precio estimado al instante con IA — desde $12 por par.")}</p>
+                </div>
+                <Link to="/sneaker-quote" className="w-full sm:w-auto shrink-0">
+                  <button className="w-full sm:w-auto flex items-center justify-center gap-2 bg-violet-600 text-white rounded-xl px-6 py-3.5 text-sm font-bold uppercase tracking-wider hover:bg-violet-700 active:scale-95 transition-all duration-300 shadow-md shadow-violet-200" style={{ minHeight: "48px" }}>
+                    {t("Get Instant Quote", "Cotiza Ya")}<ArrowRight className="w-4 h-4" />
+                  </button>
+                </Link>
+              </div>
+            </Reveal>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
               <Reveal dir="left" delay={0}>

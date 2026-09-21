@@ -38,6 +38,7 @@ import StorePage from "./pages/StorePage";
 import BlogPage from "./pages/BlogPage";
 import SchedulePickup from "./pages/SchedulePickup";
 import WashFoldRequest from "./pages/WashFoldRequest";
+import PublicSneakerQuote from "./pages/PublicSneakerQuote";
 import MembershipPage from "./pages/MembershipPage";
 import RequestQuotePage from "./pages/RequestQuotePage";
 import CustomerAccount from "./pages/CustomerAccount";
@@ -150,6 +151,7 @@ function AppRoutes() {
       <Route path="/blog/:slug" element={<BlogPage />} />
       <Route path="/schedule-pickup" element={<SchedulePickup />} />
       <Route path="/wash-fold" element={<WashFoldRequest />} />
+      <Route path="/sneaker-quote" element={<PublicSneakerQuote />} />
       <Route path="/membership" element={<CustomerProtectedRoute><MembershipPage /> </CustomerProtectedRoute>} />
       <Route path="/request-quote" element={<RequestQuotePage />} />
       <Route path="/commercial" element={<CustomerProtectedRoute><RequestQuotePage /></CustomerProtectedRoute>} />

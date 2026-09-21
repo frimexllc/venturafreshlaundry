@@ -1,5 +1,6 @@
 import os
 import uuid
+import base64
 import asyncio
 import logging
 from datetime import datetime, timezone
@@ -7,7 +8,7 @@ from zoneinfo import ZoneInfo
 from typing import Optional, List, Dict, Any
 
 from fastapi import APIRouter, HTTPException, Request, Depends
-from pydantic import BaseModel, EmailStr, validator
+from pydantic import BaseModel, EmailStr, Field, validator
 
 from auth import get_current_user, require_admin
 from utils import (
@@ -22,6 +23,7 @@ from utils import (
 )
 from notifications import send_sms, send_email, send_whatsapp, send_voice_call, normalize_preferred_contact, detect_language
 from ai_assistant import get_groq_client
+from sneaker_ai import analyze_sneaker_photos, build_pricing, MAX_IMAGES_PER_ANALYSIS
 
 logger = logging.getLogger(__name__)
 
@@ -189,6 +191,14 @@ class PublicQuoteRequest(BaseModel):
     industry: Optional[str] = None
     estimated_lbs: Optional[float] = None
     message: Optional[str] = None
+
+class PublicSneakerQuoteRequest(BaseModel):
+    name: str
+    email: EmailStr
+    phone: str
+    contact_method: Optional[str] = None
+    sms_consent: Optional[bool] = False
+    images_base64: List[str] = Field(..., min_items=1, max_items=MAX_IMAGES_PER_ANALYSIS)
 
 class PublicMembershipSignup(BaseModel):
     first_name: str
@@ -1647,5 +1657,117 @@ PERSONALITY GUIDELINES:
         )
         
         return {"success": True, "message": "Survey response saved"}
+
+    # =========================================================================
+    # 8. PUBLIC SNEAKER AI QUOTE
+    # =========================================================================
+    PUBLIC_SNEAKER_QUOTE_DAILY_LIMIT_PER_IP = 5
+
+    def _client_ip(request: Request) -> str:
+        forwarded = request.headers.get("x-forwarded-for")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
+        return request.client.host if request.client else "unknown"
+
+    @router.post("/public/sneaker-quote")
+    async def public_sneaker_quote(data: PublicSneakerQuoteRequest, request: Request):
+        now_dt = datetime.now(timezone.utc)
+        now = now_dt.isoformat()
+        ip = _client_ip(request)
+
+        day_start = now_dt.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+        recent_count = await db.public_sneaker_quote_log.count_documents(
+            {"ip": ip, "created_at": {"$gte": day_start}}
+        )
+        if recent_count >= PUBLIC_SNEAKER_QUOTE_DAILY_LIMIT_PER_IP:
+            raise HTTPException(
+                status_code=429,
+                detail="Too many quote requests today. Please try again tomorrow or contact us directly.",
+            )
+        await db.public_sneaker_quote_log.insert_one({"ip": ip, "created_at": now})
+
+        normalized_name = normalize_name(data.name)
+        normalized_email = normalize_email(data.email) or data.email.lower()
+        normalized_phone = normalize_phone(data.phone)
+        normalized_contact_raw = normalize_spaces(data.contact_method) if data.contact_method else None
+        preferred_contact = normalize_preferred_contact(normalized_contact_raw) if normalized_contact_raw else None
+        if preferred_contact:
+            validate_sms_consent(preferred_contact, data.sms_consent)
+
+        try:
+            image_bytes_list = [base64.b64decode(img) for img in data.images_base64]
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid image data")
+
+        try:
+            ai_result = await analyze_sneaker_photos(image_bytes_list)
+        except RuntimeError as e:
+            raise HTTPException(status_code=502, detail=str(e))
+
+        pricing = build_pricing(pair_index=1, ai_result=ai_result)
+
+        analysis_id = str(uuid.uuid4())
+        record = {
+            "id": analysis_id,
+            "order_id": None,
+            "source": "public",
+            "contact_name": normalized_name or data.name,
+            "contact_email": normalized_email,
+            "contact_phone": normalized_phone or data.phone,
+            "ai_result": ai_result,
+            "pricing": pricing,
+            "final_price": None,
+            "status": "quoted",
+            "created_by": None,
+            "created_at": now,
+            "updated_at": now,
+            "ip": ip,
+        }
+        await db.sneaker_ai_analyses.insert_one(record)
+        await create_audit_log("SNEAKER_AI_PUBLIC_QUOTE", "sneaker_ai_analysis", analysis_id, None, {"ip": ip})
+
+        is_es = detect_language(None, normalized_phone or data.phone) == "es-MX"
+        shoe_label = " ".join([p for p in [ai_result.get("brand"), ai_result.get("model")] if p]) or ai_result.get("type") or "shoes"
+        price_str = f"${pricing['suggested_total']:.2f}"
+        try:
+            if is_es:
+                subject = "Tu cotización de limpieza de tenis"
+                msg = (
+                    f"Hola {normalized_name or data.name},\n\n"
+                    f"Aquí está tu cotización estimada para {shoe_label}: {price_str}.\n\n"
+                    f"Esta es una estimación basada en tus fotos — el precio final se confirma al recibir el par. "
+                    f"Para agendar tu pickup, visita nuestra página de programación.\n\n"
+                    f"Ventura Fresh Laundry"
+                )
+            else:
+                subject = "Your sneaker cleaning quote"
+                msg = (
+                    f"Hi {normalized_name or data.name},\n\n"
+                    f"Here's your estimated quote for {shoe_label}: {price_str}.\n\n"
+                    f"This is an estimate based on your photos — the final price is confirmed when we receive the pair. "
+                    f"To schedule a pickup, visit our scheduling page.\n\n"
+                    f"Ventura Fresh Laundry"
+                )
+            if normalized_email:
+                await send_email(normalized_email, subject, msg)
+        except Exception as e:
+            logger.warning(f"Failed to send public sneaker quote email: {e}")
+
+        if emit_realtime:
+            try:
+                await emit_realtime("notification", {
+                    "type": "sneaker_quote_created",
+                    "analysis_id": analysis_id,
+                    "contact_name": record["contact_name"],
+                    "suggested_total": pricing["suggested_total"],
+                })
+            except Exception as e:
+                logger.error(f"Real-time notification failed for sneaker quote {analysis_id}: {e}")
+
+        return {
+            "id": analysis_id,
+            "ai_result": ai_result,
+            "pricing": pricing,
+        }
 
     return router
