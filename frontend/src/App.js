@@ -148,7 +148,7 @@ function AppRoutes() {
       <Route path="/store" element={<StorePage />} />
       <Route path="/blog" element={<BlogPage />} />
       <Route path="/blog/:slug" element={<BlogPage />} />
-      <Route path="/schedule-pickup" element={<CustomerProtectedRoute><SchedulePickup /></CustomerProtectedRoute>} />
+      <Route path="/schedule-pickup" element={<SchedulePickup />} />
       <Route path="/wash-fold" element={<WashFoldRequest />} />
       <Route path="/membership" element={<CustomerProtectedRoute><MembershipPage /> </CustomerProtectedRoute>} />
       <Route path="/request-quote" element={<RequestQuotePage />} />
