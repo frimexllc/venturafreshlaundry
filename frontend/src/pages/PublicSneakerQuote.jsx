@@ -11,6 +11,7 @@ import PublicNav from "../components/PublicNav";
 import PublicFooter from "../components/PublicFooter";
 import SmsConsentField from "../components/SmsConsentField";
 import { useLocale } from "../context/LocaleContext";
+import { getRecaptchaToken } from "../utils/recaptcha";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const MAX_PHOTOS = 3;
@@ -80,6 +81,7 @@ export default function PublicSneakerQuote() {
     setAnalyzing(true);
     try {
       const images_base64 = await Promise.all(photos.map((p) => fileToBase64(p.file)));
+      const captcha_token = await getRecaptchaToken("sneaker_quote");
       const res = await axios.post(`${API}/public/sneaker-quote`, {
         name: form.name,
         email: form.email,
@@ -87,6 +89,7 @@ export default function PublicSneakerQuote() {
         contact_method: form.contact_method,
         sms_consent: form.sms_consent,
         images_base64,
+        captcha_token,
       });
       setResult(res.data);
       setStep("result");

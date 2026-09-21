@@ -8,6 +8,7 @@ import PublicFooter from "../components/PublicFooter";
 import SmsConsentField from "../components/SmsConsentField";
 import AddressAutocomplete from "../components/AddressAutocomplete";
 import { useLocale } from "../context/LocaleContext";
+import { getRecaptchaToken } from "../utils/recaptcha";
 import heroBanner from "../assets/WhatsApp Image 2026-03-20 at 2.51.26 PM (1).jpeg";
 
 const BACKEND_BASE = (() => {
@@ -1150,6 +1151,10 @@ export default function SchedulePickup() {
   const [submitting, setSubmitting] = useState(false);
   const [washPhase, setWashPhase]   = useState(-1);
   const [washDone, setWashDone]     = useState(false);
+  const [pendingVerification, setPendingVerification] = useState(null); // { temp_token, message } | null
+  const [verificationCode, setVerificationCode] = useState("");
+  const [verifying, setVerifying]   = useState(false);
+  const [submitFailed, setSubmitFailed] = useState(false);
 
   const [membershipInfo, setMembershipInfo] = useState(null);
   const [addonServices, setAddonServices]   = useState([]);
@@ -1627,7 +1632,8 @@ export default function SchedulePickup() {
         };
       }
 
-      await axios.post(`${API}/public/pickup-request`, {
+      const captcha_token = await getRecaptchaToken("pickup_request");
+      const res = await axios.post(`${API}/public/pickup-request`, {
         name:           `${form.first_name} ${form.last_name}`.trim(),
         email:          form.email.trim(),
         phone:          fullPhone,
@@ -1650,9 +1656,11 @@ export default function SchedulePickup() {
         // valores ya calculados para que el backend los guarde en la orden.
         distance_miles: form.distance_miles,
         delivery_fee:   form.delivery_fee,
+        captcha_token,
         ...recurrencePayload,
       });
-    } catch (e) { toast.error(getErr(e)); }
+      setPendingVerification(res.data);
+    } catch (e) { toast.error(getErr(e)); setSubmitFailed(true); }
     finally { setSubmitting(false); }
 
     setTimeout(() => {
@@ -1661,11 +1669,44 @@ export default function SchedulePickup() {
     }, cum + 400);
   };
 
+  const [verifiedResult, setVerifiedResult] = useState(null);
+
+  const handleVerifyCode = async () => {
+    if (!pendingVerification?.temp_token || !verificationCode.trim()) {
+      toast.error(t("Enter the code we sent you", "Ingresa el código que te enviamos"));
+      return;
+    }
+    setVerifying(true);
+    try {
+      const res = await axios.post(`${API}/public/verify-code`, {
+        temp_token: pendingVerification.temp_token,
+        code: verificationCode.trim(),
+      });
+      setVerifiedResult(res.data);
+      setPendingVerification(null);
+    } catch (e) {
+      toast.error(getErr(e));
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  const handleResendCode = async () => {
+    if (!pendingVerification?.temp_token) return;
+    try {
+      await axios.post(`${API}/public/resend-code`, { temp_token: pendingVerification.temp_token });
+      toast.success(t("Code resent", "Código reenviado"));
+    } catch (e) {
+      toast.error(getErr(e));
+    }
+  };
+
   const handleReset = () => {
     setForm({ ...EMPTY });
     setCur(0);
     setFormKey(k => k + 1);
     setWashPhase(-1); setWashDone(false);
+    setPendingVerification(null); setVerificationCode(""); setVerifiedResult(null); setSubmitFailed(false);
     setShowResumeBanner(false);
     setSelectedAddons(new Map());
     clearAddressValidation();
@@ -1799,6 +1840,40 @@ export default function SchedulePickup() {
                     ))}
                   </div>
                 </>
+              ) : submitFailed ? (
+                <div style={{ animation: "tl_panel .5s ease both" }}>
+                  <div style={{ width: 60, height: 60, borderRadius: "50%", background: "rgba(239,68,68,.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, margin: "12px auto 10px" }}>⚠️</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "'Manrope',sans-serif", color: "white", marginBottom: 10 }}>
+                    {t("Something went wrong", "Algo salió mal")}
+                  </div>
+                  <button onClick={() => { setSubmitFailed(false); setWashPhase(-1); }} style={{ padding: "11px 24px", borderRadius: 10, border: "none", background: "linear-gradient(135deg,#0ea5e9,#2563eb)", color: "white", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                    {t("Try again", "Intentar de nuevo")}
+                  </button>
+                </div>
+              ) : pendingVerification ? (
+                <div style={{ animation: "tl_panel .5s ease both" }}>
+                  <div style={{ width: 60, height: 60, borderRadius: "50%", background: "rgba(56,189,248,.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, margin: "12px auto 10px" }}>📩</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "'Manrope',sans-serif", color: "white", marginBottom: 6 }}>
+                    {t("Enter your verification code", "Ingresa tu código de verificación")}
+                  </div>
+                  <p style={{ fontSize: 12, color: "rgba(255,255,255,.5)", maxWidth: 280, margin: "0 auto 16px", lineHeight: 1.6 }}>
+                    {pendingVerification.message}
+                  </p>
+                  <input
+                    type="text" inputMode="numeric" maxLength={6} value={verificationCode}
+                    onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, ""))}
+                    placeholder="000000"
+                    style={{ width: 160, textAlign: "center", letterSpacing: 6, fontSize: 22, fontWeight: 800, padding: "10px 0", borderRadius: 10, border: "1px solid rgba(255,255,255,.2)", background: "rgba(255,255,255,.05)", color: "white", margin: "0 auto 14px", display: "block" }}
+                  />
+                  <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+                    <button onClick={handleVerifyCode} disabled={verifying} style={{ padding: "11px 24px", borderRadius: 10, border: "none", background: "linear-gradient(135deg,#0ea5e9,#2563eb)", color: "white", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", opacity: verifying ? 0.6 : 1 }}>
+                      {verifying ? t("Verifying…", "Verificando…") : t("Confirm", "Confirmar")}
+                    </button>
+                  </div>
+                  <button onClick={handleResendCode} style={{ marginTop: 12, fontSize: 11, color: "rgba(255,255,255,.4)", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit" }}>
+                    {t("Didn't get it? Resend code", "¿No te llegó? Reenviar código")}
+                  </button>
+                </div>
               ) : (
                 <div style={{ animation: "tl_panel .5s ease both" }}>
                   <div style={{ width: 180, margin: "0 auto", animation: "tl_float 4s ease-in-out infinite" }}><WashMachine phase={5} done={true} /></div>

@@ -3,10 +3,14 @@ import uuid
 import base64
 import asyncio
 import logging
-from datetime import datetime, timezone
+import random
+import secrets
+import string
+from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 from typing import Optional, List, Dict, Any
 
+import httpx
 from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel, EmailStr, Field, validator
 
@@ -26,6 +30,51 @@ from ai_assistant import get_groq_client
 from sneaker_ai import analyze_sneaker_photos, build_pricing, MAX_IMAGES_PER_ANALYSIS
 
 logger = logging.getLogger(__name__)
+
+# ── Bot / identity protection for public forms ──────────────────────────────
+# Two layers: invisible reCAPTCHA v3 (blocks scripted/bot submissions before
+# we even send a verification code) and a 6-digit code sent to the email or
+# phone the visitor gave us (confirms that contact is real and reachable
+# before an order/quote actually gets created). Same code-verification
+# pattern already used for customer account registration in customer_auth.py.
+RECAPTCHA_SECRET_KEY = os.environ.get("RECAPTCHA_SECRET_KEY", "")
+RECAPTCHA_MIN_SCORE = float(os.environ.get("RECAPTCHA_MIN_SCORE", "0.5"))
+PUBLIC_VERIFICATION_CODE_TTL_MINUTES = int(os.environ.get("PUBLIC_VERIFICATION_CODE_TTL_MINUTES", "15"))
+
+
+async def _verify_captcha(token: Optional[str]) -> bool:
+    if not RECAPTCHA_SECRET_KEY:
+        logger.warning("RECAPTCHA_SECRET_KEY not configured — skipping captcha check")
+        return True
+    if not token:
+        return False
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(
+                "https://www.google.com/recaptcha/api/siteverify",
+                data={"secret": RECAPTCHA_SECRET_KEY, "response": token},
+            )
+            result = resp.json()
+        if not result.get("success"):
+            logger.warning(f"reCAPTCHA rejected: {result.get('error-codes')}")
+            return False
+        if result.get("score", 0) < RECAPTCHA_MIN_SCORE:
+            logger.warning(f"reCAPTCHA score too low: {result.get('score')}")
+            return False
+        return True
+    except Exception as e:
+        logger.error(f"reCAPTCHA verification error: {e}")
+        # Fail open on Google being unreachable — the code-verification step
+        # still guards against fake contact info even if this check is down.
+        return True
+
+
+def _generate_public_verification_code() -> str:
+    return "".join(random.choices(string.digits, k=6))
+
+
+def _generate_public_temp_token() -> str:
+    return secrets.token_urlsafe(32)
 
 # FIX: la validación de "no fechas en el pasado" para pickup_date se hace en
 # hora del Pacífico (misma zona horaria que ya usa create_order() en
@@ -151,6 +200,7 @@ class PublicPickupRequest(BaseModel):
     recurrence: Optional[str] = "once"
     recurrence_end_date: Optional[str] = None
     recurrence_days: Optional[List[str]] = None   # NUEVO: para 'twice_week'
+    captcha_token: Optional[str] = None
 
     @validator("pickup_date")
     def pickup_date_not_blank(cls, v):
@@ -173,6 +223,7 @@ class PublicWashFoldRequest(BaseModel):
     addon_services: Optional[List[Dict[str, Any]]] = []
     wash_temp: Optional[str] = None
     dry_temp: Optional[str] = None
+    captcha_token: Optional[str] = None
 
 class PublicContactRequest(BaseModel):
     name: str
@@ -199,6 +250,16 @@ class PublicSneakerQuoteRequest(BaseModel):
     contact_method: Optional[str] = None
     sms_consent: Optional[bool] = False
     images_base64: List[str] = Field(..., min_items=1, max_items=MAX_IMAGES_PER_ANALYSIS)
+    captcha_token: Optional[str] = None
+
+
+class PublicVerifyCodeRequest(BaseModel):
+    temp_token: str
+    code: str
+
+
+class PublicResendCodeRequest(BaseModel):
+    temp_token: str
 
 class PublicMembershipSignup(BaseModel):
     first_name: str
@@ -400,8 +461,10 @@ def get_public_forms_router(
     # =========================================================================
     # 1. PICKUP REQUEST (con soporte para recurrence_days)
     # =========================================================================
-    @router.post("/public/pickup-request")
-    async def public_pickup_request(data: PublicPickupRequest):
+    # NOTE: this used to be the endpoint itself. It's now the "finalize" step,
+    # only reached after captcha + verification-code checks pass — see the
+    # staging endpoint and verify-code endpoint near the end of this file.
+    async def _finalize_pickup_request(data: PublicPickupRequest) -> dict:
         now = datetime.now(timezone.utc).isoformat()
 
         # FIX: pickup_date ahora es obligatorio (ver PublicPickupRequest más
@@ -673,8 +736,9 @@ def get_public_forms_router(
     # =========================================================================
     # 2. WASH & FOLD REQUEST (CON SOPORTE PARA ADD-ONS)
     # =========================================================================
-    @router.post("/public/wash-fold-request")
-    async def public_wash_fold_request(data: PublicWashFoldRequest):
+    # NOTE: same as pickup above — this is now the "finalize" step reached
+    # only after captcha + verification-code checks pass.
+    async def _finalize_wash_fold_request(data: PublicWashFoldRequest) -> dict:
         now = datetime.now(timezone.utc).isoformat()
 
         normalized_name = normalize_name(data.name)
@@ -1671,6 +1735,14 @@ PERSONALITY GUIDELINES:
 
     @router.post("/public/sneaker-quote")
     async def public_sneaker_quote(data: PublicSneakerQuoteRequest, request: Request):
+        # NOTE: this stays a single, immediate step (unlike pickup/wash-fold
+        # below) — it's an instant quote with no order created, already
+        # rate-limited per IP, so the friction of a full email/SMS code gate
+        # isn't worth breaking the "instant" value of the tool. reCAPTCHA
+        # still screens out scripted abuse before it burns Groq tokens.
+        if not await _verify_captcha(data.captcha_token):
+            raise HTTPException(status_code=400, detail="Could not verify you're human. Please try again.")
+
         now_dt = datetime.now(timezone.utc)
         now = now_dt.isoformat()
         ip = _client_ip(request)
@@ -1769,5 +1841,168 @@ PERSONALITY GUIDELINES:
             "ai_result": ai_result,
             "pricing": pricing,
         }
+
+    # =========================================================================
+    # 9. IDENTITY VERIFICATION FOR PICKUP / WASH & FOLD REQUESTS
+    # =========================================================================
+    # Unlike the sneaker quote above, these two actually create a real order
+    # that staff will act on (drive out for a pickup, etc.), so they get the
+    # full gate: reCAPTCHA at submission, then a 6-digit code sent to the
+    # visitor's own email/phone that must be entered before the order is
+    # actually created. The original form-processing logic is unchanged —
+    # it just moved into _finalize_pickup_request / _finalize_wash_fold_request
+    # above, now only reached from verify_public_code() below.
+
+    async def _send_public_verification_code(
+        code: str, name: str, email: Optional[str], phone: Optional[str], preferred_contact: Optional[str]
+    ) -> None:
+        is_es = detect_language(None, phone) == "es-MX"
+        channel = preferred_contact or ("sms" if phone and not email else "email")
+
+        if is_es:
+            subject = "Tu código de verificación — Ventura Fresh Laundry"
+            body = (
+                f"Hola {name},\n\nTu código de verificación es: {code}\n\n"
+                f"Ingresa este código para confirmar tu solicitud. Expira en "
+                f"{PUBLIC_VERIFICATION_CODE_TTL_MINUTES} minutos.\n\nVentura Fresh Laundry"
+            )
+            sms_body = f"Ventura Fresh Laundry: tu código de verificación es {code}. Expira en {PUBLIC_VERIFICATION_CODE_TTL_MINUTES} min."
+        else:
+            subject = "Your verification code — Ventura Fresh Laundry"
+            body = (
+                f"Hi {name},\n\nYour verification code is: {code}\n\n"
+                f"Enter this code to confirm your request. It expires in "
+                f"{PUBLIC_VERIFICATION_CODE_TTL_MINUTES} minutes.\n\nVentura Fresh Laundry"
+            )
+            sms_body = f"Ventura Fresh Laundry: your verification code is {code}. Expires in {PUBLIC_VERIFICATION_CODE_TTL_MINUTES} min."
+
+        sent = False
+        try:
+            if channel == "sms" and phone:
+                await send_sms(phone, sms_body)
+                sent = True
+            elif email:
+                await send_email(email, subject, body)
+                sent = True
+            elif phone:
+                await send_sms(phone, sms_body)
+                sent = True
+        except Exception as e:
+            logger.error(f"Failed to send public verification code: {e}")
+
+        if not sent:
+            raise HTTPException(
+                status_code=400,
+                detail="Could not send a verification code — please check your email/phone and try again.",
+            )
+
+    async def _stage_public_submission(form_type: str, data: BaseModel, name: str, email: str, phone: str, preferred_contact: Optional[str]) -> dict:
+        code = _generate_public_verification_code()
+        temp_token = _generate_public_temp_token()
+        now = datetime.now(timezone.utc)
+        expires_at = (now + timedelta(minutes=PUBLIC_VERIFICATION_CODE_TTL_MINUTES)).isoformat()
+
+        await db.public_form_verifications.insert_one({
+            "id": str(uuid.uuid4()),
+            "temp_token": temp_token,
+            "form_type": form_type,
+            "payload": data.dict(),
+            "code": code,
+            "used": False,
+            "attempts": 0,
+            "created_at": now.isoformat(),
+            "expires_at": expires_at,
+        })
+
+        await _send_public_verification_code(code, name, email, phone, preferred_contact)
+
+        is_es = detect_language(None, phone) == "es-MX"
+        return {
+            "temp_token": temp_token,
+            "requires_verification": True,
+            "message": (
+                "Te enviamos un código de verificación. Ingrésalo para confirmar tu solicitud."
+                if is_es else
+                "We sent you a verification code. Enter it to confirm your request."
+            ),
+        }
+
+    @router.post("/public/pickup-request")
+    async def stage_pickup_request(data: PublicPickupRequest):
+        if not await _verify_captcha(data.captcha_token):
+            raise HTTPException(status_code=400, detail="Could not verify you're human. Please try again.")
+        normalized_contact_raw = normalize_spaces(data.contact_method) if data.contact_method else None
+        preferred_contact = normalize_preferred_contact(normalized_contact_raw) if normalized_contact_raw else None
+        return await _stage_public_submission(
+            "pickup_request", data,
+            name=normalize_name(data.name) or data.name,
+            email=normalize_email(data.email) or data.email,
+            phone=normalize_phone(data.phone) or data.phone,
+            preferred_contact=preferred_contact,
+        )
+
+    @router.post("/public/wash-fold-request")
+    async def stage_wash_fold_request(data: PublicWashFoldRequest):
+        if not await _verify_captcha(data.captcha_token):
+            raise HTTPException(status_code=400, detail="Could not verify you're human. Please try again.")
+        normalized_contact_raw = normalize_spaces(data.contact_method) if data.contact_method else None
+        preferred_contact = normalize_preferred_contact(normalized_contact_raw) if normalized_contact_raw else None
+        return await _stage_public_submission(
+            "wash_fold_request", data,
+            name=normalize_name(data.name) or data.name,
+            email=normalize_email(data.email) or data.email,
+            phone=normalize_phone(data.phone) or data.phone,
+            preferred_contact=preferred_contact,
+        )
+
+    @router.post("/public/verify-code")
+    async def verify_public_code(data: PublicVerifyCodeRequest):
+        record = await db.public_form_verifications.find_one({"temp_token": data.temp_token}, {"_id": 0})
+        if not record:
+            raise HTTPException(status_code=404, detail="Verification session not found or expired")
+        if record.get("used"):
+            raise HTTPException(status_code=400, detail="This code has already been used")
+        if datetime.now(timezone.utc) > datetime.fromisoformat(record["expires_at"]):
+            raise HTTPException(status_code=400, detail="Verification code expired. Please request a new one.")
+        if record.get("attempts", 0) >= 5:
+            raise HTTPException(status_code=429, detail="Too many attempts. Please request a new code.")
+
+        if data.code.strip() != record["code"]:
+            await db.public_form_verifications.update_one({"temp_token": data.temp_token}, {"$inc": {"attempts": 1}})
+            raise HTTPException(status_code=400, detail="Incorrect code")
+
+        await db.public_form_verifications.update_one({"temp_token": data.temp_token}, {"$set": {"used": True}})
+
+        form_type = record["form_type"]
+        payload = record["payload"]
+
+        if form_type == "pickup_request":
+            return await _finalize_pickup_request(PublicPickupRequest(**payload))
+        elif form_type == "wash_fold_request":
+            return await _finalize_wash_fold_request(PublicWashFoldRequest(**payload))
+        raise HTTPException(status_code=400, detail="Unknown form type")
+
+    @router.post("/public/resend-code")
+    async def resend_public_code(data: PublicResendCodeRequest):
+        record = await db.public_form_verifications.find_one({"temp_token": data.temp_token}, {"_id": 0})
+        if not record:
+            raise HTTPException(status_code=404, detail="Verification session not found")
+        if record.get("used"):
+            raise HTTPException(status_code=400, detail="This request was already confirmed")
+
+        code = _generate_public_verification_code()
+        expires_at = (datetime.now(timezone.utc) + timedelta(minutes=PUBLIC_VERIFICATION_CODE_TTL_MINUTES)).isoformat()
+        await db.public_form_verifications.update_one(
+            {"temp_token": data.temp_token},
+            {"$set": {"code": code, "expires_at": expires_at, "attempts": 0}},
+        )
+
+        payload = record["payload"]
+        contact_method = payload.get("contact_method")
+        preferred_contact = normalize_preferred_contact(contact_method) if contact_method else None
+        await _send_public_verification_code(
+            code, payload.get("name", ""), payload.get("email"), payload.get("phone"), preferred_contact
+        )
+        return {"ok": True, "message": "Code resent"}
 
     return router

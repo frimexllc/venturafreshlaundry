@@ -8,6 +8,7 @@ import PublicFooter from "../components/PublicFooter";
 import SmsConsentField from "../components/SmsConsentField";
 import AddressAutocomplete from "../components/AddressAutocomplete";
 import { useLocale } from "../context/LocaleContext";
+import { getRecaptchaToken } from "../utils/recaptcha";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -740,6 +741,11 @@ export default function WashFoldRequest() {
   const [submitting, setSubmitting] = useState(false);
   const [foldPhase, setFoldPhase]   = useState(-1);
   const [foldDone, setFoldDone]     = useState(false);
+  const [pendingVerification, setPendingVerification] = useState(null);
+  const [verificationCode, setVerificationCode] = useState("");
+  const [verifying, setVerifying]   = useState(false);
+  const [verifiedResult, setVerifiedResult] = useState(null);
+  const [submitFailed, setSubmitFailed] = useState(false);
   const setF = useCallback((k, v) => setForm(p => ({ ...p, [k]: v })), []);
 
   const formatLocalDate = (date) => {
@@ -925,7 +931,8 @@ export default function WashFoldRequest() {
         id: a.id, name: a.name, price: a.price,
         quantity: a.quantity || 1, category: a.category,
       }));
-      await axios.post(`${API}/public/wash-fold-request`, {
+      const captcha_token = await getRecaptchaToken("wash_fold_request");
+      const res = await axios.post(`${API}/public/wash-fold-request`, {
         name:           `${form.first_name} ${form.last_name}`.trim(),
         email:          form.email.trim(),
         phone:          fullPhone,
@@ -939,17 +946,50 @@ export default function WashFoldRequest() {
         wash_temp:      washTemp,
         dry_temp:       dryTemp,
         addon_services: addonsWithQuantity,
+        captcha_token,
       });
       setForm(p => ({ ...p, addons: [] }));
-    } catch (e) { toast.error(getErr(e)); }
+      setPendingVerification(res.data);
+    } catch (e) { toast.error(getErr(e)); setSubmitFailed(true); }
     finally { setSubmitting(false); }
 
     setTimeout(() => { setFoldPhase(5); setFoldDone(true); }, cum + 300);
   };
 
+  const handleVerifyCode = async () => {
+    if (!pendingVerification?.temp_token || !verificationCode.trim()) {
+      toast.error(t("Enter the code we sent you", "Ingresa el código que te enviamos"));
+      return;
+    }
+    setVerifying(true);
+    try {
+      const res = await axios.post(`${API}/public/verify-code`, {
+        temp_token: pendingVerification.temp_token,
+        code: verificationCode.trim(),
+      });
+      setVerifiedResult(res.data);
+      setPendingVerification(null);
+    } catch (e) {
+      toast.error(getErr(e));
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  const handleResendCode = async () => {
+    if (!pendingVerification?.temp_token) return;
+    try {
+      await axios.post(`${API}/public/resend-code`, { temp_token: pendingVerification.temp_token });
+      toast.success(t("Code resent", "Código reenviado"));
+    } catch (e) {
+      toast.error(getErr(e));
+    }
+  };
+
   const handleReset = () => {
     setForm({ ...EMPTY }); setCur(0); setFormKey(k => k + 1);
     setFoldPhase(-1); setFoldDone(false);
+    setPendingVerification(null); setVerificationCode(""); setVerifiedResult(null); setSubmitFailed(false);
     setWashTemp(""); setDryTemp("");
     scrollToForm();
   };
@@ -1067,6 +1107,49 @@ export default function WashFoldRequest() {
                     ))}
                   </div>
                 </>
+              ) : submitFailed ? (
+                <div style={{ animation:"wf_pop .5s cubic-bezier(.34,1.56,.64,1) both" }}>
+                  <div style={{ width:64, height:64, borderRadius:"50%", background:"rgba(239,68,68,.12)",
+                    display:"flex", alignItems:"center", justifyContent:"center", fontSize:30,
+                    margin:"14px auto 8px" }}>⚠️</div>
+                  <div style={{ fontSize:18, fontWeight:800, fontFamily:"'Manrope',sans-serif", color:"#0c4a6e", marginBottom:10 }}>
+                    {t("Something went wrong","Algo salió mal")}
+                  </div>
+                  <button onClick={() => { setSubmitFailed(false); setFoldPhase(-1); }} style={{ padding:"11px 26px", borderRadius:12,
+                    border:"none", background:"linear-gradient(135deg,#0ea5e9,#0284c7)", color:"white",
+                    fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+                    {t("Try again","Intentar de nuevo")}
+                  </button>
+                </div>
+              ) : pendingVerification ? (
+                <div style={{ animation:"wf_pop .5s cubic-bezier(.34,1.56,.64,1) both" }}>
+                  <div style={{ width:64, height:64, borderRadius:"50%", background:"rgba(14,165,233,.12)",
+                    display:"flex", alignItems:"center", justifyContent:"center", fontSize:30,
+                    margin:"14px auto 8px" }}>📩</div>
+                  <div style={{ fontSize:18, fontWeight:800, fontFamily:"'Manrope',sans-serif", color:"#0c4a6e", marginBottom:6 }}>
+                    {t("Enter your verification code","Ingresa tu código de verificación")}
+                  </div>
+                  <p style={{ fontSize:12, color:"#64748b", maxWidth:280, margin:"0 auto 16px", lineHeight:1.6 }}>
+                    {pendingVerification.message}
+                  </p>
+                  <input
+                    type="text" inputMode="numeric" maxLength={6} value={verificationCode}
+                    onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, ""))}
+                    placeholder="000000"
+                    style={{ width:160, textAlign:"center", letterSpacing:6, fontSize:22, fontWeight:800, padding:"10px 0",
+                      borderRadius:10, border:"1.5px solid #bae6fd", background:"#f0f9ff", color:"#0c4a6e",
+                      margin:"0 auto 14px", display:"block" }}
+                  />
+                  <button onClick={handleVerifyCode} disabled={verifying} style={{ padding:"11px 26px", borderRadius:12,
+                    border:"none", background:"linear-gradient(135deg,#0ea5e9,#0284c7)", color:"white",
+                    fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit", opacity: verifying ? 0.6 : 1 }}>
+                    {verifying ? t("Verifying…","Verificando…") : t("Confirm","Confirmar")}
+                  </button>
+                  <button onClick={handleResendCode} style={{ display:"block", margin:"12px auto 0", fontSize:11,
+                    color:"#94a3b8", background:"none", border:"none", cursor:"pointer", fontFamily:"inherit" }}>
+                    {t("Didn't get it? Resend code","¿No te llegó? Reenviar código")}
+                  </button>
+                </div>
               ) : (
                 <div style={{ animation:"wf_pop .5s cubic-bezier(.34,1.56,.64,1) both" }}>
                   <div style={{ width:160, margin:"0 auto", animation:"wf_float 3s ease-in-out infinite" }}>
