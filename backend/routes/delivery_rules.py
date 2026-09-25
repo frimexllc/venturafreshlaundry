@@ -1,21 +1,22 @@
 """
 Delivery Rules — Wrapper around centralized delivery configuration.
 This module provides the same async interface expected by store.py,
-but delegates all logic to delivery_config.py.
+but delegates all logic to delivery_config.py and domain/delivery.py.
 
-All delivery fees, distance calculations, geocoding, and validation
-are centralized in delivery_config.py.
+Distance calculation and geocoding are centralized in delivery_config.py;
+the fee/tier math itself lives in domain/delivery.py.
 """
 
 import logging
 from typing import Dict, Optional, List, Any
+
+import domain.delivery as domain_delivery
 
 # Import everything from the central configuration
 from delivery_config import (
     # Core functions
     haversine_miles,
     geocode_address as _geocode_address_sync,
-    calculate_delivery_fee as _calculate_fee_sync,
     validate_delivery_address as _validate_address_sync,
     get_delivery_info,
     # Constants
@@ -65,8 +66,18 @@ async def geocode_address(address: str, ors_api_key: str, google_maps_api_key: s
 # ==================== DELIVERY FEE CALCULATION ====================
 
 def calculate_delivery_fee(distance_miles: float) -> float:
-    """Calculate delivery fee based on tiered pricing (sync)"""
-    return _calculate_fee_sync(distance_miles, use_tiers=True)
+    """Calculate delivery fee based on tiered pricing (sync).
+
+    Fixed bug: this used to call `_calculate_fee_sync(distance_miles,
+    use_tiers=True)`, but `_calculate_fee_sync` is delivery_config.py's
+    `calculate_delivery_fee(distance_miles)` — which doesn't accept a
+    `use_tiers` argument (that parameter only exists on
+    routes/delivery_config.py's function of the same name). Every call
+    raised a TypeError; nothing in the codebase calls this function
+    today, so it never surfaced in production. Delegating straight to
+    domain/delivery.py sidesteps the naming collision entirely.
+    """
+    return domain_delivery.calculate_delivery_fee(distance_miles, tiers=DELIVERY_FEE_TIERS)
 
 def get_delivery_tier(distance_miles: float) -> Optional[Dict]:
     """Get delivery tier information"""

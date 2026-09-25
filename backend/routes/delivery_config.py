@@ -27,6 +27,8 @@ import asyncio
 from dataclasses import dataclass, field
 from enum import Enum
 
+import domain.delivery as domain_delivery
+
 logger = logging.getLogger(__name__)
 
 # ==================== ENUMS & DATA CLASSES ====================
@@ -71,48 +73,15 @@ def _get_env_int(key: str, default: int) -> int:
     except (ValueError, TypeError):
         return default
 
-def _parse_tiers_from_env() -> Optional[List[Dict]]:
-    """Lee los tiers desde la variable DELIVERY_TIERS (formato: '3:0,5:1.99,8:2.99,12:4.99,15:8.99')"""
-    tiers_str = os.environ.get("DELIVERY_TIERS", "")
-    if not tiers_str:
-        return None
-    tiers = []
-    prev = 0
-    for part in tiers_str.split(","):
-        part = part.strip()
-        if ":" in part:
-            miles_str, fee_str = part.split(":", 1)
-            try:
-                miles = float(miles_str)
-                fee = float(fee_str)
-                tiers.append({
-                    "max_miles": miles,
-                    "fee": fee,
-                    "label": f"${fee:.2f}" if fee > 0 else "FREE",
-                    "description": f"{int(prev)}–{int(miles)} miles" if prev > 0 else f"0–{int(miles)} miles"
-                })
-                prev = miles
-            except ValueError:
-                continue
-    return tiers if tiers else None
-
 # ==================== TIERED DELIVERY FEES ====================
-# Si existe DELIVERY_TIERS en el entorno, usarlo; de lo contrario, valores por defecto
-_env_tiers = _parse_tiers_from_env()
-if _env_tiers:
-    DELIVERY_FEE_TIERS = _env_tiers
-else:
-    DELIVERY_FEE_TIERS = [
-        {"max_miles": 3,   "fee": 0.00,  "label": "FREE",     "description": "0–3 miles"},
-        {"max_miles": 5,   "fee": 1.99,  "label": "$1.99",    "description": "3–5 miles"},
-        {"max_miles": 8,   "fee": 2.99,  "label": "$2.99",    "description": "5–8 miles"},
-        {"max_miles": 12,  "fee": 4.99,  "label": "$4.99",    "description": "8–12 miles"},
-        {"max_miles": 15,  "fee": 8.99,  "label": "$8.99",    "description": "12–15 miles"},
-    ]
+# Tier table and the DELIVERY_TIERS env-parsing now live in
+# domain/delivery.py, the single source of truth shared with utils.py,
+# delivery_config.py and routes/delivery_rules.py.
+DELIVERY_FEE_TIERS = domain_delivery.get_delivery_fee_tiers()
 
 # ==================== DELIVERY LIMITS ====================
-MAX_DELIVERY_MILES = _get_env_float("MAX_SERVICE_MILES", 15.0)
-FREE_MILES_LIMIT = _get_env_float("FREE_MILES_LIMIT", 3.0)
+MAX_DELIVERY_MILES = domain_delivery.get_max_service_miles()
+FREE_MILES_LIMIT = domain_delivery.get_free_miles_limit()
 MIN_DELIVERY_FEE = _get_env_float("SHIPPING_MIN_FEE", 0.00)
 MAX_DELIVERY_FEE = _get_env_float("SHIPPING_MAX_FEE", DELIVERY_FEE_TIERS[-1]["fee"])
 RATE_PER_MILE_AFTER_FREE = _get_env_float("SHIPPING_RATE_PER_MILE", 1.5)
@@ -182,14 +151,10 @@ CACHE_TTL_SECONDS = 300  # 5 minutos
 
 # ==================== DISTANCE CALCULATION HELPERS ====================
 
-def haversine_miles(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Calculate straight-line distance in miles using Haversine formula"""
-    R = 3958.8
-    phi1, phi2 = math.radians(lat1), math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dlam = math.radians(lon2 - lon1)
-    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
-    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+# Straight-line distance in miles — delegates to domain/delivery.py, the
+# single source of truth (also used by utils.py, delivery_config.py, and
+# routes/delivery_rules.py).
+haversine_miles = domain_delivery.haversine_miles
 
 
 def haversine_km(coord1: List[float], coord2: List[float]) -> float:
@@ -524,23 +489,23 @@ def calculate_round_trip_cost(
 
 def calculate_delivery_fee(distance_miles: float, use_tiers: bool = True) -> float:
     """
-    Calculate delivery fee based on distance.
-    
+    Calculate delivery fee based on distance. Delegates the tiered path
+    (the only one anything in this codebase actually uses) to
+    domain/delivery.py. `use_tiers=False` keeps the old linear-rate
+    formula available for compatibility, though nothing calls it today.
+
     Args:
         distance_miles: Distance in miles from store
         use_tiers: If True uses tiered pricing, if False uses linear ($1.50/mile after 3)
-    
+
     Returns:
         Delivery fee in USD
     """
     if distance_miles <= 0:
         return 0.00
-    
+
     if use_tiers:
-        for tier in DELIVERY_FEE_TIERS:
-            if distance_miles <= tier["max_miles"]:
-                return tier["fee"]
-        return DELIVERY_FEE_TIERS[-1]["fee"]
+        return domain_delivery.calculate_delivery_fee(distance_miles, tiers=DELIVERY_FEE_TIERS)
     else:
         # Linear calculation (legacy mode)
         adjusted_distance = max(0, distance_miles - FREE_MILES_LIMIT)
@@ -576,22 +541,9 @@ def get_delivery_info(distance_miles: float) -> Dict:
     """
     Get detailed delivery information including tier and fee.
     """
-    fee = calculate_delivery_fee(distance_miles)
-    
-    current_tier = None
-    for tier in DELIVERY_FEE_TIERS:
-        if distance_miles <= tier["max_miles"]:
-            current_tier = tier
-            break
-    
-    return {
-        "fee": fee,
-        "distance_miles": round(distance_miles, 2),
-        "is_free": fee == 0,
-        "tier": current_tier,
-        "max_service_miles": MAX_DELIVERY_MILES,
-        "free_miles_limit": FREE_MILES_LIMIT,
-    }
+    return domain_delivery.get_delivery_info(
+        distance_miles, tiers=DELIVERY_FEE_TIERS, max_service_miles=MAX_DELIVERY_MILES
+    )
 
 
 # ==================== DELIVERY ZONES MANAGEMENT ====================

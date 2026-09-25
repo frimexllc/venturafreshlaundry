@@ -3,11 +3,12 @@ Centralized delivery configuration — coordinates, fees, geocoding, distance.
 Used by: routes/logistics.py, routes/geocode.py, routes/delivery_rules.py
 """
 import os
-import math
 import logging
 from typing import Optional, Dict, Any, List
 
 import httpx
+
+import domain.delivery as domain_delivery
 
 logger = logging.getLogger(__name__)
 
@@ -24,59 +25,31 @@ STORE_LNG = -119.213742
 STORE_ADDRESS = "5722 Telephone Rd Suite 5, Ventura CA 93003"
 
 # ── Delivery constants ────────────────────────────────────────────────────────
-MAX_DELIVERY_MILES = 15.0
-FREE_MILES_LIMIT = 3.0
+# Tier table, fee math and haversine distance now live in domain/delivery.py
+# (the single source of truth also used by utils.py, routes/delivery_config.py
+# and routes/delivery_rules.py). These names are kept for the modules that
+# still import them directly from here (routes/geocode.py, routes/logistics.py,
+# routes/delivery_rules.py).
+MAX_DELIVERY_MILES = domain_delivery.get_max_service_miles()
+FREE_MILES_LIMIT = domain_delivery.get_free_miles_limit()
 METERS_PER_MILE = 1609.34
 DEFAULT_FUEL_PRICE_PER_GALLON = 4.89
 DRIVER_HOURLY_RATE = 18.0
 
-DELIVERY_FEE_TIERS = [
-    {"max_miles": 3,  "fee": 0.00, "label": "Free (0-3 mi)"},
-    {"max_miles": 5,  "fee": 1.99, "label": "$1.99 (3-5 mi)"},
-    {"max_miles": 8,  "fee": 2.99, "label": "$2.99 (5-8 mi)"},
-    {"max_miles": 12, "fee": 4.99, "label": "$4.99 (8-12 mi)"},
-    {"max_miles": 15, "fee": 8.99, "label": "$8.99 (12-15 mi)"},
-]
+DELIVERY_FEE_TIERS = domain_delivery.get_delivery_fee_tiers()
 
-
-# ── Haversine ─────────────────────────────────────────────────────────────────
-def haversine_miles(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
-    R = 3958.8
-    dlat = math.radians(lat2 - lat1)
-    dlon = math.radians(lng2 - lng1)
-    a = (
-        math.sin(dlat / 2) ** 2
-        + math.cos(math.radians(lat1))
-        * math.cos(math.radians(lat2))
-        * math.sin(dlon / 2) ** 2
-    )
-    return R * 2 * math.asin(math.sqrt(a))
+haversine_miles = domain_delivery.haversine_miles
 
 
 # ── Delivery fee calculation ──────────────────────────────────────────────────
 def calculate_delivery_fee(distance_miles: float) -> float:
-    if distance_miles <= FREE_MILES_LIMIT:
-        return 0.0
-    for tier in DELIVERY_FEE_TIERS:
-        if distance_miles <= tier["max_miles"]:
-            return tier["fee"]
-    return round(1.50 * (distance_miles - FREE_MILES_LIMIT), 2)
+    return domain_delivery.calculate_delivery_fee(distance_miles)
 
 
 def get_delivery_info(distance_miles: float) -> dict:
-    fee = calculate_delivery_fee(distance_miles)
-    tier = None
-    for t in DELIVERY_FEE_TIERS:
-        if distance_miles <= t["max_miles"]:
-            tier = t
-            break
-    return {
-        "fee": fee,
-        "tier": tier,
-        "is_free": fee == 0,
-        "distance_miles": round(distance_miles, 2),
-        "allowed": distance_miles <= MAX_DELIVERY_MILES,
-    }
+    return domain_delivery.get_delivery_info(
+        distance_miles, tiers=DELIVERY_FEE_TIERS, max_service_miles=MAX_DELIVERY_MILES
+    )
 
 
 # ── Geocoding ─────────────────────────────────────────────────────────────────

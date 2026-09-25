@@ -85,6 +85,7 @@ from domain.membership import (
     compute_cycle_usage,
     PLAN_ALLOWANCE_FALLBACK as PLAN_ALLOWANCES,
 )
+import domain.delivery as domain_delivery
 
 logger = logging.getLogger(__name__)
 
@@ -396,29 +397,13 @@ async def customer_owns_order(order: dict, customer: dict) -> bool:
 
 
 # ── Delivery fee (UNIFIED) ─────────────────────────────────────────────────────
-
-MAX_SERVICE_MILES  = 15.0
-FREE_MILES_LIMIT   = 3.0
-
-DELIVERY_FEE_TIERS = [
-    {"max_miles":  3, "fee": 0.00},
-    {"max_miles":  5, "fee": 1.99},
-    {"max_miles":  8, "fee": 2.99},
-    {"max_miles": 12, "fee": 4.99},
-    {"max_miles": 15, "fee": 8.99},
-]
+# The tier table and fee math now live in domain/delivery.py — the single
+# source of truth shared with delivery_config.py, routes/delivery_config.py,
+# and routes/delivery_rules.py, which used to each keep their own slightly
+# different copy (one of them diverged enough to crash when called).
 
 def calculate_delivery_fee(distance_miles) -> float:
-    if distance_miles is None:
-        return 0.0
-    try:
-        d = float(distance_miles)
-    except (TypeError, ValueError):
-        return 0.0
-    for tier in DELIVERY_FEE_TIERS:
-        if d <= tier["max_miles"]:
-            return tier["fee"]
-    return DELIVERY_FEE_TIERS[-1]["fee"]
+    return domain_delivery.calculate_delivery_fee(distance_miles)
 
 # ── Membership cycle usage (VERSIÓN MEJORADA CON PATCH 1) ─────────────────────
 
