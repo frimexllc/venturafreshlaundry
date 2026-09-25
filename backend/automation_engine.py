@@ -992,7 +992,15 @@ async def update_order_status(order_id: str, new_status: str, notes: Optional[st
             }}},
         )
 
-    if status_changed and NOTIFICATIONS_ENABLED and not SKIP_SERVER_NOTIFICATIONS and order.get("customer_id"):
+    # FIX: this endpoint (the one the main operator dashboard calls to
+    # update an order's status) used to notify on every status change with
+    # no eligibility check at all, bypassing the configurable
+    # "only notify on this one intermediate milestone" rule that
+    # routes/orders.py already respected — the exact "reduce excessive
+    # notifications" behavior this was supposed to have everywhere.
+    from utils import should_notify_order_status
+    notify_eligible = status_changed and await should_notify_order_status(order, status_value)
+    if notify_eligible and NOTIFICATIONS_ENABLED and not SKIP_SERVER_NOTIFICATIONS and order.get("customer_id"):
         try:
             customer = await db.customers.find_one({"id": order.get("customer_id")}, {"_id": 0})
             if customer:

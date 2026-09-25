@@ -86,6 +86,7 @@ from domain.membership import (
     PLAN_ALLOWANCE_FALLBACK as PLAN_ALLOWANCES,
 )
 import domain.delivery as domain_delivery
+import domain.notifications as domain_notifications
 
 logger = logging.getLogger(__name__)
 
@@ -784,38 +785,33 @@ async def should_skip_payment_notification(order: dict, customer: dict) -> bool:
     return final["total"] <= 0.50
 
 def _notify_rule_category(service_type: Optional[str]) -> str:
-    s = (service_type or "pickup_delivery").strip().lower().replace(" ", "_")
-    if "wash" in s or "fold" in s:
-        return "wash_fold"
-    if "self" in s:
-        return "self_service"
-    return "pickup_delivery"  # covers pickup_delivery, airbnb_host, commercial
+    return domain_notifications.normalize_service_category(service_type)
 
 
 async def should_notify_order_status(order: dict, status: str) -> bool:
     """
     Decide si un cambio de estado dispara SMS/email al cliente.
 
-    Antes: notificaba en CUALQUIER estado salvo "pickup_scheduled" -- hasta
-    8 mensajes por orden (confirmed, picked_up, processing, ready,
-    out_for_delivery, delivered, completed...), demasiado ruido. El panel de
-    Configuracion ya tenia un selector "Notification Pickup & Delivery /
-    Wash & Fold / Self Service" para elegir UN solo hito intermedio por tipo
-    de servicio (reglas_negocio.auto_transitions.<tipo>.notify_status), pero
-    nunca se consultaba aqui.
-
-    Ahora: siempre notifica en los hitos criticos (delivered, completed,
-    cancelled), y para el resto de estados intermedios solo notifica si
-    coincide con el hito configurado para el tipo de servicio de la orden.
+    The actual eligibility rule (never notify pickup_scheduled, always
+    notify the critical delivered/completed/cancelled milestones, and only
+    notify an intermediate status if it matches the one the admin
+    configured for this order's service category) lives in
+    domain/notifications.py — the single source of truth now shared by
+    routes/orders.py, automation_engine.py's operator-dashboard status
+    endpoint, and routes/operator_routes.py, which previously either
+    duplicated this logic or (in automation_engine.py's case, the endpoint
+    the main operator dashboard actually calls) didn't check it at all.
+    This wrapper's only job is fetching the configured rule from the DB —
+    skipped entirely for the never/always-notify statuses, so those don't
+    pay for a DB round-trip on every status change.
     """
-    if status in {"pickup_scheduled"}:
-        return False
-    if status in {"delivered", "completed", "cancelled"}:
-        return True
+    normalized = (status or "").strip().lower()
+    if normalized in domain_notifications.NEVER_NOTIFY_STATUSES or normalized in domain_notifications.ALWAYS_NOTIFY_STATUSES:
+        return domain_notifications.should_notify_for_status(status, configured_status=None)
 
     try:
         rules = await get_or_seed_business_rules()
-        category = _notify_rule_category(order.get("service_type"))
+        category = domain_notifications.normalize_service_category(order.get("service_type"))
         configured = (
             rules.get("auto_transitions", {}).get(category, {}).get("notify_status")
         )
@@ -823,9 +819,7 @@ async def should_notify_order_status(order: dict, status: str) -> bool:
         logger.warning(f"Could not load notify_status business rule, defaulting to notify: {e}")
         return True
 
-    if not configured:
-        return True
-    return status == configured
+    return domain_notifications.should_notify_for_status(status, configured)
 
 
 # ── QR / Ticket helpers ────────────────────────────────────────────────────────

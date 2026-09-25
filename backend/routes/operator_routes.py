@@ -2,10 +2,18 @@
 Operator & Driver endpoints — v2.1
 FIXES vs original:
   FIX A: _notify_customer_after_image respects SKIP_SERVER_NOTIFICATIONS
-          and uses should_notify_customer() guard.
-  FIX B: _do_status_update uses should_notify_customer() before sending.
+          and uses should_notify_order_status() guard.
+  FIX B: _do_status_update uses should_notify_order_status() before sending.
   FIX C: Driver SMS uses ADMIN_PHONE env var, no hardcoded numbers.
   FIX D: All image upload endpoints validate file type before reading fully.
+
+  Both FIX A and FIX B used to call notifications.py's should_notify_customer(),
+  a simple hardcoded status blacklist that ignored the configurable
+  per-service-type notification rule (reglas_negocio.auto_transitions).
+  Both now use utils.should_notify_order_status(order, status) instead —
+  the same rule routes/orders.py and automation_engine.py's operator
+  dashboard status endpoint use, so all order-status-change paths agree
+  on when a customer actually gets notified.
 """
 import logging
 import uuid
@@ -27,7 +35,7 @@ from object_storage import (
     is_object_storage_enabled,
     upload_bytes as upload_object_storage_bytes,
 )
-from utils import normalize_status, normalize_spaces, create_audit_log
+from utils import normalize_status, normalize_spaces, create_audit_log, should_notify_order_status
 
 logger = logging.getLogger(__name__)
 
@@ -35,14 +43,11 @@ try:
     from notifications import (
         notify_order_status_changed,
         send_sms,
-        should_notify_customer,   # FIX B
     )
     NOTIFICATIONS_ENABLED = True
 except ImportError:
     NOTIFICATIONS_ENABLED = False
     send_sms = None
-    def should_notify_customer(status: str) -> bool:
-        return True
 
 # Router con prefix /api (ya que se montará en app con prefix /api)
 router = APIRouter(prefix="/api", tags=["Operator"])
@@ -132,7 +137,7 @@ async def _do_status_update(order: dict, new_status: str, user_id: str, role_lab
         NOTIFICATIONS_ENABLED
         and not SKIP_SERVER_NOTIFICATIONS
         and order.get("customer_id")
-        and should_notify_customer(new_status)     # <-- guard
+        and await should_notify_order_status(order, new_status)     # <-- guard
     ):
         customer = await db.customers.find_one({"id": order["customer_id"]}, {"_id": 0})
         if customer:
@@ -357,7 +362,7 @@ async def _notify_customer_after_image(order: dict, real_order_id: str, event_la
     current_status = order.get("status", "confirmed")
 
     # FIX A: guard — don't spam customers for every image upload
-    if not should_notify_customer(current_status):
+    if not await should_notify_order_status(order, current_status):
         logger.debug(
             f"Skipping post-image notification ({event_label}): "
             f"status '{current_status}' is not customer-facing"
