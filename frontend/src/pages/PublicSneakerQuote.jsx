@@ -185,7 +185,7 @@ export default function PublicSneakerQuote() {
                 </select>
               </div>
               {form.contact_method === "sms" && (
-                <SmsConsentField checked={form.sms_consent} onChange={(v) => setF("sms_consent", v)} />
+                <SmsConsentField checked={form.sms_consent} onChange={(e) => setF("sms_consent", e.target.checked)} />
               )}
               <button
                 type="submit"
