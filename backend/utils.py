@@ -87,6 +87,7 @@ from domain.membership import (
 )
 import domain.delivery as domain_delivery
 import domain.notifications as domain_notifications
+import domain.billing as domain_billing
 
 logger = logging.getLogger(__name__)
 
@@ -226,86 +227,31 @@ def validate_order_payload(data: OrderCreate):
     return errors
 
 def is_active_member(order: Optional[dict], customer: Optional[dict]) -> bool:
-    status_value = ""
-    if customer:
-        status_value = customer.get("membership_status") or ""
-    elif order:
-        status_value = order.get("membership_status") or ""
-    status_normalized = normalize_spaces(status_value).lower() if status_value else ""
-    # ← CAMBIO: se agrega "paused" a los estados que NO cuentan como activos
-    if status_normalized in ("inactive", "cancelled", "canceled", "expired", "paused"):
-        return False
-    if status_normalized in ("active", "current", "paid", "yes", "true"):
-        plan = None
-        if customer:
-            plan = customer.get("membership_plan")
-        elif order:
-            plan = order.get("membership_plan")
-        return bool(plan)
-    plan = None
-    if customer:
-        plan = customer.get("membership_plan")
-    if not plan and order:
-        plan = order.get("membership_plan")
-    return bool(plan)
+    return domain_billing.is_active_member(order, customer)
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# PRICING TABLES — SINGLE SOURCE OF TRUTH
+# PRICING TABLES — now in domain/billing.py, the single source of truth for
+# how much an order costs. Re-exported here under their historical names
+# since several route modules import them directly from utils.
 # ════════════════════════════════════════════════════════════════════════════
 
-PRICING: Dict[str, Dict[str, Dict[str, float]]] = {
-    "pickup_delivery": {
-        "standard": {"regular": 2.75, "member": 2.50},
-        "premium":  {"regular": 3.00, "member": 2.75},
-        "express":  {"regular": 3.25, "member": 3.00},
-    },
-    "wash_fold": {
-        "standard": {"regular": 2.25, "member": 2.25},
-        "premium":  {"regular": 2.50, "member": 2.50},
-        "express":  {"regular": 2.75, "member": 2.75},
-    },
-    "airbnb_host": {
-        "standard": {"regular": 2.75, "member": 2.50},
-        "premium":  {"regular": 3.00, "member": 2.75},
-        "express":  {"regular": 3.25, "member": 3.00},
-    },
-    "commercial": {
-        "standard": {"regular": 2.75, "member": 2.50},
-        "premium":  {"regular": 3.00, "member": 2.75},
-        "express":  {"regular": 3.25, "member": 3.00},
-    },
-}
-
-MEMBERSHIP_ALLOWANCE_SURCHARGE: Dict[str, float] = {
-    "standard": 0.00,
-    "premium":  0.25,
-    "express":  0.50,
-}
-
+PRICING = domain_billing.PRICING
+MEMBERSHIP_ALLOWANCE_SURCHARGE = domain_billing.MEMBERSHIP_ALLOWANCE_SURCHARGE
 PLAN_UPGRADE_SURCHARGE = MEMBERSHIP_ALLOWANCE_SURCHARGE
 
-# PLAN_ALLOWANCES now lives in domain/membership.py as PLAN_ALLOWANCE_FALLBACK
-# (single source of truth for the hardcoded lbs-per-plan fallback table);
-# imported at the top of this file.
+# PLAN_ALLOWANCES lives in domain/membership.py as PLAN_ALLOWANCE_FALLBACK
+# (imported at the top of this file).
 
-PD_MINIMUM_CHARGE: float = 40.0
-WF_MINIMUM_LBS:   float = 10.0
+PD_MINIMUM_CHARGE = domain_billing.PD_MINIMUM_CHARGE
+WF_MINIMUM_LBS = domain_billing.WF_MINIMUM_LBS
 
 
 def _normalize_service_type(service_type: str) -> str:
-    s = (service_type or "pickup_delivery").strip().lower().replace(" ", "_")
-    if s in ("airbnb_host", "commercial"):
-        return s
-    if "wash" in s or "fold" in s:
-        return "wash_fold"
-    return "pickup_delivery"
+    return domain_billing.normalize_service_type(service_type)
 
 def _get_rate(service_type: str, plan: str, is_member: bool) -> float:
-    svc_key  = _normalize_service_type(service_type)
-    tier_map = PRICING.get(svc_key, PRICING["pickup_delivery"])
-    rates    = tier_map.get(plan, tier_map["standard"])
-    return rates["member"] if is_member else rates["regular"]
+    return domain_billing.get_rate(service_type, plan, is_member)
 
 def _get_plan_allowance(plan_name: str) -> int:
     """Hardcoded fallback for backward compatibility — delegates to
@@ -341,31 +287,7 @@ async def _get_plan_allowance_dynamic(plan_name: str) -> int:
     return _get_plan_allowance(plan_name)
 
 def _is_order_before_membership(order: dict, customer: dict) -> bool:
-    membership_start_date = customer.get("membership_start_date")
-    order_created_at = order.get("created_at")
-    if not membership_start_date or not order_created_at:
-        return False
-    try:
-        if isinstance(membership_start_date, str):
-            mem_start_dt = datetime.fromisoformat(
-                membership_start_date.replace("Z", "+00:00")
-            )
-        else:
-            mem_start_dt = membership_start_date
-        if mem_start_dt.tzinfo is None:
-            mem_start_dt = mem_start_dt.replace(tzinfo=timezone.utc)
-        if isinstance(order_created_at, str):
-            order_dt = datetime.fromisoformat(
-                order_created_at.replace("Z", "+00:00")
-            )
-        else:
-            order_dt = order_created_at
-        if order_dt.tzinfo is None:
-            order_dt = order_dt.replace(tzinfo=timezone.utc)
-        return order_dt < mem_start_dt
-    except Exception as e:
-        logger.warning(f"Billing date comparison error: {e}")
-        return False
+    return domain_billing.is_order_before_membership(order, customer)
 
 
 # ── Customer ownership helpers ─────────────────────────────────────────────────
@@ -561,185 +483,27 @@ async def calculate_final_amount_with_membership(
     order: dict,
     customer: Optional[dict],
 ) -> Optional[dict]:
-    # ── Add-ons ──────────────────────────────────────────────────────────────
-    addons_total = 0.0
-    for addon in (order.get("addon_services") or []):
-        try:
-            qty = int(addon.get("qty") or addon.get("quantity") or 1)
-            # FIX v17: priorizar custom_price (precio editado a mano por el
-            # operador en OrderDetailDialog.jsx) sobre price. Antes esta
-            # funcion solo leia "price", asi que un precio editado se
-            # ignoraba en el cobro REAL aunque el ticket impreso
-            # (get_order_ticket en orders.py) si lo respetaba -> el total
-            # cobrado podia no coincidir con el total mostrado en el ticket.
-            raw_price = addon.get("custom_price")
-            if raw_price in (None, ""):
-                raw_price = addon.get("price")
-            addon_price = float(raw_price or 0)
-            addons_total += addon_price * qty
-        except (TypeError, ValueError):
-            pass
-    addons_total = round(addons_total, 2)
+    """
+    Full billing breakdown for an order — the single amount actually
+    charged to a customer. The calculation itself (rates, membership
+    allowance coverage, minimum charge, add-ons, totals) lives in
+    domain/billing.py as a pure function; this wrapper's only job is
+    resolving the two pieces that need a database round-trip: the
+    distance-based delivery fee and, when the order actually qualifies for
+    membership coverage, the customer's remaining monthly allowance.
+    """
+    delivery_fee = calculate_delivery_fee(order.get("distance_miles"))
 
-    lbs_raw = order.get("actual_lbs")
-    if lbs_raw is None or (float(lbs_raw) <= 0 if lbs_raw is not None else True):
-        if addons_total > 0:
-            delivery_fee   = calculate_delivery_fee(order.get("distance_miles"))
-            payment_method = (order.get("payment_method") or "").strip().lower()
-            total_before   = round(addons_total + delivery_fee, 2)
-            processing_fee = round(total_before * 0.03, 2) if payment_method in ("card", "stripe") else 0.0
-            final_total    = round(total_before + processing_fee, 2)
-            return {
-                "lbs": 0, "billable_lbs": 0,
-                "plan": (order.get("service_plan") or "standard").strip().lower(),
-                "is_member": False, "is_express": False,
-                "regular_rate": 0.0, "member_rate": 0.0,
-                "allowance_surcharge": 0.0, "allowance_surcharge_charge": 0.0,
-                "lbs_covered": 0.0, "lbs_extra": 0.0,
-                "lbs_from_allowance": 0.0, "extra_lbs_billed": 0.0,
-                "membership_discount": 0.0,
-                "subtotal": 0.0, "amount_to_charge": 0.0,
-                # FIX: antes era 0.0 fijo, aunque hubiera addons/envio por
-                # cobrar — se veía como "cubierto por membresía" sin estarlo.
-                # Ahora refleja el monto real a cobrar (igual que "total").
-                "extra_charge": final_total,
-                "delivery_fee": delivery_fee, "addons_total": addons_total,
-                "processing_fee": processing_fee,
-                "subtotal_after_discount": total_before,
-                "total": final_total,
-                "currency": "USD",
-                "fully_covered_by_membership": False,
-                "is_addon_only": True, "membership_applied": False,
-                "price_per_lb": 0.0, "rate_used": 0.0,
-            }
-        return None
+    remaining_allowance = 0.0
+    if is_active_member(order, customer) and customer and not _is_order_before_membership(order, customer):
+        plan_name = customer.get("membership_plan") or ""
+        remaining_allowance = await get_remaining_membership_allowance(
+            customer.get("id", ""), plan_name
+        )
 
-    try:
-        lbs = float(lbs_raw)
-    except (TypeError, ValueError):
-        return None
-    if lbs <= 0:
-        return None
-
-    service_type   = _normalize_service_type(order.get("service_type") or "pickup_delivery")
-    plan           = (order.get("service_plan") or "standard").strip().lower()
-    is_wf          = service_type == "wash_fold"
-    is_express     = plan == "express"
-    payment_method = (order.get("payment_method") or "").strip().lower()
-    is_card        = payment_method in ("card", "stripe")
-    is_member      = is_active_member(order, customer)
-
-    regular_rate    = _get_rate(service_type, plan, False)
-    member_rate     = _get_rate(service_type, plan, True)
-    allowance_surch = MEMBERSHIP_ALLOWANCE_SURCHARGE.get(plan, 0.0)
-
-    billable_lbs = max(lbs, WF_MINIMUM_LBS) if is_wf else lbs
-
-    lbs_covered            = 0.0
-    lbs_extra              = billable_lbs
-    allowance_surch_charge = 0.0
-    membership_discount    = 0.0
-    remaining_allowance    = 0.0
-
-    if is_member and customer:
-        if not _is_order_before_membership(order, customer):
-            plan_name           = customer.get("membership_plan") or ""
-            remaining_allowance = await get_remaining_membership_allowance(
-                customer.get("id", ""), plan_name
-            )
-            if remaining_allowance > 0:
-                lbs_covered            = min(billable_lbs, remaining_allowance)
-                lbs_extra              = billable_lbs - lbs_covered
-                allowance_surch_charge = round(lbs_covered * allowance_surch, 2)
-
-    if lbs_covered > 0:
-        # FIX: las libras que exceden el allowance se cobran a la tarifa DE
-        # MIEMBRO (member_rate), no a la regular. Antes decía regular_rate
-        # aquí, contradiciendo la regla documentada arriba en este archivo
-        # ("After allowance is exhausted... member rates apply to all extra
-        # lbs") y sobre-cobrando a todos los miembros con órdenes que exceden
-        # su allowance mensual.
-        amount_to_charge = round(allowance_surch_charge + lbs_extra * member_rate, 2)
-    elif is_member:
-        # FIX: mismo caso — miembro sin cobertura de allowance restante
-        # (agotado, o remaining_allowance == 0) debe pagar tarifa de miembro,
-        # no la regular.
-        amount_to_charge = round(billable_lbs * member_rate, 2)
-    else:
-        amount_to_charge = round(billable_lbs * regular_rate, 2)
-
-    if not is_wf:
-        full_regular_price  = billable_lbs * regular_rate
-        order_below_minimum = full_regular_price < PD_MINIMUM_CHARGE
-        if order_below_minimum and lbs_covered == 0:
-            amount_to_charge = max(amount_to_charge, PD_MINIMUM_CHARGE)
-
-    if is_member and lbs_covered > 0:
-        full_regular        = round(billable_lbs * regular_rate, 2)
-        membership_discount = max(0.0, round(full_regular - amount_to_charge, 2))
-    elif is_member and lbs_covered == 0:
-        # FIX complementario: ahora que las libras extra de un miembro se
-        # cobran a member_rate, también hay que reportar ese ahorro (antes
-        # era 0.0 porque amount_to_charge ya usaba regular_rate y no había
-        # diferencia que mostrar).
-        full_regular        = round(billable_lbs * regular_rate, 2)
-        membership_discount = max(0.0, round(full_regular - amount_to_charge, 2))
-
-    delivery_fee  = calculate_delivery_fee(order.get("distance_miles"))
-    total_before  = round(amount_to_charge + delivery_fee + addons_total, 2)
-    processing_fee = 0.0
-
-    fully_covered = (
-        is_member
-        and lbs_covered >= billable_lbs
-        and allowance_surch == 0.0
-        and addons_total == 0.0
-        and delivery_fee == 0.0
+    return domain_billing.compute_order_billing(
+        order, customer, remaining_allowance=remaining_allowance, delivery_fee=delivery_fee,
     )
-    if fully_covered:
-        final_total    = 0.0
-        processing_fee = 0.0
-    else:
-        final_total = round(total_before + processing_fee, 2)
-
-    return {
-        "lbs":             lbs,
-        "billable_lbs":    billable_lbs,
-        "plan":            plan,
-        "is_member":       is_member,
-        "is_express":      is_express,
-        "regular_rate":    regular_rate,
-        "member_rate":     member_rate,
-        "rate_used":       member_rate if (is_member and lbs_covered != billable_lbs) else regular_rate,
-        "price_per_lb":    member_rate if is_member else regular_rate,
-        "allowance_surcharge":        allowance_surch,
-        "allowance_surcharge_charge": allowance_surch_charge,
-        "lbs_covered":        round(lbs_covered, 1),
-        "lbs_extra":          round(lbs_extra, 1),
-        "lbs_from_allowance": round(lbs_covered, 1),
-        "extra_lbs_billed":   round(lbs_extra, 1),
-        "subtotal":           round(billable_lbs * regular_rate, 2),
-        "membership_discount": round(membership_discount, 2),
-        "amount_to_charge":    round(amount_to_charge, 2),
-        # FIX: extra_charge ahora es el MONTO TOTAL a cobrar (libras + envío +
-        # addons), igual que "total". Antes solo reflejaba amount_to_charge
-        # (nada más las libras), y como varios endpoints (apply-membership en
-        # customer.py, y el PUT /orders/{order_id} en orders.py) leen o
-        # escriben "extra_charge" asumiendo que YA es el total completo, el
-        # envío y los addons se perdían silenciosamente en cualquier flujo
-        # que confiara directamente en breakdown["extra_charge"] en lugar de
-        # breakdown["total"].
-        "extra_charge":        final_total,
-        "delivery_fee":        round(delivery_fee, 2),
-        "addons_total":        addons_total,
-        "processing_fee":      0.0,
-        "subtotal_after_discount": total_before,
-        "total":               final_total,
-        "currency":            "USD",
-        "fully_covered_by_membership": fully_covered,
-        "membership_applied":  is_member and lbs_covered > 0,
-        "is_addon_only":       False,
-    }
 
 
 # ── Legacy sync helper ─────────────────────────────────────────────────────────
