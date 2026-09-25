@@ -52,6 +52,15 @@ from utils import (
     _get_plan_allowance_dynamic,
     normalize_preference_payload,
 )
+from domain.membership import (
+    STRIPE_FEE_PERCENTAGE,
+    get_plan_price_fallback,
+    calculate_total_with_stripe_fee,
+    calculate_prorated_amount,
+    get_next_renewal_date,
+    parse_membership_datetime,
+    get_customer_membership_due_date,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -68,8 +77,7 @@ except ImportError:
     STRIPE_AVAILABLE = False
     logger.warning("Stripe not available for membership payments")
 
-# Stripe fee configuration
-STRIPE_FEE_PERCENTAGE = 0.03  # 3% Stripe fee
+# Stripe fee configuration — STRIPE_FEE_PERCENTAGE now lives in domain/membership.py
 # ── Membership non-payment suspension policy ────────────────────────────────
 MEMBERSHIP_GRACE_DAYS = 5            # días de gracia tras la fecha de vencimiento
 MEMBERSHIP_MAX_FAILED_ATTEMPTS = 3   # intentos fallidos antes de suspender
@@ -483,33 +491,25 @@ def _default_services_config() -> dict:
 
 # ============================================================
 # MEMBERSHIP HELPER FUNCTIONS
+#
+# The actual calculations (pricing fallback, Stripe fee grossup, proration,
+# renewal dates) live in domain/membership.py as pure functions. The
+# wrappers below are the only pieces that touch the database or need to
+# stay under these historical names, since they're called throughout this
+# file and from automation_engine.py.
 # ============================================================
 
 def _get_plan_price(plan_name: str) -> float:
-    prices = {
-        "most popular": 139.00,
-        "popular": 139.00,
-        "standard": 139.00,
-        "family plus": 199.00,
-        "family": 199.00,
-        "elite concierge": 299.00,
-        "elite": 299.00,
-        "concierge": 299.00,
-    }
-    key = plan_name.lower()
-    for k, v in prices.items():
-        if k in key or key in k:
-            return v
-    return 139.00
+    return get_plan_price_fallback(plan_name)
 
 
 async def _get_plan_price_dynamic(plan_name: str) -> float:
     """
-    Obtiene el precio del plan: primero busca en DB (membership_plans),
-    parseando el número desde el campo `price` (ej. "$199 / month" -> 199.00),
-    luego hace fallback al dict hardcodeado _get_plan_price().
-    Esto evita cobrar montos desactualizados cuando el admin edita el precio
-    de un plan o crea un plan custom que _get_plan_price() no reconoce.
+    Looks up the plan price in the DB (membership_plans), parsing the number
+    out of the `price` field (e.g. "$199 / month" -> 199.00), then falls
+    back to the hardcoded table in domain/membership.py. This avoids
+    charging a stale amount when an admin edits a plan's price or creates a
+    custom plan the hardcoded table doesn't recognize.
     """
     if not plan_name:
         return 0.0
@@ -535,50 +535,25 @@ async def _get_plan_price_dynamic(plan_name: str) -> float:
 
 
 def _calculate_total_with_stripe_fee(amount: float) -> float:
-    if amount <= 0:
-        return 0.0
-    return round(amount / (1 - STRIPE_FEE_PERCENTAGE), 2)
+    return calculate_total_with_stripe_fee(amount)
 
 
 async def _calculate_prorated_amount(old_plan: str, new_plan: str, days_remaining: int) -> float:
     old_price = await _get_plan_price_dynamic(old_plan)
     new_price = await _get_plan_price_dynamic(new_plan)
-    
-    if days_remaining <= 0:
-        return new_price
-    
-    if new_price > old_price:
-        difference = new_price - old_price
-        prorated = difference * (days_remaining / 30)
-        return round(prorated, 2)
-    
-    return 0.00
+    return calculate_prorated_amount(old_price, new_price, days_remaining)
 
 
 def _get_next_renewal_date(start_date: datetime) -> datetime:
-    return start_date + timedelta(days=30)
+    return get_next_renewal_date(start_date)
 
 
 def _parse_membership_datetime(value) -> Optional[datetime]:
-    if not value:
-        return None
-    if isinstance(value, datetime):
-        parsed = value
-    else:
-        try:
-            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-        except Exception:
-            return None
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+    return parse_membership_datetime(value)
 
 
 def _get_customer_membership_due_date(customer: dict) -> Optional[datetime]:
-    start_date = _parse_membership_datetime(customer.get("membership_start_date"))
-    if not start_date:
-        return None
-    return _get_next_renewal_date(start_date)
+    return get_customer_membership_due_date(customer)
 
 
 async def _resolve_membership_payment_method(customer: dict) -> tuple[Optional[str], Optional[str]]:

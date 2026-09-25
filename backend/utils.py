@@ -79,6 +79,12 @@ from fastapi import HTTPException
 
 from database import db
 from models import OrderCreate, PreferenceCreate
+from domain.membership import (
+    get_plan_allowance_fallback,
+    compute_billing_cycle,
+    compute_cycle_usage,
+    PLAN_ALLOWANCE_FALLBACK as PLAN_ALLOWANCES,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -277,30 +283,9 @@ MEMBERSHIP_ALLOWANCE_SURCHARGE: Dict[str, float] = {
 
 PLAN_UPGRADE_SURCHARGE = MEMBERSHIP_ALLOWANCE_SURCHARGE
 
-PLAN_ALLOWANCES: Dict[str, int] = {
-    "most popular":       60,
-    "popular":            60,
-    "standard":           60,
-    "basic":              60,
-    "family plus":        90,
-    "family":             90,
-    "familyplus":         90,
-    "elite concierge":   120,
-    "elite":             120,
-    "concierge":         120,
-    "executive premium": 200,
-    "executive":         200,
-    # FIX: estaba "SIGNATURE ELITE" en mayúsculas — _get_plan_allowance()
-    # siempre compara en minúsculas, así que este plan NUNCA hacía match y
-    # el cliente se quedaba con 0 lbs de allowance (se le cobraba como si no
-    # tuviera membresía). Corregido a minúsculas para que el lookup funcione.
-    "signature elite":   200,
-    # NOTA: "mamamia" con 500 lbs se ve como un plan de prueba/placeholder.
-    # Lo dejo tal cual porque no sé si está en uso real, pero confírmame si
-    # hay que quitarlo — un nombre así en producción es fácil de confundir
-    # con un typo o dato de test filtrado.
-    "mamamia":           500,
-}
+# PLAN_ALLOWANCES now lives in domain/membership.py as PLAN_ALLOWANCE_FALLBACK
+# (single source of truth for the hardcoded lbs-per-plan fallback table);
+# imported at the top of this file.
 
 PD_MINIMUM_CHARGE: float = 40.0
 WF_MINIMUM_LBS:   float = 10.0
@@ -321,16 +306,9 @@ def _get_rate(service_type: str, plan: str, is_member: bool) -> float:
     return rates["member"] if is_member else rates["regular"]
 
 def _get_plan_allowance(plan_name: str) -> int:
-    """Fallback hardcodeado para compatibilidad hacia atrás."""
-    if not plan_name:
-        return 0
-    key = plan_name.strip().lower().replace("_", " ").replace("-", " ")
-    if key in PLAN_ALLOWANCES:
-        return PLAN_ALLOWANCES[key]
-    for allowed_key, allowance in PLAN_ALLOWANCES.items():
-        if key in allowed_key or allowed_key in key:
-            return allowance
-    return 0
+    """Hardcoded fallback for backward compatibility — delegates to
+    domain/membership.py, the single source of truth for this table."""
+    return get_plan_allowance_fallback(plan_name)
 
 async def _get_plan_allowance_dynamic(plan_name: str) -> int:
     """
@@ -491,24 +469,13 @@ async def get_customer_cycle_usage(customer_id: str) -> Optional[dict]:
         logger.warning(f"Could not parse membership start date for {customer_id}: {e}")
         return None
 
-    now        = datetime.now(timezone.utc)
-    anchor_day = min(mem_start_dt.day, 28)
-
-    cycle_start = now.replace(
-        day=anchor_day, hour=0, minute=0, second=0, microsecond=0
-    )
-    if cycle_start > now:
-        prev_month  = cycle_start.month - 1 or 12
-        prev_year   = cycle_start.year - (1 if prev_month == 12 else 0)
-        cycle_start = cycle_start.replace(year=prev_year, month=prev_month)
-
-    next_month = cycle_start.month % 12 + 1
-    next_year  = cycle_start.year + (1 if next_month == 1 else 0)
-    cycle_end  = cycle_start.replace(year=next_year, month=next_month)
-
-    effective_start     = max(cycle_start, mem_start_dt)
+    now = datetime.now(timezone.utc)
+    cycle = compute_billing_cycle(mem_start_dt, now)
+    cycle_start      = cycle["cycle_start"]
+    cycle_end        = cycle["cycle_end"]
+    effective_start  = cycle["effective_start"]
     effective_start_iso = effective_start.isoformat()
-    cycle_end_iso       = cycle_end.isoformat()
+    cycle_end_iso        = cycle_end.isoformat()
 
     pipeline = [
         {
@@ -540,10 +507,10 @@ async def get_customer_cycle_usage(customer_id: str) -> Optional[dict]:
     # las ordenes reales, ignorando el campo que adjust_membership_lbs
     # escribe en el cliente.
     manual_adjustment = float(customer.get("cycle_lbs_used", 0) or 0)
-    lbs_used = round(max(0.0, orders_lbs + manual_adjustment), 1)
-
-    lbs_remaining = max(0.0, lbs_allowance - lbs_used)
-    pct_used      = round((lbs_used / lbs_allowance) * 100, 1) if lbs_allowance else 0.0
+    usage = compute_cycle_usage(lbs_allowance, orders_lbs, manual_adjustment)
+    lbs_used      = usage["lbs_used"]
+    lbs_remaining = usage["lbs_remaining"]
+    pct_used      = usage["pct_used"]
 
     # ── Datos del plan desde DB para el frontend ─────────────────────────
     plan_doc = None
