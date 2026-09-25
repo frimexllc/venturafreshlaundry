@@ -12,17 +12,25 @@ import PublicFooter from "../components/PublicFooter";
 import SmsConsentField from "../components/SmsConsentField";
 import { useLocale } from "../context/LocaleContext";
 import { getRecaptchaToken } from "../utils/recaptcha";
+import { fileToResizedBase64 } from "../utils/imageResize";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const MAX_PHOTOS = 3;
 
-const fileToBase64 = (file) =>
-  new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result.split(",")[1]);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
+// FastAPI returns a plain string `detail` for HTTPException errors, but a
+// LIST of validation-error objects for a 422 (request body failed Pydantic
+// validation) — the old code only handled the string case and silently
+// fell back to a generic message for everything else, which is exactly
+// what happened when the photo-count race condition below let a 4th photo
+// through and the backend rejected it with a 422.
+function getSneakerQuoteErrorMessage(err, t) {
+  const detail = err.response?.data?.detail;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail) && detail.length > 0) {
+    return detail.map((d) => d.msg || JSON.stringify(d)).join("; ");
+  }
+  return t("Could not analyze photos", "No se pudieron analizar las fotos");
+}
 
 const DIRT_LABELS = {
   light: { en: "Light", es: "Leve" },
@@ -62,13 +70,21 @@ export default function PublicSneakerQuote() {
     const files = Array.from(e.target.files || []);
     e.target.value = "";
     if (!files.length) return;
-    const room = MAX_PHOTOS - photos.length;
-    if (room <= 0) {
-      toast.error(t(`You can add up to ${MAX_PHOTOS} photos`, `Puedes agregar hasta ${MAX_PHOTOS} fotos`));
-      return;
-    }
-    const next = files.slice(0, room).map((file) => ({ file, preview: URL.createObjectURL(file) }));
-    setPhotos((prev) => [...prev, ...next]);
+    // FIX: compute room from `prev` inside the updater, not from the
+    // `photos` closure — on mobile, the camera and gallery pickers can
+    // each fire a change event in quick succession before React re-renders,
+    // and both reading the same stale `photos.length` let more than
+    // MAX_PHOTOS photos slip through, which the backend then rejected
+    // with a 422 the UI only showed as a generic "couldn't analyze" error.
+    setPhotos((prev) => {
+      const room = MAX_PHOTOS - prev.length;
+      if (room <= 0) {
+        toast.error(t(`You can add up to ${MAX_PHOTOS} photos`, `Puedes agregar hasta ${MAX_PHOTOS} fotos`));
+        return prev;
+      }
+      const next = files.slice(0, room).map((file) => ({ file, preview: URL.createObjectURL(file) }));
+      return [...prev, ...next];
+    });
   };
 
   const removePhoto = (idx) => setPhotos((prev) => prev.filter((_, i) => i !== idx));
@@ -80,7 +96,10 @@ export default function PublicSneakerQuote() {
     }
     setAnalyzing(true);
     try {
-      const images_base64 = await Promise.all(photos.map((p) => fileToBase64(p.file)));
+      // Resize/compress before upload — phone camera photos can be several
+      // MB each, which is slow on mobile data and can exceed the backend's
+      // per-photo size limit.
+      const images_base64 = await Promise.all(photos.map((p) => fileToResizedBase64(p.file)));
       const captcha_token = await getRecaptchaToken("sneaker_quote");
       const res = await axios.post(`${API}/public/sneaker-quote`, {
         name: form.name,
@@ -94,8 +113,7 @@ export default function PublicSneakerQuote() {
       setResult(res.data);
       setStep("result");
     } catch (err) {
-      const detail = err.response?.data?.detail;
-      toast.error(typeof detail === "string" ? detail : t("Could not analyze photos", "No se pudieron analizar las fotos"));
+      toast.error(getSneakerQuoteErrorMessage(err, t));
     } finally {
       setAnalyzing(false);
     }
