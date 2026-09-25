@@ -5,11 +5,17 @@
 // assessment and suggested price (1st/2nd/3rd+ pair pricing tier), and the
 // operator accepts/edits/rejects each one individually. Works both
 // standalone (a quote before an order exists) and attached to an order.
+//
+// Two ways to build the pair groups: manually (tap "+ Add another pair"
+// and fill each one), or dump up to MAX_BULK_PHOTOS unsorted photos and
+// let the AI suggest a grouping (POST /sneaker-analysis/suggest-grouping) —
+// either way lands in the same manual-mode review screen, where photos can
+// still be moved between pairs before anything is priced.
 
 import { useState, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "./ui/dialog";
 import { Button } from "./ui/button";
-import { Camera, Upload, X, CheckCircle, Sparkles, RefreshCw, Pencil, Plus, AlertTriangle } from "lucide-react";
+import { Camera, Upload, X, CheckCircle, Sparkles, RefreshCw, Pencil, Plus, AlertTriangle, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 import { useLocale } from "../context/LocaleContext";
 import { fileToResizedBase64 } from "../utils/imageResize";
@@ -17,6 +23,7 @@ import { fileToResizedBase64 } from "../utils/imageResize";
 const API_URL = process.env.REACT_APP_BACKEND_URL;
 const MAX_PHOTOS_PER_PAIR = 3;
 const MAX_PAIRS = 6;
+const MAX_BULK_PHOTOS = 12;
 
 const getToken = () => localStorage.getItem("token") || sessionStorage.getItem("token");
 const authHdrs = () => {
@@ -56,15 +63,22 @@ function readableErrorDetail(detail, fallback) {
 
 export default function SneakerAnalysisModal({ open, onClose, orderId = null, onAccepted }) {
   const { t, locale } = useLocale();
+  const [inputMode, setInputMode] = useState("manual"); // "manual" | "bulk"
   const [pairs, setPairs] = useState([emptyPair()]);
+  const [bulkPhotos, setBulkPhotos] = useState([]); // [{file, preview}] — ungrouped, for AI grouping
+  const [grouping, setGrouping] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [results, setResults] = useState(null); // null before analysis; else array of per-pair result+UI state
   const [activePairIdx, setActivePairIdx] = useState(0);
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
+  const bulkFileInputRef = useRef(null);
+  const bulkCameraInputRef = useRef(null);
 
   const reset = () => {
+    setInputMode("manual");
     setPairs([emptyPair()]);
+    setBulkPhotos([]);
     setResults(null);
   };
 
@@ -111,6 +125,69 @@ export default function SneakerAnalysisModal({ open, onClose, orderId = null, on
 
   const removePair = (pairIdx) => {
     setPairs((prev) => (prev.length === 1 ? prev : prev.filter((_, i) => i !== pairIdx)));
+  };
+
+  const movePhotoToPair = (fromPairIdx, photoIdx, toPairIdx) => {
+    if (fromPairIdx === toPairIdx) return;
+    setPairs((prev) => {
+      const photo = prev[fromPairIdx]?.photos[photoIdx];
+      if (!photo) return prev;
+      return prev.map((p, i) => {
+        if (i === fromPairIdx) return { ...p, photos: p.photos.filter((_, j) => j !== photoIdx) };
+        if (i === toPairIdx) return { ...p, photos: [...p.photos, photo] };
+        return p;
+      });
+    });
+  };
+
+  const handleBulkFileSelect = (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = "";
+    if (!files.length) return;
+    setBulkPhotos((prev) => {
+      const room = MAX_BULK_PHOTOS - prev.length;
+      if (room <= 0) {
+        toast.error(t(`Up to ${MAX_BULK_PHOTOS} photos at once`, `Hasta ${MAX_BULK_PHOTOS} fotos a la vez`));
+        return prev;
+      }
+      const next = files.slice(0, room).map((file) => ({ file, preview: URL.createObjectURL(file) }));
+      return [...prev, ...next];
+    });
+  };
+
+  const removeBulkPhoto = (idx) => setBulkPhotos((prev) => prev.filter((_, i) => i !== idx));
+
+  const suggestGrouping = async () => {
+    if (bulkPhotos.length === 0) {
+      toast.error(t("Add at least one photo", "Agrega al menos una foto"));
+      return;
+    }
+    setGrouping(true);
+    try {
+      const images_base64 = await Promise.all(bulkPhotos.map((p) => fileToResizedBase64(p.file)));
+      const res = await fetch(`${API_URL}/api/sneaker-analysis/suggest-grouping`, {
+        method: "POST",
+        headers: authHdrs(),
+        body: JSON.stringify({ images_base64 }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(readableErrorDetail(data.detail, t("Grouping failed", "La agrupación falló")));
+
+      const newPairs = data.groups.map((group) => ({
+        localId: nextLocalPairId++,
+        photos: group.map((photoIdx) => bulkPhotos[photoIdx]).filter(Boolean),
+      }));
+      setPairs(newPairs.length ? newPairs : [emptyPair()]);
+      setInputMode("manual");
+      toast.success(
+        t(`Suggested ${newPairs.length} pair${newPairs.length === 1 ? "" : "s"} — review before analyzing`,
+          `Se sugirieron ${newPairs.length} par${newPairs.length === 1 ? "" : "es"} — revisa antes de analizar`)
+      );
+    } catch (err) {
+      toast.error(err.message || t("Connection error", "Error de conexión"));
+    } finally {
+      setGrouping(false);
+    }
   };
 
   const pairsWithPhotos = pairs.filter((p) => p.photos.length > 0);
@@ -217,8 +294,84 @@ export default function SneakerAnalysisModal({ open, onClose, orderId = null, on
           </DialogDescription>
         </DialogHeader>
 
-        {!results && (
+        {!results && inputMode === "manual" && pairs.length === 1 && pairs[0].photos.length === 0 && bulkPhotos.length === 0 && (
+          <button
+            onClick={() => setInputMode("bulk")}
+            className="w-full rounded-xl border-2 border-dashed border-violet-200 bg-violet-50/40 hover:bg-violet-50 p-3 flex items-center justify-center gap-2 text-sm font-semibold text-violet-600 transition-colors"
+          >
+            <Wand2 className="h-4 w-4" />
+            {t(`Got several pairs? Upload up to ${MAX_BULK_PHOTOS} photos and let AI sort them`, `¿Varios pares? Sube hasta ${MAX_BULK_PHOTOS} fotos y deja que la IA los agrupe`)}
+          </button>
+        )}
+
+        {!results && inputMode === "bulk" && (
           <div className="space-y-4">
+            <div className="rounded-xl border border-violet-200 bg-violet-50/40 p-3 space-y-2.5">
+              <p className="text-xs text-violet-600">
+                {t(
+                  "Upload photos for all the pairs at once, in any order. AI will suggest how to group them by pair — you review and adjust before anything is priced.",
+                  "Sube las fotos de todos los pares a la vez, sin orden. La IA sugerirá cómo agruparlos por par — tú revisas y ajustas antes de calcular precios."
+                )}
+              </p>
+              <div className="grid grid-cols-4 gap-2">
+                {bulkPhotos.map((p, idx) => (
+                  <div key={idx} className="relative aspect-square rounded-lg overflow-hidden border border-slate-200 bg-slate-50">
+                    <img src={p.preview} alt="" className="w-full h-full object-cover" />
+                    <button
+                      onClick={() => removeBulkPhoto(idx)}
+                      className="absolute top-1 right-1 bg-white/90 hover:bg-white rounded-full p-1 border border-slate-200"
+                    >
+                      <X className="h-3 w-3 text-slate-600" />
+                    </button>
+                  </div>
+                ))}
+                {bulkPhotos.length < MAX_BULK_PHOTOS && (
+                  <button
+                    onClick={() => bulkFileInputRef.current?.click()}
+                    className="aspect-square rounded-lg border-2 border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400 hover:border-violet-300 hover:text-violet-500 transition-colors"
+                  >
+                    <Upload className="h-5 w-5 mb-1" />
+                    <span className="text-[10px]">{t("Add photo", "Agregar foto")}</span>
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <Button variant="outline" size="sm" className="gap-2" onClick={() => bulkCameraInputRef.current?.click()}>
+                  <Camera className="h-4 w-4" />{t("Take photo", "Tomar foto")}
+                </Button>
+                <Button variant="outline" size="sm" className="gap-2" onClick={() => bulkFileInputRef.current?.click()}>
+                  <Upload className="h-4 w-4" />{t("Gallery / File", "Galería / archivo")}
+                </Button>
+              </div>
+              <input ref={bulkCameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleBulkFileSelect} />
+              <input ref={bulkFileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleBulkFileSelect} />
+            </div>
+
+            <Button
+              className="w-full bg-violet-600 hover:bg-violet-700 gap-2"
+              disabled={grouping || bulkPhotos.length === 0}
+              onClick={suggestGrouping}
+            >
+              {grouping
+                ? <><RefreshCw className="h-4 w-4 animate-spin" />{t("Grouping…", "Agrupando…")}</>
+                : <><Wand2 className="h-4 w-4" />{t("Suggest grouping", "Sugerir agrupación")}</>}
+            </Button>
+            <button
+              onClick={() => setInputMode("manual")}
+              className="w-full text-xs text-slate-400 hover:text-slate-600 text-center"
+            >
+              {t("← Group manually instead", "← Agrupar manualmente")}
+            </button>
+          </div>
+        )}
+
+        {!results && inputMode === "manual" && (
+          <div className="space-y-4">
+            {pairs.length > 1 && (
+              <p className="text-xs text-slate-400 text-center">
+                {t("Review the pairs below — move a photo if it landed in the wrong group.", "Revisa los pares — mueve una foto si quedó en el grupo equivocado.")}
+              </p>
+            )}
             {pairs.map((pair, pairIdx) => (
               <div key={pair.localId} className="rounded-xl border border-slate-200 p-3 space-y-2.5">
                 <div className="flex items-center justify-between">
@@ -237,14 +390,27 @@ export default function SneakerAnalysisModal({ open, onClose, orderId = null, on
 
                 <div className="grid grid-cols-3 gap-2">
                   {pair.photos.map((p, photoIdx) => (
-                    <div key={photoIdx} className="relative aspect-square rounded-lg overflow-hidden border border-slate-200 bg-slate-50">
-                      <img src={p.preview} alt="" className="w-full h-full object-cover" />
-                      <button
-                        onClick={() => removePhoto(pairIdx, photoIdx)}
-                        className="absolute top-1 right-1 bg-white/90 hover:bg-white rounded-full p-1 border border-slate-200"
-                      >
-                        <X className="h-3 w-3 text-slate-600" />
-                      </button>
+                    <div key={photoIdx} className="space-y-1">
+                      <div className="relative aspect-square rounded-lg overflow-hidden border border-slate-200 bg-slate-50">
+                        <img src={p.preview} alt="" className="w-full h-full object-cover" />
+                        <button
+                          onClick={() => removePhoto(pairIdx, photoIdx)}
+                          className="absolute top-1 right-1 bg-white/90 hover:bg-white rounded-full p-1 border border-slate-200"
+                        >
+                          <X className="h-3 w-3 text-slate-600" />
+                        </button>
+                      </div>
+                      {pairs.length > 1 && (
+                        <select
+                          value={pairIdx}
+                          onChange={(e) => movePhotoToPair(pairIdx, photoIdx, Number(e.target.value))}
+                          className="w-full text-[10px] border border-slate-200 rounded px-1 py-0.5 bg-white text-slate-500"
+                        >
+                          {pairs.map((_, i) => (
+                            <option key={i} value={i}>{t("Pair", "Par")} {i + 1}</option>
+                          ))}
+                        </select>
+                      )}
                     </div>
                   ))}
                   {pair.photos.length < MAX_PHOTOS_PER_PAIR && (

@@ -3,6 +3,7 @@ AI Sneaker Pricing endpoints.
 
 POST /api/sneaker-analysis                    -> run AI analysis on up to 3 photos of ONE pair
 POST /api/sneaker-analysis/batch               -> same, for several pairs at once (one Groq call per pair, run in parallel)
+POST /api/sneaker-analysis/suggest-grouping    -> given an unsorted batch of photos, suggest which belong to the same pair
 GET  /api/sneaker-analysis?order_id=...        -> list past analyses (for an order, or all recent ones)
 POST /api/sneaker-analysis/{id}/decide         -> accept / edit / reject a pending analysis
 
@@ -24,7 +25,13 @@ from pydantic import BaseModel, Field
 from auth import get_current_user, require_role
 from database import db
 from models import ROLE_OPERATOR
-from sneaker_ai import analyze_sneaker_photos, build_pricing, MAX_IMAGES_PER_ANALYSIS
+from sneaker_ai import (
+    analyze_sneaker_photos,
+    build_pricing,
+    group_sneaker_photos,
+    MAX_IMAGES_PER_ANALYSIS,
+    MAX_PHOTOS_PER_GROUPING,
+)
 from utils import create_audit_log
 
 logger = logging.getLogger(__name__)
@@ -48,6 +55,10 @@ class SneakerPairInput(BaseModel):
 class SneakerBatchAnalysisRequest(BaseModel):
     order_id: Optional[str] = None
     pairs: List[SneakerPairInput] = Field(..., min_items=1, max_items=MAX_PAIRS_PER_BATCH)
+
+
+class SneakerGroupingRequest(BaseModel):
+    images_base64: List[str] = Field(..., min_items=1, max_items=MAX_PHOTOS_PER_GROUPING)
 
 
 class SneakerDecisionRequest(BaseModel):
@@ -227,3 +238,26 @@ async def decide_sneaker_analysis(
     )
 
     return {"ok": True, "status": new_status, "final_price": data.final_price}
+
+
+@router.post("/sneaker-analysis/suggest-grouping")
+async def suggest_sneaker_photo_grouping(
+    data: SneakerGroupingRequest,
+    current_user: dict = Depends(require_role([ROLE_OPERATOR])),
+) -> dict:
+    """Given an unsorted batch of photos, suggests which ones likely show
+    the same physical pair of shoes. This is a preview only — nothing is
+    saved or priced here; the operator reviews/adjusts the suggested
+    groups client-side, then submits the confirmed groups to
+    /sneaker-analysis/batch for the actual pricing."""
+    try:
+        image_bytes_list = [base64.b64decode(img) for img in data.images_base64]
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid image data")
+
+    try:
+        groups = await group_sneaker_photos(image_bytes_list)
+    except RuntimeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return {"groups": groups}
