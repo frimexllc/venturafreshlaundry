@@ -18,6 +18,7 @@ from auth import (
     get_optional_staff_user, get_optional_customer_user,
 )
 from database import SKIP_SERVER_NOTIFICATIONS, db
+import domain.recurrence as domain_recurrence
 from models import (
     ROLE_OPERATOR,
     ROLE_ADMIN,
@@ -1411,6 +1412,18 @@ async def update_order_recurrence(
             raise HTTPException(status_code=401, detail="Not authenticated as customer")
         if not await _order_belongs_to_customer(order, customer_user):
             raise HTTPException(status_code=403, detail="Not your order")
+
+    recurrence = (data.recurrence or "once").strip().lower()
+    if recurrence not in domain_recurrence.VALID_RECURRENCE_TYPES:
+        raise HTTPException(status_code=400, detail=f"Invalid recurrence type: {data.recurrence}")
+    # FIX: this endpoint used to save recurrence_days for "twice_week"
+    # without validating it at all — an invalid day name or wrong count
+    # would get stored, then silently produce zero future orders in
+    # automation_engine.py instead of failing here with a clear error.
+    if recurrence == "twice_week":
+        error = domain_recurrence.validate_twice_week_days(data.recurrence_days)
+        if error:
+            raise HTTPException(status_code=400, detail=error)
 
     now = datetime.now(timezone.utc).isoformat()
     update_data = {

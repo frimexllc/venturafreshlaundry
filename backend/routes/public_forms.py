@@ -28,6 +28,7 @@ from utils import (
 from notifications import send_sms, send_email, send_whatsapp, send_voice_call, normalize_preferred_contact, detect_language
 from ai_assistant import get_groq_client
 from sneaker_ai import analyze_sneaker_photos, build_pricing, MAX_IMAGES_PER_ANALYSIS
+import domain.recurrence as domain_recurrence
 
 logger = logging.getLogger(__name__)
 
@@ -611,25 +612,20 @@ def get_public_forms_router(
             except ValueError:
                 pass
 
-        # ⭐ NUEVA VALIDACIÓN PARA recurrence_days (twice_week)
+        # Validation for recurrence_days (twice_week) — shared with the
+        # same check in routes/orders.py's PATCH recurrence endpoint via
+        # domain/recurrence.py, the single source of truth for what
+        # counts as a valid weekday-name pair.
         if recurrence == "twice_week":
-            if not data.recurrence_days or len(data.recurrence_days) != 2:
-                raise HTTPException(status_code=400, detail="For twice_week recurrence, exactly two days must be provided")
-            valid_days = {"Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"}
-            if not all(day in valid_days for day in data.recurrence_days):
-                raise HTTPException(status_code=400, detail="Invalid day names. Use full weekday names in English")
+            error = domain_recurrence.validate_twice_week_days(data.recurrence_days)
+            if error:
+                raise HTTPException(status_code=400, detail=error)
         # Guardar los días solo para uso futuro, no se usan en la nota inicialmente pero se almacenan
         recurrence_days_stored = data.recurrence_days if recurrence == "twice_week" else None
 
         # Construir nota de recurrencia (opcional pero útil)
         if recurrence != "once":
-            recurrence_labels = {
-                "once": "One time",
-                "weekly": "Every week",
-                "biweekly": "Every 2 weeks",
-                "twice_week": "Twice a week"
-            }
-            recurrence_note = f"Recurrence: {recurrence_labels.get(recurrence, recurrence)}"
+            recurrence_note = f"Recurrence: {domain_recurrence.RECURRENCE_LABELS.get(recurrence, recurrence)}"
             if recurrence == "twice_week" and recurrence_days_stored:
                 days_str = ", ".join(recurrence_days_stored)
                 recurrence_note += f" on {days_str}"

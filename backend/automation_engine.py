@@ -20,6 +20,8 @@ from typing import Optional, Dict, List, Any
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 
+import domain.recurrence as domain_recurrence
+
 automation_router = APIRouter(prefix="/automation", tags=["Automation Engine"])
 logger = logging.getLogger(__name__)
 
@@ -133,11 +135,8 @@ WASH_FOLD_ACTION_LABELS = {
     "READY": "Completar",
 }
 
-# Días de semana → número Python (lunes=0)
-WEEKDAY_MAP = {
-    "Monday": 0, "Tuesday": 1, "Wednesday": 2,
-    "Thursday": 3, "Friday": 4, "Saturday": 5, "Sunday": 6,
-}
+# Días de semana → número Python (lunes=0) — canonical copy in domain/recurrence.py
+WEEKDAY_MAP = domain_recurrence.WEEKDAY_MAP
 
 
 # ==================== SERVICE TYPE HELPERS ====================
@@ -1064,18 +1063,13 @@ async def update_order_status(order_id: str, new_status: str, notes: Optional[st
 
 
 # ==================== RECURRENCE AUTOMATION ====================
+# The actual next-occurrence-date math (weekly/biweekly/twice_week, weekday
+# lookahead, end-date filtering) lives in domain/recurrence.py as pure
+# functions — the single source of truth also used by routes/orders.py's
+# and routes/public_forms.py's recurrence validation.
 
 def _get_next_weekday_dates(from_date, weekday_names: List[str]) -> List:
-    target_nums = sorted(set(WEEKDAY_MAP.get(d, 0) for d in weekday_names if d in WEEKDAY_MAP))
-    results = []
-    check = from_date + timedelta(days=1)
-    for _ in range(21):
-        if check.weekday() in target_nums and check not in results:
-            results.append(check)
-        if len(results) == len(target_nums):
-            break
-        check += timedelta(days=1)
-    return results
+    return domain_recurrence.get_next_weekday_dates(from_date, weekday_names)
 
 
 async def _clone_order_for_next_pickup(parent_order: Dict, customer: Dict, next_date) -> Optional[Dict]:
@@ -1379,27 +1373,20 @@ async def maybe_create_next_recurring_order(order_id: str):
         logger.error(f"Invalid pickup_date format for order {order_id}: {pickup_date_str}")
         return
 
-    next_dates = []
-
-    if recurrence == "weekly":
-        next_dates = [pickup_date + timedelta(days=7)]
-    elif recurrence == "biweekly":
-        next_dates = [pickup_date + timedelta(days=14)]
-    elif recurrence == "twice_week":
-        recurrence_days = order.get("recurrence_days") or []
-        if len(recurrence_days) != 2:
+    recurrence_days = order.get("recurrence_days") or []
+    next_dates = domain_recurrence.compute_next_occurrence_dates(pickup_date, recurrence, recurrence_days)
+    if next_dates is None:
+        if recurrence == "twice_week":
             logger.error(f"Order {order_id} has twice_week but recurrence_days={recurrence_days}; skipping.")
-            return
-        next_dates = _get_next_weekday_dates(pickup_date, recurrence_days)
-    else:
-        logger.warning(f"Unknown recurrence type '{recurrence}' for order {order_id}; skipping.")
+        else:
+            logger.warning(f"Unknown recurrence type '{recurrence}' for order {order_id}; skipping.")
         return
 
     recurrence_end = order.get("recurrence_end_date")
     if recurrence_end:
         try:
             end_date = datetime.strptime(recurrence_end, "%Y-%m-%d").date()
-            next_dates = [d for d in next_dates if d <= end_date]
+            next_dates = domain_recurrence.filter_dates_within_end_date(next_dates, end_date)
         except ValueError:
             logger.warning(f"Invalid recurrence_end_date for order {order_id}: {recurrence_end}")
 
