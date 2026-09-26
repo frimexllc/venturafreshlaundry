@@ -131,6 +131,54 @@ def _addons_total(order: dict) -> float:
     return round(total, 2)
 
 
+def compute_amount_to_charge(
+    billable_lbs: float,
+    is_wf: bool,
+    is_member: bool,
+    regular_rate: float,
+    member_rate: float,
+    allowance_surcharge: float,
+    lbs_covered: float,
+    lbs_extra: float,
+    allowance_surcharge_charge: float,
+) -> float:
+    """The per-lb amount to charge, given how many lbs are covered by a
+    membership allowance vs. billed as extra lbs.
+
+    The documented business rule: the P&D $40 minimum applies whenever the
+    order has NO allowance coverage at all (lbs_covered == 0) and its full
+    regular-rate price would be under $40 — regardless of membership
+    status. A member whose allowance is exhausted for the month is, for
+    this order, in exactly the same "no coverage" position as a
+    non-member, and must get the same minimum applied. This is shared by
+    compute_order_billing() and by callers (like the customer checkout
+    fast-path in routes/customer.py) that already know lbs_covered/
+    lbs_extra from a previously-stored breakdown and skip recomputing the
+    rest of the order — both must agree on this number.
+    """
+    if lbs_covered > 0:
+        # Lbs beyond the allowance are charged at the MEMBER rate, not the
+        # regular one — the business rule ("after allowance is exhausted,
+        # member rates apply to all extra lbs") was previously violated
+        # here, overcharging every member whose order exceeded their
+        # monthly allowance.
+        amount = round(allowance_surcharge_charge + lbs_extra * member_rate, 2)
+    elif is_member:
+        # Same case — a member with no remaining allowance coverage (used
+        # up, or the order predates their membership) still pays the
+        # member rate, not the regular one.
+        amount = round(billable_lbs * member_rate, 2)
+    else:
+        amount = round(billable_lbs * regular_rate, 2)
+
+    if not is_wf and lbs_covered == 0:
+        full_regular_price = billable_lbs * regular_rate
+        if full_regular_price < PD_MINIMUM_CHARGE:
+            amount = max(amount, PD_MINIMUM_CHARGE)
+
+    return amount
+
+
 def compute_order_billing(
     order: dict,
     customer: Optional[dict],
@@ -219,26 +267,10 @@ def compute_order_billing(
             lbs_extra = billable_lbs - lbs_covered
             allowance_surch_charge = round(lbs_covered * allowance_surch, 2)
 
-    if lbs_covered > 0:
-        # Lbs beyond the allowance are charged at the MEMBER rate, not the
-        # regular one — the business rule ("after allowance is exhausted,
-        # member rates apply to all extra lbs") was previously violated
-        # here, overcharging every member whose order exceeded their
-        # monthly allowance.
-        amount_to_charge = round(allowance_surch_charge + lbs_extra * member_rate, 2)
-    elif is_member:
-        # Same case — a member with no remaining allowance coverage (used
-        # up, or the order predates their membership) still pays the
-        # member rate, not the regular one.
-        amount_to_charge = round(billable_lbs * member_rate, 2)
-    else:
-        amount_to_charge = round(billable_lbs * regular_rate, 2)
-
-    if not is_wf:
-        full_regular_price = billable_lbs * regular_rate
-        order_below_minimum = full_regular_price < PD_MINIMUM_CHARGE
-        if order_below_minimum and lbs_covered == 0:
-            amount_to_charge = max(amount_to_charge, PD_MINIMUM_CHARGE)
+    amount_to_charge = compute_amount_to_charge(
+        billable_lbs, is_wf, is_member, regular_rate, member_rate, allowance_surch,
+        lbs_covered, lbs_extra, allowance_surch_charge,
+    )
 
     if is_member:
         # Covers both the allowance-covered and no-coverage cases — the
@@ -297,3 +329,63 @@ def compute_order_billing(
         "membership_applied": is_member and lbs_covered > 0,
         "is_addon_only": False,
     }
+
+
+def compute_checkout_amount_from_known_coverage(
+    order: dict,
+    customer: Optional[dict],
+    lbs_covered: float,
+    lbs_extra: float,
+    delivery_fee: float = 0.0,
+) -> Optional[float]:
+    """Total amount due at checkout when lbs_covered/lbs_extra are already
+    known (e.g. read from a breakdown stored earlier by
+    compute_order_billing) rather than requiring a fresh membership
+    allowance lookup here.
+
+    This exists for callers that must avoid re-querying — and so
+    double-counting — the customer's current membership-cycle usage (the
+    customer-portal checkout fast-path in routes/customer.py is the one
+    that needs this). It shares compute_amount_to_charge with
+    compute_order_billing so the two can't quietly drift apart on rules
+    like the $40 minimum charge, the way they previously did: this path
+    used to skip the minimum for a member with an exhausted allowance,
+    undercharging them, because it had its own hand-copied version of the
+    amount formula that didn't include that case.
+
+    Returns None when there's nothing billable yet (no weight recorded and
+    no add-ons).
+    """
+    addons_total = _addons_total(order)
+
+    lbs_raw = order.get("actual_lbs")
+    lbs: Optional[float] = None
+    if lbs_raw is not None:
+        try:
+            lbs = float(lbs_raw)
+        except (TypeError, ValueError):
+            lbs = None
+
+    if not lbs or lbs <= 0:
+        if addons_total > 0:
+            return round(addons_total + delivery_fee, 2)
+        return None
+
+    service_type = normalize_service_type(order.get("service_type") or "pickup_delivery")
+    plan = (order.get("service_plan") or "standard").strip().lower()
+    is_wf = service_type == "wash_fold"
+    is_member = is_active_member(order, customer)
+
+    regular_rate = get_rate(service_type, plan, False)
+    member_rate = get_rate(service_type, plan, True)
+    allowance_surch = MEMBERSHIP_ALLOWANCE_SURCHARGE.get(plan, 0.0)
+    allowance_surch_charge = round(lbs_covered * allowance_surch, 2) if lbs_covered > 0 else 0.0
+
+    billable_lbs = max(lbs, WF_MINIMUM_LBS) if is_wf else lbs
+
+    amount = compute_amount_to_charge(
+        billable_lbs, is_wf, is_member, regular_rate, member_rate, allowance_surch,
+        lbs_covered, lbs_extra, allowance_surch_charge,
+    )
+
+    return round(amount + delivery_fee + addons_total, 2)

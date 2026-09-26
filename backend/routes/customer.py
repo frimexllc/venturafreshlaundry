@@ -34,14 +34,10 @@ from utils import (
     is_active_member,
     create_audit_log,
     get_customer_cycle_usage,
-    _get_rate,
     calculate_delivery_fee,
-    PRICING,
     PD_MINIMUM_CHARGE,
-    MEMBERSHIP_ALLOWANCE_SURCHARGE,
-    _get_plan_allowance,
-    _normalize_service_type,
 )
+import domain.billing as domain_billing
 from services.payments import (
     CustomerNotChargeable,
     OrderAlreadyProcessing,
@@ -187,56 +183,22 @@ def _compute_amount_from_stored_fields(order: dict, customer: dict) -> Optional[
 
     # ── Fallback: extra_charge not stored yet (lbs just set, no auto-charge) ─
     # Use lbs_from_allowance that IS stored (computed at PUT /orders time) so
-    # we don't double-count. Only recompute the math, not the DB allowance query.
+    # we don't double-count — only recompute the math, not the DB allowance
+    # query. The math itself (including the $40 minimum, which used to be
+    # skipped here for a member with an exhausted allowance — a real
+    # undercharge bug, since the documented rule applies the minimum to any
+    # order with no allowance coverage, member or not) is shared with
+    # compute_order_billing via domain/billing.py so the two paths can't
+    # drift apart again.
     lbs = float(order.get("actual_lbs") or 0)
-    if lbs <= 0:
-        # No weight recorded — check add-ons only
-        addons_total = sum(
-            float(a.get("price", 0)) * int(a.get("qty") or a.get("quantity") or 1)
-            for a in (order.get("addon_services") or [])
-        )
-        delivery_fee = float(order.get("delivery_fee") or
-                             calculate_delivery_fee(order.get("distance_miles")))
-        if addons_total > 0:
-            return round(addons_total + delivery_fee, 2)
-        return None  # Nothing to charge
+    billable_lbs = max(lbs, domain_billing.WF_MINIMUM_LBS) if lbs > 0 else 0.0
+    delivery_fee = float(order.get("delivery_fee") or calculate_delivery_fee(order.get("distance_miles")))
+    lbs_covered = float(order.get("lbs_from_allowance") or 0)
+    lbs_extra = float(order.get("extra_lbs_billed") or max(0.0, billable_lbs - lbs_covered))
 
-    service_type  = _normalize_service_type(order.get("service_type") or "pickup_delivery")
-    plan          = (order.get("service_plan") or "standard").lower()
-    is_wf         = service_type == "wash_fold"
-    from utils import WF_MINIMUM_LBS
-    billable_lbs  = max(lbs, WF_MINIMUM_LBS) if is_wf else lbs
-
-    # Use stored lbs_from_allowance (set by PUT /orders) — do NOT query DB again
-    lbs_covered   = float(order.get("lbs_from_allowance") or 0)
-    lbs_extra     = float(order.get("extra_lbs_billed") or max(0.0, billable_lbs - lbs_covered))
-    allowance_surch = MEMBERSHIP_ALLOWANCE_SURCHARGE.get(plan, 0.0)
-
-    is_member     = is_active_member(order, customer)
-
-    if is_member and lbs_covered > 0:
-        # Member with partial or full allowance coverage
-        amount = round(lbs_covered * allowance_surch + lbs_extra * _get_rate(service_type, plan, True), 2)
-    elif is_member:
-        # Member but allowance exhausted — member rates on all lbs
-        amount = round(billable_lbs * _get_rate(service_type, plan, True), 2)
-    else:
-        # Non-member
-        amount = round(billable_lbs * _get_rate(service_type, plan, False), 2)
-        # Apply P&D $40 minimum only for non-members with no coverage
-        if not is_wf:
-            full_regular = billable_lbs * _get_rate(service_type, plan, False)
-            if full_regular < PD_MINIMUM_CHARGE:
-                amount = max(amount, PD_MINIMUM_CHARGE)
-
-    # Add delivery fee and add-ons
-    delivery_fee  = float(order.get("delivery_fee") or
-                          calculate_delivery_fee(order.get("distance_miles")))
-    addons_total  = sum(
-        float(a.get("price", 0)) * int(a.get("qty") or a.get("quantity") or 1)
-        for a in (order.get("addon_services") or [])
+    return domain_billing.compute_checkout_amount_from_known_coverage(
+        order, customer, lbs_covered=lbs_covered, lbs_extra=lbs_extra, delivery_fee=delivery_fee,
     )
-    return round(amount + delivery_fee + addons_total, 2)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

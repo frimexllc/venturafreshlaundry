@@ -8,6 +8,8 @@ one of them should fail loudly here, not surface as a wrong charge.
 
 from domain.billing import (
     PD_MINIMUM_CHARGE,
+    compute_amount_to_charge,
+    compute_checkout_amount_from_known_coverage,
     compute_order_billing,
     get_rate,
     is_active_member,
@@ -217,3 +219,76 @@ def test_no_weight_and_no_addons_returns_none():
 def test_zero_weight_and_no_addons_returns_none():
     order = make_order(actual_lbs=0, addon_services=[])
     assert compute_order_billing(order, customer=None) is None
+
+
+# ── compute_amount_to_charge: the shared minimum-charge rule ───────────────
+
+def test_minimum_charge_applies_to_member_with_no_coverage():
+    # Regression: the customer-checkout fast-path in routes/customer.py used
+    # to have its own copy of this formula that only applied the $40 minimum
+    # inside the non-member branch — a member with an exhausted allowance
+    # and a small order got undercharged. The documented rule is "no
+    # allowance coverage" (lbs_covered == 0), not "non-member".
+    amount = compute_amount_to_charge(
+        billable_lbs=5, is_wf=False, is_member=True,
+        regular_rate=2.75, member_rate=2.50, allowance_surcharge=0.0,
+        lbs_covered=0.0, lbs_extra=5, allowance_surcharge_charge=0.0,
+    )
+    assert amount == PD_MINIMUM_CHARGE
+
+
+def test_minimum_charge_skipped_when_allowance_covers_some_lbs():
+    # Even a tiny order doesn't get the minimum bumped if it has ANY
+    # allowance coverage — matches the documented example (65 lb order with
+    # 60 lb allowance: no minimum applied to the 5 extra lbs).
+    amount = compute_amount_to_charge(
+        billable_lbs=5, is_wf=False, is_member=True,
+        regular_rate=2.75, member_rate=2.50, allowance_surcharge=0.0,
+        lbs_covered=2.0, lbs_extra=3.0, allowance_surcharge_charge=0.0,
+    )
+    assert amount == 7.50  # 3 * member_rate(2.50), no minimum bump
+    assert amount < PD_MINIMUM_CHARGE
+
+
+def test_minimum_charge_never_applies_to_wash_fold():
+    amount = compute_amount_to_charge(
+        billable_lbs=10, is_wf=True, is_member=False,
+        regular_rate=2.25, member_rate=2.25, allowance_surcharge=0.0,
+        lbs_covered=0.0, lbs_extra=10, allowance_surcharge_charge=0.0,
+    )
+    assert amount == 22.5  # 10 * 2.25, well under $40, no bump because is_wf
+
+
+# ── compute_checkout_amount_from_known_coverage ─────────────────────────────
+
+def test_checkout_fast_path_matches_full_calculation_for_a_covered_member():
+    order = make_order(actual_lbs=20)
+    customer = make_member_customer()
+    full = compute_order_billing(order, customer, remaining_allowance=10)
+    fast = compute_checkout_amount_from_known_coverage(
+        order, customer, lbs_covered=full["lbs_covered"], lbs_extra=full["lbs_extra"],
+    )
+    assert fast == full["amount_to_charge"]
+
+
+def test_checkout_fast_path_applies_minimum_for_exhausted_allowance_member():
+    # The exact bug scenario: small order, member, allowance fully used up
+    # this cycle (lbs_covered/lbs_extra as they'd be read back from a
+    # previously-stored breakdown).
+    order = make_order(actual_lbs=5)
+    customer = make_member_customer()
+    amount = compute_checkout_amount_from_known_coverage(
+        order, customer, lbs_covered=0.0, lbs_extra=5.0,
+    )
+    assert amount == PD_MINIMUM_CHARGE
+
+
+def test_checkout_fast_path_addon_only_no_weight():
+    order = make_order(actual_lbs=None, addon_services=[{"price": 20, "qty": 1}])
+    amount = compute_checkout_amount_from_known_coverage(order, customer=None, lbs_covered=0.0, lbs_extra=0.0)
+    assert amount == 20.0
+
+
+def test_checkout_fast_path_no_weight_no_addons_returns_none():
+    order = make_order(actual_lbs=None, addon_services=[])
+    assert compute_checkout_amount_from_known_coverage(order, customer=None, lbs_covered=0.0, lbs_extra=0.0) is None
