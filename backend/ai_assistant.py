@@ -13,6 +13,7 @@ CORRECCIONES v3 (2025):
 """
 import os
 import time
+import asyncio
 import hashlib
 import logging
 from datetime import datetime, timezone, timedelta, date
@@ -152,10 +153,15 @@ def _parse_rate_limit_wait(err_str: str) -> Optional[float]:
     return 15  # Conservative default
 
 
-def _groq_call(client: Groq, messages: list, max_tokens: int,
-               temperature: float = 0.7) -> Optional[str]:
+async def _groq_call(client: Groq, messages: list, max_tokens: int,
+                      temperature: float = 0.7) -> Optional[str]:
     """
     Call Groq with a single retry on 429. Returns None on failure.
+
+    The Groq SDK is synchronous, so the actual request is offloaded via
+    asyncio.to_thread — calling it directly here would block the whole
+    async event loop (every request the server is handling, not just this
+    one) for as long as the Groq call takes.
     """
     estimated = max_tokens + 400
     if not _budget.has_budget(estimated):
@@ -164,7 +170,8 @@ def _groq_call(client: Groq, messages: list, max_tokens: int,
 
     for attempt in range(2):
         try:
-            response = client.chat.completions.create(
+            response = await asyncio.to_thread(
+                client.chat.completions.create,
                 messages=messages, model="openai/gpt-oss-120b",
                 temperature=temperature, max_tokens=max_tokens,
             )
@@ -181,12 +188,7 @@ def _groq_call(client: Groq, messages: list, max_tokens: int,
                     logger.warning("Groq 429 with long retry window — skipping")
                     return None
                 logger.warning(f"Groq 429 — waiting {wait_s}s before retry")
-                try:
-                    import asyncio
-                    asyncio.get_running_loop()
-                    return None  # Don't block async event loop
-                except RuntimeError:
-                    time.sleep(wait_s)
+                await asyncio.sleep(wait_s)
             else:
                 logger.error(f"Groq API error: {err_str[:300]}")
                 return None
@@ -345,7 +347,7 @@ async def generate_daily_briefing(db, user_role: str, user_name: str) -> Dict[st
 
     _mark_called(cooldown_key)
     prompt = _build_briefing_prompt(user_name, user_role, data, now)
-    briefing_text = _groq_call(client, messages=[{"role": "user", "content": prompt}], max_tokens=MAX_BRIEFING_TOKENS, temperature=0.6)
+    briefing_text = await _groq_call(client, messages=[{"role": "user", "content": prompt}], max_tokens=MAX_BRIEFING_TOKENS, temperature=0.6)
 
     if not briefing_text:
         return {"briefing": _briefing_fallback(user_name, data, now), "data": data, "generated_at": now.isoformat(), "user_role": user_role, "from_cache": False, "fallback": True}
@@ -401,7 +403,7 @@ async def ai_analyze_business(db, query: str, user_role: str) -> Dict[str, Any]:
         "Respond in English unless the user asks otherwise."
     )
 
-    result = _groq_call(
+    result = await _groq_call(
         client,
         messages=[
             {"role": "system", "content": system_prompt},

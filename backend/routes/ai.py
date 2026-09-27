@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends, Request
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone, timedelta
+import asyncio
 import json
 import uuid
 
@@ -217,7 +218,11 @@ Use natural language, no markdown, and keep it under 200 words.
         if not api_key:
             raise HTTPException(status_code=503, detail="GROQ_API_KEY not configured")
         client = Groq(api_key=api_key)
-        completion = client.chat.completions.create(
+        # The Groq SDK is synchronous — offload it via asyncio.to_thread so
+        # it doesn't block the event loop for every other request the
+        # server is handling while this call is in flight.
+        completion = await asyncio.to_thread(
+            client.chat.completions.create,
             model="openai/gpt-oss-120b",
             messages=[
                 {"role": "system", "content": system},
@@ -313,7 +318,7 @@ Use natural language, no markdown, and keep it under 200 words.
         )
 
         prompt = f"{system_prompt}\n\nCONTEXT:\n{orders_summary}\n\nUSER: {data.message}\nJSON:"
-        raw = call_ollama(prompt)
+        raw = await call_ollama(prompt)
         payload = extract_json_payload(raw)
         reply = payload.get("reply", "")
         actions = payload.get("actions", []) if isinstance(payload.get("actions", []), list) else []
@@ -531,7 +536,7 @@ Use natural language, no markdown, and keep it under 200 words.
         )
 
         prompt = f"{system_prompt}\n\nCONTEXT:\n{context}\n\nUser: {data.message}\nJSON:"
-        model_response = call_ollama(prompt)
+        model_response = await call_ollama(prompt)
         payload = extract_json_payload(model_response)
         reply = payload.get("reply", "")
         actions = payload.get("actions", []) if isinstance(payload.get("actions", []), list) else []
@@ -710,7 +715,7 @@ Use natural language, no markdown, and keep it under 200 words.
             "Cada propuesta: tipo, descripcion, impacto_estimado, accion_sugerida, nivel_riesgo, datos_respaldo. "
             f"patrones={json.dumps(patrones, ensure_ascii=False)}"
         )
-        raw = call_ollama(prompt)
+        raw = await call_ollama(prompt)
         propuestas = []
         try:
             payload = extract_json_payload(raw)

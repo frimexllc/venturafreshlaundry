@@ -72,7 +72,7 @@ async def suggest_import_mapping(import_id: str, data: ImportMappingSuggestReque
     mapping = suggest_mapping(data.campos_legacy)
     prompt = f"Devuelve JSON con clave sugerencias (objeto) para mapear campos legacy a ordenes. campos={data.campos_legacy}"
     try:
-        raw = call_ollama(prompt)
+        raw = await call_ollama(prompt)
         payload = extract_json_payload(raw)
         ai_mapping = payload.get("sugerencias")
         if isinstance(ai_mapping, dict):

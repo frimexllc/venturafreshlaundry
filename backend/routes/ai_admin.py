@@ -167,7 +167,7 @@ async def admin_ai(data: AdminAIRequest, current_user: dict = Depends(get_curren
         "Use IDs from the CONTEXT. If no action is needed, return actions: []."
     )
     prompt = f"{system_prompt}\n\nCONTEXT:\n{context}\n\nUser: {data.message}\nJSON:"
-    model_response = call_ollama(prompt)
+    model_response = await call_ollama(prompt)
 
     try:
         payload = extract_json_payload(model_response)
@@ -410,5 +410,5 @@ async def admin_ai_insights(data: AdminAIInsightsRequest, current_user: dict = D
     if not prompt:
         raise HTTPException(status_code=400, detail="Tipo de análisis inválido")
 
-    reply = call_ollama(prompt)
+    reply = await call_ollama(prompt)
     return {"reply": reply, "snapshot": snapshot}

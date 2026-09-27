@@ -377,7 +377,7 @@ async def ai_operations(data: AdminAIRequest, request: Request, current_user: di
 
     ai_error = None
     try:
-        raw = call_ollama(prompt)
+        raw = await call_ollama(prompt)
         try:
             payload = extract_json_payload(raw)
         except Exception:

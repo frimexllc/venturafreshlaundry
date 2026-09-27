@@ -76,7 +76,7 @@ async def generate_proposals(data: ProposalGenerateRequest, current_user: dict =
     prompt = f"Eres un asistente de optimización. Devuelve JSON con clave propuestas (array). Cada propuesta: tipo, descripcion, impacto_estimado, accion_sugerida, nivel_riesgo, datos_respaldo.\npatrones={json.dumps(patrones, ensure_ascii=False)}"
     propuestas = []
     try:
-        raw = call_ollama(prompt)
+        raw = await call_ollama(prompt)
         payload = extract_json_payload(raw)
         propuestas = payload.get("propuestas", [])
     except Exception:

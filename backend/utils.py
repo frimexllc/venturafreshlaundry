@@ -68,6 +68,7 @@ import html
 import base64
 import uuid
 import time
+import asyncio
 import logging
 import os
 from typing import Any, Dict, List, Optional
@@ -1075,7 +1076,7 @@ def extract_json_payload(text: str):
                 cleaned = cleaned[4:].strip()
     return json.loads(cleaned)
 
-def call_ollama(prompt: str):
+async def call_ollama(prompt: str):
     from groq import Groq
     api_key = os.environ.get("GROQ_API_KEY")
     if not api_key:
@@ -1086,14 +1087,18 @@ def call_ollama(prompt: str):
     for model in models:
         for attempt in range(3):
             try:
-                chat_completion = client.chat.completions.create(
+                # The Groq SDK is synchronous — offload it via asyncio.to_thread
+                # so a retry loop here can't block the whole event loop (every
+                # other request the server is handling) for several seconds.
+                chat_completion = await asyncio.to_thread(
+                    client.chat.completions.create,
                     messages=[{"role": "user", "content": prompt}],
                     model=model, temperature=0.65, max_tokens=2048,
                 )
                 return chat_completion.choices[0].message.content.strip()
             except Exception as e:
                 last_error = e
-                time.sleep(0.6 * (attempt + 1))
+                await asyncio.sleep(0.6 * (attempt + 1))
                 continue
     logger.error(f"Groq API error after retries: {last_error}")
     raise HTTPException(status_code=502, detail=f"AI service error: {str(last_error)}")
