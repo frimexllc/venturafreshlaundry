@@ -253,6 +253,18 @@ class PublicSneakerQuoteRequest(BaseModel):
     images_base64: List[str] = Field(..., min_items=1, max_items=MAX_IMAGES_PER_ANALYSIS)
     captcha_token: Optional[str] = None
 
+class PublicSneakerPairInput(BaseModel):
+    images_base64: List[str] = Field(..., min_items=1, max_items=MAX_IMAGES_PER_ANALYSIS)
+
+class PublicSneakerBatchQuoteRequest(BaseModel):
+    name: str
+    email: EmailStr
+    phone: str
+    contact_method: Optional[str] = None
+    sms_consent: Optional[bool] = False
+    pairs: List[PublicSneakerPairInput] = Field(..., min_items=1, max_items=3)
+    captcha_token: Optional[str] = None
+
 
 class PublicVerifyCodeRequest(BaseModel):
     temp_token: str
@@ -1837,6 +1849,130 @@ PERSONALITY GUIDELINES:
             "ai_result": ai_result,
             "pricing": pricing,
         }
+
+    @router.post("/public/sneaker-quote/batch")
+    async def public_sneaker_quote_batch(data: PublicSneakerBatchQuoteRequest, request: Request):
+        """Quote several pairs in one visit. Unlike the operator's batch
+        endpoint (which runs pairs concurrently), this processes them one
+        at a time — a queue — since it's an unauthenticated public endpoint
+        and firing several parallel Groq calls per anonymous visitor is a
+        cost/abuse risk the operator flow doesn't have. One rate-limit hit
+        is recorded for the whole submission, not one per pair, so quoting
+        3 pairs in a single visit doesn't burn through a visitor's daily
+        allowance the way 3 separate single-pair submissions would.
+        """
+        if not await _verify_captcha(data.captcha_token):
+            raise HTTPException(status_code=400, detail="Could not verify you're human. Please try again.")
+
+        now_dt = datetime.now(timezone.utc)
+        now = now_dt.isoformat()
+        ip = _client_ip(request)
+
+        day_start = now_dt.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+        recent_count = await db.public_sneaker_quote_log.count_documents(
+            {"ip": ip, "created_at": {"$gte": day_start}}
+        )
+        if recent_count >= PUBLIC_SNEAKER_QUOTE_DAILY_LIMIT_PER_IP:
+            raise HTTPException(
+                status_code=429,
+                detail="Too many quote requests today. Please try again tomorrow or contact us directly.",
+            )
+        await db.public_sneaker_quote_log.insert_one({"ip": ip, "created_at": now})
+
+        normalized_name = normalize_name(data.name)
+        normalized_email = normalize_email(data.email) or data.email.lower()
+        normalized_phone = normalize_phone(data.phone)
+        normalized_contact_raw = normalize_spaces(data.contact_method) if data.contact_method else None
+        preferred_contact = normalize_preferred_contact(normalized_contact_raw) if normalized_contact_raw else None
+        if preferred_contact:
+            validate_sms_consent(preferred_contact, data.sms_consent)
+
+        results = []
+        for pair_index, pair in enumerate(data.pairs, start=1):
+            try:
+                image_bytes_list = [base64.b64decode(img) for img in pair.images_base64]
+            except Exception:
+                results.append({"ok": False, "error": "Invalid image data", "pair_index": pair_index})
+                continue
+
+            try:
+                ai_result = await analyze_sneaker_photos(image_bytes_list)
+            except RuntimeError as e:
+                results.append({"ok": False, "error": str(e), "pair_index": pair_index})
+                continue
+
+            pricing = build_pricing(pair_index=pair_index, ai_result=ai_result)
+            analysis_id = str(uuid.uuid4())
+            record = {
+                "id": analysis_id,
+                "order_id": None,
+                "source": "public",
+                "contact_name": normalized_name or data.name,
+                "contact_email": normalized_email,
+                "contact_phone": normalized_phone or data.phone,
+                "ai_result": ai_result,
+                "pricing": pricing,
+                "final_price": None,
+                "status": "quoted",
+                "created_by": None,
+                "created_at": now,
+                "updated_at": now,
+                "ip": ip,
+            }
+            await db.sneaker_ai_analyses.insert_one(record)
+            await create_audit_log("SNEAKER_AI_PUBLIC_QUOTE", "sneaker_ai_analysis", analysis_id, None, {"ip": ip, "pair_index": pair_index})
+            results.append({"ok": True, "id": analysis_id, "ai_result": ai_result, "pricing": pricing})
+
+        successful = [r for r in results if r["ok"]]
+        if successful and normalized_email:
+            is_es = detect_language(None, normalized_phone or data.phone) == "es-MX"
+            lines = []
+            grand_total = 0.0
+            for r in successful:
+                shoe_label = " ".join(
+                    [p for p in [r["ai_result"].get("brand"), r["ai_result"].get("model")] if p]
+                ) or r["ai_result"].get("type") or ("par" if is_es else "pair")
+                total = r["pricing"]["suggested_total"]
+                grand_total += total
+                lines.append(f"  - {shoe_label}: ${total:.2f}")
+            try:
+                if is_es:
+                    subject = "Tu cotización de limpieza de tenis"
+                    msg = (
+                        f"Hola {normalized_name or data.name},\n\n"
+                        f"Aquí está tu cotización estimada para {len(successful)} par(es):\n\n"
+                        + "\n".join(lines)
+                        + f"\n\nTotal estimado: ${grand_total:.2f}\n\n"
+                        f"Esta es una estimación basada en tus fotos — el precio final se confirma al recibir cada par. "
+                        f"Para agendar tu pickup, visita nuestra página de programación.\n\n"
+                        f"Ventura Fresh Laundry"
+                    )
+                else:
+                    subject = "Your sneaker cleaning quote"
+                    msg = (
+                        f"Hi {normalized_name or data.name},\n\n"
+                        f"Here's your estimated quote for {len(successful)} pair(s):\n\n"
+                        + "\n".join(lines)
+                        + f"\n\nEstimated total: ${grand_total:.2f}\n\n"
+                        f"This is an estimate based on your photos — the final price is confirmed when we receive each pair. "
+                        f"To schedule a pickup, visit our scheduling page.\n\n"
+                        f"Ventura Fresh Laundry"
+                    )
+                await send_email(normalized_email, subject, msg)
+            except Exception as e:
+                logger.warning(f"Failed to send public sneaker batch quote email: {e}")
+
+        if emit_realtime and successful:
+            try:
+                await emit_realtime("notification", {
+                    "type": "sneaker_quote_created",
+                    "contact_name": normalized_name or data.name,
+                    "pairs": len(successful),
+                })
+            except Exception as e:
+                logger.error(f"Real-time notification failed for sneaker batch quote: {e}")
+
+        return {"results": results}
 
     # =========================================================================
     # 9. IDENTITY VERIFICATION FOR PICKUP / WASH & FOLD REQUESTS

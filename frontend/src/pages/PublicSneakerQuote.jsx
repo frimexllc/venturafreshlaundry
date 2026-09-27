@@ -1,12 +1,13 @@
 // PublicSneakerQuote.jsx — public, no-login-required instant AI quote for
-// sneaker/shoe cleaning. Visitor gives contact info, uploads up to 3 photos,
-// gets an AI-suggested price, then can jump straight into Schedule Pickup.
+// sneaker/shoe cleaning. Visitor gives contact info, groups photos into one
+// or more pairs (up to 3), gets an AI-suggested price per pair, then can
+// jump straight into Schedule Pickup.
 
 import { useState, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { toast } from "sonner";
-import { Sparkles, Camera, Upload, X, RefreshCw, ArrowRight, CheckCircle } from "lucide-react";
+import { Sparkles, Camera, Upload, X, RefreshCw, ArrowRight, CheckCircle, AlertTriangle, Plus } from "lucide-react";
 import PublicNav from "../components/PublicNav";
 import PublicFooter from "../components/PublicFooter";
 import SmsConsentField from "../components/SmsConsentField";
@@ -15,7 +16,8 @@ import { getRecaptchaToken } from "../utils/recaptcha";
 import { fileToResizedBase64 } from "../utils/imageResize";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
-const MAX_PHOTOS = 3;
+const MAX_PHOTOS_PER_PAIR = 3;
+const MAX_PAIRS = 3;
 
 // FastAPI returns a plain string `detail` for HTTPException errors, but a
 // LIST of validation-error objects for a 422 (request body failed Pydantic
@@ -39,15 +41,19 @@ const DIRT_LABELS = {
   extreme: { en: "Extreme", es: "Extrema" },
 };
 
+let nextLocalPairId = 1;
+const emptyPair = () => ({ localId: nextLocalPairId++, photos: [] });
+
 export default function PublicSneakerQuote() {
   const { t, locale } = useLocale();
   const navigate = useNavigate();
 
   const [step, setStep] = useState("contact"); // contact -> photos -> result
   const [form, setForm] = useState({ name: "", email: "", phone: "", contact_method: "email", sms_consent: false });
-  const [photos, setPhotos] = useState([]);
+  const [pairs, setPairs] = useState([emptyPair()]);
   const [analyzing, setAnalyzing] = useState(false);
-  const [result, setResult] = useState(null);
+  const [results, setResults] = useState(null); // array of {ok, ai_result, pricing} | {ok:false, error, pair_index}
+  const [activePairIdx, setActivePairIdx] = useState(0);
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
 
@@ -66,31 +72,54 @@ export default function PublicSneakerQuote() {
     setStep("photos");
   };
 
+  const openPicker = (pairIdx, ref) => {
+    setActivePairIdx(pairIdx);
+    ref.current?.click();
+  };
+
   const handleFileSelect = (e) => {
     const files = Array.from(e.target.files || []);
     e.target.value = "";
     if (!files.length) return;
-    // FIX: compute room from `prev` inside the updater, not from the
-    // `photos` closure — on mobile, the camera and gallery pickers can
-    // each fire a change event in quick succession before React re-renders,
-    // and both reading the same stale `photos.length` let more than
-    // MAX_PHOTOS photos slip through, which the backend then rejected
-    // with a 422 the UI only showed as a generic "couldn't analyze" error.
-    setPhotos((prev) => {
-      const room = MAX_PHOTOS - prev.length;
+    // Compute room from `prev` inside the updater, not from a closure — on
+    // mobile, the camera and gallery pickers can each fire a change event
+    // in quick succession before React re-renders, and both reading the
+    // same stale count let more photos than the limit slip through.
+    setPairs((prev) => {
+      const pair = prev[activePairIdx];
+      if (!pair) return prev;
+      const room = MAX_PHOTOS_PER_PAIR - pair.photos.length;
       if (room <= 0) {
-        toast.error(t(`You can add up to ${MAX_PHOTOS} photos`, `Puedes agregar hasta ${MAX_PHOTOS} fotos`));
+        toast.error(t(`Up to ${MAX_PHOTOS_PER_PAIR} photos per pair`, `Hasta ${MAX_PHOTOS_PER_PAIR} fotos por par`));
         return prev;
       }
       const next = files.slice(0, room).map((file) => ({ file, preview: URL.createObjectURL(file) }));
-      return [...prev, ...next];
+      return prev.map((p, i) => (i === activePairIdx ? { ...p, photos: [...p.photos, ...next] } : p));
     });
   };
 
-  const removePhoto = (idx) => setPhotos((prev) => prev.filter((_, i) => i !== idx));
+  const removePhoto = (pairIdx, photoIdx) => {
+    setPairs((prev) =>
+      prev.map((p, i) => (i === pairIdx ? { ...p, photos: p.photos.filter((_, j) => j !== photoIdx) } : p))
+    );
+  };
+
+  const addPair = () => {
+    if (pairs.length >= MAX_PAIRS) {
+      toast.error(t(`Up to ${MAX_PAIRS} pairs at once`, `Hasta ${MAX_PAIRS} pares a la vez`));
+      return;
+    }
+    setPairs((prev) => [...prev, emptyPair()]);
+  };
+
+  const removePair = (pairIdx) => {
+    setPairs((prev) => (prev.length === 1 ? prev : prev.filter((_, i) => i !== pairIdx)));
+  };
+
+  const pairsWithPhotos = pairs.filter((p) => p.photos.length > 0);
 
   const runAnalysis = async () => {
-    if (photos.length === 0) {
+    if (pairsWithPhotos.length === 0) {
       toast.error(t("Add at least one photo", "Agrega al menos una foto"));
       return;
     }
@@ -99,18 +128,38 @@ export default function PublicSneakerQuote() {
       // Resize/compress before upload — phone camera photos can be several
       // MB each, which is slow on mobile data and can exceed the backend's
       // per-photo size limit.
-      const images_base64 = await Promise.all(photos.map((p) => fileToResizedBase64(p.file)));
+      const pairsPayload = await Promise.all(
+        pairsWithPhotos.map(async (p) => ({
+          images_base64: await Promise.all(p.photos.map((ph) => fileToResizedBase64(ph.file))),
+        }))
+      );
       const captcha_token = await getRecaptchaToken("sneaker_quote");
-      const res = await axios.post(`${API}/public/sneaker-quote`, {
+      const contactFields = {
         name: form.name,
         email: form.email,
         phone: form.phone,
         contact_method: form.contact_method,
         sms_consent: form.sms_consent,
-        images_base64,
         captcha_token,
-      });
-      setResult(res.data);
+      };
+
+      if (pairsPayload.length === 1) {
+        const res = await axios.post(`${API}/public/sneaker-quote`, {
+          ...contactFields,
+          images_base64: pairsPayload[0].images_base64,
+        });
+        setResults([{ ok: true, ...res.data }]);
+      } else {
+        // Several pairs are queued and analyzed one at a time on the
+        // server, rather than all at once — an unauthenticated visitor
+        // firing several parallel AI calls in one request is a cost/abuse
+        // risk the operator-side batch flow doesn't have.
+        const res = await axios.post(`${API}/public/sneaker-quote/batch`, {
+          ...contactFields,
+          pairs: pairsPayload,
+        });
+        setResults(res.data.results);
+      }
       setStep("result");
     } catch (err) {
       toast.error(getSneakerQuoteErrorMessage(err, t));
@@ -123,8 +172,8 @@ export default function PublicSneakerQuote() {
     navigate("/schedule-pickup");
   };
 
-  const ai = result?.ai_result;
-  const pricing = result?.pricing;
+  const successfulResults = results?.filter((r) => r.ok) || [];
+  const grandTotal = successfulResults.reduce((sum, r) => sum + r.pricing.suggested_total, 0);
 
   return (
     <div className="min-h-screen bg-white">
@@ -198,56 +247,88 @@ export default function PublicSneakerQuote() {
 
           {step === "photos" && (
             <div className="bg-white rounded-2xl border border-slate-200 shadow-lg p-6 space-y-4">
-              <div className="grid grid-cols-3 gap-2">
-                {photos.map((p, idx) => (
-                  <div key={idx} className="relative aspect-square rounded-lg overflow-hidden border border-slate-200 bg-slate-50">
-                    <img src={p.preview} alt="" className="w-full h-full object-cover" />
-                    <button onClick={() => removePhoto(idx)} className="absolute top-1 right-1 bg-white/90 hover:bg-white rounded-full p-1 border border-slate-200">
-                      <X className="h-3 w-3 text-slate-600" />
+              {pairs.map((pair, pairIdx) => (
+                <div key={pair.localId} className="rounded-xl border border-slate-200 p-3 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                      {t("Pair", "Par")} {pairIdx + 1}
+                    </span>
+                    {pairs.length > 1 && (
+                      <button onClick={() => removePair(pairIdx)} className="text-[11px] text-slate-400 hover:text-red-500">
+                        {t("Remove", "Quitar")}
+                      </button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {pair.photos.map((p, photoIdx) => (
+                      <div key={photoIdx} className="relative aspect-square rounded-lg overflow-hidden border border-slate-200 bg-slate-50">
+                        <img src={p.preview} alt="" className="w-full h-full object-cover" />
+                        <button
+                          onClick={() => removePhoto(pairIdx, photoIdx)}
+                          className="absolute top-1 right-1 bg-white/90 hover:bg-white rounded-full p-1 border border-slate-200"
+                        >
+                          <X className="h-3 w-3 text-slate-600" />
+                        </button>
+                      </div>
+                    ))}
+                    {pair.photos.length < MAX_PHOTOS_PER_PAIR && (
+                      <button
+                        onClick={() => openPicker(pairIdx, fileInputRef)}
+                        className="aspect-square rounded-lg border-2 border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400 hover:border-violet-300 hover:text-violet-500 transition-colors"
+                      >
+                        <Upload className="h-5 w-5 mb-1" />
+                        <span className="text-[10px]">{t("Add photo", "Agregar foto")}</span>
+                      </button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => openPicker(pairIdx, cameraInputRef)}
+                      className="h-11 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50 flex items-center justify-center gap-2"
+                    >
+                      <Camera className="h-4 w-4" />{t("Take photo", "Tomar foto")}
+                    </button>
+                    <button
+                      onClick={() => openPicker(pairIdx, fileInputRef)}
+                      className="h-11 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50 flex items-center justify-center gap-2"
+                    >
+                      <Upload className="h-4 w-4" />{t("Gallery / File", "Galería / archivo")}
                     </button>
                   </div>
-                ))}
-                {photos.length < MAX_PHOTOS && (
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="aspect-square rounded-lg border-2 border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400 hover:border-violet-300 hover:text-violet-500 transition-colors"
-                  >
-                    <Upload className="h-5 w-5 mb-1" />
-                    <span className="text-[10px]">{t("Add photo", "Agregar foto")}</span>
-                  </button>
-                )}
-              </div>
-              <p className="text-[11px] text-slate-400 text-center">
-                {t(
-                  `Up to ${MAX_PHOTOS} photos: overall view, sole/damage close-up, brand tag.`,
-                  `Hasta ${MAX_PHOTOS} fotos: vista general, suela/daño, etiqueta de marca.`
-                )}
-              </p>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => cameraInputRef.current?.click()}
-                  className="h-11 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50 flex items-center justify-center gap-2"
-                >
-                  <Camera className="h-4 w-4" />{t("Take photo", "Tomar foto")}
-                </button>
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="h-11 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50 flex items-center justify-center gap-2"
-                >
-                  <Upload className="h-4 w-4" />{t("Gallery / File", "Galería / archivo")}
-                </button>
-              </div>
+                </div>
+              ))}
+
               <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileSelect} />
               <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFileSelect} />
 
+              {pairs.length < MAX_PAIRS && (
+                <button
+                  onClick={addPair}
+                  className="w-full h-10 rounded-xl border-2 border-dashed border-violet-200 text-violet-500 hover:border-violet-400 hover:bg-violet-50/50 flex items-center justify-center gap-1.5 text-sm font-semibold transition-colors"
+                >
+                  <Plus className="h-4 w-4" />{t("Got another pair? Add it", "¿Tienes otro par? Agrégalo")}
+                </button>
+              )}
+
+              <p className="text-[11px] text-slate-400 text-center">
+                {t(
+                  `Up to ${MAX_PHOTOS_PER_PAIR} photos per pair: overall view, sole/damage close-up, brand tag.`,
+                  `Hasta ${MAX_PHOTOS_PER_PAIR} fotos por par: vista general, suela/daño, etiqueta de marca.`
+                )}
+              </p>
+
               <button
                 onClick={runAnalysis}
-                disabled={analyzing || photos.length === 0}
+                disabled={analyzing || pairsWithPhotos.length === 0}
                 className="w-full h-12 rounded-xl bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-sm font-bold uppercase tracking-wide flex items-center justify-center gap-2 transition-colors"
               >
                 {analyzing
                   ? <><RefreshCw className="h-4 w-4 animate-spin" />{t("Analyzing…", "Analizando…")}</>
-                  : <><Sparkles className="h-4 w-4" />{t("Get my quote", "Ver mi cotización")}</>}
+                  : <><Sparkles className="h-4 w-4" />
+                      {pairsWithPhotos.length > 1
+                        ? t(`Get my quote for ${pairsWithPhotos.length} pairs`, `Ver mi cotización de ${pairsWithPhotos.length} pares`)
+                        : t("Get my quote", "Ver mi cotización")}
+                    </>}
               </button>
               <button onClick={() => setStep("contact")} className="w-full text-xs text-slate-400 hover:text-slate-600 text-center">
                 {t("← Back", "← Volver")}
@@ -255,41 +336,68 @@ export default function PublicSneakerQuote() {
             </div>
           )}
 
-          {step === "result" && ai && pricing && (
+          {step === "result" && results && (
             <div className="space-y-4">
-              <div className="rounded-2xl border border-violet-200 bg-violet-50/60 p-5 space-y-2">
-                <div className="flex items-center gap-2 mb-1">
-                  <CheckCircle className="w-5 h-5 text-emerald-500" />
-                  <h3 className="font-bold text-slate-800">{t("Here's your estimate", "Aquí está tu estimado")}</h3>
+              {results.map((r, idx) => (
+                <div key={idx}>
+                  {r.ok ? (
+                    <div className="space-y-3">
+                      <div className="rounded-2xl border border-violet-200 bg-violet-50/60 p-5 space-y-2">
+                        <div className="flex items-center gap-2 mb-1">
+                          <CheckCircle className="w-5 h-5 text-emerald-500" />
+                          <h3 className="font-bold text-slate-800">
+                            {results.length > 1 && `${t("Pair", "Par")} ${r.pricing.pair_index}: `}
+                            {[r.ai_result.brand, r.ai_result.model].filter(Boolean).join(" ") ||
+                              (r.ai_result.type !== "unknown" ? r.ai_result.type : t("Your item", "Tu artículo"))}
+                          </h3>
+                        </div>
+                        {r.ai_result.condition_notes && <p className="text-xs text-slate-500">{r.ai_result.condition_notes}</p>}
+                        <p className="text-xs text-slate-500">
+                          {t("Dirt level", "Nivel de suciedad")}: <strong>{DIRT_LABELS[r.ai_result.dirt_level]?.[locale === "es" ? "es" : "en"] || r.ai_result.dirt_level}</strong>
+                        </p>
+                      </div>
+                      <div className="rounded-2xl border border-slate-200 p-5 space-y-1.5">
+                        <div className="flex justify-between text-xs text-slate-500">
+                          <span>{t("Base price", "Precio base")}</span>
+                          <span className="font-semibold text-slate-700">${r.pricing.base_price.toFixed(2)}</span>
+                        </div>
+                        {r.pricing.extra_charge > 0 && (
+                          <div className="flex justify-between text-xs text-slate-500">
+                            <span>{t("Soiling / complexity surcharge", "Extra por suciedad / complejidad")}</span>
+                            <span className="font-semibold text-slate-700">+${r.pricing.extra_charge.toFixed(2)}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between text-lg font-black text-slate-900 pt-2 border-t border-slate-100">
+                          <span>{t("Estimated total", "Total estimado")}</span>
+                          <span>${r.pricing.suggested_total.toFixed(2)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-red-200 bg-red-50/60 p-5 space-y-1">
+                      <div className="flex items-center gap-2 text-red-600">
+                        <AlertTriangle className="w-5 h-5" />
+                        <h3 className="font-bold text-sm">
+                          {results.length > 1 ? `${t("Pair", "Par")} ${r.pair_index}: ` : ""}
+                          {t("Couldn't analyze this pair", "No se pudo analizar este par")}
+                        </h3>
+                      </div>
+                      <p className="text-xs text-red-500">{r.error}</p>
+                    </div>
+                  )}
                 </div>
-                <p className="text-sm text-slate-600">
-                  {[ai.brand, ai.model].filter(Boolean).join(" ") || (ai.type !== "unknown" ? ai.type : t("Your item", "Tu artículo"))}
-                </p>
-                {ai.condition_notes && <p className="text-xs text-slate-500">{ai.condition_notes}</p>}
-                <p className="text-xs text-slate-500">
-                  {t("Dirt level", "Nivel de suciedad")}: <strong>{DIRT_LABELS[ai.dirt_level]?.[locale === "es" ? "es" : "en"] || ai.dirt_level}</strong>
-                </p>
-              </div>
+              ))}
 
-              <div className="rounded-2xl border border-slate-200 p-5 space-y-1.5">
-                <div className="flex justify-between text-xs text-slate-500">
-                  <span>{t("Base price", "Precio base")}</span>
-                  <span className="font-semibold text-slate-700">${pricing.base_price.toFixed(2)}</span>
+              {successfulResults.length > 1 && (
+                <div className="rounded-2xl border border-slate-200 p-5 flex justify-between items-center">
+                  <span className="text-sm font-bold text-slate-700">{t("Estimated grand total", "Total estimado general")}</span>
+                  <span className="text-xl font-black text-slate-900">${grandTotal.toFixed(2)}</span>
                 </div>
-                {pricing.extra_charge > 0 && (
-                  <div className="flex justify-between text-xs text-slate-500">
-                    <span>{t("Soiling / complexity surcharge", "Extra por suciedad / complejidad")}</span>
-                    <span className="font-semibold text-slate-700">+${pricing.extra_charge.toFixed(2)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between text-lg font-black text-slate-900 pt-2 border-t border-slate-100">
-                  <span>{t("Estimated total", "Total estimado")}</span>
-                  <span>${pricing.suggested_total.toFixed(2)}</span>
-                </div>
-                <p className="text-[11px] text-slate-400 pt-1">
-                  {t("Final price is confirmed when we receive the pair. Sent to your email too.", "El precio final se confirma al recibir el par. También lo enviamos a tu correo.")}
-                </p>
-              </div>
+              )}
+
+              <p className="text-[11px] text-slate-400 text-center">
+                {t("Final price is confirmed when we receive each pair. Sent to your email too.", "El precio final se confirma al recibir cada par. También lo enviamos a tu correo.")}
+              </p>
 
               <button
                 onClick={goSchedule}
@@ -298,7 +406,7 @@ export default function PublicSneakerQuote() {
                 {t("Schedule Pickup", "Programar Recogida")}<ArrowRight className="w-4 h-4" />
               </button>
               <button
-                onClick={() => { setStep("photos"); setResult(null); }}
+                onClick={() => { setStep("photos"); setResults(null); }}
                 className="w-full text-xs text-slate-400 hover:text-slate-600 text-center"
               >
                 {t("Try different photos", "Probar con otras fotos")}
