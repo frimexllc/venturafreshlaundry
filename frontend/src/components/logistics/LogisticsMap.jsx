@@ -7,6 +7,7 @@ import { TimAssistant } from './TimAssistant';
 import { InternalNavigation } from './InternalNavigation';
 import VehicleSelectorModal from './VehicleSelectorModal';
 import { LogisticsDashboard } from './LogisticsDashboard';
+import PickupImageModal from '../PickupImageModal';
 import {
   Navigation, Package, Loader2, MapPin, Zap,
   Menu, X, CheckCircle2, Search, Moon, Sun, BarChart2,
@@ -14,6 +15,7 @@ import {
 } from 'lucide-react';
 import {
   MOCK_ORDERS, ORDER_TYPE_LABELS, ORDER_STATUS_LABELS,
+  PRE_PICKUP_STATUSES, READY_FOR_DELIVERY_STATUSES,
   optimizeRouteAdvanced, haversineDistance,
 } from '../../utils/orders';
 import { getCurrentTrafficEvents, totalTrafficDelay, SEVERITY_COLORS, SEVERITY_LABELS } from '../../utils/traffic';
@@ -70,6 +72,7 @@ export function LogisticsMap() {
   const [navigationMode, setNavigationMode] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
   const [showTim, setShowTim] = useState(false);
+  const [pickupImageModal, setPickupImageModal] = useState(null); // { mapOrder, pendingStatus }
   const [showGasStations, setShowGasStations] = useState(false);
   const [orderFilter, setOrderFilter] = useState('all'); // 'all', 'pending', 'in-progress', 'completed'
   const googleMapRef = useRef(null);
@@ -174,21 +177,23 @@ export function LogisticsMap() {
     setModalOpen(true);
   }, []);
 
-  const handleStatusChange = useCallback(async (order, newStatus) => {
+  const executeStatusUpdate = useCallback(async (order, newStatus) => {
     const token = getStoredToken();
     if (!token) {
       toast.error('Sesión expirada — vuelve a iniciar sesión');
       return;
     }
     try {
-      const response = await fetch(`${API_URL}/api/orders/${order.id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ status: newStatus }),
-      });
+      // FIX: this used to PATCH /api/orders/{id} with a JSON body — that
+      // route doesn't exist (the real one is PATCH /api/orders/{id}/status
+      // with `status` as a query param, per routes/orders.py). Every
+      // status change from the map was silently hitting a 404 and just
+      // showing the generic "couldn't update" error, with no indication
+      // the endpoint itself was wrong.
+      const response = await fetch(
+        `${API_URL}/api/orders/${order.id}/status?status=${encodeURIComponent(newStatus)}`,
+        { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } }
+      );
       if (response.ok) {
         toast.success('Estado actualizado');
         loadOrders();
@@ -197,13 +202,46 @@ export function LogisticsMap() {
         // no toast, no log — so a driver tapping "mark delivered" on a
         // denied or failed request saw no feedback and had no way to
         // know the status change didn't actually save.
-        toast.error('No se pudo actualizar el estado de la orden');
+        const err = await response.json().catch(() => ({}));
+        toast.error(err.detail || 'No se pudo actualizar el estado de la orden');
       }
     } catch (err) {
       toast.error('Error de conexión al actualizar el estado');
       console.error(err);
     }
   }, [loadOrders]);
+
+  const handleStatusChange = useCallback((order, newStatus) => {
+    // Marking a pickup or a delivery requires proof-of-work evidence — the
+    // same photo-required flow already used in the operator dashboard
+    // (PickupImageModal → uploads to /driver/orders/{id}/pickup-image or
+    // /delivery-image, notifies the customer, THEN the status actually
+    // changes). The map used to change status directly with no photo at
+    // all, bypassing that requirement entirely.
+    if (newStatus === 'picked_up' || newStatus === 'delivered') {
+      setPickupImageModal({
+        mapOrder: order,
+        pendingStatus: newStatus,
+        order: {
+          order_id: order.id,
+          order_number: order.orderNumber,
+          customer_name: order.customer?.name || '',
+        },
+      });
+      return;
+    }
+    executeStatusUpdate(order, newStatus);
+  }, [executeStatusUpdate]);
+
+  const handlePickupImageConfirm = useCallback(() => {
+    if (!pickupImageModal) return;
+    const { mapOrder, pendingStatus } = pickupImageModal;
+    setPickupImageModal(null);
+    // PickupImageModal already uploaded the photo to its own endpoint,
+    // which saves the reference on the order and notifies the customer —
+    // only the status change is left to do.
+    executeStatusUpdate(mapOrder, pendingStatus);
+  }, [pickupImageModal, executeStatusUpdate]);
 
   const handleOptimize = useCallback(async () => {
     setOptimizing(true);
@@ -252,7 +290,17 @@ export function LogisticsMap() {
   const filteredOrders = useMemo(() => {
     let result = orders;
     if (orderFilter !== 'all') {
-      result = orders.filter(o => o.status === orderFilter);
+      // FIX: these three buttons compared order.status to a mock-data
+      // vocabulary ('pending' / 'in-progress' / 'completed') that the
+      // backend never actually sends (see backend/order_status.py) —
+      // every filter but "Todas" silently returned an empty list for
+      // real orders. Now grouped by the real canonical statuses.
+      result = orders.filter((o) => {
+        if (orderFilter === 'pending') return PRE_PICKUP_STATUSES.includes(o.status);
+        if (orderFilter === 'in-progress') return READY_FOR_DELIVERY_STATUSES.includes(o.status);
+        if (orderFilter === 'completed') return o.status === 'delivered' || o.status === 'completed';
+        return true;
+      });
     }
     if (!searchQuery) return result;
     const q = searchQuery.toLowerCase();
@@ -443,9 +491,9 @@ export function LogisticsMap() {
                               {ORDER_TYPE_LABELS[order.type] || order.type}
                             </span>
                             <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
-                              order.status === 'pending' ? 'bg-orange-100 text-orange-700' : 
-                              order.status === 'in-progress' ? 'bg-blue-100 text-blue-700' : 
-                              order.status === 'completed' ? 'bg-green-100 text-green-700' : 
+                              PRE_PICKUP_STATUSES.includes(order.status) ? 'bg-orange-100 text-orange-700' :
+                              READY_FOR_DELIVERY_STATUSES.includes(order.status) ? 'bg-blue-100 text-blue-700' :
+                              (order.status === 'delivered' || order.status === 'completed') ? 'bg-green-100 text-green-700' :
                               'bg-gray-100 text-gray-700'
                             }`}>
                               {ORDER_STATUS_LABELS[order.status] || order.status}
@@ -608,6 +656,14 @@ export function LogisticsMap() {
           onStatusChange={(status) => handleStatusChange(selectedOrder, status)}
         />
       )}
+
+      <PickupImageModal
+        open={!!pickupImageModal}
+        order={pickupImageModal?.order}
+        pendingStatus={pickupImageModal?.pendingStatus}
+        onClose={() => setPickupImageModal(null)}
+        onConfirm={handlePickupImageConfirm}
+      />
 
       {showEndOfDay && (
         <EndOfDayModal

@@ -6,32 +6,47 @@ import { StripePaymentModal } from './StripePaymentModal';
 import { MapPin, Phone, Mail, Calendar, Clock, Package, CreditCard, AlertCircle, CheckCircle, Truck, FileText, ChevronRight, ChevronLeft, Zap, User } from 'lucide-react';
 import { ORDER_TYPE_LABELS, ORDER_STATUS_LABELS, PAYMENT_METHOD_LABELS } from '../../utils/orders';
 
-const STATUS_FLOW = ['pending', 'picked-up', 'in-process', 'ready', 'shipping', 'delivered'];
+// FIX: this used to list the mock-data status vocabulary
+// ('pending' / 'picked-up' / 'in-process' / 'shipping'), which doesn't
+// match what the backend actually sends (see backend/order_status.py's
+// CANONICAL_STATUSES — 'new' / 'picked_up' with an underscore /
+// 'out_for_delivery', etc). For a real order, STATUS_FLOW.indexOf(status)
+// returned -1, which made "Avanzar" compute the wrong next status
+// (STATUS_FLOW[0], i.e. back to 'pending') instead of actually moving the
+// order forward, and every status badge/step rendered with no color or
+// icon at all.
+const STATUS_FLOW = ['new', 'confirmed', 'pickup_scheduled', 'picked_up', 'processing', 'ready', 'out_for_delivery', 'delivered'];
 
 const STATUS_ICONS = {
-  pending: <Clock className="w-3.5 h-3.5" />,
-  'picked-up': <Package className="w-3.5 h-3.5" />,
-  'in-process': <Truck className="w-3.5 h-3.5" />,
+  new: <Clock className="w-3.5 h-3.5" />,
+  confirmed: <Clock className="w-3.5 h-3.5" />,
+  pickup_scheduled: <Clock className="w-3.5 h-3.5" />,
+  picked_up: <Package className="w-3.5 h-3.5" />,
+  processing: <Truck className="w-3.5 h-3.5" />,
   ready: <CheckCircle className="w-3.5 h-3.5" />,
-  shipping: <Truck className="w-3.5 h-3.5" />,
+  out_for_delivery: <Truck className="w-3.5 h-3.5" />,
   delivered: <CheckCircle className="w-3.5 h-3.5" />,
 };
 
 const STATUS_COLORS = {
-  pending: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-  'picked-up': 'bg-blue-100 text-blue-800 border-blue-200',
-  'in-process': 'bg-purple-100 text-purple-800 border-purple-200',
+  new: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+  confirmed: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+  pickup_scheduled: 'bg-amber-100 text-amber-800 border-amber-200',
+  picked_up: 'bg-blue-100 text-blue-800 border-blue-200',
+  processing: 'bg-purple-100 text-purple-800 border-purple-200',
   ready: 'bg-green-100 text-green-800 border-green-200',
-  shipping: 'bg-indigo-100 text-indigo-800 border-indigo-200',
+  out_for_delivery: 'bg-indigo-100 text-indigo-800 border-indigo-200',
   delivered: 'bg-gray-100 text-gray-800 border-gray-200',
 };
 
 const STATUS_STEP_ACTIVE = {
-  pending: 'bg-yellow-500 text-white ring-2 ring-yellow-300',
-  'picked-up': 'bg-blue-500 text-white ring-2 ring-blue-300',
-  'in-process': 'bg-purple-500 text-white ring-2 ring-purple-300',
+  new: 'bg-yellow-500 text-white ring-2 ring-yellow-300',
+  confirmed: 'bg-yellow-500 text-white ring-2 ring-yellow-300',
+  pickup_scheduled: 'bg-amber-500 text-white ring-2 ring-amber-300',
+  picked_up: 'bg-blue-500 text-white ring-2 ring-blue-300',
+  processing: 'bg-purple-500 text-white ring-2 ring-purple-300',
   ready: 'bg-green-500 text-white ring-2 ring-green-300',
-  shipping: 'bg-indigo-500 text-white ring-2 ring-indigo-300',
+  out_for_delivery: 'bg-indigo-500 text-white ring-2 ring-indigo-300',
   delivered: 'bg-gray-700 text-white ring-2 ring-gray-400',
 };
 
@@ -47,7 +62,7 @@ export function OrderDetailsModal({ order, open, onClose, onStatusChange, onPaym
   const prevStatus = canRetreat ? STATUS_FLOW[currentIdx - 1] : null;
 
   const getPaymentStatusColor = (s) => s === 'paid' ? 'bg-green-100 text-green-800 border-green-200' : 'bg-red-100 text-red-800 border-red-200';
-  const requiresPayment = order.payment?.status === 'pending' && (order.status === 'ready' || order.status === 'shipping');
+  const requiresPayment = order.payment?.status === 'pending' && (order.status === 'ready' || order.status === 'out_for_delivery');
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>

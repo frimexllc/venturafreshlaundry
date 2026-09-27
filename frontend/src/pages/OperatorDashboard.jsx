@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -36,6 +37,7 @@ import {
   WifiOff,
   ArrowUpDown,
   Sparkles,
+  Navigation,
 } from "lucide-react";
 import { toast } from "sonner";
 import { createNotificationsSocket } from "../utils/notificationsSocket";
@@ -545,6 +547,7 @@ const ServiceSubTabs = ({ value, onChange, t }) => {
 export default function OperatorDashboard() {
   const { t, locale } = useLocale();
   const isMobile = useMobile();
+  const navigate = useNavigate();
 
   const [confirmDialog, setConfirmDialog] = useState(null);
   const [dashboard, setDashboard] = useState(null);
@@ -1431,6 +1434,28 @@ const updateOrderStatus = useCallback(
               data-testid="sneaker-quote-btn"
             >
               <Sparkles className="h-3.5 w-3.5" />{t("Sneaker Quote", "Cotizar Tenis")}
+            </Button>
+            {/* Jumps straight to the full logistics map (route
+                optimization, navigation mode, delivery photo evidence) —
+                distinct from the lightweight "Map" tab further down,
+                which is just a static preview. Highlighted whenever
+                there's a delivery backlog so it's obvious there's
+                something to act on. */}
+            <Button
+              onClick={() => navigate("/admin/logistics-map")}
+              variant="ghost"
+              size="sm"
+              className={`h-9 px-3 text-xs gap-1.5 border ${
+                deliveriesCount > 0
+                  ? "bg-emerald-400/90 text-emerald-950 border-emerald-300 hover:bg-emerald-400 font-bold"
+                  : "text-white border-white/20 hover:bg-white/15"
+              }`}
+              data-testid="go-to-logistics-map-btn"
+            >
+              <Navigation className="h-3.5 w-3.5" />
+              {deliveriesCount > 0
+                ? t(`Go to map (${deliveriesCount} ready)`, `Ir al mapa (${deliveriesCount} listas)`)
+                : t("Logistics map", "Mapa de logística")}
             </Button>
           </div>
         </div>

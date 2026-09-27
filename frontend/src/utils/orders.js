@@ -28,17 +28,32 @@ export const ORDER_TYPE_LABELS = {
 };
 
 export const ORDER_STATUS_LABELS = {
-  'pending':          'Pendiente',
-  'picked-up':        'Recolectado',
-  'in-process':       'En Proceso',
-  'ready':            'Listo p/ Entrega',
-  'shipping':         'En Camino',
-  'delivered':        'Entregado',
+  // Real backend canonical statuses (see backend/order_status.py) — the
+  // ones that actually appear on orders coming from the API.
   'new':              'Nuevo',
   'confirmed':        'Confirmado',
   'pickup_scheduled': 'Pickup Agendado',
+  'picked_up':        'Recolectado',
+  'processing':       'En Proceso',
+  'ready':            'Listo p/ Entrega',
   'out_for_delivery': 'En Camino',
+  'delivered':        'Entregado',
+  'completed':        'Completado',
+  'cancelled':        'Cancelado',
+  // Legacy/mock labels kept for any old data still using these — not
+  // produced by the backend anymore.
+  'pending':          'Pendiente',
+  'picked-up':        'Recolectado',
+  'in-process':       'En Proceso',
+  'shipping':         'En Camino',
 };
+
+// Mirrors backend/order_status.py's LOGISTICS_PRE_PICKUP_STATUSES /
+// LOGISTICS_READY_FOR_DELIVERY_STATUSES — used on the map to decide
+// whether a stop is a pickup (hasn't been picked up yet) or a delivery
+// (already picked up, now awaiting drop-off).
+export const PRE_PICKUP_STATUSES = ['new', 'confirmed', 'pickup_scheduled'];
+export const READY_FOR_DELIVERY_STATUSES = ['picked_up', 'processing', 'ready', 'out_for_delivery'];
 
 export const PAYMENT_METHOD_LABELS = {
   'card':     'Tarjeta',

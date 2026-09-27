@@ -1,7 +1,7 @@
 // src/components/logistics/MapView.jsx
 import React, { useState, useEffect, useRef, useImperativeHandle, forwardRef, useCallback } from 'react';
 import { Loader2 } from 'lucide-react';
-import { ORDER_TYPE_LABELS, ORDER_STATUS_LABELS } from '../../utils/orders';
+import { ORDER_TYPE_LABELS, ORDER_STATUS_LABELS, PRE_PICKUP_STATUSES, READY_FOR_DELIVERY_STATUSES } from '../../utils/orders';
 import { SEVERITY_COLORS, SEVERITY_LABELS } from '../../utils/traffic';
 
 let googleMapsPromise = null;
@@ -592,8 +592,14 @@ export const MapView = forwardRef(({
         return;
       }
 
-      const role = order.status === 'pending' && order.type !== 'wash-fold' ? 'pickup'
-        : order.status === 'ready' && order.type !== 'wash-fold' ? 'delivery'
+      // FIX: this compared order.status to the mock-data vocabulary
+      // ('pending' / 'ready') instead of the real backend statuses (see
+      // backend/order_status.py) — 'pending' is never actually sent (the
+      // backend normalizes it to 'new'), so virtually every real order
+      // fell through to the generic gray 'processing' role, making
+      // pickup and delivery stops indistinguishable on the map.
+      const role = order.type !== 'wash-fold' && PRE_PICKUP_STATUSES.includes(order.status) ? 'pickup'
+        : order.type !== 'wash-fold' && READY_FOR_DELIVERY_STATUSES.includes(order.status) ? 'delivery'
         : 'processing';
 
       const seq = sequenceMap.get(order.id);
