@@ -150,7 +150,12 @@ async def analyze_sneaker_photos(image_data_list: List[bytes], notes: Optional[s
 
     client = Groq(api_key=GROQ_API_KEY)
     try:
-        response = client.chat.completions.create(
+        # The Groq SDK is synchronous — offload it via asyncio.to_thread
+        # (same pattern used for Stripe/SendGrid elsewhere in this codebase),
+        # since calling it directly here would block the single event loop
+        # for every visitor on the site for the duration of the request.
+        response = await asyncio.to_thread(
+            client.chat.completions.create,
             model=VISION_MODEL,
             messages=[{"role": "user", "content": content}],
             temperature=0.3,
@@ -228,7 +233,8 @@ async def fingerprint_photo(image_bytes: bytes) -> dict:
 
     client = Groq(api_key=GROQ_API_KEY)
     try:
-        response = client.chat.completions.create(
+        response = await asyncio.to_thread(
+            client.chat.completions.create,
             model=VISION_MODEL,
             messages=[{
                 "role": "user",
@@ -287,7 +293,8 @@ async def suggest_photo_grouping(fingerprints: List[dict]) -> List[List[int]]:
     indexed = [{"index": i, **fp} for i, fp in enumerate(fingerprints)]
     client = Groq(api_key=GROQ_API_KEY)
     try:
-        response = client.chat.completions.create(
+        response = await asyncio.to_thread(
+            client.chat.completions.create,
             model=TEXT_MODEL,
             messages=[{
                 "role": "user",
