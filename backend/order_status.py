@@ -79,6 +79,27 @@ LOGISTICS_ACTIVE_STATUSES = (
     "out_for_delivery",
 )
 
+# Split of LOGISTICS_ACTIVE_STATUSES by whether the order is still tied to a
+# scheduled date. An order that hasn't been picked up yet is meaningfully
+# scheduled for its pickup_date — filtering the map to "today" makes sense
+# for it. An order already picked up and awaiting delivery is a rolling
+# backlog: delivery_date is rarely set until the order actually goes out, so
+# filtering it by "today" made it silently vanish from the logistics map the
+# moment its original pickup_date passed, even though it still needed to be
+# delivered. See routes/logistics.py's get_logistics_orders.
+LOGISTICS_PRE_PICKUP_STATUSES = (
+    "new",
+    "confirmed",
+    "pickup_scheduled",
+)
+
+LOGISTICS_READY_FOR_DELIVERY_STATUSES = (
+    "picked_up",
+    "processing",
+    "ready",
+    "out_for_delivery",
+)
+
 
 def normalize_status(status):
     """

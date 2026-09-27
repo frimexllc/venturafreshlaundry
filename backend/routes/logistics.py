@@ -627,25 +627,47 @@ async def get_logistics_orders(
         target_date = date_cls.today().isoformat()  # YYYY-MM-DD
 
     # ── Construir query Mongo ─────────────────────────────────────────
+    from order_status import (
+        status_in_query,
+        LOGISTICS_ACTIVE_STATUSES,
+        LOGISTICS_PRE_PICKUP_STATUSES,
+        LOGISTICS_READY_FOR_DELIVERY_STATUSES,
+    )
+
+    def _date_phase_clause(d: str) -> Dict[str, Any]:
+        phase_norm = (phase or "both").lower()
+        if phase_norm == "pickup":
+            return {"pickup_date": d}
+        if phase_norm == "delivery":
+            return {"delivery_date": d}
+        return {"$or": [{"pickup_date": d}, {"delivery_date": d}]}
+
     query: Dict[str, Any] = {}
 
     if status:
         # Permite alias (e.g. PICKED_UP, picked-up). Usa todas las variantes.
-        from order_status import status_in_query
         query["status"] = status_in_query(status)
+        if target_date:
+            query.update(_date_phase_clause(target_date))
+    elif target_date:
+        # FIX: an order that's already been picked up and is now
+        # processing/ready/out_for_delivery is a rolling backlog that
+        # still needs to go out, regardless of which date it happened to
+        # be picked up on — delivery_date is rarely set until the order
+        # actually goes out. The date filter used to apply to ALL active
+        # statuses, which made a "ready" order silently disappear from
+        # the logistics map the moment its original pickup_date passed —
+        # confirmed against real orders sitting "ready" for days with no
+        # delivery_date set at all. Only orders that haven't been picked
+        # up yet (still meaningfully tied to a scheduled pickup date) get
+        # filtered by date; already-picked-up orders always show.
+        query["$or"] = [
+            {"status": status_in_query(*LOGISTICS_PRE_PICKUP_STATUSES), **_date_phase_clause(target_date)},
+            {"status": status_in_query(*LOGISTICS_READY_FOR_DELIVERY_STATUSES)},
+        ]
     else:
         # Estados activos (excluye delivered/completed/cancelled). Cubre todas las variantes legacy.
-        from order_status import status_in_query, LOGISTICS_ACTIVE_STATUSES
         query["status"] = status_in_query(*LOGISTICS_ACTIVE_STATUSES)
-
-    if target_date:
-        phase_norm = (phase or "both").lower()
-        if phase_norm == "pickup":
-            query["pickup_date"] = target_date
-        elif phase_norm == "delivery":
-            query["delivery_date"] = target_date
-        else:
-            query["$or"] = [{"pickup_date": target_date}, {"delivery_date": target_date}]
 
     orders = await db.orders.find(query, {"_id": 0}).to_list(500)
 
