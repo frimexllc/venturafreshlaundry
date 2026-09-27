@@ -28,7 +28,6 @@ from delivery_config import (
     geocode_address,
     calculate_driving_distance_async,
     calculate_batch_delivery_costs,
-    optimize_route as optimize_delivery_route,
     METERS_PER_MILE,
     haversine_miles,
 )
@@ -513,27 +512,16 @@ async def get_distance(
     }
 
 
-# ==================== ROUTE PLANNING (mejorado con delivery_config) ====================
-@router.post("/route-plan")
-async def calculate_route_plan(
-    request: dict,
-    current_user: dict = Depends(get_current_user)
-):
-    """Calcula un plan de ruta óptimo usando delivery_config"""
-    addresses = request.get("addresses", [])
-    
-    if not addresses:
-        return {"error": "No addresses provided"}
-    
-    result = optimize_delivery_route(addresses)
-    
-    return {
-        "original_order": addresses,
-        "optimized_order": result["route"],
-        "total_distance_miles": result["total_distance_miles"],
-        "total_duration_minutes": result["total_duration_minutes"],
-        "total_stops": len(addresses)
-    }
+# ==================== ROUTE PLANNING ====================
+# The actual POST /route-plan endpoint lives in routes/route_planning.py
+# (real driving directions via OpenRouteService + gas stations along the
+# route). This file used to register its own, simpler version at the
+# exact same final path (/api/logistics/route-plan) — a straight-line
+# nearest-neighbor reorder of plain address strings, no real driving
+# route — which silently shadowed the real one: FastAPI matches routes in
+# registration order, and this one was registered first, so the richer
+# implementation was 100% unreachable dead code. Removed here rather than
+# fixed in place, since it duplicated a feature that already exists.
 
 
 # ==================== ORDERS ====================
