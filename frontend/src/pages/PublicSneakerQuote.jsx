@@ -7,7 +7,7 @@ import { useState, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { toast } from "sonner";
-import { Sparkles, Camera, Upload, X, RefreshCw, ArrowRight, CheckCircle, AlertTriangle, Plus } from "lucide-react";
+import { Sparkles, Camera, Upload, X, RefreshCw, ArrowRight, CheckCircle, AlertTriangle, Plus, Info } from "lucide-react";
 import PublicNav from "../components/PublicNav";
 import PublicFooter from "../components/PublicFooter";
 import SmsConsentField from "../components/SmsConsentField";
@@ -356,6 +356,17 @@ export default function PublicSneakerQuote() {
                           {t("Dirt level", "Nivel de suciedad")}: <strong>{DIRT_LABELS[r.ai_result.dirt_level]?.[locale === "es" ? "es" : "en"] || r.ai_result.dirt_level}</strong>
                         </p>
                       </div>
+                      {!r.ai_result.brand && (
+                        <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50/70 p-3">
+                          <Info className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
+                          <p className="text-xs text-amber-700">
+                            {t(
+                              "We couldn't identify the exact brand/model from your photos — this is a general estimate based on the condition and type of shoe. We'll confirm the exact price when we receive your pair.",
+                              "No pudimos identificar la marca/modelo exacto en tus fotos — este es un estimado general según el estado y tipo de calzado. Confirmamos el precio exacto al recibir tu par."
+                            )}
+                          </p>
+                        </div>
+                      )}
                       <div className="rounded-2xl border border-slate-200 p-5 space-y-1.5">
                         <div className="flex justify-between text-xs text-slate-500">
                           <span>{t("Base price", "Precio base")}</span>
