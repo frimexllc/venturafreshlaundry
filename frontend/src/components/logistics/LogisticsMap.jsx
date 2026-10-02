@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '../ui/button';
 import { OrderDetailsModal } from './OrderDetailsModal';
 import { EndOfDayModal } from './EndOfDayModal';
@@ -11,7 +12,7 @@ import PickupImageModal from '../PickupImageModal';
 import {
   Navigation, Package, Loader2, MapPin, Zap,
   Menu, X, CheckCircle2, Search, Moon, Sun, BarChart2,
-  Fuel, Filter, ChevronDown, PlayCircle, Clock,
+  Fuel, Filter, ChevronDown, PlayCircle, Clock, Satellite,
 } from 'lucide-react';
 import {
   MOCK_ORDERS, ORDER_TYPE_LABELS, ORDER_STATUS_LABELS,
@@ -44,6 +45,8 @@ const SEVERITY_BG = {
 };
 
 export function LogisticsMap() {
+  const navigate = useNavigate();
+
   // NOTE (bug fix): `orders` used to default to MOCK_ORDERS and
   // loadOrders() below used to just leave that mock data in place
   // whenever there was no token or no API_URL — including the "no
@@ -330,12 +333,21 @@ export function LogisticsMap() {
                   <p className="text-xs text-gray-500">Ventura Fresh</p>
                 </div>
               </div>
-              <button
-                onClick={() => setSidebarOpen(false)}
-                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
-              >
-                <Menu className="w-5 h-5 text-gray-600 dark:text-gray-300" />
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => navigate('/admin/logistica-pro')}
+                  title="LogisticaPro (Preview) — mapa 3D y rastreo en vivo"
+                  className="p-2 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg text-blue-600 dark:text-blue-400"
+                >
+                  <Satellite className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={() => setSidebarOpen(false)}
+                  className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+                >
+                  <Menu className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+                </button>
+              </div>
             </div>
           ) : (
             <div className="flex flex-col items-center gap-4">

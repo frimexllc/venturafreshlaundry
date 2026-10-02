@@ -369,6 +369,7 @@ for _mod, _name in [
     ("routes.stripe_sync", "Stripe Sync"),
     ("routes.notification_metrics", "Notification Metrics"),
     ("routes.sneaker_ai", "Sneaker AI"),
+    ("routes.logistics_pro", "LogisticaPro"),
 ]:
     try:
         _m = importlib.import_module(_mod)

@@ -50,6 +50,7 @@ import PwaSplashScreen from "./components/PwaSplashScreen";
 import PublicVoiceAssistant from "./components/PublicVoiceAssistant";
 import OperatorAgentPage from "./pages/OperatorAgentPage";
 import LogisticsMapPage from "./pages/LogisticsMapPage";
+import LogisticaProPage from "./pages/LogisticaProPage";
 import SuppliersPage from "./pages/SuppliersPage";
 import CatalogPage from "./pages/CatalogPage";
 import InventoryPage from "./pages/InventoryPage";
@@ -178,6 +179,16 @@ function AppRoutes() {
 
       {/* Admin */}
       <Route path="/login" element={<Login />} />
+      {/* LogisticaPro — full-screen 3D view, intentionally outside <Layout />
+          (no sidebar/topbar) so the map uses the entire viewport */}
+      <Route
+        path="/admin/logistica-pro"
+        element={
+          <ProtectedRoute>
+            <LogisticaProPage />
+          </ProtectedRoute>
+        }
+      />
       <Route
         path="/admin"
         element={
