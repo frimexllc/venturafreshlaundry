@@ -30,10 +30,13 @@ const MAX_RECONNECT_ATTEMPTS = 10;
  * Idempotente: si ya existe una conexión activa, la retorna.
  */
 export function createNotificationsSocket() {
-  if (!SOCKET_URL) {
-    console.warn("[Socket] REACT_APP_BACKEND_URL not set — socket disabled");
-    return null;
-  }
+  // NOTE: REACT_APP_BACKEND_URL is intentionally empty in production
+  // (.env.production) — the frontend and backend are same-origin there,
+  // and socket.io-client's io() with no/empty URL already means "connect
+  // to the current origin". Treating that empty string as "not configured"
+  // used to disable this socket outright in production, silently breaking
+  // every feature that depends on it (e.g. LogisticaPro's live tracking)
+  // with nothing but a console warning to show for it.
 
   // Si ya hay un socket conectado o en proceso de conexión, reutilizarlo
   if (_socket && (_socket.connected || _socket.active)) {
