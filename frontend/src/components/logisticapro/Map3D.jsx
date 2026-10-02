@@ -9,6 +9,7 @@
 // in the app (LogisticsMap's MapView.jsx) so neither load interferes
 // with the other.
 import { useEffect, useRef, useState } from 'react';
+import { PRE_PICKUP_STATUSES, READY_FOR_DELIVERY_STATUSES } from '../../utils/orders';
 
 let googleMaps3DPromise = null;
 
@@ -20,6 +21,19 @@ function loadGoogleMaps3D(apiKey) {
   googleMaps3DPromise = new Promise((resolve, reject) => {
     const onReady = async () => {
       try {
+        // The script tag's `onload` fires once the file has downloaded,
+        // but Google's loading=async bootstrap can still be a tick away
+        // from actually attaching `importLibrary` to window.google.maps —
+        // same race MapView.jsx already guards against for the 2D map.
+        // Poll briefly instead of assuming it's there the instant onload fires.
+        let tries = 0;
+        while (typeof window.google?.maps?.importLibrary !== 'function' && tries < 40) {
+          await new Promise((r) => setTimeout(r, 100));
+          tries++;
+        }
+        if (typeof window.google?.maps?.importLibrary !== 'function') {
+          throw new Error('google.maps.importLibrary never became available');
+        }
         await window.google.maps.importLibrary('maps3d');
         await window.google.maps.importLibrary('marker');
         resolve(window.google);
@@ -28,7 +42,7 @@ function loadGoogleMaps3D(apiKey) {
       }
     };
 
-    if (window.google?.maps?.importLibrary) {
+    if (typeof window.google?.maps?.importLibrary === 'function') {
       onReady();
       return;
     }
@@ -47,11 +61,26 @@ function loadGoogleMaps3D(apiKey) {
 
 const DRIVER_PIN_COLOR = '#2563eb';
 
-export default function Map3D({ hqLocation, driverLocations = [], trafficEvents = [], onMapReady }) {
+// Orders with no stored coordinates fall back to these HQ coordinates
+// server-side — same sentinel MapView.jsx (the 2D map) already skips
+// rather than stacking fake markers on top of HQ.
+const FALLBACK_LAT = 34.264157;
+const FALLBACK_LNG = -119.213715;
+const COORD_THRESHOLD = 0.002; // ~200 m
+
+function needsGeocode(order) {
+  const lat = order.location?.lat;
+  const lng = order.location?.lng;
+  if (!lat || !lng) return true;
+  return Math.abs(lat - FALLBACK_LAT) < COORD_THRESHOLD && Math.abs(lng - FALLBACK_LNG) < COORD_THRESHOLD;
+}
+
+export default function Map3D({ hqLocation, driverLocations = [], trafficEvents = [], orders = [], onOrderClick, onMapReady }) {
   const containerRef = useRef(null);
   const map3DRef = useRef(null);
   const driverMarkersRef = useRef(new Map()); // user_id -> Marker3DElement
   const trafficMarkersRef = useRef([]);
+  const orderMarkersRef = useRef([]);
   const libsRef = useRef(null);
 
   const [isLoaded, setIsLoaded] = useState(false);
@@ -173,6 +202,43 @@ export default function Map3D({ hqLocation, driverLocations = [], trafficEvents 
       trafficMarkersRef.current.push(m);
     });
   }, [isLoaded, trafficEvents]);
+
+  // ── 4. Order markers (pickup / delivery / in-process) ───────────────────
+  useEffect(() => {
+    if (!isLoaded || !libsRef.current || !map3DRef.current) return;
+    const { Marker3DInteractiveElement, PinElement } = libsRef.current;
+    const map3D = map3DRef.current;
+
+    orderMarkersRef.current.forEach((m) => m.remove?.());
+    orderMarkersRef.current = [];
+
+    orders.forEach((order) => {
+      if (!order.location?.lat || needsGeocode(order)) return;
+
+      const role = order.type !== 'wash-fold' && PRE_PICKUP_STATUSES.includes(order.status) ? 'pickup'
+        : order.type !== 'wash-fold' && READY_FOR_DELIVERY_STATUSES.includes(order.status) ? 'delivery'
+        : 'processing';
+      const color = role === 'pickup' ? '#f97316' : role === 'delivery' ? '#2563eb' : '#94a3b8';
+      const glyph = role === 'pickup' ? 'P' : role === 'delivery' ? 'D' : '•';
+
+      const m = new Marker3DInteractiveElement({
+        position: { lat: order.location.lat, lng: order.location.lng, altitude: 10 },
+        altitudeMode: 'RELATIVE_TO_GROUND',
+        label: order.customer?.name || order.orderNumber || 'Orden',
+      });
+      try {
+        const pin = new PinElement({ background: color, borderColor: '#fff', glyphColor: '#fff', glyph });
+        m.append(pin.element);
+      } catch {
+        // Styling is best-effort; the plain marker still conveys the location.
+      }
+      if (onOrderClick) {
+        m.addEventListener('gmp-click', () => onOrderClick(order));
+      }
+      map3D.append(m);
+      orderMarkersRef.current.push(m);
+    });
+  }, [isLoaded, orders, onOrderClick]);
 
   if (loadError) {
     return (

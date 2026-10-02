@@ -20,6 +20,10 @@ const HQ = { lat: 34.264309036184606, lng: -119.21374270055239 };
 // battery or spam the backend.
 const LOCATION_POST_INTERVAL_MS = 8000;
 
+// Orders don't need second-by-second freshness like a GPS fix — this just
+// keeps pickups/deliveries reasonably current as statuses change elsewhere.
+const ORDERS_REFRESH_MS = 30000;
+
 function authHeaders() {
   const token = localStorage.getItem('token');
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -36,6 +40,7 @@ export default function LogisticaProPage() {
 
   const [driverLocations, setDriverLocations] = useState([]); // [{user_id, name, lat, lng, heading, updated_at}]
   const [trafficEvents, setTrafficEvents] = useState([]);
+  const [orders, setOrders] = useState([]);
   const [sharing, setSharing] = useState(false);
   const [panelOpen, setPanelOpen] = useState(true);
 
@@ -55,6 +60,21 @@ export default function LogisticaProPage() {
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => setTrafficEvents(data?.events || getCurrentTrafficEvents()))
       .catch(() => setTrafficEvents(getCurrentTrafficEvents()));
+  }, []);
+
+  // ── Orders (pickups / deliveries) — same endpoint the 2D logistics
+  // map uses, refreshed periodically rather than only once on mount ──────
+  useEffect(() => {
+    if (!API_URL) return;
+    const loadOrders = () => {
+      fetch(`${API_URL}/api/logistics/orders`, { headers: authHeaders() })
+        .then((r) => (r.ok ? r.json() : []))
+        .then((data) => setOrders(Array.isArray(data) ? data : []))
+        .catch(() => {});
+    };
+    loadOrders();
+    const id = setInterval(loadOrders, ORDERS_REFRESH_MS);
+    return () => clearInterval(id);
   }, []);
 
   // ── Live updates over the shared notifications socket ──────────────────
@@ -140,9 +160,20 @@ export default function LogisticaProPage() {
 
   useEffect(() => () => stopSharing(), [stopSharing]);
 
+  const handleOrderClick = useCallback((order) => {
+    const label = order.customer?.name || order.orderNumber || 'Orden';
+    toast(`${label} — ${order.location?.address || 'sin dirección'}`);
+  }, []);
+
   return (
     <div className="fixed inset-0 bg-slate-950 text-white">
-      <Map3D hqLocation={HQ} driverLocations={driverLocations} trafficEvents={trafficEvents} />
+      <Map3D
+        hqLocation={HQ}
+        driverLocations={driverLocations}
+        trafficEvents={trafficEvents}
+        orders={orders}
+        onOrderClick={handleOrderClick}
+      />
 
       {/* Top bar */}
       <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-4 py-3 bg-gradient-to-b from-slate-950/90 to-transparent">
@@ -158,6 +189,7 @@ export default function LogisticaProPage() {
             <span className="font-bold tracking-tight">LogisticaPro</span>
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 font-semibold uppercase">Preview</span>
           </div>
+          <span className="text-xs text-slate-300 bg-white/5 px-2 py-1 rounded-lg">{orders.length} órdenes en mapa</span>
         </div>
 
         <div className="flex items-center gap-2">
