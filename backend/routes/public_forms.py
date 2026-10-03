@@ -226,10 +226,44 @@ class PublicWashFoldRequest(BaseModel):
     wash_temp: Optional[str] = None
     dry_temp: Optional[str] = None
     captcha_token: Optional[str] = None
-    # Lets other drop-off-style services (e.g. sneaker cleaning) reuse this
-    # same no-address-required finalize flow instead of duplicating it —
-    # defaults to "wash_fold" so every existing caller is unaffected.
-    service_type: Optional[str] = None
+
+
+# ── Sneaker/shoe cleaning — its own request models, not borrowed from
+# pickup/wash-fold. Deliberately smaller than PublicPickupRequest/
+# PublicWashFoldRequest: no service_plan, recurrence, wash/dry temp —
+# none of that applies to this service, so this flow doesn't carry
+# fields it has no use for. ─────────────────────────────────────────────
+class PublicSneakerPickupRequest(BaseModel):
+    name: str
+    email: EmailStr
+    phone: str
+    address: str
+    pickup_date: str
+    pickup_time: Optional[str] = None
+    contact_method: Optional[str] = None
+    sms_consent: Optional[bool] = False
+    notes: Optional[str] = None
+    addon_services: Optional[List[Dict[str, Any]]] = []
+    captcha_token: Optional[str] = None
+
+    @validator("pickup_date")
+    def pickup_date_not_blank(cls, v):
+        if not v or not v.strip():
+            raise ValueError("pickup_date is required")
+        return v.strip()
+
+
+class PublicSneakerDropoffRequest(BaseModel):
+    name: str
+    email: EmailStr
+    phone: str
+    dropoff_date: Optional[str] = None
+    dropoff_time: Optional[str] = None
+    contact_method: Optional[str] = None
+    sms_consent: Optional[bool] = False
+    notes: Optional[str] = None
+    addon_services: Optional[List[Dict[str, Any]]] = []
+    captcha_token: Optional[str] = None
 
 class PublicContactRequest(BaseModel):
     name: str
@@ -866,9 +900,8 @@ def get_public_forms_router(
                 {"$set": {"has_membership": has_membership, "updated_at": now}}
             )
 
-        normalized_service_type = normalize_spaces(data.service_type).lower().replace(" ", "_") if data.service_type else "wash_fold"
         wf_plan = (data.plan or "standard").lower()
-        price_lb = get_price_per_lb(normalized_service_type, wf_plan, has_membership)
+        price_lb = get_price_per_lb("wash_fold", wf_plan, has_membership)
 
         order_id = str(uuid.uuid4())
         order_number = await generate_order_number()
@@ -879,7 +912,7 @@ def get_public_forms_router(
             "customer_name": customer["name"],
             "customer_email": normalized_email,
             "customer_phone": normalized_phone or customer.get("phone", ""),
-            "service_type": normalized_service_type,
+            "service_type": "wash_fold",
             "service_plan": wf_plan,
             "membership_plan_applied": membership_plan_name,
             "price_per_lb": price_lb,
@@ -965,6 +998,325 @@ def get_public_forms_router(
             "order_number": order_number,
             "message": "¡Gracias! Tu solicitud de Wash & Fold ha sido recibida.",
             "addons": {"selected": clean_addons, "total": addon_amount} if clean_addons else None
+        }
+
+    # =========================================================================
+    # SNEAKER / SHOE CLEANING — ORDER CREATION (its own flow, not borrowed
+    # from pickup-request or wash-fold-request)
+    # =========================================================================
+    async def _finalize_sneaker_pickup_request(data: PublicSneakerPickupRequest) -> dict:
+        now = datetime.now(timezone.utc).isoformat()
+
+        try:
+            pickup_date_obj = datetime.strptime(data.pickup_date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="pickup_date must be in YYYY-MM-DD format")
+        today_pacific = datetime.now(TZ_PACIFIC).date()
+        if pickup_date_obj < today_pacific:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Pickup date cannot be in the past. Today is {today_pacific.isoformat()}",
+            )
+
+        normalized_name = normalize_name(data.name)
+        normalized_email = normalize_email(data.email) or data.email.lower()
+        normalized_phone = normalize_phone(data.phone)
+        normalized_address = normalize_address(data.address)
+        normalized_notes = normalize_spaces(data.notes)
+        normalized_contact_raw = normalize_spaces(data.contact_method)
+        preferred_contact = normalize_preferred_contact(normalized_contact_raw) if normalized_contact_raw else None
+        validate_sms_consent(preferred_contact, data.sms_consent)
+        sms_consent = bool(data.sms_consent)
+
+        clean_addons = []
+        for svc in (data.addon_services or []):
+            if not isinstance(svc, dict):
+                continue
+            clean_addons.append({
+                "id": str(svc.get("id", "")),
+                "name": str(svc.get("name", "Sneaker Cleaning"))[:120],
+                "price": float(svc["price"]) if svc.get("price") is not None else None,
+                "price_unit": str(svc.get("price_unit", "")) if svc.get("price_unit") else None,
+                "category": str(svc.get("category", "sneaker_cleaning")),
+            })
+        addon_amount = calculate_addon_amount(clean_addons)
+        final_notes = normalized_notes or None
+
+        customer = await db.customers.find_one({"email": normalized_email}, {"_id": 0})
+        if not customer:
+            customer_id = str(uuid.uuid4())
+            customer = {
+                "id": customer_id,
+                "name": normalized_name or data.name,
+                "email": normalized_email,
+                "phone": normalized_phone or data.phone,
+                "address": normalized_address or data.address,
+                "preferred_contact": preferred_contact or "email",
+                "sms_consent": sms_consent,
+                "sms_consent_at": now if sms_consent else None,
+                "notes": None,
+                "status": "active",
+                "total_orders": 0,
+                "created_at": now,
+                "updated_at": now,
+            }
+            await db.customers.insert_one(customer)
+            await create_audit_log("CUSTOMER_CREATED", "customer", customer_id, None, {"source": "public_form"})
+        else:
+            await db.customers.update_one(
+                {"id": customer["id"]},
+                {"$set": {
+                    "name": normalized_name or customer.get("name"),
+                    "phone": normalized_phone or customer.get("phone"),
+                    "address": normalized_address or customer.get("address"),
+                    **({"preferred_contact": preferred_contact} if preferred_contact else {}),
+                    **({"sms_consent": True, "sms_consent_at": now} if sms_consent else {}),
+                    "updated_at": now,
+                }},
+            )
+            customer = {
+                **customer,
+                "name": normalized_name or customer.get("name"),
+                "phone": normalized_phone or customer.get("phone"),
+                "address": normalized_address or customer.get("address"),
+            }
+
+        delivery_info = await calculate_auto_delivery_fee(normalized_address)
+        if delivery_info.get("rejected"):
+            dist = delivery_info.get("distance_miles", 0)
+            from delivery_config import MAX_DELIVERY_MILES
+            raise HTTPException(
+                status_code=400,
+                detail=f"Lo sentimos, solo atendemos direcciones dentro de {MAX_DELIVERY_MILES:.0f} millas. Tu dirección está a {dist:.1f} millas de distancia."
+            )
+        delivery_fee = delivery_info.get("delivery_fee", 0)
+        distance_miles = delivery_info.get("distance_miles")
+        coords = delivery_info.get("coords")
+
+        order_id = str(uuid.uuid4())
+        order_number = await generate_order_number()
+        order = {
+            "id": order_id,
+            "order_number": order_number,
+            "customer_id": customer["id"],
+            "customer_name": customer["name"],
+            "customer_email": normalized_email,
+            "customer_phone": normalized_phone or customer.get("phone", ""),
+            "service_type": "sneaker_cleaning",
+            "service_plan": "standard",
+            "delivery_fee": delivery_fee,
+            "distance_miles": distance_miles,
+            "coords": coords,
+            "pickup_date": data.pickup_date,
+            "pickup_time_window": data.pickup_time,
+            "pickup_address": normalized_address,
+            "delivery_address": normalized_address,
+            "estimated_lbs": None,
+            "actual_lbs": None,
+            "notes": final_notes,
+            "preferred_contact": preferred_contact,
+            "sms_consent": sms_consent,
+            "sms_consent_at": now if sms_consent else None,
+            "status": "new",
+            "estado_actual": "new",
+            "payment_status": "unpaid",
+            "total_amount": None,
+            "addon_services": clean_addons,
+            "addon_amount": addon_amount,
+            "origen": "sneaker_pickup_request",
+            "created_at": now,
+            "updated_at": now,
+            "recurrence": "once",
+            "is_recurring": False,
+        }
+
+        breakdown = await calculate_final_amount_with_membership(order, customer)
+        if breakdown:
+            order.update({
+                "total_amount": breakdown["total"],
+                "extra_charge": breakdown["total"],
+                "delivery_fee": breakdown["delivery_fee"],
+                "addons_total": breakdown["addons_total"],
+            })
+
+        await db.orders.insert_one(order)
+        await db.customers.update_one({"id": customer["id"]}, {"$inc": {"total_orders": 1}})
+        await create_audit_log("ORDER_CREATED", "order", order_id, None, {"source": "public_form", "service_type": "sneaker_cleaning"})
+
+        if emit_realtime:
+            try:
+                await emit_realtime("notification", {"type": "order_created", "order_id": order_id, "status": "new", "order_number": order_number})
+            except Exception as e:
+                logger.error(f"Real-time notification failed for sneaker order {order_number}: {e}")
+
+        if notifications_enabled:
+            try:
+                from notifications import notify_order_created
+                await notify_order_created(customer, order)
+            except Exception as e:
+                logger.error(f"Notification failed: {e}")
+
+        await _notify_admin(
+            request_type="Sneaker Cleaning Pickup",
+            details={
+                "order_number": order_number,
+                "customer_name": customer["name"],
+                "phone": customer.get("phone", "N/A"),
+                "email": normalized_email,
+                "address": normalized_address or "N/A",
+                "date": data.pickup_date or "N/A",
+                "time": data.pickup_time or "N/A",
+            },
+            admin_phones=ADMIN_PHONES,
+            notifications_enabled=notifications_enabled,
+            skip_server_notifications=skip_server_notifications,
+        )
+
+        return {
+            "success": True,
+            "order_number": order_number,
+            "message": "¡Gracias! Tu solicitud de limpieza de tenis ha sido recibida.",
+            "addons": {"selected": clean_addons, "total": addon_amount} if clean_addons else None,
+        }
+
+    async def _finalize_sneaker_dropoff_request(data: PublicSneakerDropoffRequest) -> dict:
+        now = datetime.now(timezone.utc).isoformat()
+
+        normalized_name = normalize_name(data.name)
+        normalized_email = normalize_email(data.email) or data.email.lower()
+        normalized_phone = normalize_phone(data.phone)
+        normalized_notes = normalize_spaces(data.notes)
+        normalized_contact_raw = normalize_spaces(data.contact_method)
+        preferred_contact = normalize_preferred_contact(normalized_contact_raw) if normalized_contact_raw else None
+        validate_sms_consent(preferred_contact, data.sms_consent)
+        sms_consent = bool(data.sms_consent)
+
+        clean_addons = []
+        for svc in (data.addon_services or []):
+            if not isinstance(svc, dict):
+                continue
+            clean_addons.append({
+                "id": str(svc.get("id", "")),
+                "name": str(svc.get("name", "Sneaker Cleaning"))[:120],
+                "price": float(svc["price"]) if svc.get("price") is not None else None,
+                "price_unit": str(svc.get("price_unit", "")) if svc.get("price_unit") else None,
+                "category": str(svc.get("category", "sneaker_cleaning")),
+                "quantity": int(svc.get("quantity", 1)),
+            })
+        addon_amount = calculate_addon_amount(clean_addons)
+        final_notes = normalized_notes or None
+
+        customer = await db.customers.find_one({"email": normalized_email}, {"_id": 0})
+        if not customer:
+            customer_id = str(uuid.uuid4())
+            customer = {
+                "id": customer_id,
+                "name": normalized_name or data.name,
+                "email": normalized_email,
+                "phone": normalized_phone or data.phone,
+                "address": None,
+                "preferred_contact": preferred_contact or "email",
+                "sms_consent": sms_consent,
+                "sms_consent_at": now if sms_consent else None,
+                "notes": None,
+                "status": "active",
+                "total_orders": 0,
+                "created_at": now,
+                "updated_at": now,
+            }
+            await db.customers.insert_one(customer)
+            await create_audit_log("CUSTOMER_CREATED", "customer", customer_id, None, {"source": "public_form"})
+        else:
+            await db.customers.update_one(
+                {"id": customer["id"]},
+                {"$set": {
+                    "name": normalized_name or customer.get("name"),
+                    "phone": normalized_phone or customer.get("phone"),
+                    **({"preferred_contact": preferred_contact} if preferred_contact else {}),
+                    **({"sms_consent": True, "sms_consent_at": now} if sms_consent else {}),
+                    "updated_at": now,
+                }},
+            )
+            customer = {**customer, "name": normalized_name or customer.get("name"), "phone": normalized_phone or customer.get("phone")}
+
+        order_id = str(uuid.uuid4())
+        order_number = await generate_order_number()
+        order = {
+            "id": order_id,
+            "order_number": order_number,
+            "customer_id": customer["id"],
+            "customer_name": customer["name"],
+            "customer_email": normalized_email,
+            "customer_phone": normalized_phone or customer.get("phone", ""),
+            "service_type": "sneaker_cleaning",
+            "service_plan": "standard",
+            "preferred_contact": preferred_contact or customer.get("preferred_contact") or "email",
+            "sms_consent": sms_consent,
+            "sms_consent_at": now if sms_consent else None,
+            "pickup_date": data.dropoff_date,
+            "pickup_time_window": data.dropoff_time,
+            "pickup_address": None,
+            "delivery_address": None,
+            "estimated_lbs": None,
+            "actual_lbs": None,
+            "notes": final_notes,
+            "status": "new",
+            "estado_actual": "new",
+            "payment_status": "unpaid",
+            "total_amount": None,
+            "addon_services": clean_addons,
+            "addon_amount": addon_amount,
+            "origen": "sneaker_dropoff_request",
+            "created_at": now,
+            "updated_at": now,
+        }
+
+        breakdown = await calculate_final_amount_with_membership(order, customer)
+        if breakdown:
+            order.update({
+                "total_amount": breakdown["total"],
+                "extra_charge": breakdown["total"],
+                "addons_total": breakdown["addons_total"],
+            })
+
+        await db.orders.insert_one(order)
+        await db.customers.update_one({"id": customer["id"]}, {"$inc": {"total_orders": 1}})
+        await create_audit_log("ORDER_CREATED", "order", order_id, None, {"source": "public_form", "service_type": "sneaker_cleaning"})
+
+        if emit_realtime:
+            try:
+                await emit_realtime("notification", {"type": "order_created", "order_id": order_id, "status": "new", "order_number": order_number})
+            except Exception as e:
+                logger.error(f"Real-time notification failed for sneaker order {order_number}: {e}")
+
+        if notifications_enabled:
+            try:
+                from notifications import notify_order_created
+                await notify_order_created(customer, order)
+            except Exception as e:
+                logger.error(f"Notification failed: {e}")
+
+        await _notify_admin(
+            request_type="Sneaker Cleaning Drop-off",
+            details={
+                "order_number": order_number,
+                "customer_name": customer["name"],
+                "phone": customer.get("phone", "N/A"),
+                "email": normalized_email,
+                "address": "In-store drop-off",
+                "date": data.dropoff_date or "N/A",
+                "time": data.dropoff_time or "N/A",
+            },
+            admin_phones=ADMIN_PHONES,
+            notifications_enabled=notifications_enabled,
+            skip_server_notifications=skip_server_notifications,
+        )
+
+        return {
+            "success": True,
+            "order_number": order_number,
+            "message": "¡Gracias! Tu solicitud de limpieza de tenis ha sido recibida.",
+            "addons": {"selected": clean_addons, "total": addon_amount} if clean_addons else None,
         }
 
     # =========================================================================
@@ -2132,6 +2484,34 @@ PERSONALITY GUIDELINES:
             preferred_contact=preferred_contact,
         )
 
+    @router.post("/public/sneaker-cleaning/pickup-request")
+    async def stage_sneaker_pickup_request(data: PublicSneakerPickupRequest):
+        if not await _verify_captcha(data.captcha_token):
+            raise HTTPException(status_code=400, detail="Could not verify you're human. Please try again.")
+        normalized_contact_raw = normalize_spaces(data.contact_method) if data.contact_method else None
+        preferred_contact = normalize_preferred_contact(normalized_contact_raw) if normalized_contact_raw else None
+        return await _stage_public_submission(
+            "sneaker_pickup_request", data,
+            name=normalize_name(data.name) or data.name,
+            email=normalize_email(data.email) or data.email,
+            phone=normalize_phone(data.phone) or data.phone,
+            preferred_contact=preferred_contact,
+        )
+
+    @router.post("/public/sneaker-cleaning/dropoff-request")
+    async def stage_sneaker_dropoff_request(data: PublicSneakerDropoffRequest):
+        if not await _verify_captcha(data.captcha_token):
+            raise HTTPException(status_code=400, detail="Could not verify you're human. Please try again.")
+        normalized_contact_raw = normalize_spaces(data.contact_method) if data.contact_method else None
+        preferred_contact = normalize_preferred_contact(normalized_contact_raw) if normalized_contact_raw else None
+        return await _stage_public_submission(
+            "sneaker_dropoff_request", data,
+            name=normalize_name(data.name) or data.name,
+            email=normalize_email(data.email) or data.email,
+            phone=normalize_phone(data.phone) or data.phone,
+            preferred_contact=preferred_contact,
+        )
+
     @router.post("/public/verify-code")
     async def verify_public_code(data: PublicVerifyCodeRequest):
         record = await db.public_form_verifications.find_one({"temp_token": data.temp_token}, {"_id": 0})
@@ -2157,6 +2537,10 @@ PERSONALITY GUIDELINES:
             return await _finalize_pickup_request(PublicPickupRequest(**payload))
         elif form_type == "wash_fold_request":
             return await _finalize_wash_fold_request(PublicWashFoldRequest(**payload))
+        elif form_type == "sneaker_pickup_request":
+            return await _finalize_sneaker_pickup_request(PublicSneakerPickupRequest(**payload))
+        elif form_type == "sneaker_dropoff_request":
+            return await _finalize_sneaker_dropoff_request(PublicSneakerDropoffRequest(**payload))
         raise HTTPException(status_code=400, detail="Unknown form type")
 
     @router.post("/public/resend-code")

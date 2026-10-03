@@ -203,7 +203,7 @@ export default function PublicSneakerQuote() {
     }
     setScheduling(true);
     try {
-      const captcha_token = await getRecaptchaToken(fulfillment === "pickup" ? "pickup_request" : "wash_fold_request");
+      const captcha_token = await getRecaptchaToken(fulfillment === "pickup" ? "sneaker_pickup_request" : "sneaker_dropoff_request");
       const addon_services = buildAddonServices();
       const contactFields = {
         name: form.name,
@@ -215,22 +215,20 @@ export default function PublicSneakerQuote() {
         addon_services,
       };
 
+      // Sneaker cleaning has its own dedicated endpoints (not borrowed from
+      // pickup-request/wash-fold-request) — see routes/public_forms.py.
       const res = fulfillment === "pickup"
-        ? await axios.post(`${API}/public/pickup-request`, {
+        ? await axios.post(`${API}/public/sneaker-cleaning/pickup-request`, {
             ...contactFields,
             address: scheduleForm.address,
             pickup_date: scheduleForm.date,
             pickup_time: scheduleForm.time || null,
-            service_type: "sneaker_cleaning",
-            service_plan: "standard",
             notes: t("AI sneaker/shoe cleaning quote", "Cotización de limpieza de tenis/calzado con IA"),
           })
-        : await axios.post(`${API}/public/wash-fold-request`, {
+        : await axios.post(`${API}/public/sneaker-cleaning/dropoff-request`, {
             ...contactFields,
             dropoff_date: scheduleForm.date,
             dropoff_time: scheduleForm.time || null,
-            service_type: "sneaker_cleaning",
-            plan: "standard",
             notes: t("AI sneaker/shoe cleaning quote — store drop-off", "Cotización de limpieza de tenis/calzado con IA — entrega en tienda"),
           });
 
