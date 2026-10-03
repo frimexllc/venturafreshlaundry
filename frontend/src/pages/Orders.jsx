@@ -10,6 +10,7 @@ import {
   Shirt, Store, Building2, Home, Sparkles, CheckCircle2, CalendarClock,
   PackageCheck, BadgeCheck, PartyPopper, XCircle, Undo2, AlertTriangle,
   Edit, // <-- NUEVO
+  Footprints,
 } from "lucide-react";
 import { useLocale } from "../context/LocaleContext";
 import { formatShortDatePT } from "../utils/dateUtils";
@@ -42,6 +43,7 @@ const SERVICE_TYPES = {
   self_service: { label: "Self Service", Icon: Store, color: "#f59e0b" },
   commercial: { label: "Commercial / B2B", Icon: Building2, color: "#6366f1" },
   airbnb_host: { label: "Airbnb Host", Icon: Home, color: "#f97316" },
+  sneaker_cleaning: { label: "Sneaker Cleaning", Icon: Footprints, color: "#7c3aed" },
 };
 
 const PLAN_LABELS = {
