@@ -1425,7 +1425,7 @@ export default function ServicesPage() {
             <Reveal delay={80}><h2 className="text-2xl sm:text-4xl lg:text-5xl font-bold text-slate-900 text-center mb-3 leading-tight">{t("Transparent", "Precios")}<span className="block text-primary font-bold">{t("Pricing.", "Transparentes.")}</span></h2></Reveal>
             <Reveal delay={160}><p className="text-slate-500 text-center mb-8 sm:mb-14 max-w-xl mx-auto text-sm sm:text-lg">{t("No surprises. Premium service you can count on.", "Sin sorpresas. Servicio premium en el que puedes confiar.")}</p></Reveal>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 mb-4 sm:mb-8">
               <Reveal delay={0} dir="up" dur={700}>
                 <Tilt depth={4}>
                   <div className="relative bg-white rounded-2xl h-full flex flex-col overflow-hidden border border-slate-100 shadow-lg hover:border-primary/30 hover:shadow-2xl hover:shadow-sky-100/60 transition-all duration-300 group">
@@ -1512,25 +1512,52 @@ export default function ServicesPage() {
                   </div>
                 </Tilt>
               </Reveal>
-            </div>
-
-            <Reveal delay={40} dir="up" dur={700}>
-              <div className="mb-4 sm:mb-8 relative rounded-2xl overflow-hidden border border-violet-100 bg-gradient-to-br from-violet-50 via-white to-sky-50 p-5 sm:p-7 flex flex-col sm:flex-row items-start sm:items-center gap-5 sm:gap-8">
-                <div className="w-14 h-14 flex items-center justify-center text-3xl rounded-2xl bg-white shadow-sm shrink-0">👟</div>
-                <div className="flex-1 min-w-0">
-                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-violet-100 text-violet-600 text-[11px] font-bold uppercase tracking-wide mb-2">
-                    <Sparkles className="w-3 h-3" />{t("AI-Powered", "Con IA")}
+              <Reveal delay={160} dir="up" dur={700}>
+                <Tilt depth={4}>
+                  <div className="relative bg-white rounded-2xl h-full flex flex-col overflow-hidden border border-slate-100 shadow-lg hover:border-violet-300 hover:shadow-2xl hover:shadow-violet-100/60 transition-all duration-300 group">
+                    <div className="absolute top-0 left-6 right-6 h-px bg-gradient-to-r from-transparent via-violet-500 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-500" />
+                    <div className="relative px-5 sm:px-7 pt-6 pb-4 border-b border-slate-100">
+                      <div className="w-12 h-12 flex items-center justify-center text-2xl mb-3 rounded-2xl bg-slate-50 group-hover:bg-violet-100 group-hover:scale-110 group-hover:rotate-3 transition-all duration-300">👟</div>
+                      <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-violet-100 text-violet-600 text-[10px] font-bold uppercase tracking-wide mb-2">
+                        <Sparkles className="w-3 h-3" />{t("AI-Powered", "Con IA")}
+                      </div>
+                      <h3 className="text-xl sm:text-2xl font-bold mb-1 text-slate-900 group-hover:text-violet-600 transition-colors duration-200">{t("Sneaker & Shoe Cleaning", "Limpieza de Tenis y Calzado")}</h3>
+                      <p className="text-slate-400 text-sm">{t("Instant AI price estimate from your photos.", "Precio estimado al instante con IA desde tus fotos.")}</p>
+                    </div>
+                    <div className="flex-grow divide-y divide-slate-50">
+                      {[
+                        { plan: t("1st pair", "1er par"), price: "$12.00" },
+                        { plan: t("2nd pair", "2do par"), price: "$10.00", isPopular: true },
+                        { plan: t("3rd+ pair", "3er par en adelante"), price: "$8.00" },
+                      ].map((row, i) => (
+                        <div key={i} className={`px-5 py-3 flex items-center justify-between gap-2 ${row.isPopular ? "bg-violet-50/60" : ""}`}>
+                          <div className="flex items-center gap-2 flex-wrap min-w-0">
+                            <span className={`text-sm font-semibold ${row.isPopular ? "text-violet-600" : "text-slate-700"}`}>{row.plan}</span>
+                            {row.isPopular && <span className="text-[11px] font-bold text-violet-600 bg-violet-100 px-1.5 py-0.5 rounded-full">⭐</span>}
+                          </div>
+                          <span className="text-lg font-black text-violet-600 ml-2 whitespace-nowrap">{row.price}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="relative px-5 py-3 bg-slate-50 border-t border-slate-100">
+                      <ul className="space-y-1">
+                        {[t("✨ +$0–$10 based on soiling/complexity", "✨ +$0–$10 según suciedad/complejidad"), t("🚚 Pickup & delivery, or drop off in-store", "🚚 Recogida y entrega, o entrega en tienda"), t("📸 Photo evidence at every step", "📸 Evidencia fotográfica en cada paso")].map((item, i) => (
+                          <li key={i} className="text-xs text-slate-500">{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div className="relative px-5 sm:px-7 pb-6 pt-4">
+                      <Link to="/sneaker-quote">
+                        <button className="group w-full flex items-center justify-center gap-2 bg-violet-600 text-white rounded-xl px-6 py-3.5 text-sm font-bold uppercase tracking-wider hover:bg-violet-700 active:scale-95 transition-all duration-300 shadow-md shadow-violet-200 overflow-hidden relative touch-manipulation" style={{ minHeight: "48px" }}>
+                          <span className="relative z-10 flex items-center gap-2">{t("GET INSTANT QUOTE", "COTIZA YA")}<ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-1" /></span>
+                          <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
+                        </button>
+                      </Link>
+                    </div>
                   </div>
-                  <h3 className="text-lg sm:text-xl font-bold text-slate-900 mb-1">{t("Sneaker & Shoe Cleaning", "Limpieza de Tenis y Calzado")}</h3>
-                  <p className="text-slate-500 text-sm">{t("Upload a few photos and get an instant AI price estimate — starting at $12 per pair.", "Sube unas fotos y recibe un precio estimado al instante con IA — desde $12 por par.")}</p>
-                </div>
-                <Link to="/sneaker-quote" className="w-full sm:w-auto shrink-0">
-                  <button className="w-full sm:w-auto flex items-center justify-center gap-2 bg-violet-600 text-white rounded-xl px-6 py-3.5 text-sm font-bold uppercase tracking-wider hover:bg-violet-700 active:scale-95 transition-all duration-300 shadow-md shadow-violet-200" style={{ minHeight: "48px" }}>
-                    {t("Get Instant Quote", "Cotiza Ya")}<ArrowRight className="w-4 h-4" />
-                  </button>
-                </Link>
-              </div>
-            </Reveal>
+                </Tilt>
+              </Reveal>
+            </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
               <Reveal dir="left" delay={0}>

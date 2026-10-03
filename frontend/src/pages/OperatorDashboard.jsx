@@ -38,6 +38,7 @@ import {
   ArrowUpDown,
   Sparkles,
   Navigation,
+  Footprints,
 } from "lucide-react";
 import { toast } from "sonner";
 import { createNotificationsSocket } from "../utils/notificationsSocket";
@@ -502,9 +503,13 @@ const OrderRow = ({
   </div>
 );
 
+const SERVICE_SUB_TAB_ORDER = ["pickup", "wash", "sneaker"];
+const SERVICE_SUB_TAB_LABELS = { pickup: "Pickup & Delivery", wash: "Wash & Fold", sneaker: "Sneaker Cleaning" };
+
 const MobileServiceSwitch = ({ onSwitch, currentService, t }) => {
   const isMobile = useMobile();
   if (!isMobile) return null;
+  const nextKey = SERVICE_SUB_TAB_ORDER[(SERVICE_SUB_TAB_ORDER.indexOf(currentService) + 1) % SERVICE_SUB_TAB_ORDER.length];
   return (
     <div className="fixed bottom-6 left-4 z-40 flex flex-col items-start gap-2">
       <button
@@ -513,9 +518,7 @@ const MobileServiceSwitch = ({ onSwitch, currentService, t }) => {
         aria-label="Cambiar servicio"
       >
         <ArrowUpDown className="h-4 w-4 shrink-0" />
-        <span>
-          {currentService === "pickup" ? "Wash & Fold" : "Pickup & Delivery"}
-        </span>
+        <span>{SERVICE_SUB_TAB_LABELS[nextKey]}</span>
       </button>
     </div>
   );
@@ -529,6 +532,7 @@ const ServiceSubTabs = ({ value, onChange, t }) => {
       {[
         { key: "pickup", icon: <Truck className="h-4 w-4" />, label: "Pickup & Delivery" },
         { key: "wash",   icon: <Package className="h-4 w-4" />, label: "Wash & Fold" },
+        { key: "sneaker", icon: <Footprints className="h-4 w-4" />, label: "Sneaker Cleaning" },
       ].map(({ key, icon, label }) => (
         <button
           key={key}
@@ -623,7 +627,7 @@ export default function OperatorDashboard() {
   }, []);
 
   const handleSwitchService = useCallback(() => {
-    setServiceSubTab((prev) => (prev === "pickup" ? "wash" : "pickup"));
+    setServiceSubTab((prev) => SERVICE_SUB_TAB_ORDER[(SERVICE_SUB_TAB_ORDER.indexOf(prev) + 1) % SERVICE_SUB_TAB_ORDER.length]);
   }, []);
 
   const getStatusLabel = useCallback(
@@ -1280,17 +1284,41 @@ const updateOrderStatus = useCallback(
     return () => clearTimeout(timer);
   }, [storeCheckoutForm.address, storeCheckoutForm.fulfillment_type, storePosOpen, t]);
 
-  const { allPickupOrders, allPickupDeliveries, allWashFoldDropoffs, allWashFoldReady, allPickupPaymentQueue, allWashFoldPaymentQueue, ordersWithCoordinates } = useMemo(() => {
-    const PICKUP_TRACK_SERVICE_TYPES = ["pickup_delivery", "airbnb_host", "commercial", "sneaker_cleaning"];
-    const pickupOrders = dedupeOrders(dashboard?.todays_pickups || []).filter((o) => !o.service_type || PICKUP_TRACK_SERVICE_TYPES.includes(o.service_type)).map((o) => ({ ...o, pickup_time_window: o.pickup_time_window || o.pickup_time || "" }));
-    const pickupDeliveries = dedupeOrders(dashboard?.ready_for_delivery || []).filter((o) => !o.service_type || PICKUP_TRACK_SERVICE_TYPES.includes(o.service_type)).map((o) => ({ ...o, pickup_time_window: o.pickup_time_window || o.pickup_time || "" }));
-    const wfDropoffs = dedupeOrders(dashboard?.wash_fold_dropoffs || []).map((o) => ({ ...o, pickup_time_window: o.pickup_time_window || o.pickup_time || "" }));
-    const wfReady = dedupeOrders(dashboard?.wash_fold_ready || []).map((o) => ({ ...o, pickup_time_window: o.pickup_time_window || o.pickup_time || "" }));
+  const { allPickupOrders, allPickupDeliveries, allWashFoldDropoffs, allWashFoldReady, allSneakerOrders, allSneakerReady, allPickupPaymentQueue, allWashFoldPaymentQueue, allSneakerPaymentQueue, ordersWithCoordinates } = useMemo(() => {
+    const PICKUP_TRACK_SERVICE_TYPES = ["pickup_delivery", "airbnb_host", "commercial"];
+    const isSneaker = (o) => o.service_type === "sneaker_cleaning";
+    const withWindow = (o) => ({ ...o, pickup_time_window: o.pickup_time_window || o.pickup_time || "" });
+
+    const todaysPickupsRaw = dedupeOrders(dashboard?.todays_pickups || []).map(withWindow);
+    const readyForDeliveryRaw = dedupeOrders(dashboard?.ready_for_delivery || []).map(withWindow);
+    const wfDropoffsRaw = dedupeOrders(dashboard?.wash_fold_dropoffs || []).map(withWindow);
+    const wfReadyRaw = dedupeOrders(dashboard?.wash_fold_ready || []).map(withWindow);
+
+    // Sneaker-cleaning orders get their own dedicated section regardless of
+    // which stage/track the backend happened to bucket them into (pickup
+    // mode lands them in todays_pickups/ready_for_delivery like any other
+    // pickup order; drop-off mode lands them alongside wash_fold since it's
+    // the same no-address pattern) — pulled out here so they don't also
+    // show up duplicated in the Pickup & Delivery or Wash & Fold sections.
+    const pickupOrders = todaysPickupsRaw.filter((o) => !isSneaker(o) && (!o.service_type || PICKUP_TRACK_SERVICE_TYPES.includes(o.service_type)));
+    const pickupDeliveries = readyForDeliveryRaw.filter((o) => !isSneaker(o) && (!o.service_type || PICKUP_TRACK_SERVICE_TYPES.includes(o.service_type)));
+    const wfDropoffs = wfDropoffsRaw.filter((o) => !isSneaker(o));
+    const wfReady = wfReadyRaw.filter((o) => !isSneaker(o));
+    const sneakerOrders = dedupeOrders([...todaysPickupsRaw, ...wfDropoffsRaw]).filter(isSneaker);
+    const sneakerReady = dedupeOrders([...readyForDeliveryRaw, ...wfReadyRaw]).filter(isSneaker);
+
     const pickupPaymentQueue = dedupeOrders([...pickupOrders, ...pickupDeliveries]).filter((o) => (o.payment_status || "pending") !== "paid");
     const wfPaymentQueue = dedupeOrders([...wfDropoffs, ...wfReady]).filter((o) => (o.payment_status || "pending") !== "paid");
-    const allOrders = dedupeOrders([...pickupOrders, ...pickupDeliveries, ...wfDropoffs, ...wfReady]).filter((o) => o.status?.toUpperCase() !== "COMPLETED");
+    const sneakerPaymentQueue = dedupeOrders([...sneakerOrders, ...sneakerReady]).filter((o) => (o.payment_status || "pending") !== "paid");
+    const allOrders = dedupeOrders([...pickupOrders, ...pickupDeliveries, ...wfDropoffs, ...wfReady, ...sneakerOrders, ...sneakerReady]).filter((o) => o.status?.toUpperCase() !== "COMPLETED");
     const withCoords = allOrders.map((order) => { const address = order.pickup_address || order.delivery_address; const coords = getCoordinatesFromAddress(address); return coords ? { ...order, coords } : null; }).filter(Boolean);
-    return { allPickupOrders: pickupOrders, allPickupDeliveries: pickupDeliveries, allWashFoldDropoffs: wfDropoffs, allWashFoldReady: wfReady, allPickupPaymentQueue: pickupPaymentQueue, allWashFoldPaymentQueue: wfPaymentQueue, ordersWithCoordinates: withCoords };
+    return {
+      allPickupOrders: pickupOrders, allPickupDeliveries: pickupDeliveries,
+      allWashFoldDropoffs: wfDropoffs, allWashFoldReady: wfReady,
+      allSneakerOrders: sneakerOrders, allSneakerReady: sneakerReady,
+      allPickupPaymentQueue: pickupPaymentQueue, allWashFoldPaymentQueue: wfPaymentQueue, allSneakerPaymentQueue: sneakerPaymentQueue,
+      ordersWithCoordinates: withCoords,
+    };
   }, [dashboard]);
 
   const isWithinTimeWindow = useCallback((pickupTimeStr, filterWindow) => {
@@ -1343,6 +1371,9 @@ const updateOrderStatus = useCallback(
   const filteredWashFoldReady = useMemo(() => sortByUrgency(filterOrders(allWashFoldReady)), [filterOrders, allWashFoldReady]);
   const filteredPickupPaymentQueue = useMemo(() => sortByUrgency(filterOrders(allPickupPaymentQueue)), [filterOrders, allPickupPaymentQueue]);
   const filteredWashFoldPaymentQueue = useMemo(() => sortByUrgency(filterOrders(allWashFoldPaymentQueue)), [filterOrders, allWashFoldPaymentQueue]);
+  const filteredSneakerOrders = useMemo(() => sortByUrgency(filterOrders(allSneakerOrders)), [filterOrders, allSneakerOrders]);
+  const filteredSneakerReady = useMemo(() => sortByUrgency(filterOrders(allSneakerReady)), [filterOrders, allSneakerReady]);
+  const filteredSneakerPaymentQueue = useMemo(() => sortByUrgency(filterOrders(allSneakerPaymentQueue)), [filterOrders, allSneakerPaymentQueue]);
 
   const currentServiceAllOrders = useMemo(() => {
     return serviceSubTab === "pickup"
@@ -1549,7 +1580,7 @@ const updateOrderStatus = useCallback(
           {serviceSubTab === "pickup" ? (
             <div className="space-y-4">
 
-              {/* ── 1. Creadas / Confirmadas ── */}
+              {/* ── 1. Creadas / Confirmadas (Pickup & Delivery) ── */}
               <div className="flex items-start gap-2 sm:gap-4">
                 <SectionNumber number="1" />
                 <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -1685,7 +1716,7 @@ const updateOrderStatus = useCallback(
               </div>
             </div>
 
-          ) : (
+          ) : serviceSubTab === "wash" ? (
             <div className="space-y-4">
 
               {/* ── 1. Wash & Fold — Creadas / Confirmadas ── */}
@@ -1778,6 +1809,124 @@ const updateOrderStatus = useCallback(
                               <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400 hover:text-sky-600 hover:bg-sky-50 hidden sm:flex" onClick={(e) => { e.stopPropagation(); handlePrintTicket(order); }} data-testid={`pos-washfold-print-payment-${order.order_id}`}><Printer className="h-3.5 w-3.5" /></Button>
                               <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 hidden sm:flex" onClick={(e) => { e.stopPropagation(); handleDownloadPDF(order); }} data-testid={`pos-washfold-pdf-payment-${order.order_id}`}><FileDown className="h-3.5 w-3.5" /></Button>
                               <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-xs h-9 sm:h-8 px-3 rounded-lg shadow-sm w-full sm:w-auto justify-center" onClick={(e) => { e.stopPropagation(); openOrderDetail(order, "billing"); }} data-testid={`pos-washfold-collect-${order.order_id}`}>{t("Collect", "Cobrar")}</Button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </div>
+
+          ) : (
+            <div className="space-y-4">
+
+              {/* ── 1. Sneaker Cleaning — Creadas / Confirmadas ── */}
+              <div className="flex items-start gap-2 sm:gap-4">
+                <SectionNumber number="1" />
+                <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                  <CardHeader
+                    icon={<Footprints className="h-4 w-4" />}
+                    title={t("Sneaker Cleaning — Created / Confirmed", "Sneaker Cleaning — Creadas / Confirmadas")}
+                    count={filteredSneakerOrders.length}
+                    testId="pos-sneaker-today-count"
+                  />
+                  {filteredSneakerOrders.length === 0 ? (
+                    <EmptyState icon={<Footprints className="h-7 w-7" />} text={t("No created or confirmed orders", "No hay órdenes creadas o confirmadas")} testId="pos-sneaker-today-empty" />
+                  ) : (
+                    filteredSneakerOrders.map((order) => {
+                      const ns = getNextStatus(order.status, order.service_type);
+                      return (
+                        <OrderRow
+                          key={order.order_id ?? order.order_number}
+                          order={order}
+                          statusInfo={getStatusInfo(order.status, order.service_type)}
+                          nextStatus={ns}
+                          nextStatusInfo={ns ? getStatusInfo(ns, order.service_type) : null}
+                          updating={updating}
+                          onRowClick={(o) => openOrderDetail(o)}
+                          onAdvance={updateOrderStatus}
+                          onPrint={handlePrintTicket}
+                          onPDF={handleDownloadPDF}
+                          showPrint
+                          urgent={isOrderUrgent(order)}
+                          advanceBtnClass="bg-violet-600 hover:bg-violet-700"
+                          t={t}
+                        />
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              {/* ── 2. Sneaker Cleaning — Procesando / Lista ── */}
+              <div className="flex items-start gap-2 sm:gap-4">
+                <SectionNumber number="2" />
+                <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                  <CardHeader
+                    icon={<CheckCircle className="h-4 w-4" />}
+                    title={t("Sneaker Cleaning — Processing / Ready", "Sneaker Cleaning — Procesando / Lista")}
+                    count={filteredSneakerReady.length}
+                    testId="pos-sneaker-ready-count"
+                  />
+                  {filteredSneakerReady.length === 0 ? (
+                    <EmptyState icon={<CheckCircle className="h-7 w-7" />} text={t("No orders in process or ready", "Sin órdenes en proceso o listas")} testId="pos-sneaker-ready-empty" />
+                  ) : (
+                    filteredSneakerReady.map((order) => {
+                      const ns = getNextStatus(order.status, order.service_type);
+                      return <OrderRow key={order.order_id ?? order.order_number} order={order} statusInfo={getStatusInfo(order.status, order.service_type)} nextStatus={ns} nextStatusInfo={ns ? getStatusInfo(ns, order.service_type) : null} updating={updating} onRowClick={(o) => openOrderDetail(o)} onAdvance={updateOrderStatus} onPrint={handlePrintTicket} onPDF={handleDownloadPDF} showPrint urgent={isOrderUrgent(order)} advanceBtnClass="bg-emerald-600 hover:bg-emerald-700" t={t} />;
+                    })
+                  )}
+                </div>
+              </div>
+
+              {/* ── 3. Request Payment (SIN NÚMERO) ── */}
+              <div className="flex items-start gap-2 sm:gap-4">
+                <div className="shrink-0 w-9 sm:w-14" />
+                <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                  <CardHeader
+                    icon={<DollarSign className="h-4 w-4" />}
+                    title={t("Request Payment", "Solicitar pago")}
+                    count={filteredSneakerPaymentQueue.length}
+                    testId="pos-sneaker-payment-count"
+                  />
+                  {filteredSneakerPaymentQueue.length === 0 ? (
+                    <EmptyState icon={<DollarSign className="h-7 w-7" />} text={t("No sneaker cleaning payments pending", "Sin pagos pendientes")} testId="pos-sneaker-payment-empty" />
+                  ) : (
+                    filteredSneakerPaymentQueue.map((order) => {
+                      const amount = Number(order.extra_charge ?? order.total_amount ?? 0);
+                      const urgent = isOrderUrgent(order);
+                      return (
+                        <div
+                          key={order.order_id ?? order.order_number}
+                          className={`px-4 py-3.5 transition-colors cursor-pointer border-b last:border-b-0 ${
+                            urgent
+                              ? "bg-red-50/60 hover:bg-red-50 border-red-100 border-l-4 border-l-red-500"
+                              : "bg-white hover:bg-slate-50/50 border-slate-100"
+                          }`}
+                          role="button"
+                          onClick={() => openOrderDetail(order)}
+                          data-testid={`pos-sneaker-payment-${order.order_id || "unknown"}`}
+                        >
+                          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                            <div className="flex-1 min-w-0 space-y-1">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="font-mono font-semibold text-slate-800 text-sm">{formatOrderNumber(order)}</span>
+                                {urgent && (
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded-full border border-red-300">
+                                    <AlertTriangle className="h-2.5 w-2.5" /> {t("Urgent", "Urgente")}
+                                  </span>
+                                )}
+                                <span className={`px-2 py-0.5 text-[11px] font-semibold rounded-full border ${getStatusInfo(order.status, order.service_type).color}`}>{getStatusInfo(order.status, order.service_type).label}</span>
+                              </div>
+                              <p className="text-sm font-semibold text-slate-700 truncate">{safeString(order.customer_name, t("Customer", "Cliente"))}</p>
+                              <p className="text-xs text-slate-400">{t("Charge", "Cobro")}: <span className="font-semibold text-slate-600">{amount ? formatCurrency(amount) : t("Pending", "Pendiente")}</span></p>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0 w-full sm:w-auto">
+                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400 hover:text-sky-600 hover:bg-sky-50 hidden sm:flex" onClick={(e) => { e.stopPropagation(); handlePrintTicket(order); }} data-testid={`pos-sneaker-print-payment-${order.order_id}`}><Printer className="h-3.5 w-3.5" /></Button>
+                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 hidden sm:flex" onClick={(e) => { e.stopPropagation(); handleDownloadPDF(order); }} data-testid={`pos-sneaker-pdf-payment-${order.order_id}`}><FileDown className="h-3.5 w-3.5" /></Button>
+                              <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-xs h-9 sm:h-8 px-3 rounded-lg shadow-sm w-full sm:w-auto justify-center" onClick={(e) => { e.stopPropagation(); openOrderDetail(order, "billing"); }} data-testid={`pos-sneaker-collect-${order.order_id}`}>{t("Collect", "Cobrar")}</Button>
                             </div>
                           </div>
                         </div>
