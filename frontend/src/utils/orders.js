@@ -17,6 +17,7 @@ export const ORDER_TYPE_COLORS = {
   'airbnb':          '#f59e0b',
   'b2b':             '#8b5cf6',
   'self-service':    '#ec4899',
+  'sneaker-cleaning': '#7c3aed',
 };
 
 export const ORDER_TYPE_LABELS = {
@@ -25,6 +26,27 @@ export const ORDER_TYPE_LABELS = {
   'airbnb':          'Airbnb Specialist',
   'b2b':             'B2B Solution',
   'self-service':    'Self Service',
+  'sneaker-cleaning': 'Sneaker Cleaning',
+};
+
+// Real backend service_type values (see backend/domain/billing.py's
+// normalize_service_type) — underscored, unlike the dashed ORDER_TYPE_*
+// dicts above which only ever match mock data's `.type` field. Use these
+// for anything reading a real order's `service_type`.
+export const SERVICE_TYPE_LABELS = {
+  'pickup_delivery': 'Pickup & Delivery',
+  'wash_fold':        'Wash & Fold',
+  'airbnb_host':      'Airbnb Host',
+  'commercial':       'Commercial',
+  'sneaker_cleaning': 'Sneaker Cleaning',
+};
+
+export const SERVICE_TYPE_COLORS = {
+  'pickup_delivery': '#3b82f6',
+  'wash_fold':        '#10b981',
+  'airbnb_host':      '#f59e0b',
+  'commercial':       '#8b5cf6',
+  'sneaker_cleaning': '#7c3aed',
 };
 
 export const ORDER_STATUS_LABELS = {

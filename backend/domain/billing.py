@@ -60,6 +60,12 @@ def normalize_service_type(service_type: Optional[str]) -> str:
         return s
     if "wash" in s or "fold" in s:
         return "wash_fold"
+    # sneaker-cleaning orders are never billed per-lb (compute_order_billing
+    # takes the addon-only path whenever actual_lbs is unset), so this has
+    # no effect on what's actually charged — it's just so the value stored
+    # on the order doesn't silently get relabeled as "pickup_delivery".
+    if "sneaker" in s:
+        return "sneaker_cleaning"
     return "pickup_delivery"
 
 

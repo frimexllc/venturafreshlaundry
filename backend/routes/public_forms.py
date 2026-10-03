@@ -225,6 +225,10 @@ class PublicWashFoldRequest(BaseModel):
     wash_temp: Optional[str] = None
     dry_temp: Optional[str] = None
     captcha_token: Optional[str] = None
+    # Lets other drop-off-style services (e.g. sneaker cleaning) reuse this
+    # same no-address-required finalize flow instead of duplicating it —
+    # defaults to "wash_fold" so every existing caller is unaffected.
+    service_type: Optional[str] = None
 
 class PublicContactRequest(BaseModel):
     name: str
@@ -841,8 +845,9 @@ def get_public_forms_router(
                 {"$set": {"has_membership": has_membership, "updated_at": now}}
             )
 
+        normalized_service_type = normalize_spaces(data.service_type).lower().replace(" ", "_") if data.service_type else "wash_fold"
         wf_plan = (data.plan or "standard").lower()
-        price_lb = get_price_per_lb("wash_fold", wf_plan, has_membership)
+        price_lb = get_price_per_lb(normalized_service_type, wf_plan, has_membership)
 
         order_id = str(uuid.uuid4())
         order_number = await generate_order_number()
@@ -853,7 +858,7 @@ def get_public_forms_router(
             "customer_name": customer["name"],
             "customer_email": normalized_email,
             "customer_phone": normalized_phone or customer.get("phone", ""),
-            "service_type": "wash_fold",
+            "service_type": normalized_service_type,
             "service_plan": wf_plan,
             "membership_plan_applied": membership_plan_name,
             "price_per_lb": price_lb,

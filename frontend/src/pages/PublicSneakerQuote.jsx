@@ -4,10 +4,10 @@
 // jump straight into Schedule Pickup.
 
 import { useState, useRef } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import axios from "axios";
 import { toast } from "sonner";
-import { Sparkles, Camera, Upload, X, RefreshCw, ArrowRight, CheckCircle, AlertTriangle, Plus, Info } from "lucide-react";
+import { Sparkles, Camera, Upload, X, RefreshCw, ArrowRight, CheckCircle, AlertTriangle, Plus, Info, Truck, Store, ShieldCheck } from "lucide-react";
 import PublicNav from "../components/PublicNav";
 import PublicFooter from "../components/PublicFooter";
 import SmsConsentField from "../components/SmsConsentField";
@@ -46,9 +46,8 @@ const emptyPair = () => ({ localId: nextLocalPairId++, photos: [] });
 
 export default function PublicSneakerQuote() {
   const { t, locale } = useLocale();
-  const navigate = useNavigate();
 
-  const [step, setStep] = useState("contact"); // contact -> photos -> result
+  const [step, setStep] = useState("contact"); // contact -> photos -> result -> schedule -> verify -> done
   const [form, setForm] = useState({ name: "", email: "", phone: "", contact_method: "email", sms_consent: false });
   const [pairs, setPairs] = useState([emptyPair()]);
   const [analyzing, setAnalyzing] = useState(false);
@@ -56,6 +55,15 @@ export default function PublicSneakerQuote() {
   const [activePairIdx, setActivePairIdx] = useState(0);
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
+
+  // ── Scheduling (pickup & delivery, or store drop-off) ───────────────────
+  const [fulfillment, setFulfillment] = useState("pickup"); // "pickup" | "dropoff"
+  const [scheduleForm, setScheduleForm] = useState({ address: "", date: "", time: "" });
+  const [scheduling, setScheduling] = useState(false);
+  const [pendingVerification, setPendingVerification] = useState(null); // { temp_token, message }
+  const [verificationCode, setVerificationCode] = useState("");
+  const [verifying, setVerifying] = useState(false);
+  const [orderResult, setOrderResult] = useState(null); // { order_number }
 
   const setF = (k, v) => setForm((p) => ({ ...p, [k]: v }));
 
@@ -168,12 +176,103 @@ export default function PublicSneakerQuote() {
     }
   };
 
-  const goSchedule = () => {
-    navigate("/schedule-pickup");
-  };
-
   const successfulResults = results?.filter((r) => r.ok) || [];
   const grandTotal = successfulResults.reduce((sum, r) => sum + r.pricing.suggested_total, 0);
+
+  const buildAddonServices = () =>
+    successfulResults.map((r, i) => {
+      const label = [r.ai_result.brand, r.ai_result.model].filter(Boolean).join(" ") || r.ai_result.type || "Sneakers";
+      return {
+        id: r.id || `pair-${i}`,
+        name: `AI Sneaker Cleaning — ${label}`,
+        price: r.pricing.suggested_total,
+        price_unit: "per_item",
+        category: "sneaker_cleaning",
+      };
+    });
+
+  const handleSchedule = async (e) => {
+    e.preventDefault();
+    if (fulfillment === "pickup" && (!scheduleForm.address.trim() || !scheduleForm.date)) {
+      toast.error(t("Please fill in address and pickup date", "Completa la dirección y la fecha de recogida"));
+      return;
+    }
+    if (fulfillment === "dropoff" && !scheduleForm.date) {
+      toast.error(t("Please choose a drop-off date", "Elige una fecha para traer tus tenis"));
+      return;
+    }
+    setScheduling(true);
+    try {
+      const captcha_token = await getRecaptchaToken(fulfillment === "pickup" ? "pickup_request" : "wash_fold_request");
+      const addon_services = buildAddonServices();
+      const contactFields = {
+        name: form.name,
+        email: form.email,
+        phone: form.phone,
+        contact_method: form.contact_method,
+        sms_consent: form.sms_consent,
+        captcha_token,
+        addon_services,
+      };
+
+      const res = fulfillment === "pickup"
+        ? await axios.post(`${API}/public/pickup-request`, {
+            ...contactFields,
+            address: scheduleForm.address,
+            pickup_date: scheduleForm.date,
+            pickup_time: scheduleForm.time || null,
+            service_type: "sneaker_cleaning",
+            service_plan: "standard",
+            notes: t("AI sneaker/shoe cleaning quote", "Cotización de limpieza de tenis/calzado con IA"),
+          })
+        : await axios.post(`${API}/public/wash-fold-request`, {
+            ...contactFields,
+            dropoff_date: scheduleForm.date,
+            dropoff_time: scheduleForm.time || null,
+            service_type: "sneaker_cleaning",
+            plan: "standard",
+            notes: t("AI sneaker/shoe cleaning quote — store drop-off", "Cotización de limpieza de tenis/calzado con IA — entrega en tienda"),
+          });
+
+      setPendingVerification(res.data);
+      setStep("verify");
+    } catch (err) {
+      toast.error(getSneakerQuoteErrorMessage(err, t));
+    } finally {
+      setScheduling(false);
+    }
+  };
+
+  const handleVerifyCode = async () => {
+    if (!pendingVerification?.temp_token || !verificationCode.trim()) {
+      toast.error(t("Enter the code we sent you", "Ingresa el código que te enviamos"));
+      return;
+    }
+    setVerifying(true);
+    try {
+      const res = await axios.post(`${API}/public/verify-code`, {
+        temp_token: pendingVerification.temp_token,
+        code: verificationCode.trim(),
+      });
+      setOrderResult(res.data);
+      setPendingVerification(null);
+      setStep("done");
+    } catch (err) {
+      toast.error(getSneakerQuoteErrorMessage(err, t));
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  const handleResendCode = async () => {
+    if (!pendingVerification?.temp_token) return;
+    try {
+      await axios.post(`${API}/public/resend-code`, { temp_token: pendingVerification.temp_token });
+      toast.success(t("Code resent", "Código reenviado"));
+    } catch (err) {
+      toast.error(getSneakerQuoteErrorMessage(err, t));
+    }
+  };
 
   return (
     <div className="min-h-screen bg-white">
@@ -411,10 +510,11 @@ export default function PublicSneakerQuote() {
               </p>
 
               <button
-                onClick={goSchedule}
-                className="w-full h-12 rounded-xl bg-primary hover:opacity-90 text-white text-sm font-bold uppercase tracking-wide flex items-center justify-center gap-2 transition-all"
+                onClick={() => setStep("schedule")}
+                disabled={successfulResults.length === 0}
+                className="w-full h-12 rounded-xl bg-primary hover:opacity-90 disabled:opacity-50 text-white text-sm font-bold uppercase tracking-wide flex items-center justify-center gap-2 transition-all"
               >
-                {t("Schedule Pickup", "Programar Recogida")}<ArrowRight className="w-4 h-4" />
+                {t("Schedule my pickup or drop-off", "Agendar recogida o entrega en tienda")}<ArrowRight className="w-4 h-4" />
               </button>
               <button
                 onClick={() => { setStep("photos"); setResults(null); }}
@@ -425,12 +525,135 @@ export default function PublicSneakerQuote() {
             </div>
           )}
 
-          <p className="text-center text-xs text-slate-400 mt-6">
-            {t("Prefer to book directly? ", "¿Prefieres agendar directo? ")}
-            <Link to="/schedule-pickup" className="text-primary font-semibold hover:underline">
-              {t("Schedule a pickup", "Programa una recogida")}
-            </Link>
-          </p>
+          {step === "schedule" && (
+            <form onSubmit={handleSchedule} className="bg-white rounded-2xl border border-slate-200 shadow-lg p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setFulfillment("pickup")}
+                  className={`h-16 rounded-xl border-2 flex flex-col items-center justify-center gap-1 text-xs font-bold transition-colors ${
+                    fulfillment === "pickup" ? "border-violet-500 bg-violet-50 text-violet-700" : "border-slate-200 text-slate-500"
+                  }`}
+                >
+                  <Truck className="w-4 h-4" />{t("Pickup & Delivery", "Recogida y Entrega")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFulfillment("dropoff")}
+                  className={`h-16 rounded-xl border-2 flex flex-col items-center justify-center gap-1 text-xs font-bold transition-colors ${
+                    fulfillment === "dropoff" ? "border-violet-500 bg-violet-50 text-violet-700" : "border-slate-200 text-slate-500"
+                  }`}
+                >
+                  <Store className="w-4 h-4" />{t("Drop off at store", "Entrega en tienda")}
+                </button>
+              </div>
+
+              {fulfillment === "pickup" && (
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">{t("Pickup address", "Dirección de recogida")}</label>
+                  <input
+                    type="text" value={scheduleForm.address}
+                    onChange={(e) => setScheduleForm((p) => ({ ...p, address: e.target.value }))}
+                    className="w-full mt-1 h-11 border border-slate-200 rounded-xl px-3 text-sm"
+                    required
+                  />
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                    {fulfillment === "pickup" ? t("Pickup date", "Fecha de recogida") : t("Drop-off date", "Fecha de entrega")}
+                  </label>
+                  <input
+                    type="date" value={scheduleForm.date}
+                    min={new Date().toISOString().slice(0, 10)}
+                    onChange={(e) => setScheduleForm((p) => ({ ...p, date: e.target.value }))}
+                    className="w-full mt-1 h-11 border border-slate-200 rounded-xl px-3 text-sm"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">{t("Preferred time (optional)", "Horario preferido (opcional)")}</label>
+                  <input
+                    type="text" value={scheduleForm.time} placeholder={t("e.g. morning", "ej. en la mañana")}
+                    onChange={(e) => setScheduleForm((p) => ({ ...p, time: e.target.value }))}
+                    className="w-full mt-1 h-11 border border-slate-200 rounded-xl px-3 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-xl bg-slate-50 p-3 flex justify-between items-center text-sm">
+                <span className="text-slate-500">{t("Total to pay", "Total a pagar")}</span>
+                <span className="font-black text-slate-900">${grandTotal.toFixed(2)}</span>
+              </div>
+
+              <button
+                type="submit"
+                disabled={scheduling}
+                className="w-full h-12 rounded-xl bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-sm font-bold uppercase tracking-wide flex items-center justify-center gap-2 transition-colors"
+              >
+                {scheduling
+                  ? <><RefreshCw className="h-4 w-4 animate-spin" />{t("Submitting…", "Enviando…")}</>
+                  : <>{t("Confirm", "Confirmar")}<ArrowRight className="w-4 h-4" /></>}
+              </button>
+              <button type="button" onClick={() => setStep("result")} className="w-full text-xs text-slate-400 hover:text-slate-600 text-center">
+                {t("← Back", "← Volver")}
+              </button>
+            </form>
+          )}
+
+          {step === "verify" && (
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-lg p-6 space-y-4 text-center">
+              <ShieldCheck className="w-10 h-10 text-violet-500 mx-auto" />
+              <h3 className="font-bold text-slate-800">{t("Verify your request", "Verifica tu solicitud")}</h3>
+              <p className="text-sm text-slate-500">
+                {pendingVerification?.message || t("We sent you a verification code.", "Te enviamos un código de verificación.")}
+              </p>
+              <input
+                type="text" value={verificationCode} onChange={(e) => setVerificationCode(e.target.value)}
+                placeholder="000000" maxLength={6}
+                className="w-full h-12 border border-slate-200 rounded-xl px-3 text-center text-lg tracking-widest"
+              />
+              <button
+                onClick={handleVerifyCode}
+                disabled={verifying}
+                className="w-full h-12 rounded-xl bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-sm font-bold uppercase tracking-wide flex items-center justify-center gap-2 transition-colors"
+              >
+                {verifying
+                  ? <><RefreshCw className="h-4 w-4 animate-spin" />{t("Verifying…", "Verificando…")}</>
+                  : t("Confirm code", "Confirmar código")}
+              </button>
+              <button onClick={handleResendCode} className="w-full text-xs text-slate-400 hover:text-slate-600 text-center">
+                {t("Resend code", "Reenviar código")}
+              </button>
+            </div>
+          )}
+
+          {step === "done" && (
+            <div className="bg-white rounded-2xl border border-emerald-200 shadow-lg p-6 space-y-3 text-center">
+              <CheckCircle className="w-12 h-12 text-emerald-500 mx-auto" />
+              <h3 className="font-bold text-lg text-slate-800">{t("You're all set!", "¡Listo!")}</h3>
+              <p className="text-sm text-slate-500">
+                {t(
+                  `Order ${orderResult?.order_number || ""} is confirmed. We'll contact you to finalize details.`,
+                  `Tu orden ${orderResult?.order_number || ""} está confirmada. Te contactaremos para finalizar los detalles.`
+                )}
+              </p>
+              <Link to="/" className="inline-flex items-center gap-2 text-violet-600 font-semibold text-sm hover:underline">
+                {t("Back to home", "Volver al inicio")}
+              </Link>
+            </div>
+          )}
+
+          {!["schedule", "verify", "done"].includes(step) && (
+            <p className="text-center text-xs text-slate-400 mt-6">
+              {t("Prefer to book directly? ", "¿Prefieres agendar directo? ")}
+              <Link to="/schedule-pickup" className="text-primary font-semibold hover:underline">
+                {t("Schedule a pickup", "Programa una recogida")}
+              </Link>
+            </p>
+          )}
         </div>
       </section>
 

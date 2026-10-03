@@ -425,6 +425,11 @@ const OrderRow = ({
               🏢 B2B
             </span>
           )}
+          {order.service_type === "sneaker_cleaning" && (
+            <span className="text-[10px] font-medium text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full border border-violet-200">
+              👟 Sneaker
+            </span>
+          )}
           {order.service_plan && (
             <span
               className={`text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wide ${PLAN_BADGE_STYLES[(order.service_plan || "").toLowerCase()] || PLAN_BADGE_STYLES.standard}`}
@@ -1276,8 +1281,9 @@ const updateOrderStatus = useCallback(
   }, [storeCheckoutForm.address, storeCheckoutForm.fulfillment_type, storePosOpen, t]);
 
   const { allPickupOrders, allPickupDeliveries, allWashFoldDropoffs, allWashFoldReady, allPickupPaymentQueue, allWashFoldPaymentQueue, ordersWithCoordinates } = useMemo(() => {
-    const pickupOrders = dedupeOrders(dashboard?.todays_pickups || []).filter((o) => !o.service_type || o.service_type === "pickup_delivery" || o.service_type === "airbnb_host" || o.service_type === "commercial").map((o) => ({ ...o, pickup_time_window: o.pickup_time_window || o.pickup_time || "" }));
-    const pickupDeliveries = dedupeOrders(dashboard?.ready_for_delivery || []).filter((o) => !o.service_type || o.service_type === "pickup_delivery" || o.service_type === "airbnb_host" || o.service_type === "commercial").map((o) => ({ ...o, pickup_time_window: o.pickup_time_window || o.pickup_time || "" }));
+    const PICKUP_TRACK_SERVICE_TYPES = ["pickup_delivery", "airbnb_host", "commercial", "sneaker_cleaning"];
+    const pickupOrders = dedupeOrders(dashboard?.todays_pickups || []).filter((o) => !o.service_type || PICKUP_TRACK_SERVICE_TYPES.includes(o.service_type)).map((o) => ({ ...o, pickup_time_window: o.pickup_time_window || o.pickup_time || "" }));
+    const pickupDeliveries = dedupeOrders(dashboard?.ready_for_delivery || []).filter((o) => !o.service_type || PICKUP_TRACK_SERVICE_TYPES.includes(o.service_type)).map((o) => ({ ...o, pickup_time_window: o.pickup_time_window || o.pickup_time || "" }));
     const wfDropoffs = dedupeOrders(dashboard?.wash_fold_dropoffs || []).map((o) => ({ ...o, pickup_time_window: o.pickup_time_window || o.pickup_time || "" }));
     const wfReady = dedupeOrders(dashboard?.wash_fold_ready || []).map((o) => ({ ...o, pickup_time_window: o.pickup_time_window || o.pickup_time || "" }));
     const pickupPaymentQueue = dedupeOrders([...pickupOrders, ...pickupDeliveries]).filter((o) => (o.payment_status || "pending") !== "paid");
