@@ -19,7 +19,6 @@ import {
   CheckCircle,
   RefreshCw,
   Phone,
-  ChevronRight,
   Zap,
   Bot,
   DollarSign,
@@ -32,7 +31,6 @@ import {
   ShoppingBag,
   Map as MapIcon,
   ClipboardList,
-  FileDown,
   Wifi,
   WifiOff,
   ArrowUpDown,
@@ -45,6 +43,9 @@ import { createNotificationsSocket } from "../utils/notificationsSocket";
 import DeliveryZonesManager from "../components/DeliveryZonesManager";
 import OrderDetailDialog from "../components/operator-dashboard/OrderDetailDialog";
 import MapFilters from "../components/MapFilters";
+import PickupDeliverySection from "../components/operator-dashboard/sections/PickupDeliverySection";
+import WashFoldSection from "../components/operator-dashboard/sections/WashFoldSection";
+import SneakerCleaningSection from "../components/operator-dashboard/sections/SneakerCleaningSection";
 import {
   ORDER_STATUSES,
   STORE_STATUS_FLOW,
@@ -69,10 +70,6 @@ import html2pdf from "html2pdf.js";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-
-// ─── Importar iconos numerados ──────────────────────────────────────────────
-import Icon1 from "../assets/1.png";
-import Icon2 from "../assets/2.png";
 
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -207,14 +204,6 @@ function isOrderOverdue(order) {
   return pickupDate < today;
 }
 
-// Mismos colores que PLAN_LABELS en Orders.jsx, para que el badge de plan
-// se vea igual en ambas pantallas.
-const PLAN_BADGE_STYLES = {
-  standard: "bg-slate-100 text-slate-700 border-slate-200",
-  premium:  "bg-sky-100 text-sky-700 border-sky-200",
-  express:  "bg-amber-100 text-amber-700 border-amber-200",
-};
-
 function isOrderUrgent(order) {
   if (!order) return false;
   if (order.is_urgent || order.urgent) return true;
@@ -261,62 +250,10 @@ const calculatePriceWithPaymentMethod = (baseAmount, paymentMethod) => {
   };
 };
 
-// ─── Componente para iconos numerados ──────────────────────────────────────────
-const SectionNumber = ({ number }) => {
-  const icons = {
-    "1": Icon1,
-    "2": Icon2,
-  };
-
-  const icon = icons[number];
-
-  return (
-    <div className="shrink-0 mt-2 sm:mt-4 flex flex-col items-center">
-      <div className="w-9 h-9 sm:w-14 sm:h-14 rounded-xl shadow-lg flex items-center justify-center overflow-hidden bg-white border border-slate-200">
-        <img 
-          src={icon} 
-          alt={`Número ${number}`} 
-          className="w-7 h-7 sm:w-11 sm:h-11 object-contain"
-        />
-      </div>
-      <div className="w-0.5 h-6 sm:h-8 bg-gradient-to-b from-slate-400 to-transparent mt-1" />
-    </div>
-  );
-};
-
 // ─── Sub-componentes mejorados ────────────────────────────────────────────────
-
-const CardHeader = ({
-  icon,
-  title,
-  count,
-  bgClass = "bg-black",
-  testId,
-}) => (
-  <div className={`px-5 py-3.5 border-b border-slate-800 ${bgClass}`}>
-    <div className="flex items-center gap-3">
-      <span className="shrink-0 text-white/80">{icon}</span>
-      <h2 className="font-bold text-white flex-1 text-xs sm:text-sm tracking-wide uppercase">
-        {title}
-      </h2>
-      <span
-        className="shrink-0 text-xs font-bold text-black bg-white rounded-full min-w-[24px] h-[24px] flex items-center justify-center px-1.5 shadow-sm"
-        data-testid={testId}
-      >
-        {count}
-      </span>
-    </div>
-  </div>
-);
-
-const EmptyState = ({ icon, text, testId }) => (
-  <div className="py-10 text-center" data-testid={testId}>
-    <div className="mx-auto mb-3 w-14 h-14 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-300">
-      {icon}
-    </div>
-    <p className="text-sm text-slate-400 font-medium">{text}</p>
-  </div>
-);
+// (SectionNumber, CardHeader, EmptyState, OrderRow, PaymentQueueRow now live
+// in components/operator-dashboard/sections/SectionPrimitives.jsx, shared by
+// the three per-service dashboard sections below.)
 
 const StatCard = ({ icon, bg, count, label, testId, highlight }) => (
   <div
@@ -347,157 +284,6 @@ const StatCard = ({ icon, bg, count, label, testId, highlight }) => (
         >
           {label}
         </p>
-      </div>
-    </div>
-  </div>
-);
-
-const OrderRow = ({
-  order,
-  statusInfo,
-  nextStatus,
-  nextStatusInfo,
-  updating,
-  onRowClick,
-  onAdvance,
-  onPrint,
-  onPDF,
-  advanceBtnClass = "bg-slate-900 hover:bg-slate-800",
-  showPrint = false,
-  urgent = false,
-  t,
-}) => (
-  <div
-    className={`px-4 py-3.5 transition-colors cursor-pointer border-b last:border-b-0 group ${
-      urgent
-        ? "bg-red-50/60 hover:bg-red-50 border-red-100 border-l-4 border-l-red-500"
-        : "bg-white hover:bg-slate-50/50 border-slate-100"
-    }`}
-    role="button"
-    onClick={() => onRowClick(order)}
-    data-testid={`order-row-${order.order_id || "unknown"}`}
-  >
-    {/* FIX: was `flex items-center gap-3` — on narrow phones this squeezed the
-        customer info and the status/action button into the same row, cutting
-        text off. Now it stacks vertically on phones (button appears below the
-        customer data) and goes back to a side-by-side row from `sm:` up. */}
-    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-      <div className="flex-1 min-w-0 space-y-1">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="font-mono font-semibold text-slate-800 text-sm">
-            {formatOrderNumber(order)}
-          </span>
-          {urgent && (
-            <span
-              className="inline-flex items-center gap-1 text-[10px] font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded-full border border-red-300"
-              data-testid={`urgent-badge-${order.order_id}`}
-            >
-              <AlertTriangle className="h-2.5 w-2.5" /> {t("Urgent", "Urgente")}
-            </span>
-          )}
-          <span
-            className={`px-2 py-0.5 text-[11px] font-semibold rounded-full border ${statusInfo.color}`}
-          >
-            {statusInfo.label}
-          </span>
-          {(order.is_recurring || (order.recurrence && order.recurrence !== "once")) && (
-            <span
-              className="inline-flex items-center gap-1 text-[10px] font-semibold text-violet-700 bg-violet-50 px-2 py-0.5 rounded-full border border-violet-200"
-              title={order.recurrence_end_date ? `Termina ${order.recurrence_end_date}` : ""}
-              data-testid={`recurring-badge-${order.order_id}`}
-            >
-              🔄{" "}
-              {order.recurrence === "weekly"
-                ? t("Weekly", "Semanal")
-                : order.recurrence === "biweekly"
-                ? t("Biweekly", "Quincenal")
-                : order.recurrence === "twice_week"
-                ? "2×/sem"
-                : t("Recurring", "Recurrente")}
-            </span>
-          )}
-          {order.service_type === "airbnb_host" && (
-            <span className="text-[10px] font-medium text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full border border-orange-200">
-              🏠 Airbnb
-            </span>
-          )}
-          {order.service_type === "commercial" && (
-            <span className="text-[10px] font-medium text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200">
-              🏢 B2B
-            </span>
-          )}
-          {order.service_type === "sneaker_cleaning" && (
-            <span className="text-[10px] font-medium text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full border border-violet-200">
-              👟 Sneaker
-            </span>
-          )}
-          {order.service_plan && (
-            <span
-              className={`text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wide ${PLAN_BADGE_STYLES[(order.service_plan || "").toLowerCase()] || PLAN_BADGE_STYLES.standard}`}
-              data-testid={`plan-badge-${order.order_id}`}
-            >
-              {(order.service_plan || "").toUpperCase()}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="font-semibold text-slate-700 text-sm truncate">
-            {safeString(order.customer_name, t("Customer", "Cliente"))}
-          </span>
-          {extractCP(order.pickup_address || order.delivery_address) && (
-            <span className="text-[10px] text-slate-400 font-mono bg-slate-100 px-1.5 py-0.5 rounded">
-              CP {extractCP(order.pickup_address || order.delivery_address)}
-            </span>
-          )}
-        </div>
-        {(order.pickup_time_window || order.pickup_date) && (
-          <p className="text-xs text-slate-400">
-            {order.pickup_time_window || order.pickup_date}
-          </p>
-        )}
-      </div>
-
-      <div className="flex items-center gap-1.5 shrink-0 w-full sm:w-auto">
-        {showPrint && (
-          <>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 w-8 p-0 text-slate-400 hover:text-sky-600 hover:bg-sky-50 rounded-lg hidden sm:flex"
-              onClick={(e) => { e.stopPropagation(); onPrint(order); }}
-              data-testid={`print-btn-${order.order_id}`}
-            >
-              <Printer className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 w-8 p-0 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg hidden sm:flex"
-              onClick={(e) => { e.stopPropagation(); onPDF(order); }}
-              data-testid={`pdf-btn-${order.order_id}`}
-            >
-              <FileDown className="h-3.5 w-3.5" />
-            </Button>
-          </>
-        )}
-        {nextStatus && (
-          <Button
-            size="sm"
-            className={`${advanceBtnClass} text-white text-xs h-9 sm:h-8 px-3 rounded-lg shadow-sm whitespace-nowrap w-full sm:w-auto justify-center`}
-            onClick={(e) => { e.stopPropagation(); onAdvance(order.order_id, nextStatus); }}
-            disabled={updating[order.order_id]}
-            data-testid={`advance-btn-${order.order_id}`}
-          >
-            {updating[order.order_id] ? (
-              <RefreshCw className="h-3 w-3 animate-spin" />
-            ) : (
-              <span className="flex items-center gap-1">
-                {nextStatusInfo?.label}
-                <ChevronRight className="h-3 w-3" />
-              </span>
-            )}
-          </Button>
-        )}
       </div>
     </div>
   </div>
@@ -1577,365 +1363,50 @@ const updateOrderStatus = useCallback(
           <MobileServiceSwitch onSwitch={handleSwitchService} currentService={serviceSubTab} t={t} />
          
 
-          {serviceSubTab === "pickup" ? (
-            <div className="space-y-4">
-
-              {/* ── 1. Creadas / Confirmadas (Pickup & Delivery) ── */}
-              <div className="flex items-start gap-2 sm:gap-4">
-                <SectionNumber number="1" />
-                <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                  <CardHeader
-                    icon={<Truck className="h-4 w-4" />}
-                    title={t("Pickup & Delivery — Created / Confirmed", "Pickup & Delivery — Creadas / Confirmadas")}
-                    count={filteredPickupOrders.length}
-                    testId="pos-pickup-today-count"
-                  />
-                  {filteredPickupOrders.length === 0 ? (
-                    <EmptyState icon={<Truck className="h-7 w-7" />} text={t("No created or confirmed orders", "No hay órdenes creadas o confirmadas")} testId="pos-pickup-today-empty" />
-                  ) : (
-                    filteredPickupOrders.map((order) => {
-                      const ns = getNextStatus(order.status, order.service_type);
-                      return (
-                        <OrderRow
-                          key={order.order_id ?? order.order_number}
-                          order={order}
-                          statusInfo={getStatusInfo(order.status, order.service_type)}
-                          nextStatus={ns}
-                          nextStatusInfo={ns ? getStatusInfo(ns, order.service_type) : null}
-                          updating={updating}
-                          onRowClick={(o) => openOrderDetail(o)}
-                          onAdvance={updateOrderStatus}
-                          onPrint={handlePrintTicket}
-                          onPDF={handleDownloadPDF}
-                          showPrint
-                          urgent={isOrderUrgent(order)}
-                          advanceBtnClass="bg-sky-600 hover:bg-sky-700"
-                          t={t}
-                        />
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-
-              {/* ── 2. En proceso / Lista / En camino ── */}
-              <div className="flex items-start gap-2 sm:gap-4">
-                <SectionNumber number="2" />
-                <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                  <CardHeader
-                    icon={<CheckCircle className="h-4 w-4" />}
-                    title={t("Pickup & Delivery — In Process / Ready / Out for Delivery", "Pickup & Delivery — En proceso / Lista / En camino")}
-                    count={filteredPickupDeliveries.length}
-                    testId="pos-pickup-delivery-count"
-                  />
-                  {filteredPickupDeliveries.length === 0 ? (
-                    <EmptyState icon={<Package className="h-7 w-7" />} text={t("No active process or delivery orders", "No hay órdenes en proceso o entrega")} testId="operator-delivery-empty" />
-                  ) : (
-                    filteredPickupDeliveries.map((order) => {
-                      const ns = getNextStatus(order.status, order.service_type);
-                      return (
-                        <OrderRow
-                          key={order.order_id ?? order.order_number}
-                          order={order}
-                          statusInfo={getStatusInfo(order.status, order.service_type)}
-                          nextStatus={ns}
-                          nextStatusInfo={ns ? getStatusInfo(ns, order.service_type) : null}
-                          updating={updating}
-                          onRowClick={(o) => openOrderDetail(o)}
-                          onAdvance={updateOrderStatus}
-                          onPrint={handlePrintTicket}
-                          onPDF={handleDownloadPDF}
-                          showPrint
-                          urgent={isOrderUrgent(order)}
-                          advanceBtnClass="bg-emerald-600 hover:bg-emerald-700"
-                          t={t}
-                        />
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-
-              {/* ── 3. Request Payment (SIN NÚMERO) ── */}
-              <div className="flex items-start gap-2 sm:gap-4">
-                <div className="shrink-0 w-9 sm:w-14" /> {/* Espacio vacío para alinear */}
-                <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                  <CardHeader
-                    icon={<DollarSign className="h-4 w-4" />}
-                    title={t("Request Payment", "Solicitar pago")}
-                    count={filteredPickupPaymentQueue.length}
-                    testId="pos-pickup-payment-count"
-                  />
-                  {filteredPickupPaymentQueue.length === 0 ? (
-                    <EmptyState icon={<DollarSign className="h-7 w-7" />} text={t("No pickup payments pending", "Sin pagos pendientes")} testId="pos-pickup-payment-empty" />
-                  ) : (
-                    filteredPickupPaymentQueue.map((order) => {
-                      const amount = Number(order.extra_charge ?? order.total_amount ?? 0);
-                      const urgent = isOrderUrgent(order);
-                      return (
-                        <div
-                          key={order.order_id ?? order.order_number}
-                          className={`px-4 py-3.5 transition-colors cursor-pointer border-b last:border-b-0 ${
-                            urgent
-                              ? "bg-red-50/60 hover:bg-red-50 border-red-100 border-l-4 border-l-red-500"
-                              : "bg-white hover:bg-slate-50/50 border-slate-100"
-                          }`}
-                          role="button"
-                          onClick={() => openOrderDetail(order)}
-                          data-testid={`pos-pickup-payment-${order.order_id || "unknown"}`}
-                        >
-                          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-                            <div className="flex-1 min-w-0 space-y-1">
-                              <div className="flex flex-wrap items-center gap-1.5">
-                                <span className="font-mono font-semibold text-slate-800 text-sm">{formatOrderNumber(order)}</span>
-                                {urgent && (
-                                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded-full border border-red-300">
-                                    <AlertTriangle className="h-2.5 w-2.5" /> {t("Urgent", "Urgente")}
-                                  </span>
-                                )}
-                                <span className={`px-2 py-0.5 text-[11px] font-semibold rounded-full border ${getStatusInfo(order.status, order.service_type).color}`}>{getStatusInfo(order.status, order.service_type).label}</span>
-                              </div>
-                              <p className="text-sm font-semibold text-slate-700 truncate">{safeString(order.customer_name, t("Customer", "Cliente"))}</p>
-                              <p className="text-xs text-slate-400">
-                                {t("Charge", "Cobro")}: <span className="font-semibold text-slate-600">{amount ? formatCurrency(amount) : t("Set actual lbs", "Ingresa lbs reales")}</span>
-                              </p>
-                            </div>
-                            {/* FIX: buttons now sit in their own full-width row below the
-                                customer data on phones instead of squeezing next to it. */}
-                            <div className="flex items-center gap-1.5 shrink-0 w-full sm:w-auto">
-                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400 hover:text-sky-600 hover:bg-sky-50 hidden sm:flex" onClick={(e) => { e.stopPropagation(); handlePrintTicket(order); }} data-testid={`pos-pickup-payment-print-${order.order_id}`}><Printer className="h-3.5 w-3.5" /></Button>
-                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 hidden sm:flex" onClick={(e) => { e.stopPropagation(); handleDownloadPDF(order); }} data-testid={`pos-pickup-payment-pdf-${order.order_id}`}><FileDown className="h-3.5 w-3.5" /></Button>
-                              <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-xs h-9 sm:h-8 px-3 rounded-lg shadow-sm w-full sm:w-auto justify-center" onClick={(e) => { e.stopPropagation(); openOrderDetail(order, "billing"); }} data-testid={`pos-pickup-collect-${order.order_id}`}>{t("Collect", "Cobrar")}</Button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-            </div>
-
-          ) : serviceSubTab === "wash" ? (
-            <div className="space-y-4">
-
-              {/* ── 1. Wash & Fold — Creadas / Confirmadas ── */}
-              <div className="flex items-start gap-2 sm:gap-4">
-                <SectionNumber number="1" />
-                <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                  <CardHeader
-                    icon={<Package className="h-4 w-4" />}
-                    title={t("Wash & Fold — Created / Confirmed", "Wash & Fold — Creadas / Confirmadas")}
-                    count={filteredWashFoldDropoffs.length}
-                    testId="pos-washfold-dropoff-count"
-                  />
-                  {filteredWashFoldDropoffs.length === 0 ? (
-                    <EmptyState icon={<Package className="h-7 w-7" />} text={t("No created or confirmed orders", "Sin órdenes creadas o confirmadas")} testId="pos-washfold-dropoff-empty" />
-                  ) : (
-                    filteredWashFoldDropoffs.map((order) => {
-                      const ns = getNextStatus(order.status, order.service_type);
-                      return <OrderRow key={order.order_id ?? order.order_number} order={order} statusInfo={getStatusInfo(order.status, order.service_type)} nextStatus={ns} nextStatusInfo={ns ? getStatusInfo(ns, order.service_type) : null} updating={updating} onRowClick={(o) => openOrderDetail(o)} onAdvance={updateOrderStatus} onPrint={handlePrintTicket} onPDF={handleDownloadPDF} showPrint urgent={isOrderUrgent(order)} advanceBtnClass="bg-purple-600 hover:bg-purple-700" t={t} />;
-                    })
-                  )}
-                </div>
-              </div>
-
-              {/* ── 2. Wash & Fold — Procesando / Lista ── */}
-              <div className="flex items-start gap-2 sm:gap-4">
-                <SectionNumber number="2" />
-                <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                  <CardHeader
-                    icon={<CheckCircle className="h-4 w-4" />}
-                    title={t("Wash & Fold — Processing / Ready for pickup", "Wash & Fold — Procesando / Lista para recoger")}
-                    count={filteredWashFoldReady.length}
-                    testId="pos-washfold-ready-count"
-                  />
-                  {filteredWashFoldReady.length === 0 ? (
-                    <EmptyState icon={<CheckCircle className="h-7 w-7" />} text={t("No orders in process or ready", "Sin órdenes en proceso o listas")} testId="pos-washfold-ready-empty" />
-                  ) : (
-                    filteredWashFoldReady.map((order) => {
-                      const ns = getNextStatus(order.status, order.service_type);
-                      return <OrderRow key={order.order_id ?? order.order_number} order={order} statusInfo={getStatusInfo(order.status, order.service_type)} nextStatus={ns} nextStatusInfo={ns ? getStatusInfo(ns, order.service_type) : null} updating={updating} onRowClick={(o) => openOrderDetail(o)} onAdvance={updateOrderStatus} onPrint={handlePrintTicket} onPDF={handleDownloadPDF} showPrint urgent={isOrderUrgent(order)} advanceBtnClass="bg-emerald-600 hover:bg-emerald-700" t={t} />;
-                    })
-                  )}
-                </div>
-              </div>
-
-              {/* ── 3. Request Payment (SIN NÚMERO) ── */}
-              <div className="flex items-start gap-2 sm:gap-4">
-                <div className="shrink-0 w-9 sm:w-14" /> {/* Espacio vacío para alinear */}
-                <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                  <CardHeader
-                    icon={<DollarSign className="h-4 w-4" />}
-                    title={t("Request Payment", "Solicitar pago")}
-                    count={filteredWashFoldPaymentQueue.length}
-                    testId="pos-washfold-payment-count"
-                  />
-                  {filteredWashFoldPaymentQueue.length === 0 ? (
-                    <EmptyState icon={<DollarSign className="h-7 w-7" />} text={t("No wash & fold payments pending", "Sin pagos pendientes")} testId="pos-washfold-payment-empty" />
-                  ) : (
-                    filteredWashFoldPaymentQueue.map((order) => {
-                      const amount = Number(order.extra_charge ?? order.total_amount ?? 0);
-                      const urgent = isOrderUrgent(order);
-                      return (
-                        <div
-                          key={order.order_id ?? order.order_number}
-                          className={`px-4 py-3.5 transition-colors cursor-pointer border-b last:border-b-0 ${
-                            urgent
-                              ? "bg-red-50/60 hover:bg-red-50 border-red-100 border-l-4 border-l-red-500"
-                              : "bg-white hover:bg-slate-50/50 border-slate-100"
-                          }`}
-                          role="button"
-                          onClick={() => openOrderDetail(order)}
-                          data-testid={`pos-washfold-payment-${order.order_id || "unknown"}`}
-                        >
-                          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-                            <div className="flex-1 min-w-0 space-y-1">
-                              <div className="flex flex-wrap items-center gap-1.5">
-                                <span className="font-mono font-semibold text-slate-800 text-sm">{formatOrderNumber(order)}</span>
-                                {urgent && (
-                                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded-full border border-red-300">
-                                    <AlertTriangle className="h-2.5 w-2.5" /> {t("Urgent", "Urgente")}
-                                  </span>
-                                )}
-                                <span className={`px-2 py-0.5 text-[11px] font-semibold rounded-full border ${getStatusInfo(order.status, order.service_type).color}`}>{getStatusInfo(order.status, order.service_type).label}</span>
-                              </div>
-                              <p className="text-sm font-semibold text-slate-700 truncate">{safeString(order.customer_name, t("Customer", "Cliente"))}</p>
-                              <p className="text-xs text-slate-400">{t("Charge", "Cobro")}: <span className="font-semibold text-slate-600">{amount ? formatCurrency(amount) : t("Set actual lbs", "Ingresa lbs reales")}</span></p>
-                            </div>
-                            {/* FIX: buttons now sit in their own full-width row below the
-                                customer data on phones instead of squeezing next to it. */}
-                            <div className="flex items-center gap-1.5 shrink-0 w-full sm:w-auto">
-                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400 hover:text-sky-600 hover:bg-sky-50 hidden sm:flex" onClick={(e) => { e.stopPropagation(); handlePrintTicket(order); }} data-testid={`pos-washfold-print-payment-${order.order_id}`}><Printer className="h-3.5 w-3.5" /></Button>
-                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 hidden sm:flex" onClick={(e) => { e.stopPropagation(); handleDownloadPDF(order); }} data-testid={`pos-washfold-pdf-payment-${order.order_id}`}><FileDown className="h-3.5 w-3.5" /></Button>
-                              <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-xs h-9 sm:h-8 px-3 rounded-lg shadow-sm w-full sm:w-auto justify-center" onClick={(e) => { e.stopPropagation(); openOrderDetail(order, "billing"); }} data-testid={`pos-washfold-collect-${order.order_id}`}>{t("Collect", "Cobrar")}</Button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-            </div>
-
-          ) : (
-            <div className="space-y-4">
-
-              {/* ── 1. Sneaker Cleaning — Creadas / Confirmadas ── */}
-              <div className="flex items-start gap-2 sm:gap-4">
-                <SectionNumber number="1" />
-                <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                  <CardHeader
-                    icon={<Footprints className="h-4 w-4" />}
-                    title={t("Sneaker Cleaning — Created / Confirmed", "Sneaker Cleaning — Creadas / Confirmadas")}
-                    count={filteredSneakerOrders.length}
-                    testId="pos-sneaker-today-count"
-                  />
-                  {filteredSneakerOrders.length === 0 ? (
-                    <EmptyState icon={<Footprints className="h-7 w-7" />} text={t("No created or confirmed orders", "No hay órdenes creadas o confirmadas")} testId="pos-sneaker-today-empty" />
-                  ) : (
-                    filteredSneakerOrders.map((order) => {
-                      const ns = getNextStatus(order.status, order.service_type);
-                      return (
-                        <OrderRow
-                          key={order.order_id ?? order.order_number}
-                          order={order}
-                          statusInfo={getStatusInfo(order.status, order.service_type)}
-                          nextStatus={ns}
-                          nextStatusInfo={ns ? getStatusInfo(ns, order.service_type) : null}
-                          updating={updating}
-                          onRowClick={(o) => openOrderDetail(o)}
-                          onAdvance={updateOrderStatus}
-                          onPrint={handlePrintTicket}
-                          onPDF={handleDownloadPDF}
-                          showPrint
-                          urgent={isOrderUrgent(order)}
-                          advanceBtnClass="bg-violet-600 hover:bg-violet-700"
-                          t={t}
-                        />
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-
-              {/* ── 2. Sneaker Cleaning — Procesando / Lista ── */}
-              <div className="flex items-start gap-2 sm:gap-4">
-                <SectionNumber number="2" />
-                <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                  <CardHeader
-                    icon={<CheckCircle className="h-4 w-4" />}
-                    title={t("Sneaker Cleaning — Processing / Ready", "Sneaker Cleaning — Procesando / Lista")}
-                    count={filteredSneakerReady.length}
-                    testId="pos-sneaker-ready-count"
-                  />
-                  {filteredSneakerReady.length === 0 ? (
-                    <EmptyState icon={<CheckCircle className="h-7 w-7" />} text={t("No orders in process or ready", "Sin órdenes en proceso o listas")} testId="pos-sneaker-ready-empty" />
-                  ) : (
-                    filteredSneakerReady.map((order) => {
-                      const ns = getNextStatus(order.status, order.service_type);
-                      return <OrderRow key={order.order_id ?? order.order_number} order={order} statusInfo={getStatusInfo(order.status, order.service_type)} nextStatus={ns} nextStatusInfo={ns ? getStatusInfo(ns, order.service_type) : null} updating={updating} onRowClick={(o) => openOrderDetail(o)} onAdvance={updateOrderStatus} onPrint={handlePrintTicket} onPDF={handleDownloadPDF} showPrint urgent={isOrderUrgent(order)} advanceBtnClass="bg-emerald-600 hover:bg-emerald-700" t={t} />;
-                    })
-                  )}
-                </div>
-              </div>
-
-              {/* ── 3. Request Payment (SIN NÚMERO) ── */}
-              <div className="flex items-start gap-2 sm:gap-4">
-                <div className="shrink-0 w-9 sm:w-14" />
-                <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                  <CardHeader
-                    icon={<DollarSign className="h-4 w-4" />}
-                    title={t("Request Payment", "Solicitar pago")}
-                    count={filteredSneakerPaymentQueue.length}
-                    testId="pos-sneaker-payment-count"
-                  />
-                  {filteredSneakerPaymentQueue.length === 0 ? (
-                    <EmptyState icon={<DollarSign className="h-7 w-7" />} text={t("No sneaker cleaning payments pending", "Sin pagos pendientes")} testId="pos-sneaker-payment-empty" />
-                  ) : (
-                    filteredSneakerPaymentQueue.map((order) => {
-                      const amount = Number(order.extra_charge ?? order.total_amount ?? 0);
-                      const urgent = isOrderUrgent(order);
-                      return (
-                        <div
-                          key={order.order_id ?? order.order_number}
-                          className={`px-4 py-3.5 transition-colors cursor-pointer border-b last:border-b-0 ${
-                            urgent
-                              ? "bg-red-50/60 hover:bg-red-50 border-red-100 border-l-4 border-l-red-500"
-                              : "bg-white hover:bg-slate-50/50 border-slate-100"
-                          }`}
-                          role="button"
-                          onClick={() => openOrderDetail(order)}
-                          data-testid={`pos-sneaker-payment-${order.order_id || "unknown"}`}
-                        >
-                          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-                            <div className="flex-1 min-w-0 space-y-1">
-                              <div className="flex flex-wrap items-center gap-1.5">
-                                <span className="font-mono font-semibold text-slate-800 text-sm">{formatOrderNumber(order)}</span>
-                                {urgent && (
-                                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded-full border border-red-300">
-                                    <AlertTriangle className="h-2.5 w-2.5" /> {t("Urgent", "Urgente")}
-                                  </span>
-                                )}
-                                <span className={`px-2 py-0.5 text-[11px] font-semibold rounded-full border ${getStatusInfo(order.status, order.service_type).color}`}>{getStatusInfo(order.status, order.service_type).label}</span>
-                              </div>
-                              <p className="text-sm font-semibold text-slate-700 truncate">{safeString(order.customer_name, t("Customer", "Cliente"))}</p>
-                              <p className="text-xs text-slate-400">{t("Charge", "Cobro")}: <span className="font-semibold text-slate-600">{amount ? formatCurrency(amount) : t("Pending", "Pendiente")}</span></p>
-                            </div>
-                            <div className="flex items-center gap-1.5 shrink-0 w-full sm:w-auto">
-                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400 hover:text-sky-600 hover:bg-sky-50 hidden sm:flex" onClick={(e) => { e.stopPropagation(); handlePrintTicket(order); }} data-testid={`pos-sneaker-print-payment-${order.order_id}`}><Printer className="h-3.5 w-3.5" /></Button>
-                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 hidden sm:flex" onClick={(e) => { e.stopPropagation(); handleDownloadPDF(order); }} data-testid={`pos-sneaker-pdf-payment-${order.order_id}`}><FileDown className="h-3.5 w-3.5" /></Button>
-                              <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-xs h-9 sm:h-8 px-3 rounded-lg shadow-sm w-full sm:w-auto justify-center" onClick={(e) => { e.stopPropagation(); openOrderDetail(order, "billing"); }} data-testid={`pos-sneaker-collect-${order.order_id}`}>{t("Collect", "Cobrar")}</Button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-            </div>
+          {serviceSubTab === "pickup" && (
+            <PickupDeliverySection
+              stage1Orders={filteredPickupOrders}
+              stage2Orders={filteredPickupDeliveries}
+              paymentQueue={filteredPickupPaymentQueue}
+              updating={updating}
+              getStatusInfo={getStatusInfo}
+              onRowClick={openOrderDetail}
+              onAdvance={updateOrderStatus}
+              onPrint={handlePrintTicket}
+              onPDF={handleDownloadPDF}
+              onCollect={(order) => openOrderDetail(order, "billing")}
+              t={t}
+            />
+          )}
+          {serviceSubTab === "wash" && (
+            <WashFoldSection
+              stage1Orders={filteredWashFoldDropoffs}
+              stage2Orders={filteredWashFoldReady}
+              paymentQueue={filteredWashFoldPaymentQueue}
+              updating={updating}
+              getStatusInfo={getStatusInfo}
+              onRowClick={openOrderDetail}
+              onAdvance={updateOrderStatus}
+              onPrint={handlePrintTicket}
+              onPDF={handleDownloadPDF}
+              onCollect={(order) => openOrderDetail(order, "billing")}
+              t={t}
+            />
+          )}
+          {serviceSubTab === "sneaker" && (
+            <SneakerCleaningSection
+              stage1Orders={filteredSneakerOrders}
+              stage2Orders={filteredSneakerReady}
+              paymentQueue={filteredSneakerPaymentQueue}
+              updating={updating}
+              getStatusInfo={getStatusInfo}
+              onRowClick={openOrderDetail}
+              onAdvance={updateOrderStatus}
+              onPrint={handlePrintTicket}
+              onPDF={handleDownloadPDF}
+              onCollect={(order) => openOrderDetail(order, "billing")}
+              t={t}
+            />
           )}
         </TabsContent>
 
