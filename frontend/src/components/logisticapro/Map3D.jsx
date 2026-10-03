@@ -75,12 +75,25 @@ function needsGeocode(order) {
   return Math.abs(lat - FALLBACK_LAT) < COORD_THRESHOLD && Math.abs(lng - FALLBACK_LNG) < COORD_THRESHOLD;
 }
 
-export default function Map3D({ hqLocation, driverLocations = [], trafficEvents = [], orders = [], onOrderClick, onMapReady }) {
+// Distinct colors per optimized route (vehicle index), cycling if there
+// are more vehicles than colors.
+export const ROUTE_COLORS = ['#22c55e', '#eab308', '#ec4899', '#06b6d4', '#a855f7', '#f97316', '#64748b'];
+
+export default function Map3D({
+  hqLocation,
+  driverLocations = [],
+  trafficEvents = [],
+  orders = [],
+  optimizedRoutes = [], // [{vehicle, stop_ids, distance_meters}]
+  onOrderClick,
+  onMapReady,
+}) {
   const containerRef = useRef(null);
   const map3DRef = useRef(null);
   const driverMarkersRef = useRef(new Map()); // user_id -> Marker3DElement
   const trafficMarkersRef = useRef([]);
   const orderMarkersRef = useRef([]);
+  const routePolylinesRef = useRef([]);
   const libsRef = useRef(null);
 
   const [isLoaded, setIsLoaded] = useState(false);
@@ -203,7 +216,8 @@ export default function Map3D({ hqLocation, driverLocations = [], trafficEvents 
     });
   }, [isLoaded, trafficEvents]);
 
-  // ── 4. Order markers (pickup / delivery / in-process) ───────────────────
+  // ── 4. Order markers (pickup / delivery / in-process, or by optimized
+  //      route once one has been solved) ──────────────────────────────────
   useEffect(() => {
     if (!isLoaded || !libsRef.current || !map3DRef.current) return;
     const { Marker3DInteractiveElement, PinElement } = libsRef.current;
@@ -212,14 +226,31 @@ export default function Map3D({ hqLocation, driverLocations = [], trafficEvents 
     orderMarkersRef.current.forEach((m) => m.remove?.());
     orderMarkersRef.current = [];
 
+    // order id -> { vehicle, sequence } when a route optimization result
+    // is active, so assigned stops show which route/position they're in
+    // instead of the plain pickup/delivery coloring.
+    const routeAssignment = new Map();
+    optimizedRoutes.forEach((route) => {
+      route.stop_ids.forEach((orderId, i) => {
+        routeAssignment.set(orderId, { vehicle: route.vehicle, sequence: i + 1 });
+      });
+    });
+
     orders.forEach((order) => {
       if (!order.location?.lat || needsGeocode(order)) return;
 
-      const role = order.type !== 'wash-fold' && PRE_PICKUP_STATUSES.includes(order.status) ? 'pickup'
-        : order.type !== 'wash-fold' && READY_FOR_DELIVERY_STATUSES.includes(order.status) ? 'delivery'
-        : 'processing';
-      const color = role === 'pickup' ? '#f97316' : role === 'delivery' ? '#2563eb' : '#94a3b8';
-      const glyph = role === 'pickup' ? 'P' : role === 'delivery' ? 'D' : '•';
+      const assignment = routeAssignment.get(order.id);
+      let color, glyph;
+      if (assignment) {
+        color = ROUTE_COLORS[assignment.vehicle % ROUTE_COLORS.length];
+        glyph = String(assignment.sequence);
+      } else {
+        const role = order.type !== 'wash-fold' && PRE_PICKUP_STATUSES.includes(order.status) ? 'pickup'
+          : order.type !== 'wash-fold' && READY_FOR_DELIVERY_STATUSES.includes(order.status) ? 'delivery'
+          : 'processing';
+        color = role === 'pickup' ? '#f97316' : role === 'delivery' ? '#2563eb' : '#94a3b8';
+        glyph = role === 'pickup' ? 'P' : role === 'delivery' ? 'D' : '•';
+      }
 
       const m = new Marker3DInteractiveElement({
         position: { lat: order.location.lat, lng: order.location.lng, altitude: 10 },
@@ -238,7 +269,43 @@ export default function Map3D({ hqLocation, driverLocations = [], trafficEvents 
       map3D.append(m);
       orderMarkersRef.current.push(m);
     });
-  }, [isLoaded, orders, onOrderClick]);
+  }, [isLoaded, orders, optimizedRoutes, onOrderClick]);
+
+  // ── 5. Optimized route polylines (depot -> stops in sequence -> depot) ──
+  useEffect(() => {
+    if (!isLoaded || !libsRef.current || !map3DRef.current) return;
+    const { Polyline3DElement } = libsRef.current;
+    const map3D = map3DRef.current;
+
+    routePolylinesRef.current.forEach((p) => p.remove?.());
+    routePolylinesRef.current = [];
+
+    if (!Polyline3DElement || optimizedRoutes.length === 0) return;
+
+    const orderById = new Map(orders.map((o) => [o.id, o]));
+
+    optimizedRoutes.forEach((route) => {
+      if (route.stop_ids.length === 0) return;
+      const path = [
+        { lat: hqLocation.lat, lng: hqLocation.lng, altitude: 20 },
+        ...route.stop_ids
+          .map((id) => orderById.get(id))
+          .filter((o) => o?.location?.lat && !needsGeocode(o))
+          .map((o) => ({ lat: o.location.lat, lng: o.location.lng, altitude: 20 })),
+      ];
+      if (path.length < 2) return;
+      path.push({ lat: hqLocation.lat, lng: hqLocation.lng, altitude: 20 });
+
+      const polyline = new Polyline3DElement({
+        path,
+        strokeColor: ROUTE_COLORS[route.vehicle % ROUTE_COLORS.length],
+        strokeWidth: 6,
+        altitudeMode: 'RELATIVE_TO_GROUND',
+      });
+      map3D.append(polyline);
+      routePolylinesRef.current.push(polyline);
+    });
+  }, [isLoaded, optimizedRoutes, orders, hqLocation]);
 
   if (loadError) {
     return (

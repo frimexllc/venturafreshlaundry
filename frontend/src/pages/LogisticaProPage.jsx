@@ -7,8 +7,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ArrowLeft, Navigation, Satellite, Users, X } from 'lucide-react';
-import Map3D from '../components/logisticapro/Map3D';
+import { ArrowLeft, Navigation, Satellite, Users, X, Route, Loader2, Trash2 } from 'lucide-react';
+import Map3D, { ROUTE_COLORS } from '../components/logisticapro/Map3D';
 import { createNotificationsSocket } from '../utils/notificationsSocket';
 import { getCurrentTrafficEvents } from '../utils/traffic';
 
@@ -43,6 +43,9 @@ export default function LogisticaProPage() {
   const [orders, setOrders] = useState([]);
   const [sharing, setSharing] = useState(false);
   const [panelOpen, setPanelOpen] = useState(true);
+  const [numVehicles, setNumVehicles] = useState(2);
+  const [optimizedRoutes, setOptimizedRoutes] = useState([]);
+  const [optimizing, setOptimizing] = useState(false);
 
   const watchIdRef = useRef(null);
   const postIntervalRef = useRef(null);
@@ -165,6 +168,41 @@ export default function LogisticaProPage() {
     toast(`${label} — ${order.location?.address || 'sin dirección'}`);
   }, []);
 
+  // ── Multi-vehicle route optimization (phase 2) ──────────────────────────
+  const handleOptimizeRoutes = useCallback(async () => {
+    if (orders.length === 0) {
+      toast.error('No hay órdenes en el mapa para optimizar');
+      return;
+    }
+    setOptimizing(true);
+    try {
+      const res = await fetch(`${API_URL}/api/logistics-pro/optimize-routes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ order_ids: orders.map((o) => o.id), num_vehicles: numVehicles }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.detail || 'No se pudieron optimizar las rutas');
+        return;
+      }
+      const data = await res.json();
+      setOptimizedRoutes(data.routes || []);
+      const activeRoutes = (data.routes || []).filter((r) => r.stop_ids.length > 0).length;
+      toast.success(`${activeRoutes} ruta(s) generadas para ${orders.length - data.skipped_no_coordinates.length} órdenes`);
+      if (data.skipped_no_coordinates?.length > 0) {
+        toast.error(`${data.skipped_no_coordinates.length} orden(es) sin coordenadas no se pudieron incluir`);
+      }
+    } catch (err) {
+      toast.error('Error de conexión al optimizar rutas');
+      console.error(err);
+    } finally {
+      setOptimizing(false);
+    }
+  }, [orders, numVehicles]);
+
+  const handleClearRoutes = useCallback(() => setOptimizedRoutes([]), []);
+
   return (
     <div className="fixed inset-0 bg-slate-950 text-white">
       <Map3D
@@ -172,6 +210,7 @@ export default function LogisticaProPage() {
         driverLocations={driverLocations}
         trafficEvents={trafficEvents}
         orders={orders}
+        optimizedRoutes={optimizedRoutes}
         onOrderClick={handleOrderClick}
       />
 
@@ -232,6 +271,61 @@ export default function LogisticaProPage() {
           )}
         </div>
       )}
+
+      {/* Route optimization controls (phase 2) */}
+      <div className="absolute bottom-4 left-4 w-72 rounded-xl bg-slate-900/90 backdrop-blur-sm border border-white/10 shadow-xl">
+        <div className="px-4 py-3 border-b border-white/10 flex items-center gap-2">
+          <Route className="w-4 h-4 text-emerald-400" />
+          <span className="text-sm font-bold">Optimizar rutas</span>
+        </div>
+        <div className="p-4 space-y-3">
+          <div className="flex items-center justify-between text-sm">
+            <label htmlFor="num-vehicles" className="text-slate-300">Conductores</label>
+            <input
+              id="num-vehicles"
+              type="number"
+              min={1}
+              max={10}
+              value={numVehicles}
+              onChange={(e) => setNumVehicles(Math.max(1, Math.min(10, Number(e.target.value) || 1)))}
+              className="w-16 bg-white/10 border border-white/10 rounded-lg px-2 py-1 text-right"
+            />
+          </div>
+          <button
+            onClick={handleOptimizeRoutes}
+            disabled={optimizing}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50"
+          >
+            {optimizing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Route className="w-4 h-4" />}
+            {optimizing ? 'Optimizando…' : 'Optimizar rutas'}
+          </button>
+          {optimizedRoutes.length > 0 && (
+            <>
+              <button
+                onClick={handleClearRoutes}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Limpiar rutas
+              </button>
+              <ul className="space-y-1 pt-1">
+                {optimizedRoutes.filter((r) => r.stop_ids.length > 0).map((r) => (
+                  <li key={r.vehicle} className="flex items-center justify-between text-xs">
+                    <span className="flex items-center gap-2">
+                      <span
+                        className="w-2.5 h-2.5 rounded-full"
+                        style={{ backgroundColor: ROUTE_COLORS[r.vehicle % ROUTE_COLORS.length] }}
+                      />
+                      Ruta {r.vehicle + 1} — {r.stop_ids.length} parada(s)
+                    </span>
+                    <span className="text-slate-400">{(r.distance_meters / 1000).toFixed(1)} km</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
