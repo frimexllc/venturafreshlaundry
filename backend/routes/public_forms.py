@@ -24,6 +24,7 @@ from utils import (
     normalize_yes_no,
     generate_order_number,
     create_audit_log,
+    calculate_final_amount_with_membership,
 )
 from notifications import send_sms, send_email, send_whatsapp, send_voice_call, normalize_preferred_contact, detect_language
 from ai_assistant import get_groq_client
@@ -698,6 +699,26 @@ def get_public_forms_router(
             "is_recurring": recurrence != "once",
         }
 
+        # Orders with add-ons already have a known price at creation time
+        # (e.g. a sneaker-cleaning order's AI-priced items) — compute and
+        # store the total now instead of leaving total_amount null until
+        # someone later edits a pricing-relevant field. A weight-based
+        # order with no add-ons yet legitimately isn't billable until the
+        # real weight is measured, so this is a no-op for those (breakdown
+        # comes back None, matching compute_order_billing's own contract).
+        breakdown = await calculate_final_amount_with_membership(order, customer)
+        if breakdown:
+            order.update({
+                "total_amount": breakdown["total"],
+                "extra_charge": breakdown["total"],
+                "membership_discount": breakdown["membership_discount"],
+                "price_per_lb": breakdown["rate_used"],
+                "lbs_from_allowance": breakdown["lbs_covered"],
+                "extra_lbs_billed": breakdown["lbs_extra"],
+                "delivery_fee": breakdown["delivery_fee"],
+                "addons_total": breakdown["addons_total"],
+            })
+
         await db.orders.insert_one(order)
         await db.customers.update_one({"id": customer["id"]}, {"$inc": {"total_orders": 1}})
         await create_audit_log("ORDER_CREATED", "order", order_id, None, {"source": "public_form"})
@@ -886,6 +907,25 @@ def get_public_forms_router(
             "created_at": now,
             "updated_at": now
         }
+
+        # See the matching comment in _finalize_pickup_request — add-on-only
+        # orders (e.g. sneaker cleaning dropped off in-store) already have a
+        # known price at creation time, so compute and store it now rather
+        # than leaving total_amount null until a later edit triggers a
+        # recompute.
+        breakdown = await calculate_final_amount_with_membership(order, customer)
+        if breakdown:
+            order.update({
+                "total_amount": breakdown["total"],
+                "extra_charge": breakdown["total"],
+                "membership_discount": breakdown["membership_discount"],
+                "price_per_lb": breakdown["rate_used"],
+                "lbs_from_allowance": breakdown["lbs_covered"],
+                "extra_lbs_billed": breakdown["lbs_extra"],
+                "delivery_fee": breakdown["delivery_fee"],
+                "addons_total": breakdown["addons_total"],
+            })
+
         await db.orders.insert_one(order)
         await db.customers.update_one({"id": customer["id"]}, {"$inc": {"total_orders": 1}})
         await create_audit_log("ORDER_CREATED", "order", order_id, None, {"source": "wash_fold_form"})
